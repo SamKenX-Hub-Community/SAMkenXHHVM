@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-.refTable tr {
+ .refTable tr {
   border-top: 1px solid silver;
 }
 .refTable tr:nth-child(2n) {

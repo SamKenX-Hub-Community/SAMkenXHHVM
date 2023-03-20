@@ -129,7 +129,7 @@ TEST(StructPatchTest, AssignSplit) {
   EXPECT_TRUE(*patch.toThrift().clear());
   op::for_each_field_id<MyStruct>([&](auto id) {
     if (auto&& field = op::get<>(id, *patch.toThrift().ensure())) {
-      EXPECT_TRUE((op::equal<op::get_type_tag<decltype(id), MyStruct>>(
+      EXPECT_TRUE((op::equal<op::get_type_tag<MyStruct, decltype(id)>>(
           *field, *op::get<>(id, original))))
           << "for field id " << static_cast<int>(id.value);
     }
@@ -504,6 +504,12 @@ TEST(StructPatchTest, MapPatch) {
   test::expectPatch(addPatch, {}, {{"a", "1"}, {"b", "2"}});
   test::expectPatch(
       addPatch, {{"a", "0"}, {"c", "3"}}, {{"a", "0"}, {"b", "2"}, {"c", "3"}});
+
+  MapPatch putPatch;
+  putPatch.put({{"a", "1"}, {"b", "2"}});
+  test::expectPatch(putPatch, {}, {{"a", "1"}, {"b", "2"}});
+  test::expectPatch(
+      putPatch, {{"a", "0"}, {"c", "3"}}, {{"a", "1"}, {"b", "2"}, {"c", "3"}});
 
   MapPatch erasePatch;
   erasePatch.add({{"a", "1"}, {"b", "2"}});

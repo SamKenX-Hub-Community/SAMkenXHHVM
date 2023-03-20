@@ -165,6 +165,27 @@ class SimpleStruct(thrift.py3.types.Struct, _typing.Hashable):
     def _to_py3(self) -> SimpleStruct: ...
     def _to_py_deprecated(self) -> "module.ttypes.SimpleStruct": ...   # type: ignore
 
+class HiddenTypeFieldsStruct(thrift.py3.types.Struct, _typing.Hashable):
+    class __fbthrift_IsSet:
+        pass
+
+    def __init__(
+        self, 
+    ) -> None: ...
+
+    def __call__(
+        self, 
+    ) -> HiddenTypeFieldsStruct: ...
+
+    def __reduce__(self) -> _typing.Tuple[_typing.Callable, _typing.Tuple[_typing.Type['HiddenTypeFieldsStruct'], bytes]]: ...
+    def __hash__(self) -> int: ...
+    def __str__(self) -> str: ...
+    def __repr__(self) -> str: ...
+
+    def _to_python(self) -> "module.thrift_types.HiddenTypeFieldsStruct": ...   # type: ignore
+    def _to_py3(self) -> HiddenTypeFieldsStruct: ...
+    def _to_py_deprecated(self) -> "module.ttypes.HiddenTypeFieldsStruct": ...   # type: ignore
+
 class ComplexStruct(thrift.py3.types.Struct, _typing.Hashable):
     class __fbthrift_IsSet:
         structOne: bool

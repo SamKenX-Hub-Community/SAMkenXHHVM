@@ -17,6 +17,76 @@ var _ = thrift.ZERO
 
 type ContainerTypedef = map[int16]string
 
+func NewContainerTypedef() ContainerTypedef {
+  return nil
+}
+
+func WriteContainerTypedef(item ContainerTypedef, p thrift.Protocol) error {
+  if err := p.WriteMapBegin(thrift.I16, thrift.STRING, len(item)); err != nil {
+    return thrift.PrependError("error writing map begin: ", err)
+}
+for k, v := range item {
+    {
+        item := k
+        if err := p.WriteI16(item); err != nil {
+    return err
+}
+    }
+
+    {
+        item := v
+        if err := p.WriteString(item); err != nil {
+    return err
+}
+    }
+}
+if err := p.WriteMapEnd(); err != nil {
+    return thrift.PrependError("error writing map end: ", err)
+}
+  return nil
+}
+
+func ReadContainerTypedef(p thrift.Protocol) (ContainerTypedef, error) {
+  var decodeResult ContainerTypedef
+  decodeErr := func() error {
+    _ /* keyType */, _ /* valueType */, size, err := p.ReadMapBegin()
+if err != nil {
+    return thrift.PrependError("error reading map begin: ", err)
+}
+
+mapResult := make(map[int16]string, size)
+for i := 0; i < size; i++ {
+    var key int16
+    {
+        result, err := p.ReadI16()
+if err != nil {
+    return err
+}
+        key = result
+    }
+
+    var value string
+    {
+        result, err := p.ReadString()
+if err != nil {
+    return err
+}
+        value = result
+    }
+
+    mapResult[key] = value
+}
+
+if err := p.ReadMapEnd(); err != nil {
+    return thrift.PrependError("error reading map end: ", err)
+}
+result := mapResult
+    decodeResult = result
+    return nil
+  }()
+  return decodeResult, decodeErr
+}
+
 type ComplexUnion struct {
     IntValue *int64 `thrift:"intValue,1" json:"intValue" db:"intValue"`
     StringValue *string `thrift:"stringValue,5" json:"stringValue" db:"stringValue"`
@@ -41,28 +111,76 @@ var ComplexUnion_StringValue_DEFAULT = NewComplexUnion().StringValue
 // Deprecated: Use NewComplexUnion().StringRef instead.
 var ComplexUnion_StringRef_DEFAULT = NewComplexUnion().StringRef
 
-func (x *ComplexUnion) GetIntValue() *int64 {
+func (x *ComplexUnion) GetIntValueNonCompat() *int64 {
     return x.IntValue
 }
 
-func (x *ComplexUnion) GetStringValue() *string {
+func (x *ComplexUnion) GetIntValue() int64 {
+    if !x.IsSetIntValue() {
+      return 0
+    }
+
+    return *x.IntValue
+}
+
+func (x *ComplexUnion) GetStringValueNonCompat() *string {
     return x.StringValue
 }
 
-func (x *ComplexUnion) GetIntListValue() []int64 {
+func (x *ComplexUnion) GetStringValue() string {
+    if !x.IsSetStringValue() {
+      return ""
+    }
+
+    return *x.StringValue
+}
+
+func (x *ComplexUnion) GetIntListValueNonCompat() []int64 {
     return x.IntListValue
 }
 
-func (x *ComplexUnion) GetStringListValue() []string {
+func (x *ComplexUnion) GetIntListValue() []int64 {
+    if !x.IsSetIntListValue() {
+      return nil
+    }
+
+    return x.IntListValue
+}
+
+func (x *ComplexUnion) GetStringListValueNonCompat() []string {
     return x.StringListValue
 }
 
-func (x *ComplexUnion) GetTypedefValue() ContainerTypedef {
+func (x *ComplexUnion) GetStringListValue() []string {
+    if !x.IsSetStringListValue() {
+      return nil
+    }
+
+    return x.StringListValue
+}
+
+func (x *ComplexUnion) GetTypedefValueNonCompat() ContainerTypedef {
     return x.TypedefValue
 }
 
-func (x *ComplexUnion) GetStringRef() *string {
+func (x *ComplexUnion) GetTypedefValue() ContainerTypedef {
+    if !x.IsSetTypedefValue() {
+      return NewContainerTypedef()
+    }
+
+    return x.TypedefValue
+}
+
+func (x *ComplexUnion) GetStringRefNonCompat() *string {
     return x.StringRef
+}
+
+func (x *ComplexUnion) GetStringRef() string {
+    if !x.IsSetStringRef() {
+      return ""
+    }
+
+    return *x.StringRef
 }
 
 func (x *ComplexUnion) SetIntValue(value int64) *ComplexUnion {
@@ -128,7 +246,7 @@ func (x *ComplexUnion) writeField1(p thrift.Protocol) error {  // IntValue
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetIntValue()
+    item := *x.GetIntValueNonCompat()
     if err := p.WriteI64(item); err != nil {
     return err
 }
@@ -148,7 +266,7 @@ func (x *ComplexUnion) writeField5(p thrift.Protocol) error {  // StringValue
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetStringValue()
+    item := *x.GetStringValueNonCompat()
     if err := p.WriteString(item); err != nil {
     return err
 }
@@ -168,7 +286,7 @@ func (x *ComplexUnion) writeField2(p thrift.Protocol) error {  // IntListValue
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetIntListValue()
+    item := x.GetIntListValueNonCompat()
     if err := p.WriteListBegin(thrift.I64, len(item)); err != nil {
     return thrift.PrependError("error writing list begin: ", err)
 }
@@ -199,7 +317,7 @@ func (x *ComplexUnion) writeField3(p thrift.Protocol) error {  // StringListValu
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetStringListValue()
+    item := x.GetStringListValueNonCompat()
     if err := p.WriteListBegin(thrift.STRING, len(item)); err != nil {
     return thrift.PrependError("error writing list begin: ", err)
 }
@@ -230,27 +348,10 @@ func (x *ComplexUnion) writeField9(p thrift.Protocol) error {  // TypedefValue
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetTypedefValue()
-    if err := p.WriteMapBegin(thrift.I16, thrift.STRING, len(item)); err != nil {
-    return thrift.PrependError("error writing map begin: ", err)
-}
-for k, v := range item {
-    {
-        item := k
-        if err := p.WriteI16(item); err != nil {
+    item := x.GetTypedefValueNonCompat()
+    err := WriteContainerTypedef(item, p)
+if err != nil {
     return err
-}
-    }
-
-    {
-        item := v
-        if err := p.WriteString(item); err != nil {
-    return err
-}
-    }
-}
-if err := p.WriteMapEnd(); err != nil {
-    return thrift.PrependError("error writing map end: ", err)
 }
 
     if err := p.WriteFieldEnd(); err != nil {
@@ -268,7 +369,7 @@ func (x *ComplexUnion) writeField14(p thrift.Protocol) error {  // StringRef
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetStringRef()
+    item := *x.GetStringRefNonCompat()
     if err := p.WriteString(item); err != nil {
     return err
 }
@@ -356,38 +457,10 @@ result := listResult
 }
 
 func (x *ComplexUnion) readField9(p thrift.Protocol) error {  // TypedefValue
-    _ /* keyType */, _ /* valueType */, size, err := p.ReadMapBegin()
-if err != nil {
-    return thrift.PrependError("error reading map begin: ", err)
-}
-
-mapResult := make(map[int16]string, size)
-for i := 0; i < size; i++ {
-    var key int16
-    {
-        result, err := p.ReadI16()
+    result, err := ReadContainerTypedef(p)
 if err != nil {
     return err
 }
-        key = result
-    }
-
-    var value string
-    {
-        result, err := p.ReadString()
-if err != nil {
-    return err
-}
-        value = result
-    }
-
-    mapResult[key] = value
-}
-
-if err := p.ReadMapEnd(); err != nil {
-    return thrift.PrependError("error reading map end: ", err)
-}
-result := mapResult
 
     x.SetTypedefValue(result)
     return nil
@@ -561,11 +634,27 @@ func NewListUnion() *ListUnion {
     return (&ListUnion{})
 }
 
-func (x *ListUnion) GetIntListValue() []int64 {
+func (x *ListUnion) GetIntListValueNonCompat() []int64 {
     return x.IntListValue
 }
 
+func (x *ListUnion) GetIntListValue() []int64 {
+    if !x.IsSetIntListValue() {
+      return nil
+    }
+
+    return x.IntListValue
+}
+
+func (x *ListUnion) GetStringListValueNonCompat() []string {
+    return x.StringListValue
+}
+
 func (x *ListUnion) GetStringListValue() []string {
+    if !x.IsSetStringListValue() {
+      return nil
+    }
+
     return x.StringListValue
 }
 
@@ -596,7 +685,7 @@ func (x *ListUnion) writeField2(p thrift.Protocol) error {  // IntListValue
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetIntListValue()
+    item := x.GetIntListValueNonCompat()
     if err := p.WriteListBegin(thrift.I64, len(item)); err != nil {
     return thrift.PrependError("error writing list begin: ", err)
 }
@@ -627,7 +716,7 @@ func (x *ListUnion) writeField3(p thrift.Protocol) error {  // StringListValue
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetStringListValue()
+    item := x.GetStringListValueNonCompat()
     if err := p.WriteListBegin(thrift.STRING, len(item)); err != nil {
     return thrift.PrependError("error writing list begin: ", err)
 }
@@ -814,12 +903,28 @@ func NewDataUnion() *DataUnion {
 // Deprecated: Use NewDataUnion().StringData instead.
 var DataUnion_StringData_DEFAULT = NewDataUnion().StringData
 
-func (x *DataUnion) GetBinaryData() []byte {
+func (x *DataUnion) GetBinaryDataNonCompat() []byte {
     return x.BinaryData
 }
 
-func (x *DataUnion) GetStringData() *string {
+func (x *DataUnion) GetBinaryData() []byte {
+    if !x.IsSetBinaryData() {
+      return []byte("")
+    }
+
+    return x.BinaryData
+}
+
+func (x *DataUnion) GetStringDataNonCompat() *string {
     return x.StringData
+}
+
+func (x *DataUnion) GetStringData() string {
+    if !x.IsSetStringData() {
+      return ""
+    }
+
+    return *x.StringData
 }
 
 func (x *DataUnion) SetBinaryData(value []byte) *DataUnion {
@@ -849,7 +954,7 @@ func (x *DataUnion) writeField1(p thrift.Protocol) error {  // BinaryData
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetBinaryData()
+    item := x.GetBinaryDataNonCompat()
     if err := p.WriteBinary(item); err != nil {
     return err
 }
@@ -869,7 +974,7 @@ func (x *DataUnion) writeField2(p thrift.Protocol) error {  // StringData
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetStringData()
+    item := *x.GetStringDataNonCompat()
     if err := p.WriteString(item); err != nil {
     return err
 }
@@ -1007,15 +1112,31 @@ func NewVal() *Val {
     return (&Val{})
 }
 
+func (x *Val) GetStrValNonCompat() string {
+    return x.StrVal
+}
+
 func (x *Val) GetStrVal() string {
     return x.StrVal
+}
+
+func (x *Val) GetIntValNonCompat() int32 {
+    return x.IntVal
 }
 
 func (x *Val) GetIntVal() int32 {
     return x.IntVal
 }
 
+func (x *Val) GetTypedefValueNonCompat() ContainerTypedef {
+    return x.TypedefValue
+}
+
 func (x *Val) GetTypedefValue() ContainerTypedef {
+    if !x.IsSetTypedefValue() {
+      return NewContainerTypedef()
+    }
+
     return x.TypedefValue
 }
 
@@ -1045,7 +1166,7 @@ func (x *Val) writeField1(p thrift.Protocol) error {  // StrVal
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetStrVal()
+    item := x.GetStrValNonCompat()
     if err := p.WriteString(item); err != nil {
     return err
 }
@@ -1061,7 +1182,7 @@ func (x *Val) writeField2(p thrift.Protocol) error {  // IntVal
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetIntVal()
+    item := x.GetIntValNonCompat()
     if err := p.WriteI32(item); err != nil {
     return err
 }
@@ -1081,27 +1202,10 @@ func (x *Val) writeField9(p thrift.Protocol) error {  // TypedefValue
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetTypedefValue()
-    if err := p.WriteMapBegin(thrift.I16, thrift.STRING, len(item)); err != nil {
-    return thrift.PrependError("error writing map begin: ", err)
-}
-for k, v := range item {
-    {
-        item := k
-        if err := p.WriteI16(item); err != nil {
+    item := x.GetTypedefValueNonCompat()
+    err := WriteContainerTypedef(item, p)
+if err != nil {
     return err
-}
-    }
-
-    {
-        item := v
-        if err := p.WriteString(item); err != nil {
-    return err
-}
-    }
-}
-if err := p.WriteMapEnd(); err != nil {
-    return thrift.PrependError("error writing map end: ", err)
 }
 
     if err := p.WriteFieldEnd(); err != nil {
@@ -1131,38 +1235,10 @@ if err != nil {
 }
 
 func (x *Val) readField9(p thrift.Protocol) error {  // TypedefValue
-    _ /* keyType */, _ /* valueType */, size, err := p.ReadMapBegin()
-if err != nil {
-    return thrift.PrependError("error reading map begin: ", err)
-}
-
-mapResult := make(map[int16]string, size)
-for i := 0; i < size; i++ {
-    var key int16
-    {
-        result, err := p.ReadI16()
+    result, err := ReadContainerTypedef(p)
 if err != nil {
     return err
 }
-        key = result
-    }
-
-    var value string
-    {
-        result, err := p.ReadString()
-if err != nil {
-    return err
-}
-        value = result
-    }
-
-    mapResult[key] = value
-}
-
-if err := p.ReadMapEnd(); err != nil {
-    return thrift.PrependError("error reading map end: ", err)
-}
-result := mapResult
 
     x.SetTypedefValue(result)
     return nil
@@ -1293,11 +1369,27 @@ var ValUnion_V1_DEFAULT = NewValUnion().V1
 // Deprecated: Use NewValUnion().V2 instead.
 var ValUnion_V2_DEFAULT = NewValUnion().V2
 
-func (x *ValUnion) GetV1() *Val {
+func (x *ValUnion) GetV1NonCompat() *Val {
     return x.V1
 }
 
+func (x *ValUnion) GetV1() *Val {
+    if !x.IsSetV1() {
+      return NewVal()
+    }
+
+    return x.V1
+}
+
+func (x *ValUnion) GetV2NonCompat() *Val {
+    return x.V2
+}
+
 func (x *ValUnion) GetV2() *Val {
+    if !x.IsSetV2() {
+      return NewVal()
+    }
+
     return x.V2
 }
 
@@ -1328,7 +1420,7 @@ func (x *ValUnion) writeField1(p thrift.Protocol) error {  // V1
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetV1()
+    item := x.GetV1NonCompat()
     if err := item.Write(p); err != nil {
     return err
 }
@@ -1348,7 +1440,7 @@ func (x *ValUnion) writeField2(p thrift.Protocol) error {  // V2
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetV2()
+    item := x.GetV2NonCompat()
     if err := item.Write(p); err != nil {
     return err
 }
@@ -1493,12 +1585,28 @@ var VirtualComplexUnion_ThingOne_DEFAULT = NewVirtualComplexUnion().ThingOne
 // Deprecated: Use NewVirtualComplexUnion().ThingTwo instead.
 var VirtualComplexUnion_ThingTwo_DEFAULT = NewVirtualComplexUnion().ThingTwo
 
-func (x *VirtualComplexUnion) GetThingOne() *string {
+func (x *VirtualComplexUnion) GetThingOneNonCompat() *string {
     return x.ThingOne
 }
 
-func (x *VirtualComplexUnion) GetThingTwo() *string {
+func (x *VirtualComplexUnion) GetThingOne() string {
+    if !x.IsSetThingOne() {
+      return ""
+    }
+
+    return *x.ThingOne
+}
+
+func (x *VirtualComplexUnion) GetThingTwoNonCompat() *string {
     return x.ThingTwo
+}
+
+func (x *VirtualComplexUnion) GetThingTwo() string {
+    if !x.IsSetThingTwo() {
+      return ""
+    }
+
+    return *x.ThingTwo
 }
 
 func (x *VirtualComplexUnion) SetThingOne(value string) *VirtualComplexUnion {
@@ -1528,7 +1636,7 @@ func (x *VirtualComplexUnion) writeField1(p thrift.Protocol) error {  // ThingOn
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetThingOne()
+    item := *x.GetThingOneNonCompat()
     if err := p.WriteString(item); err != nil {
     return err
 }
@@ -1548,7 +1656,7 @@ func (x *VirtualComplexUnion) writeField2(p thrift.Protocol) error {  // ThingTw
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetThingTwo()
+    item := *x.GetThingTwoNonCompat()
     if err := p.WriteString(item); err != nil {
     return err
 }
@@ -1684,6 +1792,10 @@ func NewNonCopyableStruct() *NonCopyableStruct {
     return (&NonCopyableStruct{})
 }
 
+func (x *NonCopyableStruct) GetNumNonCompat() int64 {
+    return x.Num
+}
+
 func (x *NonCopyableStruct) GetNum() int64 {
     return x.Num
 }
@@ -1699,7 +1811,7 @@ func (x *NonCopyableStruct) writeField1(p thrift.Protocol) error {  // Num
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetNum()
+    item := x.GetNumNonCompat()
     if err := p.WriteI64(item); err != nil {
     return err
 }
@@ -1815,7 +1927,15 @@ func NewNonCopyableUnion() *NonCopyableUnion {
 // Deprecated: Use NewNonCopyableUnion().S instead.
 var NonCopyableUnion_S_DEFAULT = NewNonCopyableUnion().S
 
+func (x *NonCopyableUnion) GetSNonCompat() *NonCopyableStruct {
+    return x.S
+}
+
 func (x *NonCopyableUnion) GetS() *NonCopyableStruct {
+    if !x.IsSetS() {
+      return NewNonCopyableStruct()
+    }
+
     return x.S
 }
 
@@ -1837,7 +1957,7 @@ func (x *NonCopyableUnion) writeField1(p thrift.Protocol) error {  // S
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetS()
+    item := x.GetSNonCompat()
     if err := item.Write(p); err != nil {
     return err
 }

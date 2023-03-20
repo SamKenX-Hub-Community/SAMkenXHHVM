@@ -133,6 +133,13 @@ cdef extern from "thrift/compiler/test/fixtures/py3/src/gen-py3cpp/module_types_
         __field_ref[float] smaller_real_ref "smaller_real_ref" ()
 
 
+    cdef cppclass cHiddenTypeFieldsStruct "::py3::simple::HiddenTypeFieldsStruct":
+        cHiddenTypeFieldsStruct() except +
+        cHiddenTypeFieldsStruct(const cHiddenTypeFieldsStruct&) except +
+        bint operator==(cHiddenTypeFieldsStruct&)
+        bint operator!=(cHiddenTypeFieldsStruct&)
+
+
     cdef cppclass cComplexStruct "::py3::simple::ComplexStruct":
         cComplexStruct() except +
         cComplexStruct(const cComplexStruct&) except +
@@ -206,6 +213,15 @@ cdef class SimpleStruct(thrift.py3.types.Struct):
 
     @staticmethod
     cdef _fbthrift_create(shared_ptr[cSimpleStruct])
+
+
+
+cdef class HiddenTypeFieldsStruct(thrift.py3.types.Struct):
+    cdef shared_ptr[cHiddenTypeFieldsStruct] _cpp_obj
+    cdef _fbthrift_types_fields.__HiddenTypeFieldsStruct_FieldsSetter _fields_setter
+
+    @staticmethod
+    cdef _fbthrift_create(shared_ptr[cHiddenTypeFieldsStruct])
 
 
 

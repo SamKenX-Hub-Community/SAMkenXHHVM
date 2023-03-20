@@ -35,7 +35,7 @@ end
 type abstraction = Ast_defs.abstraction =
   | Concrete
   | Abstract
-[@@deriving eq, hash, ord, show { with_path = false }]
+[@@deriving eq, hash, ord, sexp, show { with_path = false }]
 
 val hash_abstraction : abstraction -> int
 
@@ -45,7 +45,7 @@ type classish_kind = Ast_defs.classish_kind =
   | Ctrait  (** Kind for `trait` *)
   | Cenum  (** Kind for `enum` *)
   | Cenum_class of abstraction
-[@@deriving eq, hash, ord, show { with_path = false }]
+[@@deriving eq, hash, ord, sexp, show { with_path = false }]
 
 val hash_classish_kind : classish_kind -> int
 
@@ -53,7 +53,7 @@ module CustomInterConstraint : sig
   (** Facts that help us summarize results. *)
   type t = {
     classish_kind_opt: classish_kind option;
-        (** classish_kind is `None` for functions *)
+        (** In `CustomInterConstraint`s, classish_kind is always `None` for functions *)
     hierarchy_for_final_item: string list option;
         (**
         `Some []` indicates something with no parents or descendents, such as a top-level function or final class with no `extends` or `implements`.
@@ -93,7 +93,8 @@ end
 
 module Summary : sig
   type nadable_kind =
-    | ClassLike of classish_kind
+    | ClassLike of classish_kind option
+        (** classish_kind of `None` indicates unknown, which can happen for definitions in hhis *)
     | Function
 
   type nadable = {

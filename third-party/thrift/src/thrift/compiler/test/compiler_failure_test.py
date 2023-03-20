@@ -93,7 +93,7 @@ class CompilerFailureTest(unittest.TestCase):
                     @Experimental
                     i32 field2; // Warning
                     @Testing
-                    i32 field3; // Allowed
+                    i32 field3; // Warning
                 }
 
                 struct Bar {
@@ -107,6 +107,7 @@ class CompilerFailureTest(unittest.TestCase):
             err,
             "[ERROR:foo.thrift:7] No field id specified for `field1`, resulting protocol may have conflicts or not be backwards compatible!\n"
             "[WARNING:foo.thrift:8] No field id specified for `field2`, resulting protocol may have conflicts or not be backwards compatible!\n"
+            "[WARNING:foo.thrift:10] No field id specified for `field3`, resulting protocol may have conflicts or not be backwards compatible!\n"
             "[WARNING:foo.thrift:15] No field id specified for `field4`, resulting protocol may have conflicts or not be backwards compatible!\n",
         )
         self.assertEqual(ret, 1)
@@ -292,7 +293,7 @@ class CompilerFailureTest(unittest.TestCase):
             err,
             "[ERROR:underflow.thrift:4] Integer constant -32769 outside the range of field ids ([-32768, 32767]).\n"
             "[WARNING:underflow.thrift:2] Nonpositive field id (-32768) differs from what is auto-assigned by thrift. The id must be positive or -1.\n"
-            '[ERROR:underflow.thrift:4] Field identifier 32767 for "f6" has already been used.\n'
+            "[ERROR:underflow.thrift:4] Field id 32767 for `f6` has already been used.\n"
             "[WARNING:underflow.thrift:2] No field id specified for `f4`, resulting protocol may have conflicts or not be backwards compatible!\n",
         )
         self.assertEqual(ret, 1)
@@ -618,8 +619,8 @@ class CompilerFailureTest(unittest.TestCase):
         self.assertEqual(ret, 1)
         self.assertEqual(
             err,
-            "[ERROR:baz.thrift:3] Function `MyS.lol` redefines `service foo.MySBB.lol`.\n"
-            "[ERROR:baz.thrift:4] Function `MyS.meh` redefines `service bar.MySB.meh`.\n",
+            "[ERROR:baz.thrift:3] Function `MyS.lol` redefines `foo.MySBB.lol`.\n"
+            "[ERROR:baz.thrift:4] Function `MyS.meh` redefines `bar.MySB.meh`.\n",
         )
 
     def test_duplicate_enum_value_name(self):
@@ -1678,7 +1679,7 @@ class CompilerFailureTest(unittest.TestCase):
         self.assertEqual(
             err,
             textwrap.dedent(
-                '[ERROR:foo.thrift:3] Field identifier 1 for "field2" has already been used.\n'
+                "[ERROR:foo.thrift:3] Field id 1 for `field2` has already been used.\n"
             ),
         )
 
@@ -1932,9 +1933,9 @@ class CompilerFailureTest(unittest.TestCase):
         self.assertEqual(ret, 1)
         self.assertEqual(
             err,
-            "[ERROR:foo.thrift:6] Interactions are only allowed as the leftmost return type: interaction foo.I\n"
+            "[ERROR:foo.thrift:6] Interactions are only allowed as the leftmost return type: foo.I\n"
             "[ERROR:foo.thrift:7] Too many return types: i32\n"
-            "[ERROR:foo.thrift:8] Interactions are only allowed as the leftmost return type: interaction foo.I\n",
+            "[ERROR:foo.thrift:8] Interactions are only allowed as the leftmost return type: foo.I\n",
         )
 
     def test_interaction_in_return_type(self):
@@ -1960,9 +1961,9 @@ class CompilerFailureTest(unittest.TestCase):
         self.assertEqual(ret, 1)
         self.assertEqual(
             err,
-            "[ERROR:foo.thrift:6] Interactions are only allowed as the leftmost return type: interaction foo.I\n"
-            "[ERROR:foo.thrift:7] Interactions are only allowed as the leftmost return type: interaction foo.I\n"
-            "[ERROR:foo.thrift:8] Interactions are only allowed as the leftmost return type: interaction foo.I\n",
+            "[ERROR:foo.thrift:6] Interactions are only allowed as the leftmost return type: foo.I\n"
+            "[ERROR:foo.thrift:7] Interactions are only allowed as the leftmost return type: foo.I\n"
+            "[ERROR:foo.thrift:8] Interactions are only allowed as the leftmost return type: foo.I\n",
         )
 
     # Time complexity of for_each_transitive_field should be O(1)
@@ -2475,6 +2476,12 @@ class CompilerFailureTest(unittest.TestCase):
             "[ERROR:foo.thrift:6] Definition `Bar2` cannot have both cpp.type/cpp.template and @cpp.StrongType annotations\n"
             "[ERROR:foo.thrift:9] Definition `Bar3` cannot have both @cpp.StrongType and @cpp.Adapter annotations\n",
         )
+
+    def test_nonexist_type_in_variable(self):
+        write_file("foo.thrift", 'const map<i8, string> foo = {1: "str"}')
+        ret, out, err = self.run_thrift("foo.thrift")
+        self.assertEqual(ret, 1)
+        self.assertEqual(err, "[ERROR:foo.thrift:1] Type `foo.i8` not defined.\n")
 
     def test_cycle(self):
         write_file(

@@ -54,11 +54,11 @@ var (
     }
 
     MetasyntacticValues = []Metasyntactic{
-        1,
-        2,
-        3,
-        4,
-        0,
+        Metasyntactic_FOO,
+        Metasyntactic_BAR,
+        Metasyntactic_BAZ,
+        Metasyntactic_BAX,
+        Metasyntactic_Unspecified,
     }
 )
 
@@ -128,12 +128,12 @@ var (
     }
 
     MyEnum1Values = []MyEnum1{
-        1,
-        2,
-        3,
-        5,
-        6,
-        0,
+        MyEnum1_ME1_1,
+        MyEnum1_ME1_2,
+        MyEnum1_ME1_3,
+        MyEnum1_ME1_5,
+        MyEnum1_ME1_6,
+        MyEnum1_ME1_0,
     }
 )
 
@@ -191,9 +191,9 @@ var (
     }
 
     MyEnum2Values = []MyEnum2{
-        0,
-        1,
-        2,
+        MyEnum2_ME2_0,
+        MyEnum2_ME2_1,
+        MyEnum2_ME2_2,
     }
 )
 
@@ -263,12 +263,12 @@ var (
     }
 
     MyEnum3Values = []MyEnum3{
-        0,
-        1,
-        -2,
-        -1,
-        9,
-        10,
+        MyEnum3_ME3_0,
+        MyEnum3_ME3_1,
+        MyEnum3_ME3_N2,
+        MyEnum3_ME3_N1,
+        MyEnum3_ME3_9,
+        MyEnum3_ME3_10,
     }
 )
 
@@ -334,11 +334,11 @@ var (
     }
 
     MyEnum4Values = []MyEnum4{
-        2147483645,
-        2147483646,
-        2147483647,
-        -2147483648,
-        0,
+        MyEnum4_ME4_A,
+        MyEnum4_ME4_B,
+        MyEnum4_ME4_C,
+        MyEnum4_ME4_D,
+        MyEnum4_Unspecified,
     }
 )
 
@@ -400,10 +400,10 @@ var (
     }
 
     MyBitmaskEnum1Values = []MyBitmaskEnum1{
-        1,
-        2,
-        4,
-        0,
+        MyBitmaskEnum1_ONE,
+        MyBitmaskEnum1_TWO,
+        MyBitmaskEnum1_FOUR,
+        MyBitmaskEnum1_Unspecified,
     }
 )
 
@@ -465,10 +465,10 @@ var (
     }
 
     MyBitmaskEnum2Values = []MyBitmaskEnum2{
-        1,
-        2,
-        4,
-        0,
+        MyBitmaskEnum2_ONE,
+        MyBitmaskEnum2_TWO,
+        MyBitmaskEnum2_FOUR,
+        MyBitmaskEnum2_Unspecified,
     }
 )
 
@@ -523,19 +523,39 @@ func NewSomeStruct() *SomeStruct {
         )
 }
 
+func (x *SomeStruct) GetReasonableNonCompat() Metasyntactic {
+    return x.Reasonable
+}
+
 func (x *SomeStruct) GetReasonable() Metasyntactic {
     return x.Reasonable
+}
+
+func (x *SomeStruct) GetFineNonCompat() Metasyntactic {
+    return x.Fine
 }
 
 func (x *SomeStruct) GetFine() Metasyntactic {
     return x.Fine
 }
 
+func (x *SomeStruct) GetQuestionableNonCompat() Metasyntactic {
+    return x.Questionable
+}
+
 func (x *SomeStruct) GetQuestionable() Metasyntactic {
     return x.Questionable
 }
 
+func (x *SomeStruct) GetTagsNonCompat() []int32 {
+    return x.Tags
+}
+
 func (x *SomeStruct) GetTags() []int32 {
+    if !x.IsSetTags() {
+      return nil
+    }
+
     return x.Tags
 }
 
@@ -571,7 +591,7 @@ func (x *SomeStruct) writeField1(p thrift.Protocol) error {  // Reasonable
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetReasonable()
+    item := x.GetReasonableNonCompat()
     if err := p.WriteI32(int32(item)); err != nil {
     return err
 }
@@ -587,7 +607,7 @@ func (x *SomeStruct) writeField2(p thrift.Protocol) error {  // Fine
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetFine()
+    item := x.GetFineNonCompat()
     if err := p.WriteI32(int32(item)); err != nil {
     return err
 }
@@ -603,7 +623,7 @@ func (x *SomeStruct) writeField3(p thrift.Protocol) error {  // Questionable
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetQuestionable()
+    item := x.GetQuestionableNonCompat()
     if err := p.WriteI32(int32(item)); err != nil {
     return err
 }
@@ -623,7 +643,7 @@ func (x *SomeStruct) writeField4(p thrift.Protocol) error {  // Tags
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetTags()
+    item := x.GetTagsNonCompat()
     if err := p.WriteSetBegin(thrift.I32, len(item)); err != nil {
     return thrift.PrependError("error writing set begin: ", err)
 }
@@ -828,7 +848,7 @@ func (x *SomeStruct) Read(p thrift.Protocol) error {
 }
 
 type MyStruct struct {
-    Me23 MyEnum2 `thrift:"me2_3,1" json:"me2_3" db:"me2_3"`
+    Me2_3 MyEnum2 `thrift:"me2_3,1" json:"me2_3" db:"me2_3"`
     Me3N3 MyEnum3 `thrift:"me3_n3,2" json:"me3_n3" db:"me3_n3"`
     Me1T1 MyEnum1 `thrift:"me1_t1,4" json:"me1_t1" db:"me1_t1"`
     Me1T2 MyEnum1 `thrift:"me1_t2,6" json:"me1_t2" db:"me1_t2"`
@@ -838,7 +858,7 @@ var _ thrift.Struct = &MyStruct{}
 
 func NewMyStruct() *MyStruct {
     return (&MyStruct{}).
-        SetMe23(
+        SetMe2_3(
             MyEnum2(3),
         ).
         SetMe3N3(
@@ -852,24 +872,40 @@ func NewMyStruct() *MyStruct {
         )
 }
 
-func (x *MyStruct) GetMe23() MyEnum2 {
-    return x.Me23
+func (x *MyStruct) GetMe2_3NonCompat() MyEnum2 {
+    return x.Me2_3
+}
+
+func (x *MyStruct) GetMe2_3() MyEnum2 {
+    return x.Me2_3
+}
+
+func (x *MyStruct) GetMe3N3NonCompat() MyEnum3 {
+    return x.Me3N3
 }
 
 func (x *MyStruct) GetMe3N3() MyEnum3 {
     return x.Me3N3
 }
 
+func (x *MyStruct) GetMe1T1NonCompat() MyEnum1 {
+    return x.Me1T1
+}
+
 func (x *MyStruct) GetMe1T1() MyEnum1 {
     return x.Me1T1
+}
+
+func (x *MyStruct) GetMe1T2NonCompat() MyEnum1 {
+    return x.Me1T2
 }
 
 func (x *MyStruct) GetMe1T2() MyEnum1 {
     return x.Me1T2
 }
 
-func (x *MyStruct) SetMe23(value MyEnum2) *MyStruct {
-    x.Me23 = value
+func (x *MyStruct) SetMe2_3(value MyEnum2) *MyStruct {
+    x.Me2_3 = value
     return x
 }
 
@@ -892,12 +928,12 @@ func (x *MyStruct) SetMe1T2(value MyEnum1) *MyStruct {
 
 
 
-func (x *MyStruct) writeField1(p thrift.Protocol) error {  // Me23
+func (x *MyStruct) writeField1(p thrift.Protocol) error {  // Me2_3
     if err := p.WriteFieldBegin("me2_3", thrift.I32, 1); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetMe23()
+    item := x.GetMe2_3NonCompat()
     if err := p.WriteI32(int32(item)); err != nil {
     return err
 }
@@ -913,7 +949,7 @@ func (x *MyStruct) writeField2(p thrift.Protocol) error {  // Me3N3
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetMe3N3()
+    item := x.GetMe3N3NonCompat()
     if err := p.WriteI32(int32(item)); err != nil {
     return err
 }
@@ -929,7 +965,7 @@ func (x *MyStruct) writeField4(p thrift.Protocol) error {  // Me1T1
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetMe1T1()
+    item := x.GetMe1T1NonCompat()
     if err := p.WriteI32(int32(item)); err != nil {
     return err
 }
@@ -945,7 +981,7 @@ func (x *MyStruct) writeField6(p thrift.Protocol) error {  // Me1T2
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetMe1T2()
+    item := x.GetMe1T2NonCompat()
     if err := p.WriteI32(int32(item)); err != nil {
     return err
 }
@@ -956,14 +992,14 @@ func (x *MyStruct) writeField6(p thrift.Protocol) error {  // Me1T2
     return nil
 }
 
-func (x *MyStruct) readField1(p thrift.Protocol) error {  // Me23
+func (x *MyStruct) readField1(p thrift.Protocol) error {  // Me2_3
     enumResult, err := p.ReadI32()
 if err != nil {
     return err
 }
 result := MyEnum2(enumResult)
 
-    x.SetMe23(result)
+    x.SetMe2_3(result)
     return nil
 }
 
@@ -1016,8 +1052,8 @@ func NewMyStructBuilder() *MyStructBuilder {
     }
 }
 
-func (x *MyStructBuilder) Me23(value MyEnum2) *MyStructBuilder {
-    x.obj.Me23 = value
+func (x *MyStructBuilder) Me2_3(value MyEnum2) *MyStructBuilder {
+    x.obj.Me2_3 = value
     return x
 }
 

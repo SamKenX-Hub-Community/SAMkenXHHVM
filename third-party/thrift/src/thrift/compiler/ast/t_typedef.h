@@ -76,12 +76,7 @@ class t_typedef : public t_type {
   static const t_const* get_first_structured_annotation_or_null(
       const t_type* type, const char* uri);
 
-  std::string get_full_name() const override {
-    // TODO(afuller): Just return name() as, unlike a t_placeholder_typedef, the
-    // full name for a typedef is just it's name, not the name of the
-    // type it is referencing.
-    return type_->get_full_name();
-  }
+  std::string get_full_name() const override { return get_scoped_name(); }
 
  protected:
   t_type_ref type_;
@@ -101,7 +96,18 @@ class t_typedef : public t_type {
 
   uint64_t get_type_id() const override { return get_type()->get_type_id(); }
   const std::string& get_symbolic() const { return name(); }
-  bool is_defined() const;
+
+  enum class kind {
+    defined,
+    unnamed,
+    placeholder,
+  };
+  kind typedef_kind() const;
+  static std::unique_ptr<t_typedef> make_unnamed(
+      t_program* program, std::string name, t_type_ref type);
+
+ private:
+  bool unnamed_{false};
 };
 
 // A placeholder for a type that can't be resolved at parse time.

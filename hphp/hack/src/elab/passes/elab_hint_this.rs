@@ -2,32 +2,27 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
-use std::ops::ControlFlow;
 
 use bitflags::bitflags;
-use naming_special_names_rust as sn;
-use oxidized::aast_defs::ClassHint;
-use oxidized::aast_defs::ClassReq;
-use oxidized::aast_defs::ClassVar;
-use oxidized::aast_defs::Class_;
-use oxidized::aast_defs::Expr_;
-use oxidized::aast_defs::Hint;
-use oxidized::aast_defs::Hint_;
-use oxidized::aast_defs::RequireKind;
-use oxidized::aast_defs::ShapeFieldInfo;
-use oxidized::aast_defs::Targ;
-use oxidized::aast_defs::Tparam;
-use oxidized::aast_defs::TraitHint;
-use oxidized::aast_defs::TypeHint;
-use oxidized::aast_defs::XhpAttr;
-use oxidized::aast_defs::XhpAttrHint;
-use oxidized::ast_defs::ClassishKind;
-use oxidized::ast_defs::Variance;
-use oxidized::naming_error::NamingError;
-use oxidized::naming_phase_error::NamingPhaseError;
+use nast::ClassHint;
+use nast::ClassReq;
+use nast::ClassVar;
+use nast::Class_;
+use nast::ClassishKind;
+use nast::Expr_;
+use nast::Hint;
+use nast::Hint_;
+use nast::RequireKind;
+use nast::ShapeFieldInfo;
+use nast::Targ;
+use nast::Tparam;
+use nast::TraitHint;
+use nast::TypeHint;
+use nast::Variance;
+use nast::XhpAttr;
+use nast::XhpAttrHint;
 
-use crate::config::Config;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Copy, Clone, Default)]
 pub struct ElabHintThisPass {
@@ -119,24 +114,19 @@ impl ElabHintThisPass {
 }
 
 impl Pass for ElabHintThisPass {
-    fn on_ty_hint_top_down(
-        &mut self,
-        elem: &mut Hint,
-        _cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_hint_top_down(&mut self, env: &Env, elem: &mut Hint) -> ControlFlow<()> {
         let Hint(pos, box hint_) = elem;
         match &hint_ {
             Hint_::Hthis if self.forbid_this() || self.forbid_in_extends() => {
                 // We have a `this` hint in a forbidden position; raise and error,
                 // leave the `Herr` and break
                 *hint_ = Hint_::Herr;
-                errs.push(NamingPhaseError::Naming(NamingError::ThisTypeForbidden {
+                env.emit_error(NamingError::ThisTypeForbidden {
                     pos: pos.clone(),
                     in_extends: self.in_extends(),
                     in_req_extends: self.in_req_extends(),
-                }));
-                return ControlFlow::Break(());
+                });
+                return Break(());
             }
             // Otherwise, just update our state to reflect whether we are
             // at the top-level `Hint` inside an `Haccess`
@@ -144,18 +134,10 @@ impl Pass for ElabHintThisPass {
             _ => self.set_is_top_level_haccess_root(false),
         }
 
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_class__top_down<Ex, En>(
-        &mut self,
-        elem: &mut Class_<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_class__top_down(&mut self, _: &Env, elem: &mut Class_) -> ControlFlow<()> {
         let in_interface = matches!(elem.kind, ClassishKind::Cinterface);
         let in_invariant_final = elem.final_
             && elem
@@ -164,106 +146,68 @@ impl Pass for ElabHintThisPass {
                 .all(|tp| matches!(tp.variance, Variance::Invariant));
         self.set_in_interface(in_interface);
         self.set_in_invariant_final(in_invariant_final);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_fld_class__tparams_top_down<Ex, En>(
-        &mut self,
-        _elem: &mut Vec<Tparam<Ex, En>>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_fld_class__tparams_top_down(&mut self, _: &Env, _: &mut Vec<Tparam>) -> ControlFlow<()> {
         self.set_forbid_this(true);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
     fn on_fld_class__extends_top_down(
         &mut self,
-        _elem: &mut Vec<ClassHint>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+        _: &Env,
+        _: &mut Vec<ClassHint>,
+    ) -> ControlFlow<()> {
         self.set_in_extends();
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_fld_class__uses_top_down(
-        &mut self,
-        _elem: &mut Vec<TraitHint>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_fld_class__uses_top_down(&mut self, _: &Env, _: &mut Vec<TraitHint>) -> ControlFlow<()> {
         self.set_forbid_this(false);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_fld_class__xhp_attrs_top_down<Ex, En>(
+    fn on_fld_class__xhp_attrs_top_down(
         &mut self,
-        _elem: &mut Vec<XhpAttr<Ex, En>>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+        _: &Env,
+        _: &mut Vec<XhpAttr>,
+    ) -> ControlFlow<()> {
         self.set_forbid_this(false);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
     fn on_fld_class__xhp_attr_uses_top_down(
         &mut self,
-        _elem: &mut Vec<XhpAttrHint>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+        _: &Env,
+        _: &mut Vec<XhpAttrHint>,
+    ) -> ControlFlow<()> {
         self.set_forbid_this(false);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_fld_class__reqs_top_down(
-        &mut self,
-        _elem: &mut Vec<ClassReq>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_fld_class__reqs_top_down(&mut self, _: &Env, _: &mut Vec<ClassReq>) -> ControlFlow<()> {
         self.set_forbid_this(false);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_class_req_top_down(
-        &mut self,
-        elem: &mut ClassReq,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_class_req_top_down(&mut self, _: &Env, elem: &mut ClassReq) -> ControlFlow<()> {
         if elem.1 == RequireKind::RequireExtends {
             self.set_in_req_extends()
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 
     fn on_fld_class__implements_top_down(
         &mut self,
-        _elem: &mut Vec<ClassHint>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+        _: &Env,
+        _: &mut Vec<ClassHint>,
+    ) -> ControlFlow<()> {
         self.set_forbid_this(false);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_class_var_top_down<Ex, En>(
-        &mut self,
-        elem: &mut ClassVar<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_class_var_top_down(&mut self, _: &Env, elem: &mut ClassVar) -> ControlFlow<()> {
         self.set_static_class_var(
             elem.is_static
                 && !elem
@@ -271,50 +215,26 @@ impl Pass for ElabHintThisPass {
                     .iter()
                     .any(|ua| ua.name.name() == sn::user_attributes::LSB),
         );
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_fld_class_var_type__top_down<Ex>(
-        &mut self,
-        _elem: &mut TypeHint<Ex>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_fld_class_var_type__top_down(&mut self, _: &Env, _: &mut TypeHint) -> ControlFlow<()> {
         let forbid_this = match self.context {
             Some(Context::StaticClassVar(lsb)) => lsb,
             _ => panic!("impossible"),
         };
         self.context = None;
         self.set_forbid_this(forbid_this);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_fld_fun__ret_top_down<Ex>(
-        &mut self,
-        _elem: &mut TypeHint<Ex>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_fld_fun__ret_top_down(&mut self, _: &Env, _: &mut TypeHint) -> ControlFlow<()> {
         self.context = None;
         self.set_forbid_this(false);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_expr__top_down<Ex, En>(
-        &mut self,
-        elem: &mut Expr_<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_expr__top_down(&mut self, _: &Env, elem: &mut Expr_) -> ControlFlow<()> {
         match elem {
             Expr_::Cast(..) | Expr_::Is(..) | Expr_::As(..) | Expr_::Upcast(..) => {
                 self.context = None;
@@ -322,43 +242,29 @@ impl Pass for ElabHintThisPass {
             }
             _ => (),
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 
     fn on_ty_shape_field_info_top_down(
         &mut self,
-        _elem: &mut ShapeFieldInfo,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+        _: &Env,
+        _: &mut ShapeFieldInfo,
+    ) -> ControlFlow<()> {
         self.context = None;
         self.set_forbid_this(false);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_fld_hint_fun_return_ty_top_down(
-        &mut self,
-        _elem: &mut Hint,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_fld_hint_fun_return_ty_top_down(&mut self, _: &Env, _: &mut Hint) -> ControlFlow<()> {
         self.context = None;
         self.set_forbid_this(false);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_targ_top_down<Ex>(
-        &mut self,
-        _elem: &mut Targ<Ex>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_targ_top_down(&mut self, _: &Env, _: &mut Targ) -> ControlFlow<()> {
         self.context = None;
         self.set_forbid_this(false);
-        ControlFlow::Continue(())
+        Continue(())
     }
 }
 
@@ -366,25 +272,24 @@ impl Pass for ElabHintThisPass {
 mod tests {
 
     use file_info::Mode;
+    use nast::Id;
+    use nast::Pos;
+    use nast::UserAttribute;
+    use nast::UserAttributes;
     use ocamlrep::rc::RcOc;
-    use oxidized::aast_defs::UserAttribute;
-    use oxidized::aast_defs::UserAttributes;
-    use oxidized::ast_defs::Id;
-    use oxidized::namespace_env::Env;
+    use oxidized::namespace_env;
     use oxidized::s_map::SMap;
-    use oxidized::tast::Pos;
 
     use super::*;
-    use crate::Transform;
 
     fn make_class(
         kind: ClassishKind,
         name: &str,
         final_: bool,
-        tparams: Vec<Tparam<(), ()>>,
+        tparams: Vec<Tparam>,
         extends: Vec<ClassHint>,
         reqs: Vec<ClassReq>,
-    ) -> Class_<(), ()> {
+    ) -> Class_ {
         Class_ {
             span: Default::default(),
             annotation: (),
@@ -408,7 +313,7 @@ mod tests {
             methods: Default::default(),
             xhp_children: Default::default(),
             xhp_attrs: Default::default(),
-            namespace: RcOc::new(Env {
+            namespace: RcOc::new(namespace_env::Env {
                 ns_uses: SMap::default(),
                 class_uses: SMap::default(),
                 fun_uses: SMap::default(),
@@ -429,7 +334,7 @@ mod tests {
         }
     }
 
-    fn make_static_class_var(name: &str, type_: TypeHint<()>, lsb: bool) -> ClassVar<(), ()> {
+    fn make_static_class_var(name: &str, type_: TypeHint, lsb: bool) -> ClassVar {
         let user_attributes = if lsb {
             UserAttributes(vec![UserAttribute {
                 name: Id(Default::default(), sn::user_attributes::LSB.to_string()),
@@ -443,7 +348,7 @@ mod tests {
             xhp_attr: Default::default(),
             abstract_: Default::default(),
             readonly: Default::default(),
-            visibility: oxidized::tast::Visibility::Public,
+            visibility: nast::Visibility::Public,
             type_,
             id: Id(Default::default(), name.to_string()),
             expr: Default::default(),
@@ -460,12 +365,12 @@ mod tests {
     // We allow `this` as a generic on a super type when the class is final
     // and not generic
     fn test_final_extends_non_generic_valid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabHintThisPass::default();
         // final class C extends B<this> {}
-        let mut elem: Class_<(), ()> = make_class(
-            ClassishKind::Cclass(oxidized::ast_defs::Abstraction::Concrete),
+        let mut elem: Class_ = make_class(
+            ClassishKind::Cclass(nast::Abstraction::Concrete),
             "C",
             true,
             vec![],
@@ -479,10 +384,10 @@ mod tests {
             vec![],
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         // Expect no errors
-        assert!(errs.is_empty());
+        assert!(env.into_errors().is_empty());
         assert!(match elem.extends.pop() {
             Some(Hint(_, box Hint_::Happly(_, hints))) => match hints.as_slice() {
                 [Hint(_, box Hint_::Hthis)] => true,
@@ -496,12 +401,12 @@ mod tests {
     // We allow `this` as a generic on a super type when the class is final
     // and invariant in all type parameters
     fn test_final_extends_invariant_valid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabHintThisPass::default();
         // final class C<T> extends B<this> {}
-        let mut elem: Class_<(), ()> = make_class(
-            ClassishKind::Cclass(oxidized::ast_defs::Abstraction::Concrete),
+        let mut elem: Class_ = make_class(
+            ClassishKind::Cclass(nast::Abstraction::Concrete),
             "C",
             true,
             vec![Tparam {
@@ -509,7 +414,7 @@ mod tests {
                 name: Id(Pos::default(), "T".to_string()),
                 parameters: Default::default(),
                 constraints: Default::default(),
-                reified: oxidized::ast_defs::ReifyKind::Erased,
+                reified: nast::ReifyKind::Erased,
                 user_attributes: Default::default(),
             }],
             vec![Hint(
@@ -522,10 +427,10 @@ mod tests {
             vec![],
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         // Expect no errors
-        assert!(errs.is_empty());
+        assert!(env.into_errors().is_empty());
         assert!(match elem.extends.pop() {
             Some(Hint(_, box Hint_::Happly(_, hints))) => match hints.as_slice() {
                 [Hint(_, box Hint_::Hthis)] => true,
@@ -539,12 +444,12 @@ mod tests {
     // We disallow `this` as a generic on a super type when the class is final
     // and but invariant in some type parameter
     fn test_final_extends_covariant_invalid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabHintThisPass::default();
         // final class C<+T> extends B<this> {}
-        let mut elem: Class_<(), ()> = make_class(
-            ClassishKind::Cclass(oxidized::ast_defs::Abstraction::Concrete),
+        let mut elem: Class_ = make_class(
+            ClassishKind::Cclass(nast::Abstraction::Concrete),
             "C",
             true,
             vec![Tparam {
@@ -552,7 +457,7 @@ mod tests {
                 name: Id(Pos::default(), "T".to_string()),
                 parameters: Default::default(),
                 constraints: Default::default(),
-                reified: oxidized::ast_defs::ReifyKind::Erased,
+                reified: nast::ReifyKind::Erased,
                 user_attributes: Default::default(),
             }],
             vec![Hint(
@@ -565,9 +470,9 @@ mod tests {
             vec![],
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
-        let this_type_forbidden_err_opt = errs.pop();
+        let this_type_forbidden_err_opt = env.into_errors().pop();
         assert!(match this_type_forbidden_err_opt {
             Some(NamingPhaseError::Naming(NamingError::ThisTypeForbidden {
                 in_extends,
@@ -591,11 +496,11 @@ mod tests {
     #[test]
     // We disallow `this` as a generic in require extends clauses
     fn test_req_extends_generic_invalid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabHintThisPass::default();
         // trait C<T> { require extends B<this>; }
-        let mut elem: Class_<(), ()> = make_class(
+        let mut elem: Class_ = make_class(
             ClassishKind::Ctrait,
             "C",
             false,
@@ -604,7 +509,7 @@ mod tests {
                 name: Id(Pos::default(), "T".to_string()),
                 parameters: Default::default(),
                 constraints: Default::default(),
-                reified: oxidized::ast_defs::ReifyKind::Erased,
+                reified: nast::ReifyKind::Erased,
                 user_attributes: Default::default(),
             }],
             vec![],
@@ -620,9 +525,9 @@ mod tests {
             )],
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
-        let this_type_forbidden_err_opt = errs.pop();
+        let this_type_forbidden_err_opt = env.into_errors().pop();
         assert!(match this_type_forbidden_err_opt {
             Some(NamingPhaseError::Naming(NamingError::ThisTypeForbidden {
                 in_extends,
@@ -644,11 +549,11 @@ mod tests {
     #[test]
     // We disallow `this` as a top-level hint in require extends clauses
     fn test_req_extends_top_level_invalid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabHintThisPass::default();
         // trait C<T> { require extends this; }
-        let mut elem: Class_<(), ()> = make_class(
+        let mut elem: Class_ = make_class(
             ClassishKind::Ctrait,
             "C",
             false,
@@ -657,7 +562,7 @@ mod tests {
                 name: Id(Pos::default(), "T".to_string()),
                 parameters: Default::default(),
                 constraints: Default::default(),
-                reified: oxidized::ast_defs::ReifyKind::Erased,
+                reified: nast::ReifyKind::Erased,
                 user_attributes: Default::default(),
             }],
             vec![],
@@ -667,9 +572,9 @@ mod tests {
             )],
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
-        let this_type_forbidden_err_opt = errs.pop();
+        let this_type_forbidden_err_opt = env.into_errors().pop();
         assert!(match this_type_forbidden_err_opt {
             Some(NamingPhaseError::Naming(NamingError::ThisTypeForbidden {
                 in_extends,
@@ -689,10 +594,10 @@ mod tests {
 
     #[test]
     fn test_lsb_static_class_var_valid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabHintThisPass::default();
-        let mut elem: ClassVar<(), ()> = make_static_class_var(
+        let mut elem: ClassVar = make_static_class_var(
             "x",
             TypeHint(
                 (),
@@ -707,9 +612,9 @@ mod tests {
             true,
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
-        assert!(errs.is_empty());
+        assert!(env.into_errors().is_empty());
 
         let TypeHint(_, hint_opt) = elem.type_;
         assert!(matches!(
@@ -720,10 +625,10 @@ mod tests {
 
     #[test]
     fn test_non_lsb_static_class_var_invalid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabHintThisPass::default();
-        let mut elem: ClassVar<(), ()> = make_static_class_var(
+        let mut elem: ClassVar = make_static_class_var(
             "x",
             TypeHint(
                 (),
@@ -738,9 +643,9 @@ mod tests {
             false,
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
-        let this_type_forbidden_err_opt = errs.pop();
+        let this_type_forbidden_err_opt = env.into_errors().pop();
         assert!(match this_type_forbidden_err_opt {
             Some(NamingPhaseError::Naming(NamingError::ThisTypeForbidden {
                 in_extends,

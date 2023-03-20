@@ -3,40 +3,28 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 
-use std::ops::ControlFlow;
+use nast::ClassVar;
+use nast::Class_;
+use nast::ClassishKind;
+use nast::Expr;
+use nast::Expr_;
+use nast::Hint;
+use nast::Hint_;
+use nast::Id;
+use nast::Tprim;
+use nast::TypeHint;
+use nast::UserAttribute;
+use nast::XhpAttr;
+use nast::XhpAttrInfo;
 
-use naming_special_names_rust as sn;
-use oxidized::aast_defs::ClassVar;
-use oxidized::aast_defs::Class_;
-use oxidized::aast_defs::Expr;
-use oxidized::aast_defs::Expr_;
-use oxidized::aast_defs::Hint;
-use oxidized::aast_defs::Hint_;
-use oxidized::aast_defs::TypeHint;
-use oxidized::aast_defs::UserAttribute;
-use oxidized::aast_defs::XhpAttr;
-use oxidized::aast_defs::XhpAttrInfo;
-use oxidized::ast_defs::ClassishKind;
-use oxidized::ast_defs::Id;
-use oxidized::ast_defs::Tprim;
-use oxidized::naming_error::NamingError;
-use oxidized::naming_phase_error::ExperimentalFeature;
-use oxidized::naming_phase_error::NamingPhaseError;
-
-use crate::config::Config;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Copy, Clone, Default)]
 pub struct ElabClassVarsPass;
 
 impl Pass for ElabClassVarsPass {
     // TODO[mjt] split out elaboration of `XhpAttr`s?
-    fn on_ty_class__top_down<Ex: Default, En>(
-        &mut self,
-        elem: &mut Class_<Ex, En>,
-        cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_class__top_down(&mut self, env: &Env, elem: &mut Class_) -> ControlFlow<()> {
         let const_user_attr_opt = elem
             .user_attributes
             .iter()
@@ -69,14 +57,14 @@ impl Pass for ElabClassVarsPass {
         // Represent xhp_attrs as vars
         elem.xhp_attrs
             .drain(0..)
-            .for_each(|xhp_attr| elem.vars.push(class_var_of_xhp_attr(xhp_attr, cfg, errs)));
+            .for_each(|xhp_attr| elem.vars.push(class_var_of_xhp_attr(xhp_attr, env)));
 
         // If this is an interface mark all methods as abstract
         if matches!(elem.kind, ClassishKind::Cinterface) {
             elem.methods.iter_mut().for_each(|m| m.abstract_ = true)
         }
 
-        ControlFlow::Continue(())
+        Continue(())
     }
 }
 
@@ -100,11 +88,7 @@ impl Pass for ElabClassVarsPass {
 //  ii) the list of `Expr` can actually only be int or string literals
 //  iii) `ClassVar` `XhpAttrInfo` `enum_values` already contains a validated and restricted
 //       representation of the `Expr`s
-fn class_var_of_xhp_attr<Ex, En>(
-    xhp_attr: XhpAttr<Ex, En>,
-    cfg: &Config,
-    errs: &mut Vec<NamingPhaseError>,
-) -> ClassVar<Ex, En> {
+fn class_var_of_xhp_attr(xhp_attr: XhpAttr, env: &Env) -> ClassVar {
     let XhpAttr(type_hint, mut cv, xhp_attr_tag_opt, enum_opt) = xhp_attr;
     let is_required = xhp_attr_tag_opt.is_some();
     let has_default = if let Some(Expr(_, _, expr_)) = &cv.expr {
@@ -139,12 +123,10 @@ fn class_var_of_xhp_attr<Ex, En>(
             // error and put back the `Hint_`
             Hint_::Hoption(_) if is_required => {
                 let Id(_, attr_name) = &cv.id;
-                errs.push(NamingPhaseError::Naming(
-                    NamingError::XhpOptionalRequiredAttr {
-                        pos: hint.0.clone(),
-                        attr_name: attr_name.clone(),
-                    },
-                ));
+                env.emit_error(NamingError::XhpOptionalRequiredAttr {
+                    pos: hint.0.clone(),
+                    attr_name: attr_name.clone(),
+                });
                 *hint.1 = hint_
             }
             // If the hint is `Hmixed` or we have either `is_required` or
@@ -160,7 +142,7 @@ fn class_var_of_xhp_attr<Ex, En>(
     // `xhp_hint`
     // If both are present wrap the hint in an `Hlike` using the position;
     // raise an error if like hints aren't enabled
-    if !cfg.like_type_hints_enabled() {
+    if !env.like_type_hints_enabled() {
         if let Some((pos, Hint(_, hint_))) = cv
             .xhp_attr
             .as_ref()
@@ -168,9 +150,7 @@ fn class_var_of_xhp_attr<Ex, En>(
             .zip(hint_opt.as_ref())
         {
             if matches!(hint_ as &Hint_, Hint_::Hlike(_)) {
-                errs.push(NamingPhaseError::ExperimentalFeature(
-                    ExperimentalFeature::LikeType(pos.clone()),
-                ))
+                env.emit_error(ExperimentalFeature::LikeType(pos.clone()))
             }
         }
     }
@@ -200,12 +180,12 @@ fn strip_like(hint_: &Hint_) -> &Hint_ {
 impl XhpHint {
     pub fn combine(self, other: Self) -> ControlFlow<Self, Self> {
         match (self, other) {
-            (Self::Both, _) => ControlFlow::Break(self),
-            (_, Self::Both) => ControlFlow::Break(other),
-            (Self::String, Self::Int) | (Self::Int, Self::String) => ControlFlow::Break(Self::Both),
-            (Self::Neither, _) => ControlFlow::Continue(other),
-            (_, Self::Neither) => ControlFlow::Continue(self),
-            (Self::Int, Self::Int) | (Self::String, Self::String) => ControlFlow::Continue(self),
+            (Self::Both, _) => Break(self),
+            (_, Self::Both) => Break(other),
+            (Self::String, Self::Int) | (Self::Int, Self::String) => Break(Self::Both),
+            (Self::Neither, _) => Continue(other),
+            (_, Self::Neither) => Continue(self),
+            (Self::Int, Self::Int) | (Self::String, Self::String) => Continue(self),
         }
     }
 
@@ -222,14 +202,14 @@ impl XhpHint {
 // `String` / `String2` expression. At that point we say the hint should
 // be `Hmixed`. It isn't clear why (1) we are doing a limited version of
 // inference and (2) why we aren't inferring `Hprim Tarraykey` in this case
-fn xhp_attr_hint<Ex, En>(items: Vec<Expr<Ex, En>>) -> Hint_ {
+fn xhp_attr_hint(items: Vec<Expr>) -> Hint_ {
     match items
         .into_iter()
         .try_fold(XhpHint::Neither, |acc, Expr(_, _, expr_)| match expr_ {
             Expr_::Int(_) => acc.combine(XhpHint::Int),
             Expr_::String(_) | Expr_::String2(_) => acc.combine(XhpHint::String),
-            _ => ControlFlow::Continue(acc),
+            _ => Continue(acc),
         }) {
-        ControlFlow::Continue(xhp_hint) | ControlFlow::Break(xhp_hint) => xhp_hint.to_hint_(),
+        Continue(xhp_hint) | Break(xhp_hint) => xhp_hint.to_hint_(),
     }
 }

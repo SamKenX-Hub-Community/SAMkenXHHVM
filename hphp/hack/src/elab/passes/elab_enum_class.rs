@@ -3,32 +3,20 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 
-use std::ops::ControlFlow;
+use nast::Abstraction;
+use nast::Class_;
+use nast::ClassishKind;
+use nast::Hint;
+use nast::Hint_;
+use nast::Id;
 
-use naming_special_names_rust as sn;
-use oxidized::aast_defs::Class_;
-use oxidized::aast_defs::Hint;
-use oxidized::aast_defs::Hint_;
-use oxidized::ast_defs::Abstraction;
-use oxidized::ast_defs::ClassishKind;
-use oxidized::ast_defs::Id;
-use oxidized::naming_error::NamingError;
-use oxidized::naming_phase_error::NamingPhaseError;
-
-use crate::config::Config;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Clone, Copy, Default)]
 pub struct ElabEnumClassPass;
 
 impl Pass for ElabEnumClassPass {
-    #[allow(non_snake_case)]
-    fn on_ty_class__top_down<Ex: Default, En>(
-        &mut self,
-        elem: &mut Class_<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_class__top_down(&mut self, _: &Env, elem: &mut Class_) -> ControlFlow<()> {
         if let Some(enum_) = &elem.enum_ {
             let Id(pos, _) = &elem.name;
             let enum_hint = Hint(
@@ -57,49 +45,42 @@ impl Pass for ElabEnumClassPass {
             );
             elem.extends.push(extend_hint)
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    #[allow(non_snake_case)]
-    fn on_ty_hint__top_down(
-        &mut self,
-        elem: &mut oxidized::tast::Hint_,
-        cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
-        if !(cfg.is_hhi() || cfg.is_systemlib()) {
+    fn on_ty_hint__top_down(&mut self, env: &Env, elem: &mut Hint_) -> ControlFlow<()> {
+        if !(env.is_hhi() || env.is_systemlib()) {
             match elem {
                 Hint_::Happly(Id(pos, ty_name), _)
                     if ty_name == sn::classes::HH_BUILTIN_ENUM
                         || ty_name == sn::classes::HH_BUILTIN_ENUM_CLASS
                         || ty_name == sn::classes::HH_BUILTIN_ABSTRACT_ENUM_CLASS =>
                 {
-                    errs.push(NamingPhaseError::Naming(NamingError::UsingInternalClass {
+                    env.emit_error(NamingError::UsingInternalClass {
                         pos: pos.clone(),
                         class_name: ty_name.clone(),
-                    }))
+                    })
                 }
                 _ => (),
             }
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 }
 
 #[cfg(test)]
 mod tests {
 
+    use nast::Enum_;
+    use nast::Pos;
+    use nast::UserAttributes;
     use ocamlrep::rc::RcOc;
-    use oxidized::aast_defs::Enum_;
-    use oxidized::aast_defs::UserAttributes;
-    use oxidized::namespace_env::Env;
+    use oxidized::namespace_env;
     use oxidized::s_map::SMap;
-    use oxidized::tast::Pos;
 
     use super::*;
-    use crate::Transform;
 
-    fn make_enum_class_(kind: ClassishKind, enum_: Enum_) -> Class_<(), ()> {
+    fn make_enum_class_(kind: ClassishKind, enum_: Enum_) -> Class_ {
         Class_ {
             span: Pos::NONE,
             annotation: (),
@@ -123,7 +104,7 @@ mod tests {
             methods: vec![],
             xhp_children: vec![],
             xhp_attrs: vec![],
-            namespace: RcOc::new(Env {
+            namespace: RcOc::new(namespace_env::Env {
                 ns_uses: SMap::default(),
                 class_uses: SMap::default(),
                 fun_uses: SMap::default(),
@@ -146,11 +127,11 @@ mod tests {
 
     #[test]
     fn test_enum_class_concrete() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabEnumClassPass;
 
-        let mut elem: Class_<(), ()> = make_enum_class_(
+        let mut elem = make_enum_class_(
             ClassishKind::CenumClass(Abstraction::Concrete),
             Enum_ {
                 base: Hint(Pos::NONE, Box::new(Hint_::Herr)),
@@ -159,7 +140,7 @@ mod tests {
             },
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
         let Hint(_, hint_) = &mut elem.extends.pop().unwrap();
 
         assert!(match &mut **hint_ {
@@ -184,11 +165,11 @@ mod tests {
 
     #[test]
     fn test_enum_class_abstract() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabEnumClassPass;
 
-        let mut elem: Class_<(), ()> = make_enum_class_(
+        let mut elem = make_enum_class_(
             ClassishKind::CenumClass(Abstraction::Abstract),
             Enum_ {
                 base: Hint(Pos::NONE, Box::new(Hint_::Herr)),
@@ -197,7 +178,7 @@ mod tests {
             },
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
         let Hint(_, hint_) = &mut elem.extends.pop().unwrap();
 
         assert!(match &mut **hint_ {
@@ -210,11 +191,11 @@ mod tests {
 
     #[test]
     fn test_enum() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabEnumClassPass;
 
-        let mut elem: Class_<(), ()> = make_enum_class_(
+        let mut elem = make_enum_class_(
             ClassishKind::Cenum,
             Enum_ {
                 base: Hint(Pos::NONE, Box::new(Hint_::Herr)),
@@ -223,7 +204,7 @@ mod tests {
             },
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
         let Hint(_, hint_) = &mut elem.extends.pop().unwrap();
 
         assert!(match &mut **hint_ {

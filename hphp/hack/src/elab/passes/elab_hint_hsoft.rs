@@ -2,29 +2,21 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
-use std::ops::ControlFlow;
 
-use oxidized::aast_defs::Hint;
-use oxidized::aast_defs::Hint_;
-use oxidized::naming_phase_error::NamingPhaseError;
-use oxidized::tast::Pos;
+use nast::Hint;
+use nast::Hint_;
+use nast::Pos;
 
-use crate::config::Config;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Clone, Copy, Default)]
 pub struct ElabHintHsoftPass;
 
 impl Pass for ElabHintHsoftPass {
-    fn on_ty_hint_top_down(
-        &mut self,
-        elem: &mut Hint,
-        cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> std::ops::ControlFlow<(), ()> {
+    fn on_ty_hint_top_down(&mut self, env: &Env, elem: &mut Hint) -> std::ops::ControlFlow<()> {
         let Hint(_, hint_) = elem;
         if let Hint_::Hsoft(inner) = hint_ as &mut Hint_ {
-            if cfg.soft_as_like() {
+            if env.soft_as_like() {
                 // Replace `Hsoft` with `Hlike` retaining the original position
                 // (pos, Hsoft(hint)) ==> (pos, Hlike(hint))
                 let herr = Hint(Pos::NONE, Box::new(Hint_::Herr));
@@ -40,25 +32,23 @@ impl Pass for ElabHintHsoftPass {
                 **hint_ = inner_hint_
             }
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use oxidized::aast_defs::Hint;
-    use oxidized::aast_defs::Hint_;
-    use oxidized::tast::Pos;
+    use nast::Hint;
+    use nast::Hint_;
+    use nast::Pos;
     use oxidized::typechecker_options::TypecheckerOptions;
 
     use super::*;
-    use crate::config::ProgramSpecificOptions;
-    use crate::Transform;
+    use crate::env::ProgramSpecificOptions;
 
     #[test]
     fn test() {
-        let mut errs = Vec::default();
         let mut pass = ElabHintHsoftPass;
 
         let mut elem1: Hint = Hint(
@@ -75,8 +65,8 @@ mod tests {
         let pso = ProgramSpecificOptions {
             ..Default::default()
         };
-        let cfg = Config::new(&tco, &pso);
-        elem1.transform(&cfg, &mut errs, &mut pass);
+        let env = Env::new(&tco, &pso);
+        elem1.transform(&env, &mut pass);
         assert!(matches!(*elem1.1, Hint_::Hdynamic));
 
         // Transform `elem2` with flag `SOFT_AS_LIKE` set & expect `Hlike(_,
@@ -88,8 +78,8 @@ mod tests {
         let pso = ProgramSpecificOptions {
             ..Default::default()
         };
-        let cfg = Config::new(&tco, &pso);
-        elem2.transform(&cfg, &mut errs, &mut pass);
+        let env = Env::new(&tco, &pso);
+        elem2.transform(&env, &mut pass);
         assert!(matches!(&*elem2.1, Hint_::Hlike(_)));
         assert!(match &*elem2.1 {
             Hint_::Hlike(inner) => matches!(*inner.1, Hint_::Hdynamic),

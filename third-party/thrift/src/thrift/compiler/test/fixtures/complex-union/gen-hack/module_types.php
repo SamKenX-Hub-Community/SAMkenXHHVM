@@ -115,7 +115,7 @@ class ComplexUnion implements \IThriftSyncStruct, \IThriftStructMetadata, \IThri
   protected ?Vector<string> $stringListValue;
   /**
    * Original thrift field:-
-   * 9: map<i16, string> typedefValue
+   * 9: module.containerTypedef typedefValue
    */
   protected ?Map<int, string> $typedefValue;
   /**
@@ -1007,7 +1007,7 @@ class Val implements \IThriftSyncStruct, \IThriftStructMetadata {
   public int $intVal;
   /**
    * Original thrift field:-
-   * 9: map<i16, string> typedefValue
+   * 9: module.containerTypedef typedefValue
    */
   public Map<int, string> $typedefValue;
 
@@ -1186,12 +1186,12 @@ class ValUnion implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftUn
   const int STRUCTURAL_ID = 7355268417298249876;
   /**
    * Original thrift field:-
-   * 1: struct module.Val v1
+   * 1: module.Val v1
    */
   protected ?Val $v1;
   /**
    * Original thrift field:-
-   * 2: struct module.Val v2
+   * 2: module.Val v2
    */
   protected ?Val $v2;
   protected ValUnionEnum $_type = ValUnionEnum::_EMPTY_;
@@ -1692,7 +1692,7 @@ class NonCopyableUnion implements \IThriftSyncStruct, \IThriftStructMetadata, \I
   const int STRUCTURAL_ID = 5595426780316201025;
   /**
    * Original thrift field:-
-   * 1: struct module.NonCopyableStruct s
+   * 1: module.NonCopyableStruct s
    */
   protected ?NonCopyableStruct $s;
   protected NonCopyableUnionEnum $_type = NonCopyableUnionEnum::_EMPTY_;

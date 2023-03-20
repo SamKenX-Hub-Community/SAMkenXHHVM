@@ -300,12 +300,12 @@ class structured_annotation_recursive implements \IThriftSyncStruct, \IThriftStr
   public string $name;
   /**
    * Original thrift field:-
-   * 2: struct module.structured_annotation_recursive recurse
+   * 2: module.structured_annotation_recursive recurse
    */
   public ?\fixtures\basic-structured-annotations\structured_annotation_recursive $recurse;
   /**
    * Original thrift field:-
-   * 3: struct module.structured_annotation_forward forward
+   * 3: module.structured_annotation_forward forward
    */
   public ?\fixtures\basic-structured-annotations\structured_annotation_forward $forward;
 
@@ -542,7 +542,7 @@ class structured_annotation_nested implements \IThriftSyncStruct, \IThriftStruct
   public string $name;
   /**
    * Original thrift field:-
-   * 2: struct module.structured_annotation_with_default nest
+   * 2: module.structured_annotation_with_default nest
    */
   public ?\fixtures\basic-structured-annotations\structured_annotation_with_default $nest;
 
@@ -668,7 +668,7 @@ class MyStruct implements \IThriftSyncStruct, \IThriftStructMetadata {
   public int $annotated_field;
   /**
    * Original thrift field:-
-   * 2: string annotated_type
+   * 2: module.annotated_inline_string annotated_type
    */
   public string $annotated_type;
   /**
@@ -1013,12 +1013,12 @@ class MyUnion implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftUni
   const int STRUCTURAL_ID = 1597178699879920243;
   /**
    * Original thrift field:-
-   * 1: string first
+   * 1: module.annotated_inline_string first
    */
   public ?string $first;
   /**
    * Original thrift field:-
-   * 2: i64 second
+   * 2: module.annotated_inline_i64 second
    */
   public ?int $second;
   protected \fixtures\basic-structured-annotations\MyUnionEnum $_type = \fixtures\basic-structured-annotations\MyUnionEnum::_EMPTY_;

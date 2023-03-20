@@ -191,6 +191,8 @@ class McRouteHandleProvider
       RouteHandlePtr route,
       std::string asynclogName);
 
+  RouteHandlePtr bucketize(RouteHandlePtr route, const folly::dynamic& json);
+
   template <class Transport>
   std::pair<RouteHandlePtr, std::shared_ptr<const AccessPoint>>
   createDestinationRoute(
@@ -204,7 +206,8 @@ class McRouteHandleProvider
       int32_t poolStatIndex,
       bool disableRequestDeadlineCheck,
       const std::shared_ptr<PoolTkoTracker>& poolTkoTracker,
-      bool keepRoutingPrefix);
+      bool keepRoutingPrefix,
+      uint32_t idx);
 
   RouteHandleFactoryMap buildRouteMap();
   RouteHandleFactoryMapWithProxy buildRouteMapWithProxy();

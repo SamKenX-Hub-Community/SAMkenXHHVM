@@ -284,7 +284,7 @@ let report
       Printf.sprintf "waiting on %s..." msg1
     | (Some _, Some (msg2, _)) -> Printf.sprintf "waiting on %s..." msg2
   in
-  ServerProgress.send_progress "%s" msg;
+  ServerProgress.write "%s" msg;
   ()
 
 let download_and_load_state_exn
@@ -950,7 +950,7 @@ let initialize_naming_table
     (genv : ServerEnv.genv)
     (env : ServerEnv.env)
     (cgroup_steps : CgroupProfiler.step_group) : ServerEnv.env * float =
-  ServerProgress.send_progress "%s" progress_message;
+  ServerProgress.write "%s" progress_message;
   let (get_next, count, t) =
     match fnl with
     | Some fnl ->
@@ -1265,8 +1265,7 @@ let post_saved_state_initialization
   in
 
   (* Load and parse packages.toml if it exists at the root. *)
-  let get_package_for_module = PackageConfig.load_and_parse () in
-  let env = { env with get_package_for_module = Some get_package_for_module } in
+  let env = PackageConfig.load_and_parse env in
 
   (* Parse and name all dirty files uniformly *)
   let dirty_files =
@@ -1420,7 +1419,7 @@ let saved_state_init
         t
   in
 
-  ServerProgress.send_progress "loading saved state";
+  ServerProgress.write "loading saved state";
 
   let ctx = Provider_utils.ctx_from_server_env env in
   let do_ () : (loaded_info, load_state_error) result =
@@ -1458,7 +1457,7 @@ let saved_state_init
   match state_result with
   | Error err -> Error err
   | Ok state_result ->
-    ServerProgress.send_progress "loading saved state succeeded";
+    ServerProgress.write "loading saved state succeeded";
     let (env, t) =
       post_saved_state_initialization
         ~do_indexing

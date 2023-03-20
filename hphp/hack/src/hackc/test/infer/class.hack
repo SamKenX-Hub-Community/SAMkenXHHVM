@@ -10,6 +10,7 @@
 // CHECK: type C = .kind="class" {
 // CHECK:   prop1: .public *HackInt;
 // CHECK:   prop2: .public *HackString;
+// CHECK:   prop5: .public *HackInt;
 // CHECK:   type_: .public *HackInt
 // CHECK: }
 
@@ -17,8 +18,8 @@
 // CHECK: define C$static.$init_static() : void {
 // CHECK: #b0:
 // CHECK:   n0 = $builtins.alloc_words(0)
-// CHECK:   store &C$static::static_singleton <- n0: *C$static
-// CHECK:   store &C$static::MY_CONSTANT <- $builtins.hack_int(7): *HackMixed
+// CHECK:   store &const::C$static::static_singleton <- n0: *C$static
+// CHECK:   store &const::C$static::MY_CONSTANT <- $builtins.hack_int(7): *HackMixed
 // CHECK:   ret 0
 // CHECK: }
 
@@ -29,6 +30,7 @@ class C {
   public static float $prop3 = 3.14;
   <<SomeAttribute>>
   public static mixed $prop4 = null;
+  public int $prop5 = D::C;
 
   const int MY_CONSTANT = 7;
 
@@ -166,54 +168,55 @@ class C {
   // CHECK: #b0:
   // CHECK:   jmp b1
   // CHECK: #b1:
-  // CHECK:   n0: *C$static = load &C$static::static_singleton
+  // CHECK:   n0: *C$static = load &const::C$static::static_singleton
   // CHECK:   n1 = $builtins.lazy_initialize(n0)
   // CHECK:   store &$0 <- n0: *HackMixed
   // CHECK:   n2 = __sil_allocate(<C>)
+  // CHECK:   n3 = C._86pinit(n2)
   // CHECK:   store &$2 <- n2: *HackMixed
-  // CHECK:   n3: *HackMixed = load &$0
-  // CHECK:   n4 = $builtins.hhbc_class_has_reified_generics(n3)
+  // CHECK:   n4: *HackMixed = load &$0
+  // CHECK:   n5 = $builtins.hhbc_class_has_reified_generics(n4)
   // CHECK:   jmp b2, b5
   // CHECK:   .handlers b7
   // CHECK: #b2:
-  // CHECK:   prune ! $builtins.hack_is_true(n4)
-  // CHECK:   n5: *HackMixed = load &$0
-  // CHECK:   n6 = $builtins.hhbc_has_reified_parent(n5)
+  // CHECK:   prune ! $builtins.hack_is_true(n5)
+  // CHECK:   n6: *HackMixed = load &$0
+  // CHECK:   n7 = $builtins.hhbc_has_reified_parent(n6)
   // CHECK:   jmp b3, b4
   // CHECK:   .handlers b7
   // CHECK: #b3:
-  // CHECK:   prune ! $builtins.hack_is_true(n6)
+  // CHECK:   prune ! $builtins.hack_is_true(n7)
   // CHECK:   jmp b6
   // CHECK: #b4:
-  // CHECK:   prune $builtins.hack_is_true(n6)
-  // CHECK:   n7: *HackMixed = load &$2
-  // CHECK:   n8 = $builtins.hhbc_cast_vec($builtins.hhbc_new_col_vector())
-  // CHECK:   n9 = n7.HackMixed._86reifiedinit(n8)
+  // CHECK:   prune $builtins.hack_is_true(n7)
+  // CHECK:   n8: *HackMixed = load &$2
+  // CHECK:   n9 = $builtins.hhbc_cast_vec($builtins.hhbc_new_col_vector())
+  // CHECK:   n10 = n8.HackMixed._86reifiedinit(n9)
   // CHECK:   jmp b6
   // CHECK:   .handlers b7
   // CHECK: #b5:
-  // CHECK:   prune $builtins.hack_is_true(n4)
-  // CHECK:   n10: *HackMixed = load &$0
-  // CHECK:   n11 = $builtins.hhbc_class_get_c(n10)
+  // CHECK:   prune $builtins.hack_is_true(n5)
+  // CHECK:   n11: *HackMixed = load &$0
+  // CHECK:   n12 = $builtins.hhbc_class_get_c(n11)
   // CHECK:   jmp b6
   // CHECK:   .handlers b7
   // CHECK: #b6:
-  // CHECK:   n12: *HackMixed = load &$2
+  // CHECK:   n13: *HackMixed = load &$2
   // CHECK:   jmp b8
   // CHECK:   .handlers b7
-  // CHECK: #b7(n13: *HackMixed):
+  // CHECK: #b7(n14: *HackMixed):
   // CHECK:   store &$0 <- null: *HackMixed
   // CHECK:   store &$1 <- null: *HackMixed
   // CHECK:   store &$2 <- null: *HackMixed
-  // CHECK:   n14 = $builtins.hhbc_throw(n13)
+  // CHECK:   n15 = $builtins.hhbc_throw(n14)
   // CHECK:   unreachable
   // CHECK: #b8:
   // CHECK:   store &$0 <- null: *HackMixed
   // CHECK:   store &$1 <- null: *HackMixed
   // CHECK:   store &$2 <- null: *HackMixed
-  // CHECK:   n15 = n12.HackMixed.__construct($builtins.hack_int(1), $builtins.hack_string("x"), $builtins.hack_int(3))
-  // CHECK:   n16 = $builtins.hhbc_lock_obj(n12)
-  // CHECK:   store &$a <- n12: *HackMixed
+  // CHECK:   n16 = n13.HackMixed.__construct($builtins.hack_int(1), $builtins.hack_string("x"), $builtins.hack_int(3))
+  // CHECK:   n17 = $builtins.hhbc_lock_obj(n13)
+  // CHECK:   store &$a <- n13: *HackMixed
   // CHECK:   ret null
   // CHECK: }
   public function cons_self(): void {
@@ -226,54 +229,55 @@ class C {
   // CHECK: #b0:
   // CHECK:   jmp b1
   // CHECK: #b1:
-  // CHECK:   n0: *C$static = load &C$static::static_singleton
+  // CHECK:   n0: *C$static = load &const::C$static::static_singleton
   // CHECK:   n1 = $builtins.lazy_initialize(n0)
   // CHECK:   store &$0 <- n0: *HackMixed
   // CHECK:   n2 = __sil_allocate(<C>)
+  // CHECK:   n3 = C._86pinit(n2)
   // CHECK:   store &$2 <- n2: *HackMixed
-  // CHECK:   n3: *HackMixed = load &$0
-  // CHECK:   n4 = $builtins.hhbc_class_has_reified_generics(n3)
+  // CHECK:   n4: *HackMixed = load &$0
+  // CHECK:   n5 = $builtins.hhbc_class_has_reified_generics(n4)
   // CHECK:   jmp b2, b5
   // CHECK:   .handlers b7
   // CHECK: #b2:
-  // CHECK:   prune ! $builtins.hack_is_true(n4)
-  // CHECK:   n5: *HackMixed = load &$0
-  // CHECK:   n6 = $builtins.hhbc_has_reified_parent(n5)
+  // CHECK:   prune ! $builtins.hack_is_true(n5)
+  // CHECK:   n6: *HackMixed = load &$0
+  // CHECK:   n7 = $builtins.hhbc_has_reified_parent(n6)
   // CHECK:   jmp b3, b4
   // CHECK:   .handlers b7
   // CHECK: #b3:
-  // CHECK:   prune ! $builtins.hack_is_true(n6)
+  // CHECK:   prune ! $builtins.hack_is_true(n7)
   // CHECK:   jmp b6
   // CHECK: #b4:
-  // CHECK:   prune $builtins.hack_is_true(n6)
-  // CHECK:   n7: *HackMixed = load &$2
-  // CHECK:   n8 = $builtins.hhbc_cast_vec($builtins.hhbc_new_col_vector())
-  // CHECK:   n9 = n7.HackMixed._86reifiedinit(n8)
+  // CHECK:   prune $builtins.hack_is_true(n7)
+  // CHECK:   n8: *HackMixed = load &$2
+  // CHECK:   n9 = $builtins.hhbc_cast_vec($builtins.hhbc_new_col_vector())
+  // CHECK:   n10 = n8.HackMixed._86reifiedinit(n9)
   // CHECK:   jmp b6
   // CHECK:   .handlers b7
   // CHECK: #b5:
-  // CHECK:   prune $builtins.hack_is_true(n4)
-  // CHECK:   n10: *HackMixed = load &$0
-  // CHECK:   n11 = $builtins.hhbc_class_get_c(n10)
+  // CHECK:   prune $builtins.hack_is_true(n5)
+  // CHECK:   n11: *HackMixed = load &$0
+  // CHECK:   n12 = $builtins.hhbc_class_get_c(n11)
   // CHECK:   jmp b6
   // CHECK:   .handlers b7
   // CHECK: #b6:
-  // CHECK:   n12: *HackMixed = load &$2
+  // CHECK:   n13: *HackMixed = load &$2
   // CHECK:   jmp b8
   // CHECK:   .handlers b7
-  // CHECK: #b7(n13: *HackMixed):
+  // CHECK: #b7(n14: *HackMixed):
   // CHECK:   store &$0 <- null: *HackMixed
   // CHECK:   store &$1 <- null: *HackMixed
   // CHECK:   store &$2 <- null: *HackMixed
-  // CHECK:   n14 = $builtins.hhbc_throw(n13)
+  // CHECK:   n15 = $builtins.hhbc_throw(n14)
   // CHECK:   unreachable
   // CHECK: #b8:
   // CHECK:   store &$0 <- null: *HackMixed
   // CHECK:   store &$1 <- null: *HackMixed
   // CHECK:   store &$2 <- null: *HackMixed
-  // CHECK:   n15 = n12.HackMixed.__construct($builtins.hack_int(1), $builtins.hack_string("x"), $builtins.hack_int(3))
-  // CHECK:   n16 = $builtins.hhbc_lock_obj(n12)
-  // CHECK:   store &$a <- n12: *HackMixed
+  // CHECK:   n16 = n13.HackMixed.__construct($builtins.hack_int(1), $builtins.hack_string("x"), $builtins.hack_int(3))
+  // CHECK:   n17 = $builtins.hhbc_lock_obj(n13)
+  // CHECK:   store &$a <- n13: *HackMixed
   // CHECK:   ret null
   // CHECK: }
   public function cons_inst(): void {
@@ -322,13 +326,32 @@ class C {
   // CHECK: define C.test_const($this: *C) : *void {
   // CHECK: local $x: *void
   // CHECK: #b0:
-  // CHECK:   n0: *HackMixed = load &C$static::MY_CONSTANT
+  // CHECK:   n0: *HackMixed = load &const::C$static::MY_CONSTANT
   // CHECK:   store &$x <- n0: *HackMixed
   // CHECK:   ret null
   // CHECK: }
   public function test_const(): void {
     $x = C::MY_CONSTANT;
   }
+
+  // TEST-CHECK-BAL: define C._86pinit
+  // CHECK: define C._86pinit($this: *C$static) : *HackMixed {
+  // CHECK: #b0:
+  // CHECK:   jmp b1, b2
+  // CHECK: #b1:
+  // CHECK:   prune $builtins.hack_is_true($builtins.hack_bool(false))
+  // CHECK:   jmp b3
+  // CHECK: #b2:
+  // CHECK:   prune ! $builtins.hack_is_true($builtins.hack_bool(false))
+  // CHECK:   n0: *HackMixed = load &const::D$static::C
+  // CHECK:   n1 = &$this
+  // CHECK:   n2 = $builtins.hack_string("prop5")
+  // CHECK:   n3 = $builtins.hack_dim_field_get(n1, n2)
+  // CHECK:   store n3 <- n0: *HackMixed
+  // CHECK:   jmp b3
+  // CHECK: #b3:
+  // CHECK:   ret null
+  // CHECK: }
 }
 
 trait T0 {
@@ -373,8 +396,8 @@ function dynamic_const(C $c): void {
   echo $c::MY_CONSTANT;
 }
 
-// TEST-CHECK-BAL: global C$static::MY_CONSTANT
-// CHECK: global C$static::MY_CONSTANT : *HackMixed
+// TEST-CHECK-BAL: global const::C$static::MY_CONSTANT
+// CHECK: global const::C$static::MY_CONSTANT : *HackMixed
 
-// TEST-CHECK-BAL: global C$static::static_singleton
-// CHECK: global C$static::static_singleton : *C$static
+// TEST-CHECK-BAL: global const::C$static::static_singleton
+// CHECK: global const::C$static::static_singleton : *C$static

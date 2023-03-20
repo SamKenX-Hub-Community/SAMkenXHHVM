@@ -3,48 +3,37 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 
-use std::ops::ControlFlow;
+use nast::ModuleDef;
 
-use oxidized::aast::ModuleDef;
-use oxidized::naming_error::NamingError;
-use oxidized::naming_phase_error::NamingPhaseError;
-
-use crate::config::Config;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Clone, Copy, Default)]
 pub struct ValidateModulePass;
 
 impl Pass for ValidateModulePass {
-    fn on_ty_module_def_bottom_up<Ex: Default, En>(
-        &mut self,
-        module: &mut ModuleDef<Ex, En>,
-        config: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
-        if !config.allow_module_declarations() {
-            errs.push(NamingPhaseError::Naming(
-                NamingError::ModuleDeclarationOutsideAllowedFiles(module.span.clone()),
+    fn on_ty_module_def_bottom_up(&mut self, env: &Env, module: &mut ModuleDef) -> ControlFlow<()> {
+        if !env.allow_module_declarations() {
+            env.emit_error(NamingError::ModuleDeclarationOutsideAllowedFiles(
+                module.span.clone(),
             ));
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use oxidized::aast::ModuleDef;
-    use oxidized::aast::Pos;
-    use oxidized::aast::UserAttributes;
-    use oxidized::ast::Id;
+    use nast::Id;
+    use nast::ModuleDef;
+    use nast::Pos;
+    use nast::UserAttributes;
     use oxidized::typechecker_options::TypecheckerOptions;
 
     use super::*;
-    use crate::config::ProgramSpecificOptions;
-    use crate::Transform;
+    use crate::env::ProgramSpecificOptions;
 
-    fn mk_module(name: &str) -> ModuleDef<(), ()> {
+    fn mk_module(name: &str) -> ModuleDef {
         ModuleDef {
             annotation: (),
             name: Id(Pos::NONE, name.to_string()),
@@ -60,8 +49,7 @@ mod tests {
 
     #[test]
     fn test_module_def_not_allowed() {
-        let mut errs = Vec::default();
-        let config = Config::new(
+        let env = Env::new(
             &TypecheckerOptions::default(),
             &ProgramSpecificOptions {
                 allow_module_declarations: false,
@@ -69,9 +57,9 @@ mod tests {
             },
         );
         let mut module = mk_module("foo");
-        module.transform(&config, &mut errs, &mut ValidateModulePass);
+        module.transform(&env, &mut ValidateModulePass);
         assert!(matches!(
-            &errs[..],
+            env.into_errors().as_slice(),
             [NamingPhaseError::Naming(
                 NamingError::ModuleDeclarationOutsideAllowedFiles(_)
             )]

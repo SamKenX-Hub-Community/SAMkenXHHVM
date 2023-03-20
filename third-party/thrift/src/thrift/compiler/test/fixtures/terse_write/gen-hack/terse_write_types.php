@@ -340,7 +340,7 @@ class MyUnion implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftUni
   public ?string $binary_field;
   /**
    * Original thrift field:-
-   * 10: enum terse_write.MyEnum enum_field
+   * 10: terse_write.MyEnum enum_field
    */
   public ?\thrift\test\terse_write\MyEnum $enum_field;
   /**
@@ -360,7 +360,7 @@ class MyUnion implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftUni
   public ?Map<int, int> $map_field;
   /**
    * Original thrift field:-
-   * 14: struct terse_write.MyStruct struct_field
+   * 14: terse_write.MyStruct struct_field
    */
   public ?\thrift\test\terse_write\MyStruct $struct_field;
   protected \thrift\test\terse_write\MyUnionEnum $_type = \thrift\test\terse_write\MyUnionEnum::_EMPTY_;
@@ -1488,7 +1488,7 @@ class StructLevelTerseStruct implements \IThriftSyncStruct, \IThriftStructMetada
   public string $binary_field;
   /**
    * Original thrift field:-
-   * 10: enum terse_write.MyEnum enum_field
+   * 10: terse_write.MyEnum enum_field
    */
   public ?\thrift\test\terse_write\MyEnum $enum_field;
   /**
@@ -1508,12 +1508,12 @@ class StructLevelTerseStruct implements \IThriftSyncStruct, \IThriftStructMetada
   public Map<int, int> $map_field;
   /**
    * Original thrift field:-
-   * 14: struct terse_write.MyStruct struct_field
+   * 14: terse_write.MyStruct struct_field
    */
   public ?\thrift\test\terse_write\MyStruct $struct_field;
   /**
    * Original thrift field:-
-   * 15: struct terse_write.MyUnion union_field
+   * 15: terse_write.MyUnion union_field
    */
   public ?\thrift\test\terse_write\MyUnion $union_field;
 
@@ -2305,7 +2305,7 @@ class FieldLevelTerseStruct implements \IThriftSyncStruct, \IThriftStructMetadat
   public string $terse_binary_field;
   /**
    * Original thrift field:-
-   * 10: enum terse_write.MyEnum terse_enum_field
+   * 10: terse_write.MyEnum terse_enum_field
    */
   public ?\thrift\test\terse_write\MyEnum $terse_enum_field;
   /**
@@ -2325,12 +2325,12 @@ class FieldLevelTerseStruct implements \IThriftSyncStruct, \IThriftStructMetadat
   public Map<int, int> $terse_map_field;
   /**
    * Original thrift field:-
-   * 14: struct terse_write.MyStruct terse_struct_field
+   * 14: terse_write.MyStruct terse_struct_field
    */
   public ?\thrift\test\terse_write\MyStruct $terse_struct_field;
   /**
    * Original thrift field:-
-   * 29: struct terse_write.MyUnion terse_union_field
+   * 29: terse_write.MyUnion terse_union_field
    */
   public ?\thrift\test\terse_write\MyUnion $terse_union_field;
   /**
@@ -2380,7 +2380,7 @@ class FieldLevelTerseStruct implements \IThriftSyncStruct, \IThriftStructMetadat
   public string $binary_field;
   /**
    * Original thrift field:-
-   * 24: enum terse_write.MyEnum enum_field
+   * 24: terse_write.MyEnum enum_field
    */
   public ?\thrift\test\terse_write\MyEnum $enum_field;
   /**
@@ -2400,12 +2400,12 @@ class FieldLevelTerseStruct implements \IThriftSyncStruct, \IThriftStructMetadat
   public Map<int, int> $map_field;
   /**
    * Original thrift field:-
-   * 28: struct terse_write.MyStruct struct_field
+   * 28: terse_write.MyStruct struct_field
    */
   public ?\thrift\test\terse_write\MyStruct $struct_field;
   /**
    * Original thrift field:-
-   * 30: struct terse_write.MyUnion union_field
+   * 30: terse_write.MyUnion union_field
    */
   public ?\thrift\test\terse_write\MyUnion $union_field;
 
@@ -3558,7 +3558,7 @@ class TerseStructWithCustomDefault implements \IThriftSyncStruct, \IThriftStruct
   public string $binary_field;
   /**
    * Original thrift field:-
-   * 10: enum terse_write.MyEnum enum_field
+   * 10: terse_write.MyEnum enum_field
    */
   public ?\thrift\test\terse_write\MyEnum $enum_field;
   /**
@@ -3578,7 +3578,7 @@ class TerseStructWithCustomDefault implements \IThriftSyncStruct, \IThriftStruct
   public Map<int, int> $map_field;
   /**
    * Original thrift field:-
-   * 14: struct terse_write.MyStructWithCustomDefault struct_field
+   * 14: terse_write.MyStructWithCustomDefault struct_field
    */
   public ?\thrift\test\terse_write\MyStructWithCustomDefault $struct_field;
 
@@ -4061,7 +4061,7 @@ class AdaptedFields implements \IThriftSyncStruct, \IThriftStructMetadata, \IThr
   const int STRUCTURAL_ID = 8495441692096133093;
   /**
    * Original thrift field:-
-   * 1: i32 field1
+   * 1: terse_write.MyInteger field1
    */
   public \Adapter1::THackType $field1;
   /**
@@ -4071,7 +4071,7 @@ class AdaptedFields implements \IThriftSyncStruct, \IThriftStructMetadata, \IThr
   public \Adapter1::THackType $field2;
   /**
    * Original thrift field:-
-   * 3: i32 field3
+   * 3: terse_write.MyInteger field3
    */
   public \Adapter1::THackType $field3;
 

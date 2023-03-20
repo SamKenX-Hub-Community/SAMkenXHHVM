@@ -4,27 +4,19 @@
 // LICENSE file in the "hack" directory of this source tree.
 
 use std::collections::VecDeque;
-use std::ops::ControlFlow;
 
-use oxidized::aast_defs::Def;
-use oxidized::aast_defs::Program;
-use oxidized::aast_defs::Stmt;
-use oxidized::aast_defs::Stmt_;
-use oxidized::naming_phase_error::NamingPhaseError;
+use nast::Def;
+use nast::Program;
+use nast::Stmt;
+use nast::Stmt_;
 
-use crate::config::Config;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Clone, Copy, Default)]
 pub struct ElabDefsPass;
 
 impl Pass for ElabDefsPass {
-    fn on_ty_program_top_down<Ex: Default, En>(
-        &mut self,
-        elem: &mut Program<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_program_top_down(&mut self, _: &Env, elem: &mut Program) -> ControlFlow<()> {
         let Program(defs) = elem;
         let mut q: VecDeque<_> = defs.drain(0..).collect();
         while let Some(e) = q.pop_front() {
@@ -57,28 +49,27 @@ impl Pass for ElabDefsPass {
                 }
             }
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use oxidized::aast_defs::Def;
-    use oxidized::aast_defs::Program;
-    use oxidized::aast_defs::Stmt;
-    use oxidized::aast_defs::Stmt_;
-    use oxidized::ast_defs::Id;
-    use oxidized::tast::Pos;
+    use nast::Def;
+    use nast::Id;
+    use nast::Pos;
+    use nast::Program;
+    use nast::Stmt;
+    use nast::Stmt_;
 
     use super::*;
-    use crate::Transform;
 
     #[test]
     fn test() {
-        let cfg = Config::default();
+        let env = Env::default();
 
-        let mut elem: Program<(), ()> = Program(vec![
+        let mut elem = Program(vec![
             Def::Stmt(Box::new(Stmt(Pos::NONE, Stmt_::Break))),
             Def::NamespaceUse(Vec::default()),
             Def::Stmt(Box::new(Stmt(Pos::NONE, Stmt_::Noop))),
@@ -103,11 +94,9 @@ mod tests {
             Def::Stmt(Box::new(Stmt(Pos::NONE, Stmt_::Noop))),
         ]);
 
-        let mut errs = Vec::default();
-
         let mut pass = ElabDefsPass;
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         // Given our initial program:
         //
@@ -144,39 +133,27 @@ mod tests {
         let mut q = VecDeque::from(elem.0);
 
         // First def is Break
-        assert!(q.pop_front().is_some_and(|def| match def {
-            Def::Stmt(stmt) => match &stmt.1 {
-                Stmt_::Break => true,
-                _ => false,
-            },
-            _ => false,
-        }));
+        assert!(matches!(
+            q.pop_front(),
+            Some(Def::Stmt(box Stmt(_, Stmt_::Break)))
+        ));
 
         // Second def is Fallthrough
-        assert!(q.pop_front().is_some_and(|def| match def {
-            Def::Stmt(stmt) => match &stmt.1 {
-                Stmt_::Fallthrough => true,
-                _ => false,
-            },
-            _ => false,
-        }));
+        assert!(matches!(
+            q.pop_front(),
+            Some(Def::Stmt(box Stmt(_, Stmt_::Fallthrough)))
+        ));
 
         // Third def is Break
-        assert!(q.pop_front().is_some_and(|def| match def {
-            Def::Stmt(stmt) => match &stmt.1 {
-                Stmt_::Break => true,
-                _ => false,
-            },
-            _ => false,
-        }));
+        assert!(matches!(
+            q.pop_front(),
+            Some(Def::Stmt(box Stmt(_, Stmt_::Break)))
+        ));
 
         // Last def is Fallthrough
-        assert!(q.pop_front().is_some_and(|def| match def {
-            Def::Stmt(stmt) => match &stmt.1 {
-                Stmt_::Fallthrough => true,
-                _ => false,
-            },
-            _ => false,
-        }));
+        assert!(matches!(
+            q.pop_front(),
+            Some(Def::Stmt(box Stmt(_, Stmt_::Fallthrough)))
+        ));
     }
 }

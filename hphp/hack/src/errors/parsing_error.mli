@@ -18,6 +18,11 @@ type t =
       pos: Pos.t;
       msg: string;
     }
+  | Package_config_error of {
+      pos: Pos.t;
+      msg: string;
+      reasons: Pos_or_decl.t Message.t list;
+    }
 
 include
   Phase_error.S with type t := t and module Error_code = Error_codes.Parsing

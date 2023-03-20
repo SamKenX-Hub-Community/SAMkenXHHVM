@@ -459,7 +459,7 @@ class MyStruct implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftSh
   public string $empty_annotations;
   /**
    * Original thrift field:-
-   * 7: enum module.MyEnum my_enum
+   * 7: module.MyEnum my_enum
    */
   public ?MyEnum $my_enum;
   /**
@@ -469,12 +469,12 @@ class MyStruct implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftSh
   public Vector<string> $cpp_type_annotation;
   /**
    * Original thrift field:-
-   * 9: struct module.MyUnion my_union
+   * 9: module.MyUnion my_union
    */
   public ?MyUnion $my_union;
   /**
    * Original thrift field:-
-   * 10: i16 my_id
+   * 10: module.MyId my_id
    */
   public int $my_id;
 

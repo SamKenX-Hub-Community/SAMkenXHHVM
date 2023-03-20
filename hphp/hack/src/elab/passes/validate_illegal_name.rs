@@ -2,24 +2,18 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
-use std::ops::ControlFlow;
 
-use naming_special_names_rust as sn;
-use oxidized::aast_defs::ClassId;
-use oxidized::aast_defs::ClassId_;
-use oxidized::aast_defs::Class_;
-use oxidized::aast_defs::Expr;
-use oxidized::aast_defs::Expr_;
-use oxidized::aast_defs::FunDef;
-use oxidized::aast_defs::Method_;
-use oxidized::ast_defs::ClassishKind;
-use oxidized::ast_defs::Id;
-use oxidized::naming_error::NamingError;
-use oxidized::naming_phase_error::NamingPhaseError;
-use oxidized::nast_check_error::NastCheckError;
+use nast::ClassId;
+use nast::ClassId_;
+use nast::Class_;
+use nast::ClassishKind;
+use nast::Expr;
+use nast::Expr_;
+use nast::FunDef;
+use nast::Id;
+use nast::Method_;
 
-use crate::config::Config;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Clone, Default)]
 pub struct ValidateIllegalNamePass {
@@ -42,127 +36,63 @@ impl ValidateIllegalNamePass {
 }
 
 impl Pass for ValidateIllegalNamePass {
-    fn on_ty_class__top_down<Ex, En>(
-        &mut self,
-        elem: &mut Class_<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_class__top_down(&mut self, _: &Env, elem: &mut Class_) -> ControlFlow<()> {
         self.classish_kind = Some(elem.kind);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_class__bottom_up<Ex, En>(
-        &mut self,
-        elem: &mut Class_<Ex, En>,
-        _cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_class__bottom_up(&mut self, env: &Env, elem: &mut Class_) -> ControlFlow<()> {
         elem.typeconsts
             .iter()
-            .for_each(|tc| check_illegal_member_variable_class(&tc.name, errs));
+            .for_each(|tc| check_illegal_member_variable_class(env, &tc.name));
         elem.consts
             .iter()
-            .for_each(|cc| check_illegal_member_variable_class(&cc.id, errs));
-        ControlFlow::Continue(())
+            .for_each(|cc| check_illegal_member_variable_class(env, &cc.id));
+        Continue(())
     }
 
-    fn on_ty_fun_def_top_down<Ex, En>(
-        &mut self,
-        elem: &mut FunDef<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_fun_def_top_down(&mut self, _: &Env, elem: &mut FunDef) -> ControlFlow<()> {
         self.func_name = Some(elem.name.name().to_string());
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_fun_def_bottom_up<Ex, En>(
-        &mut self,
-        elem: &mut FunDef<Ex, En>,
-        _cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_fun_def_bottom_up(&mut self, env: &Env, elem: &mut FunDef) -> ControlFlow<()> {
         let lower_name = elem.name.name().to_ascii_lowercase();
         let lower_norm = lower_name
             .strip_prefix('/')
             .unwrap_or(&lower_name)
             .to_string();
         if lower_norm == sn::members::__CONSTRUCT || lower_norm == "using" {
-            errs.push(NamingPhaseError::NastCheck(
-                NastCheckError::IllegalFunctionName {
-                    pos: elem.name.pos().clone(),
-                    name: elem.name.name().to_string(),
-                },
-            ))
+            env.emit_error(NastCheckError::IllegalFunctionName {
+                pos: elem.name.pos().clone(),
+                name: elem.name.name().to_string(),
+            })
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_method__top_down<Ex, En>(
-        &mut self,
-        elem: &mut Method_<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_method__top_down(&mut self, _: &Env, elem: &mut Method_) -> ControlFlow<()> {
         self.func_name = Some(elem.name.name().to_string());
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_method__bottom_up<Ex, En>(
-        &mut self,
-        elem: &mut Method_<Ex, En>,
-        _cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_method__bottom_up(&mut self, env: &Env, elem: &mut Method_) -> ControlFlow<()> {
         if elem.name.name() == sn::members::__DESTRUCT {
-            errs.push(NamingPhaseError::NastCheck(
-                NastCheckError::IllegalDestructor(elem.name.pos().clone()),
-            ))
+            env.emit_error(NastCheckError::IllegalDestructor(elem.name.pos().clone()))
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_expr__bottom_up<Ex, En>(
-        &mut self,
-        elem: &mut Expr_<Ex, En>,
-        _cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_expr__bottom_up(&mut self, env: &Env, elem: &mut Expr_) -> ControlFlow<()> {
         match elem {
             Expr_::Id(box id)
                 if id.name() == sn::pseudo_consts::G__CLASS__ && self.classish_kind.is_none() =>
             {
-                errs.push(NamingPhaseError::Naming(NamingError::IllegalCLASS(
-                    id.pos().clone(),
-                )))
+                env.emit_error(NamingError::IllegalCLASS(id.pos().clone()))
             }
 
             Expr_::Id(box id) if id.name() == sn::pseudo_consts::G__TRAIT__ && !self.in_trait() => {
-                errs.push(NamingPhaseError::Naming(NamingError::IllegalTRAIT(
-                    id.pos().clone(),
-                )))
+                env.emit_error(NamingError::IllegalTRAIT(id.pos().clone()))
             }
 
             // TODO[mjt] Check if this will have already been elaborated to `CIparent`
@@ -174,36 +104,33 @@ impl Pass for ValidateIllegalNamePass {
             Expr_::ClassConst(box (_, (pos, meth_name)))
                 if is_magic(meth_name) && !self.is_current_func(meth_name) =>
             {
-                errs.push(NamingPhaseError::NastCheck(NastCheckError::Magic {
+                env.emit_error(NastCheckError::Magic {
                     pos: pos.clone(),
                     meth_name: meth_name.clone(),
-                }))
+                })
             }
 
             Expr_::ObjGet(box (_, Expr(_, _, Expr_::Id(box id)), _, _)) if is_magic(id.name()) => {
-                errs.push(NamingPhaseError::NastCheck(NastCheckError::Magic {
+                env.emit_error(NastCheckError::Magic {
                     pos: id.pos().clone(),
                     meth_name: id.name().to_string(),
-                }))
+                })
             }
 
-            Expr_::MethodCaller(box (_, (pos, meth_name))) if is_magic(meth_name) => {
-                errs.push(NamingPhaseError::NastCheck(NastCheckError::Magic {
+            Expr_::MethodCaller(box (_, (pos, meth_name))) if is_magic(meth_name) => env
+                .emit_error(NastCheckError::Magic {
                     pos: pos.clone(),
                     meth_name: meth_name.clone(),
-                }))
-            }
+                }),
             _ => (),
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 }
 
-fn check_illegal_member_variable_class(id: &Id, errs: &mut Vec<NamingPhaseError>) {
+fn check_illegal_member_variable_class(env: &Env, id: &Id) {
     if id.name().to_ascii_lowercase() == sn::members::M_CLASS {
-        errs.push(NamingPhaseError::Naming(
-            NamingError::IllegalMemberVariableClass(id.pos().clone()),
-        ))
+        env.emit_error(NamingError::IllegalMemberVariableClass(id.pos().clone()))
     }
 }
 

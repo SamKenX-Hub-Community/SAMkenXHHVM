@@ -2373,8 +2373,26 @@ let rec t (env : Env.t) (node : Syntax.t) : Doc.t =
           prefixed_code_left_backtick = left_bt;
           prefixed_code_body = body;
           prefixed_code_right_backtick = right_bt;
-        } ->
-      Concat [t env prefix; transform_braced_item env left_bt body right_bt]
+        } -> begin
+      match Syntax.syntax body with
+      | Syntax.CompoundStatement
+          { compound_left_brace; compound_statements; compound_right_brace } ->
+        Concat
+          [
+            t env prefix;
+            t env left_bt;
+            handle_compound_statement
+              env
+              ~allow_collapse:true
+              ~prepend_space:false
+              compound_left_brace
+              compound_statements
+              compound_right_brace;
+            t env right_bt;
+          ]
+      | _ ->
+        Concat [t env prefix; transform_braced_item env left_bt body right_bt]
+    end
     | Syntax.DecoratedExpression
         {
           decorated_expression_decorator = op;
@@ -2566,80 +2584,7 @@ let rec t (env : Env.t) (node : Syntax.t) : Doc.t =
           module_membership_declaration_name = name;
           module_membership_declaration_semicolon = semicolon;
         } ->
-      Concat [t env mod_kw; Space; t env name; t env semicolon; Newline]
-    | Syntax.PackageDeclaration
-        {
-          package_declaration_attribute_spec = attr;
-          package_declaration_package_keyword = package_kw;
-          package_declaration_name = name;
-          package_declaration_left_brace = lb;
-          package_declaration_uses = uses;
-          package_declaration_includes = includes;
-          package_declaration_right_brace = rb;
-        } ->
-      Concat
-        [
-          t env attr;
-          when_present attr newline;
-          t env package_kw;
-          Space;
-          t env name;
-          Space;
-          t env lb;
-          Newline;
-          t env uses;
-          when_present uses newline;
-          t env includes;
-          when_present includes newline;
-          t env rb;
-          Newline;
-        ]
-    | Syntax.PackageUses
-        {
-          package_uses_use_keyword = use_kw;
-          package_uses_left_brace = lb;
-          package_uses_uses = uses;
-          package_uses_right_brace = rb;
-        } ->
-      Concat
-        [
-          t env use_kw;
-          Space;
-          t env lb;
-          Newline;
-          WithRule
-            ( Rule.Parental,
-              Nest
-                [handle_possible_list env uses ~after_each:after_each_argument]
-            );
-          t env rb;
-          Newline;
-        ]
-    | Syntax.PackageIncludes
-        {
-          package_includes_include_keyword = include_kw;
-          package_includes_left_brace = lb;
-          package_includes_includes = includes;
-          package_includes_right_brace = rb;
-        } ->
-      Concat
-        [
-          t env include_kw;
-          Space;
-          t env lb;
-          Newline;
-          WithRule
-            ( Rule.Parental,
-              Nest
-                [
-                  handle_possible_list
-                    env
-                    includes
-                    ~after_each:after_each_argument;
-                ] );
-          t env rb;
-          Newline;
-        ])
+      Concat [t env mod_kw; Space; t env name; t env semicolon; Newline])
 
 and when_present node f =
   match Syntax.syntax node with
@@ -2771,10 +2716,18 @@ and handle_possible_compound_statement
   | _ -> Concat [Newline; BlockNest [t env node]]
 
 and handle_compound_statement
-    env ?(allow_collapse = false) left_b statements right_b =
+    env
+    ?(allow_collapse = false)
+    ?(prepend_space = true)
+    left_b
+    statements
+    right_b =
   Concat
     [
-      Space;
+      (if prepend_space then
+        Space
+      else
+        Nothing);
       braced_block_nest
         env
         ~allow_collapse

@@ -16,6 +16,7 @@ Program(
                         "AwaitAllWaitHandle": "HH\\AwaitAllWaitHandle",
                         "Awaitable": "HH\\Awaitable",
                         "Collection": "HH\\Collection",
+                        "ConcurrentWaitHandle": "HH\\ConcurrentWaitHandle",
                         "ConditionWaitHandle": "HH\\ConditionWaitHandle",
                         "Container": "HH\\Container",
                         "ExternalThreadEventWaitHandle": "HH\\ExternalThreadEventWaitHandle",
@@ -93,6 +94,7 @@ Program(
                         "meth_caller": "HH\\meth_caller",
                         "objprof_get_data": "HH\\objprof_get_data",
                         "objprof_get_paths": "HH\\objprof_get_paths",
+                        "package_exists": "HH\\package_exists",
                         "server_warmup_status": "HH\\server_warmup_status",
                         "thread_mark_stack": "HH\\thread_mark_stack",
                         "thread_memory_stats": "HH\\thread_memory_stats",
@@ -130,8 +132,6 @@ Program(
                             ),
                         ),
                     ),
-                    tparams: [],
-                    where_constraints: [],
                     params: [
                         FunParam {
                             annotation: (),
@@ -246,6 +246,8 @@ Program(
                 },
                 internal: false,
                 module: None,
+                tparams: [],
+                where_constraints: [],
             },
         ),
         Fun(
@@ -264,6 +266,7 @@ Program(
                         "AwaitAllWaitHandle": "HH\\AwaitAllWaitHandle",
                         "Awaitable": "HH\\Awaitable",
                         "Collection": "HH\\Collection",
+                        "ConcurrentWaitHandle": "HH\\ConcurrentWaitHandle",
                         "ConditionWaitHandle": "HH\\ConditionWaitHandle",
                         "Container": "HH\\Container",
                         "ExternalThreadEventWaitHandle": "HH\\ExternalThreadEventWaitHandle",
@@ -341,6 +344,7 @@ Program(
                         "meth_caller": "HH\\meth_caller",
                         "objprof_get_data": "HH\\objprof_get_data",
                         "objprof_get_paths": "HH\\objprof_get_paths",
+                        "package_exists": "HH\\package_exists",
                         "server_warmup_status": "HH\\server_warmup_status",
                         "thread_mark_stack": "HH\\thread_mark_stack",
                         "thread_memory_stats": "HH\\thread_memory_stats",
@@ -378,8 +382,6 @@ Program(
                             ),
                         ),
                     ),
-                    tparams: [],
-                    where_constraints: [],
                     params: [
                         FunParam {
                             annotation: (),
@@ -489,6 +491,8 @@ Program(
                 },
                 internal: false,
                 module: None,
+                tparams: [],
+                where_constraints: [],
             },
         ),
         Fun(
@@ -507,6 +511,7 @@ Program(
                         "AwaitAllWaitHandle": "HH\\AwaitAllWaitHandle",
                         "Awaitable": "HH\\Awaitable",
                         "Collection": "HH\\Collection",
+                        "ConcurrentWaitHandle": "HH\\ConcurrentWaitHandle",
                         "ConditionWaitHandle": "HH\\ConditionWaitHandle",
                         "Container": "HH\\Container",
                         "ExternalThreadEventWaitHandle": "HH\\ExternalThreadEventWaitHandle",
@@ -584,6 +589,7 @@ Program(
                         "meth_caller": "HH\\meth_caller",
                         "objprof_get_data": "HH\\objprof_get_data",
                         "objprof_get_paths": "HH\\objprof_get_paths",
+                        "package_exists": "HH\\package_exists",
                         "server_warmup_status": "HH\\server_warmup_status",
                         "thread_mark_stack": "HH\\thread_mark_stack",
                         "thread_memory_stats": "HH\\thread_memory_stats",
@@ -634,8 +640,6 @@ Program(
                             ),
                         ),
                     ),
-                    tparams: [],
-                    where_constraints: [],
                     params: [
                         FunParam {
                             annotation: (),
@@ -772,6 +776,8 @@ Program(
                 },
                 internal: false,
                 module: None,
+                tparams: [],
+                where_constraints: [],
             },
         ),
         Fun(
@@ -790,6 +796,7 @@ Program(
                         "AwaitAllWaitHandle": "HH\\AwaitAllWaitHandle",
                         "Awaitable": "HH\\Awaitable",
                         "Collection": "HH\\Collection",
+                        "ConcurrentWaitHandle": "HH\\ConcurrentWaitHandle",
                         "ConditionWaitHandle": "HH\\ConditionWaitHandle",
                         "Container": "HH\\Container",
                         "ExternalThreadEventWaitHandle": "HH\\ExternalThreadEventWaitHandle",
@@ -867,6 +874,7 @@ Program(
                         "meth_caller": "HH\\meth_caller",
                         "objprof_get_data": "HH\\objprof_get_data",
                         "objprof_get_paths": "HH\\objprof_get_paths",
+                        "package_exists": "HH\\package_exists",
                         "server_warmup_status": "HH\\server_warmup_status",
                         "thread_mark_stack": "HH\\thread_mark_stack",
                         "thread_memory_stats": "HH\\thread_memory_stats",
@@ -904,8 +912,6 @@ Program(
                             ),
                         ),
                     ),
-                    tparams: [],
-                    where_constraints: [],
                     params: [
                         FunParam {
                             annotation: (),
@@ -1041,7 +1047,7 @@ Program(
                                                             Id(
                                                                 Id(
                                                                     |num_type_hint.php(40:9-10),
-                                                                    "f",
+                                                                    "\\f",
                                                                 ),
                                                             ),
                                                         ),
@@ -1099,6 +1105,8 @@ Program(
                 },
                 internal: false,
                 module: None,
+                tparams: [],
+                where_constraints: [],
             },
         ),
         Fun(
@@ -1117,6 +1125,7 @@ Program(
                         "AwaitAllWaitHandle": "HH\\AwaitAllWaitHandle",
                         "Awaitable": "HH\\Awaitable",
                         "Collection": "HH\\Collection",
+                        "ConcurrentWaitHandle": "HH\\ConcurrentWaitHandle",
                         "ConditionWaitHandle": "HH\\ConditionWaitHandle",
                         "Container": "HH\\Container",
                         "ExternalThreadEventWaitHandle": "HH\\ExternalThreadEventWaitHandle",
@@ -1194,6 +1203,7 @@ Program(
                         "meth_caller": "HH\\meth_caller",
                         "objprof_get_data": "HH\\objprof_get_data",
                         "objprof_get_paths": "HH\\objprof_get_paths",
+                        "package_exists": "HH\\package_exists",
                         "server_warmup_status": "HH\\server_warmup_status",
                         "thread_mark_stack": "HH\\thread_mark_stack",
                         "thread_memory_stats": "HH\\thread_memory_stats",
@@ -1231,8 +1241,6 @@ Program(
                             ),
                         ),
                     ),
-                    tparams: [],
-                    where_constraints: [],
                     params: [],
                     ctxs: None,
                     unsafe_ctxs: None,
@@ -1253,7 +1261,7 @@ Program(
                                                         Id(
                                                             Id(
                                                                 |num_type_hint.php(44:2-3),
-                                                                "f",
+                                                                "\\f",
                                                             ),
                                                         ),
                                                     ),
@@ -1300,7 +1308,7 @@ Program(
                                                         Id(
                                                             Id(
                                                                 |num_type_hint.php(45:2-3),
-                                                                "f",
+                                                                "\\f",
                                                             ),
                                                         ),
                                                     ),
@@ -1347,7 +1355,7 @@ Program(
                                                         Id(
                                                             Id(
                                                                 |num_type_hint.php(46:2-3),
-                                                                "f",
+                                                                "\\f",
                                                             ),
                                                         ),
                                                     ),
@@ -1394,7 +1402,7 @@ Program(
                                                         Id(
                                                             Id(
                                                                 |num_type_hint.php(47:2-3),
-                                                                "f",
+                                                                "\\f",
                                                             ),
                                                         ),
                                                     ),
@@ -1441,7 +1449,7 @@ Program(
                                                         Id(
                                                             Id(
                                                                 |num_type_hint.php(49:2-7),
-                                                                "f_opt",
+                                                                "\\f_opt",
                                                             ),
                                                         ),
                                                     ),
@@ -1488,7 +1496,7 @@ Program(
                                                         Id(
                                                             Id(
                                                                 |num_type_hint.php(50:2-7),
-                                                                "f_opt",
+                                                                "\\f_opt",
                                                             ),
                                                         ),
                                                     ),
@@ -1535,7 +1543,7 @@ Program(
                                                         Id(
                                                             Id(
                                                                 |num_type_hint.php(51:2-7),
-                                                                "f_opt",
+                                                                "\\f_opt",
                                                             ),
                                                         ),
                                                     ),
@@ -1582,7 +1590,7 @@ Program(
                                                         Id(
                                                             Id(
                                                                 |num_type_hint.php(52:2-7),
-                                                                "f_opt",
+                                                                "\\f_opt",
                                                             ),
                                                         ),
                                                     ),
@@ -1629,7 +1637,7 @@ Program(
                                                         Id(
                                                             Id(
                                                                 |num_type_hint.php(53:2-7),
-                                                                "f_opt",
+                                                                "\\f_opt",
                                                             ),
                                                         ),
                                                     ),
@@ -1672,6 +1680,8 @@ Program(
                 },
                 internal: false,
                 module: None,
+                tparams: [],
+                where_constraints: [],
             },
         ),
         Fun(
@@ -1690,6 +1700,7 @@ Program(
                         "AwaitAllWaitHandle": "HH\\AwaitAllWaitHandle",
                         "Awaitable": "HH\\Awaitable",
                         "Collection": "HH\\Collection",
+                        "ConcurrentWaitHandle": "HH\\ConcurrentWaitHandle",
                         "ConditionWaitHandle": "HH\\ConditionWaitHandle",
                         "Container": "HH\\Container",
                         "ExternalThreadEventWaitHandle": "HH\\ExternalThreadEventWaitHandle",
@@ -1767,6 +1778,7 @@ Program(
                         "meth_caller": "HH\\meth_caller",
                         "objprof_get_data": "HH\\objprof_get_data",
                         "objprof_get_paths": "HH\\objprof_get_paths",
+                        "package_exists": "HH\\package_exists",
                         "server_warmup_status": "HH\\server_warmup_status",
                         "thread_mark_stack": "HH\\thread_mark_stack",
                         "thread_memory_stats": "HH\\thread_memory_stats",
@@ -1804,8 +1816,6 @@ Program(
                             ),
                         ),
                     ),
-                    tparams: [],
-                    where_constraints: [],
                     params: [
                         FunParam {
                             annotation: (),
@@ -1939,7 +1949,7 @@ Program(
                                                         Id(
                                                             Id(
                                                                 |num_type_hint.php(58:2-9),
-                                                                "hh_show",
+                                                                "\\hh_show",
                                                             ),
                                                         ),
                                                     ),
@@ -2118,7 +2128,7 @@ Program(
                                                                                     Id(
                                                                                         Id(
                                                                                             |num_type_hint.php(66:6-13),
-                                                                                            "hh_show",
+                                                                                            "\\hh_show",
                                                                                         ),
                                                                                     ),
                                                                                 ),
@@ -2343,6 +2353,8 @@ Program(
                 },
                 internal: false,
                 module: None,
+                tparams: [],
+                where_constraints: [],
             },
         ),
     ],

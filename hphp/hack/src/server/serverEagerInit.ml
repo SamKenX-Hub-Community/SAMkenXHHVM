@@ -38,7 +38,7 @@ let type_decl
     (env : ServerEnv.env)
     (defs_per_file : Naming_table.defs_per_file)
     (t : float) : ServerEnv.env * float =
-  ServerProgress.send_progress "evaluating type declarations";
+  ServerProgress.write "evaluating type declarations";
   let bucket_size = genv.local_config.SLC.type_decl_bucket_size in
   let ctx = Provider_utils.ctx_from_server_env env in
   let errorl = Decl_service.go ~bucket_size ctx genv.workers defs_per_file in
@@ -64,8 +64,7 @@ let init
   in
 
   (* Load and parse packages.toml if it exists at the root. *)
-  let get_package_for_module = PackageConfig.load_and_parse () in
-  let env = { env with get_package_for_module = Some get_package_for_module } in
+  let env = PackageConfig.load_and_parse env in
 
   (* We don't support a saved state for eager init. *)
   let (get_next, t) =

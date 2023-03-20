@@ -153,7 +153,6 @@ module Program = struct
 end
 
 let finalize_init init_env typecheck_telemetry init_telemetry =
-  ServerProgress.send_warning None;
   (* rest is just logging/telemetry *)
   let t' = Unix.gettimeofday () in
   let hash_telemetry = ServerUtils.log_and_get_sharedmem_load_telemetry () in
@@ -611,9 +610,16 @@ let log_recheck_end (stats : ServerEnv.RecheckLoopStats.t) ~errors ~diag_reason
     (Telemetry.to_string telemetry);
   ()
 
+let exit_if_parent_dead () =
+  (* Cross-platform compatible way; parent PID becomes 1 when parent dies. *)
+  if Unix.getppid () = 1 then (
+    Hh_logger.log "Server's parent has died; exiting.\n";
+    Exit.exit Exit_status.Lost_parent_monitor
+  )
+
 let serve_one_iteration genv env client_provider =
   let (env, recheck_id) = generate_and_update_recheck_id env in
-  ServerMonitorUtils.exit_if_parent_dead ();
+  exit_if_parent_dead ();
   let acceptable_new_client_kind =
     let has_default_client_pending =
       Option.is_some env.nonpersistent_client_pending_command_needs_full_check
@@ -646,26 +652,26 @@ let serve_one_iteration genv env client_provider =
         client_kind
   in
 
-  (* We'll now update any waiting clients with our status.
-   * (Or more precisely, we'll tell the monitor, so any waiting clients
-   * will know when they poll the monitor.)
-   *
-   * By updating status now at the start of the serve_one_iteration,
+  (* ServerProgress: By updating status now at the start of the serve_one_iteration,
    * it means there's no obligation on the "doing work" part of the previous
    * iteration to clean up its own status-reporting once done.
+   *
    * Caveat: that's not quite true, since ClientProvider.sleep_and_check will
-   * wait up to 1s if there are no pending requests. So theoretically we
-   * won't update our status for up to 1s after the previous work is done.
+   * wait up to 0.1s if there are no pending requests. So theoretically we
+   * won't update our status for up to 0.1s after the previous work is done.
    * That doesn't really matter, since (1) if there are no pending requests
    * then no client will even ask for status, and (2) it's worth it to
    * keep the code clean and simple.
+   *
+   * By the same token, we will be writing "ready" once every 0.1s to the status file.
+   * Think of it as a heartbeat!
    *
    * Note: the message here might soon be replaced. If we discover disk changes
    * that prompt a typecheck, then typechecking sends its own status updates.
    * And if the selected_client was a request, then once we discover the nature
    * of that request then ServerCommand.handle will send its own status updates too.
    *)
-  ServerProgress.send_progress
+  ServerProgress.write
     ~include_in_logs:false
     "%s"
     (match selected_client with
@@ -980,6 +986,7 @@ let persistent_client_interrupt_handler genv :
          `Persistent
      with
     | ServerUtils.Needs_full_recheck { env; finish_command_handling; reason } ->
+      ServerProgress.write "typechecking";
       (* This should not be possible, because persistent client will not send
        * the next command before receiving results from the previous one. *)
       assert (
@@ -1008,7 +1015,9 @@ let persistent_client_interrupt_handler genv :
           full_check_status;
         },
         MultiThreadedCall.Cancel )
-    | ServerUtils.Done env -> (env, MultiThreadedCall.Continue))
+    | ServerUtils.Done env ->
+      ServerProgress.write "typechecking";
+      (env, MultiThreadedCall.Continue))
 
 let setup_interrupts env client_provider =
   {
@@ -1208,7 +1217,7 @@ let program_init genv env =
     }
   in
   Hh_logger.log "Waiting for daemon(s) to be ready...";
-  ServerProgress.send_progress "wrapping up init...";
+  ServerProgress.write "wrapping up init...";
   genv.wait_until_ready ();
   ServerStamp.touch_stamp ();
   EventLogger.set_init_type init_type;
@@ -1287,8 +1296,8 @@ let setup_server ~informant_managed ~monitor_pid options config local_config =
         and upon clean exit we'll write "shutting down" to it.
      In both case of clean exit and abrupt exit there'll be leftover files.
      We'll rely upon tmpclean to eventually clean them up. *)
+  ServerProgress.set_root (ServerArgs.root options);
   let server_finale_file = ServerFiles.server_finale_file pid in
-  let server_progress_file = ServerFiles.server_progress_file pid in
   let server_receipt_to_monitor_file =
     ServerFiles.server_receipt_to_monitor_file pid
   in
@@ -1296,14 +1305,7 @@ let setup_server ~informant_managed ~monitor_pid options config local_config =
   | _ -> ());
   (try Unix.unlink server_receipt_to_monitor_file with
   | _ -> ());
-  ServerCommandTypesUtils.write_progress_file
-    ~server_progress_file
-    ~server_progress:
-      {
-        ServerCommandTypes.server_warning = None;
-        server_progress = "starting up";
-        server_timestamp = Unix.gettimeofday ();
-      };
+  ServerProgress.write "startuping up";
   Exit.add_hook_upon_clean_exit (fun finale_data ->
       begin
         try Unix.unlink server_receipt_to_monitor_file with
@@ -1319,16 +1321,7 @@ let setup_server ~informant_managed ~monitor_pid options config local_config =
         | _ -> ()
       end;
       begin
-        try
-          ServerCommandTypesUtils.write_progress_file
-            ~server_progress_file
-            ~server_progress:
-              {
-                ServerCommandTypes.server_warning = None;
-                server_progress = "shutting down";
-                server_timestamp = Unix.gettimeofday ();
-              }
-        with
+        try ServerProgress.write "shutting down" with
         | _ -> ()
       end;
       ());

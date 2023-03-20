@@ -2,27 +2,22 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
-use std::ops::ControlFlow;
 
 use hash::HashSet;
-use naming_special_names_rust as sn;
-use oxidized::aast_defs::Class_;
-use oxidized::aast_defs::FunDef;
-use oxidized::aast_defs::Gconst;
-use oxidized::aast_defs::Hint;
-use oxidized::aast_defs::Hint_;
-use oxidized::aast_defs::Method_;
-use oxidized::aast_defs::ModuleDef;
-use oxidized::aast_defs::Tparam;
-use oxidized::aast_defs::Typedef;
-use oxidized::ast_defs::Id;
-use oxidized::ast_defs::Pos;
-use oxidized::naming_error::NamingError;
-use oxidized::naming_phase_error::NamingPhaseError;
-use oxidized::tast::Tprim;
+use nast::Class_;
+use nast::FunDef;
+use nast::Gconst;
+use nast::Hint;
+use nast::Hint_;
+use nast::Id;
+use nast::Method_;
+use nast::ModuleDef;
+use nast::Pos;
+use nast::Tparam;
+use nast::Tprim;
+use nast::Typedef;
 
-use crate::config::Config;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Clone, Default)]
 pub struct ElabHintHapplyPass {
@@ -30,7 +25,7 @@ pub struct ElabHintHapplyPass {
 }
 
 impl ElabHintHapplyPass {
-    pub fn extend_tparams<Ex, En>(&mut self, tps: &[Tparam<Ex, En>]) {
+    pub fn extend_tparams(&mut self, tps: &[Tparam]) {
         tps.iter().for_each(|tparam| {
             self.tparams.insert(tparam.name.1.clone());
         })
@@ -38,7 +33,7 @@ impl ElabHintHapplyPass {
     pub fn reset_tparams(&mut self) {
         self.tparams.clear()
     }
-    pub fn set_tparams<Ex, En>(&mut self, tps: &[Tparam<Ex, En>]) {
+    pub fn set_tparams(&mut self, tps: &[Tparam]) {
         self.reset_tparams();
         self.extend_tparams(tps);
     }
@@ -51,104 +46,62 @@ impl Pass for ElabHintHapplyPass {
     // We can't write this - how can we make the contexts modular?
     // type Ctx = impl CanonicalHapplyCtx;
 
-    fn on_ty_typedef_top_down<Ex: Default, En>(
-        &mut self,
-        elem: &mut Typedef<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_typedef_top_down(&mut self, _: &Env, elem: &mut Typedef) -> ControlFlow<()> {
         self.set_tparams(&elem.tparams);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_gconst_top_down<Ex: Default, En>(
-        &mut self,
-        _elem: &mut Gconst<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_gconst_top_down(&mut self, _: &Env, _: &mut Gconst) -> ControlFlow<()> {
         self.reset_tparams();
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_fun_def_top_down<Ex: Default, En>(
-        &mut self,
-        elem: &mut FunDef<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
-        self.set_tparams(&elem.fun.tparams);
-        ControlFlow::Continue(())
-    }
-
-    fn on_ty_module_def_top_down<Ex: Default, En>(
-        &mut self,
-        _elem: &mut ModuleDef<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
-        self.reset_tparams();
-        ControlFlow::Continue(())
-    }
-
-    #[allow(non_snake_case)]
-    fn on_ty_class__top_down<Ex: Default, En>(
-        &mut self,
-        elem: &mut Class_<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_fun_def_top_down(&mut self, _: &Env, elem: &mut FunDef) -> ControlFlow<()> {
         self.set_tparams(&elem.tparams);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    #[allow(non_snake_case)]
-    fn on_ty_method__top_down<Ex: Default, En>(
-        &mut self,
-        elem: &mut Method_<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_module_def_top_down(&mut self, _: &Env, _: &mut ModuleDef) -> ControlFlow<()> {
+        self.reset_tparams();
+        Continue(())
+    }
+
+    fn on_ty_class__top_down(&mut self, _: &Env, elem: &mut Class_) -> ControlFlow<()> {
+        self.set_tparams(&elem.tparams);
+        Continue(())
+    }
+
+    fn on_ty_method__top_down(&mut self, _: &Env, elem: &mut Method_) -> ControlFlow<()> {
         self.extend_tparams(&elem.tparams);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_tparam_top_down<Ex: Default, En>(
-        &mut self,
-        elem: &mut Tparam<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_tparam_top_down(&mut self, _: &Env, elem: &mut Tparam) -> ControlFlow<()> {
         self.extend_tparams(&elem.parameters);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_hint_top_down(
-        &mut self,
-        elem: &mut Hint,
-        _ctx: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_hint_top_down(&mut self, env: &Env, elem: &mut Hint) -> ControlFlow<()> {
         match &mut *elem.1 {
             Hint_::Happly(id, hints) => match canonical_happly(id, hints, self.tparams()) {
-                ControlFlow::Continue((hint_opt, err_opt)) => {
+                Continue((hint_opt, err_opt)) => {
                     if let Some(hint_) = hint_opt {
                         *elem.1 = hint_
                     }
                     if let Some(err) = err_opt {
-                        errs.push(err)
+                        env.emit_error(err)
                     }
-                    ControlFlow::Continue(())
+                    Continue(())
                 }
-                ControlFlow::Break((hint_opt, err)) => {
+                Break((hint_opt, err)) => {
                     if let Some(hint_) = hint_opt {
                         *elem.1 = hint_
                     }
-                    errs.push(err);
-                    ControlFlow::Break(())
+                    env.emit_error(err);
+                    Break(())
                 }
             },
-            _ => ControlFlow::Continue(()),
+            _ => Continue(()),
         }
     }
 }
@@ -173,21 +126,19 @@ fn canonical_happly(
     id: &mut Id,
     hints: &mut Vec<Hint>,
     tparams: &HashSet<String>,
-) -> ControlFlow<(Option<Hint_>, NamingPhaseError), (Option<Hint_>, Option<NamingPhaseError>)> {
+) -> ControlFlow<(Option<Hint_>, NamingError), (Option<Hint_>, Option<NamingError>)> {
     match canonical_tycon(id, tparams) {
         // The type constructors canonical representation _is_ `Happly`
-        CanonResult::Tycon => ControlFlow::Continue((None, None)),
+        CanonResult::Tycon => Continue((None, None)),
         // The type constructors canonical representation is a concrete type
         CanonResult::Concrete(hint_canon) => {
             // We can't represent a concrete type applied to other types
             let err_opt = if hints.is_empty() {
                 None
             } else {
-                Some(NamingPhaseError::Naming(
-                    NamingError::UnexpectedTypeArguments(id.0.clone()),
-                ))
+                Some(NamingError::UnexpectedTypeArguments(id.0.clone()))
             };
-            ControlFlow::Continue((Some(hint_canon), err_opt))
+            Continue((Some(hint_canon), err_opt))
         }
         // The type constructors corresponds to an in-scope type parameter
         CanonResult::Typaram => {
@@ -198,7 +149,7 @@ fn canonical_happly(
             std::mem::swap(&mut id.1, &mut nm_canon);
             std::mem::swap(hints, &mut hints_canon);
             let hint_canon = Hint_::Habstr(nm_canon.to_string(), hints_canon);
-            ControlFlow::Continue((Some(hint_canon), None))
+            Continue((Some(hint_canon), None))
         }
         // The type constructors canonical representation is `Happly` but
         // additional elaboration / validation is required
@@ -207,19 +158,17 @@ fn canonical_happly(
             let err_opt = if hints.is_empty() {
                 None
             } else {
-                Some(NamingPhaseError::Naming(NamingError::ThisNoArgument(
-                    id.0.clone(),
-                )))
+                Some(NamingError::ThisNoArgument(id.0.clone()))
             };
-            ControlFlow::Continue((Some(hint_), err_opt))
+            Continue((Some(hint_), err_opt))
         }
         CanonResult::Wildcard => {
             if hints.is_empty() {
-                ControlFlow::Continue((None, None))
+                Continue((None, None))
             } else {
-                let err = NamingPhaseError::Naming(NamingError::ThisNoArgument(id.0.clone()));
+                let err = NamingError::ThisNoArgument(id.0.clone());
                 let hint_ = Hint_::Herr;
-                ControlFlow::Break((Some(hint_), err))
+                Break((Some(hint_), err))
             }
         }
         CanonResult::Classname => {
@@ -228,73 +177,73 @@ fn canonical_happly(
             // Investigate why this happens and if we can delay treatment to
             // typing
             if hints.len() == 1 {
-                ControlFlow::Continue((None, None))
+                Continue((None, None))
             } else {
-                let err = NamingPhaseError::Naming(NamingError::ClassnameParam(id.0.clone()));
+                let err = NamingError::ClassnameParam(id.0.clone());
                 let hint_ = Hint_::Hprim(Tprim::Tstring);
-                ControlFlow::Break((Some(hint_), err))
+                Break((Some(hint_), err))
             }
         }
         CanonResult::ErrPrimTopLevel => {
             let hint_ = Hint_::Herr;
-            let err = NamingPhaseError::Naming(NamingError::PrimitiveTopLevel(id.0.clone()));
-            ControlFlow::Break((Some(hint_), err))
+            let err = NamingError::PrimitiveTopLevel(id.0.clone());
+            Break((Some(hint_), err))
         }
         // TODO[mjt] we should not be assuming knowledge about the arity of
         // type constructors during elaboration
         CanonResult::Darray if hints.len() == 2 => {
             id.1 = sn::collections::DICT.to_string();
-            ControlFlow::Continue((None, None))
+            Continue((None, None))
         }
         CanonResult::Darray if hints.len() < 2 => {
             id.1 = sn::collections::DICT.to_string();
             hints.clear();
             hints.push(Hint(id.0.clone(), Box::new(Hint_::Hany)));
             hints.push(Hint(id.0.clone(), Box::new(Hint_::Hany)));
-            let err = NamingPhaseError::Naming(NamingError::TooFewTypeArguments(id.0.clone()));
-            ControlFlow::Continue((None, Some(err)))
+            let err = NamingError::TooFewTypeArguments(id.0.clone());
+            Continue((None, Some(err)))
         }
         CanonResult::Darray => {
             let hint_ = Hint_::Hany;
-            let err = NamingPhaseError::Naming(NamingError::TooManyTypeArguments(id.0.clone()));
-            ControlFlow::Break((Some(hint_), err))
+            let err = NamingError::TooManyTypeArguments(id.0.clone());
+            Break((Some(hint_), err))
         }
         CanonResult::Varray if hints.len() == 1 => {
             id.1 = sn::collections::VEC.to_string();
-            ControlFlow::Continue((None, None))
+            Continue((None, None))
         }
         CanonResult::Varray if hints.is_empty() => {
             id.1 = sn::collections::VEC.to_string();
             hints.clear();
             hints.push(Hint(id.0.clone(), Box::new(Hint_::Hany)));
-            let err = NamingPhaseError::Naming(NamingError::TooFewTypeArguments(id.0.clone()));
-            ControlFlow::Continue((None, Some(err)))
+            let err = NamingError::TooFewTypeArguments(id.0.clone());
+            Continue((None, Some(err)))
         }
         CanonResult::Varray => {
             let hint_ = Hint_::Hany;
-            let err = NamingPhaseError::Naming(NamingError::TooManyTypeArguments(id.0.clone()));
-            ControlFlow::Break((Some(hint_), err))
+            let err = NamingError::TooManyTypeArguments(id.0.clone());
+            Break((Some(hint_), err))
         }
         CanonResult::VecOrDict if hints.len() > 2 => {
             let hint_ = Hint_::Hany;
-            let err = NamingPhaseError::Naming(NamingError::TooManyTypeArguments(id.0.clone()));
-            ControlFlow::Break((Some(hint_), err))
+            let err = NamingError::TooManyTypeArguments(id.0.clone());
+            Break((Some(hint_), err))
         }
         CanonResult::VecOrDict => match hints.pop() {
             None => {
                 let mut pos_canon = Pos::NONE;
                 std::mem::swap(&mut id.0, &mut pos_canon);
                 let hint_ = Hint_::HvecOrDict(None, Hint(pos_canon, Box::new(Hint_::Hany)));
-                let err = NamingPhaseError::Naming(NamingError::TooFewTypeArguments(id.0.clone()));
-                ControlFlow::Continue((Some(hint_), Some(err)))
+                let err = NamingError::TooFewTypeArguments(id.0.clone());
+                Continue((Some(hint_), Some(err)))
             }
             Some(hint2) => {
                 if let Some(hint1) = hints.pop() {
                     let hint_ = Hint_::HvecOrDict(Some(hint1), hint2);
-                    ControlFlow::Continue((Some(hint_), None))
+                    Continue((Some(hint_), None))
                 } else {
                     let hint_ = Hint_::HvecOrDict(None, hint2);
-                    ControlFlow::Continue((Some(hint_), None))
+                    Continue((Some(hint_), None))
                 }
             }
         },
@@ -381,12 +330,11 @@ fn is_prim(str: &str) -> bool {
 mod tests {
 
     use super::*;
-    use crate::Transform;
 
     #[test]
     fn test_vec_or_dict_two_tyargs() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabHintHapplyPass::default();
 
         let mut elem = Hint(
@@ -400,7 +348,7 @@ mod tests {
             )),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
         let Hint(_, hint_) = elem;
         assert!(match &*hint_ {
             Hint_::HvecOrDict(Some(h1), h2) => {
@@ -414,8 +362,8 @@ mod tests {
 
     #[test]
     fn test_vec_or_dict_one_tyargs() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabHintHapplyPass::default();
 
         let mut elem = Hint(
@@ -426,7 +374,7 @@ mod tests {
             )),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
         let Hint(_, hint_) = elem;
         assert!(match &*hint_ {
             Hint_::HvecOrDict(None, h) => {
@@ -439,8 +387,8 @@ mod tests {
 
     #[test]
     fn test_vec_or_dict_zero_tyargs() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabHintHapplyPass::default();
 
         let mut elem = Hint(
@@ -451,7 +399,7 @@ mod tests {
             )),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
         let Hint(_, hint_) = elem;
         assert!(match &*hint_ {
             Hint_::HvecOrDict(None, h) => {

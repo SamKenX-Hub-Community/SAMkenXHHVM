@@ -2,18 +2,13 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
-use std::ops::ControlFlow;
 
-use naming_special_names_rust as sn;
-use oxidized::aast_defs::Contexts;
-use oxidized::aast_defs::Expr_;
-use oxidized::aast_defs::Hint;
-use oxidized::aast_defs::Hint_;
-use oxidized::naming_error::NamingError;
-use oxidized::naming_phase_error::NamingPhaseError;
+use nast::Contexts;
+use nast::Expr_;
+use nast::Hint;
+use nast::Hint_;
 
-use crate::config::Config;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Clone, Copy, Default)]
 pub struct ElabHintWildcardPass {
@@ -31,12 +26,7 @@ impl ElabHintWildcardPass {
 }
 
 impl Pass for ElabHintWildcardPass {
-    fn on_ty_hint_top_down(
-        &mut self,
-        elem: &mut Hint,
-        _cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_hint_top_down(&mut self, env: &Env, elem: &mut Hint) -> ControlFlow<()> {
         let Hint(pos, box hint_) = elem;
         //   Swap for `Herr`
         let in_hint_ = std::mem::replace(hint_, Hint_::Herr);
@@ -48,30 +38,28 @@ impl Pass for ElabHintWildcardPass {
                     if !hints.is_empty() {
                         // Since we are at depth >= 1, `_` must be a type parameter
                         // and should not be applied to other types
-                        errs.push(NamingPhaseError::Naming(NamingError::TparamAppliedToType {
+                        env.emit_error(NamingError::TparamAppliedToType {
                             pos: pos.clone(),
                             tparam_name: sn::typehints::WILDCARD.to_string(),
-                        }));
+                        });
                         //  We've already set the hint to `Herr` so just break
-                        ControlFlow::Break(())
+                        Break(())
                     } else {
                         // This is valid; restore the hint and continue
                         *hint_ = in_hint_;
-                        ControlFlow::Continue(())
+                        Continue(())
                     }
                 } else {
                     // Wildcard hints are disallowed here; add an error
-                    errs.push(NamingPhaseError::Naming(
-                        NamingError::WildcardHintDisallowed(pos.clone()),
-                    ));
+                    env.emit_error(NamingError::WildcardHintDisallowed(pos.clone()));
                     //  We've already set the hint to `Herr` so just break
-                    ControlFlow::Break(())
+                    Break(())
                 }
             }
             _ => {
                 // This isn't a wildcard hint; restore the original hint and continue
                 *hint_ = in_hint_;
-                ControlFlow::Continue(())
+                Continue(())
             }
         }
     }
@@ -79,64 +67,36 @@ impl Pass for ElabHintWildcardPass {
     // Wildcard hints are _always_ disallowed in contexts
     // TODO: we define this on `context` in OCaml - we need a newtype
     // to do the same here
-    fn on_ty_contexts_top_down(
-        &mut self,
-        elem: &mut Contexts,
-        _cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_contexts_top_down(&mut self, env: &Env, elem: &mut Contexts) -> ControlFlow<()> {
         let Contexts(_, hints) = elem;
         hints
             .iter_mut()
             .filter(|hint| is_wildcard(hint))
             .for_each(|hint| {
                 let Hint(pos, box hint_) = hint;
-                errs.push(NamingPhaseError::Naming(
-                    NamingError::InvalidWildcardContext(pos.clone()),
-                ));
+                env.emit_error(NamingError::InvalidWildcardContext(pos.clone()));
                 *hint_ = Hint_::Herr
             });
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_expr__top_down<Ex, En>(
-        &mut self,
-        elem: &mut oxidized::aast::Expr_<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_expr__top_down(&mut self, _: &Env, elem: &mut nast::Expr_) -> ControlFlow<()> {
         match elem {
             Expr_::Cast(..) => self.incr_depth(),
             Expr_::Is(..) | Expr_::As(..) => self.allow_wildcard = true,
             Expr_::Upcast(..) => self.allow_wildcard = false,
             _ => (),
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_targ_top_down<Ex>(
-        &mut self,
-        _elem: &mut oxidized::aast::Targ<Ex>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_targ_top_down(&mut self, _: &Env, _: &mut nast::Targ) -> ControlFlow<()> {
         self.allow_wildcard = true;
         self.incr_depth();
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_hint__top_down(
-        &mut self,
-        elem: &mut Hint_,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_hint__top_down(&mut self, _: &Env, elem: &mut Hint_) -> ControlFlow<()> {
         match elem {
             Hint_::Hunion(_)
             | Hint_::Hintersection(_)
@@ -149,17 +109,16 @@ impl Pass for ElabHintWildcardPass {
             }
             _ => (),
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 
     fn on_ty_shape_field_info_top_down(
         &mut self,
-        _elem: &mut oxidized::tast::ShapeFieldInfo,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+        _: &Env,
+        _: &mut nast::ShapeFieldInfo,
+    ) -> ControlFlow<()> {
         self.incr_depth();
-        ControlFlow::Continue(())
+        Continue(())
     }
 }
 
@@ -173,13 +132,11 @@ fn is_wildcard(hint: &Hint) -> bool {
 #[cfg(test)]
 mod tests {
 
-    use oxidized::aast_defs::Targ;
-    use oxidized::ast_defs::Id;
-    use oxidized::tast::Pos;
+    use nast::Id;
+    use nast::Pos;
+    use nast::Targ;
 
     use super::*;
-    use crate::elab_utils;
-    use crate::Transform;
 
     fn make_wildcard(hints: Vec<Hint>) -> Hint {
         Hint(
@@ -201,14 +158,13 @@ mod tests {
     // we reach the `on_ty_hint_top_down` handler _before_ `on_ty_hint__top_down`
     // As a result, we will mark the hint as invalid and raise an error
     fn test_expr_is_top_level_invalid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
-        let mut pass = ElabHintWildcardPass::default();
-        let mut elem: Expr_<(), ()> =
-            Expr_::Is(Box::new((elab_utils::expr::null(), make_wildcard(vec![]))));
-        elem.transform(&cfg, &mut errs, &mut pass);
+        let env = Env::default();
 
-        let wildcard_hint_disallowed_err_opt = errs.pop();
+        let mut pass = ElabHintWildcardPass::default();
+        let mut elem = Expr_::Is(Box::new((elab_utils::expr::null(), make_wildcard(vec![]))));
+        elem.transform(&env, &mut pass);
+
+        let wildcard_hint_disallowed_err_opt = env.into_errors().pop();
         assert!(matches!(
             wildcard_hint_disallowed_err_opt,
             Some(NamingPhaseError::Naming(
@@ -224,19 +180,19 @@ mod tests {
     // we have (i) wildcards are allowed, (ii) depth is 1, (iii) the
     // wildcard isn't applied to other types so we expect it to be valid
     fn test_expr_is_nested_valid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabHintWildcardPass::default();
-        let mut elem: Expr_<(), ()> = Expr_::Is(Box::new((
+        let mut elem = Expr_::Is(Box::new((
             elab_utils::expr::null(),
             Hint(
                 Pos::default(),
                 Box::new(Hint_::Htuple(vec![make_wildcard(vec![])])),
             ),
         )));
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
-        assert!(errs.is_empty());
+        assert!(env.into_errors().is_empty());
         assert!(match elem {
             Expr_::Is(box (_, Hint(_, box Hint_::Htuple(mut hints)))) =>
                 hints.pop().map_or(false, |hint| is_wildcard(&hint)),
@@ -248,16 +204,16 @@ mod tests {
     // Wildcard hint applied to another type at the top-level of a `Is` expression
     // Because we are at depth 0 we will raise the `WildcardDisallowedHint` error
     fn test_expr_is_top_level_hkt_invalid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabHintWildcardPass::default();
-        let mut elem: Expr_<(), ()> = Expr_::Is(Box::new((
+        let mut elem = Expr_::Is(Box::new((
             elab_utils::expr::null(),
             make_wildcard(vec![Hint(Pos::default(), Box::new(Hint_::Herr))]),
         )));
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
-        let wildcard_hint_disallowed_err_opt = errs.pop();
+        let wildcard_hint_disallowed_err_opt = env.into_errors().pop();
         assert!(matches!(
             wildcard_hint_disallowed_err_opt,
             Some(NamingPhaseError::Naming(
@@ -272,10 +228,10 @@ mod tests {
     // Wildcard hint applied to another type at the top-level of a `Is` expression
     // Because we are at depth 1 we will raise the `TparamAppliedToType` error
     fn test_expr_is_nest_hkt_invalid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabHintWildcardPass::default();
-        let mut elem: Expr_<(), ()> = Expr_::Is(Box::new((
+        let mut elem = Expr_::Is(Box::new((
             elab_utils::expr::null(),
             Hint(
                 Pos::default(),
@@ -285,9 +241,9 @@ mod tests {
                 )])])),
             ),
         )));
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
-        let tparam_applied_to_type_err_opt = errs.pop();
+        let tparam_applied_to_type_err_opt = env.into_errors().pop();
         assert!(matches!(
             tparam_applied_to_type_err_opt,
             Some(NamingPhaseError::Naming(
@@ -311,14 +267,13 @@ mod tests {
     // set  to true in `targ`s or `Is`/`As` expressions we expect all wildcard
     // hints appearing here to be invalid
     fn test_expr_upcast_top_level_invalid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
-        let mut pass = ElabHintWildcardPass::default();
-        let mut elem: Expr_<(), ()> =
-            Expr_::Upcast(Box::new((elab_utils::expr::null(), make_wildcard(vec![]))));
-        elem.transform(&cfg, &mut errs, &mut pass);
+        let env = Env::default();
 
-        let wildcard_hint_disallowed_err_opt = errs.pop();
+        let mut pass = ElabHintWildcardPass::default();
+        let mut elem = Expr_::Upcast(Box::new((elab_utils::expr::null(), make_wildcard(vec![]))));
+        elem.transform(&env, &mut pass);
+
+        let wildcard_hint_disallowed_err_opt = env.into_errors().pop();
         assert!(matches!(
             wildcard_hint_disallowed_err_opt,
             Some(NamingPhaseError::Naming(
@@ -337,10 +292,10 @@ mod tests {
     // set  to true in `targ`s or `Is`/`As` expressions we expect all wildcard
     // hints appearing here to be invalid
     fn test_expr_upcast_nested_invalid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabHintWildcardPass::default();
-        let mut elem: Expr_<(), ()> = Expr_::Upcast(Box::new((
+        let mut elem = Expr_::Upcast(Box::new((
             elab_utils::expr::null(),
             Hint(
                 Pos::default(),
@@ -350,9 +305,9 @@ mod tests {
                 )])])),
             ),
         )));
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
-        let wildcard_hint_disallowed_err_opt = errs.pop();
+        let wildcard_hint_disallowed_err_opt = env.into_errors().pop();
         assert!(matches!(
             wildcard_hint_disallowed_err_opt,
             Some(NamingPhaseError::Naming(
@@ -375,14 +330,13 @@ mod tests {
     // Since `Cast` does not modify `allow_wildcard` we never expect it to be
     // valid
     fn test_expr_cast_top_level_invalid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
-        let mut pass = ElabHintWildcardPass::default();
-        let mut elem: Expr_<(), ()> =
-            Expr_::Cast(Box::new((make_wildcard(vec![]), elab_utils::expr::null())));
-        elem.transform(&cfg, &mut errs, &mut pass);
+        let env = Env::default();
 
-        let wildcard_hint_disallowed_err_opt = errs.pop();
+        let mut pass = ElabHintWildcardPass::default();
+        let mut elem = Expr_::Cast(Box::new((make_wildcard(vec![]), elab_utils::expr::null())));
+        elem.transform(&env, &mut pass);
+
+        let wildcard_hint_disallowed_err_opt = env.into_errors().pop();
         assert!(matches!(
             wildcard_hint_disallowed_err_opt,
             Some(NamingPhaseError::Naming(
@@ -401,13 +355,13 @@ mod tests {
     #[test]
     // Wildcard hints are always invalid inside `Contexts`
     fn test_contexts_top_level_invalid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
-        let mut pass = ElabHintWildcardPass::default();
-        let mut elem: Contexts = Contexts(Pos::default(), vec![make_wildcard(vec![])]);
-        elem.transform(&cfg, &mut errs, &mut pass);
+        let env = Env::default();
 
-        let invalid_wildcard_context_err_opt = errs.pop();
+        let mut pass = ElabHintWildcardPass::default();
+        let mut elem = Contexts(Pos::default(), vec![make_wildcard(vec![])]);
+        elem.transform(&env, &mut pass);
+
+        let invalid_wildcard_context_err_opt = env.into_errors().pop();
         assert!(matches!(
             invalid_wildcard_context_err_opt,
             Some(NamingPhaseError::Naming(
@@ -426,13 +380,13 @@ mod tests {
     #[test]
     // Wildcard hints are valid inside `Targ`s
     fn test_contexts_top_level_valid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
-        let mut pass = ElabHintWildcardPass::default();
-        let mut elem: Targ<()> = Targ((), make_wildcard(vec![]));
-        elem.transform(&cfg, &mut errs, &mut pass);
+        let env = Env::default();
 
-        assert!(errs.is_empty());
+        let mut pass = ElabHintWildcardPass::default();
+        let mut elem = Targ((), make_wildcard(vec![]));
+        elem.transform(&env, &mut pass);
+
+        assert!(env.into_errors().is_empty());
         let Targ(_, ref hint) = elem;
         assert!(is_wildcard(hint))
     }

@@ -3,29 +3,18 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 
-use std::ops::ControlFlow;
+use nast::Class_;
+use nast::ClassishKind;
 
-use naming_special_names_rust as sn;
-use oxidized::aast_defs::Class_;
-use oxidized::ast::ClassishKind;
-use oxidized::naming_error::NamingError;
-use oxidized::naming_phase_error::NamingPhaseError;
-
-use crate::config::Config;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Clone, Copy, Default)]
 pub struct ValidateClassConsistentConstructPass;
 
 impl Pass for ValidateClassConsistentConstructPass {
-    fn on_ty_class__top_down<Ex: Default, En>(
-        &mut self,
-        class: &mut Class_<Ex, En>,
-        cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
-        if cfg.consistent_ctor_level <= 0 {
-            return ControlFlow::Continue(());
+    fn on_ty_class__top_down(&mut self, env: &Env, class: &mut Class_) -> ControlFlow<()> {
+        if env.consistent_ctor_level <= 0 {
+            return Continue(());
         }
         let attr_pos_opt = class
             .user_attributes
@@ -42,17 +31,15 @@ impl Pass for ValidateClassConsistentConstructPass {
             // `consistent_ctor_level` > 1, it's an error.
             Some(pos)
                 if !has_ctor
-                    && (class.kind == ClassishKind::Ctrait || cfg.consistent_ctor_level > 1) =>
+                    && (class.kind == ClassishKind::Ctrait || env.consistent_ctor_level > 1) =>
             {
-                errs.push(NamingPhaseError::Naming(
-                    NamingError::ExplicitConsistentConstructor {
-                        classish_kind: class.kind,
-                        pos: pos.clone(),
-                    },
-                ))
+                env.emit_error(NamingError::ExplicitConsistentConstructor {
+                    classish_kind: class.kind,
+                    pos: pos.clone(),
+                })
             }
             _ => (),
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 }

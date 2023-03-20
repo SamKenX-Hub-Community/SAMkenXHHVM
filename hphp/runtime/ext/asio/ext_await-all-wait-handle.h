@@ -56,13 +56,6 @@ struct c_AwaitAllWaitHandle final : c_WaitableWaitHandle {
     }
   }
 
-  // [frame, last) are the set of locals, and cnt is number of
-  // non-finished wait handles in that range.
-  static ObjectData* fromFrameNoCheck(const ActRec* fp,
-                                      uint32_t first,
-                                      uint32_t last,
-                                      uint32_t cnt);
-
  public:
   struct Node final {
     static constexpr ptrdiff_t blockableOff() {

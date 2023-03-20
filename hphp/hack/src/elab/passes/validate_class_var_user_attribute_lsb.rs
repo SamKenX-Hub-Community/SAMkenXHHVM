@@ -2,16 +2,11 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
-use std::ops::ControlFlow;
 
-use naming_special_names_rust as sn;
-use oxidized::aast_defs::ClassVar;
-use oxidized::ast_defs::Id;
-use oxidized::naming_error::NamingError;
-use oxidized::naming_phase_error::NamingPhaseError;
+use nast::ClassVar;
+use nast::Id;
 
-use crate::config::Config;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Clone, Default)]
 pub struct ValidateClassVarUserAttributeLsbPass {
@@ -19,32 +14,16 @@ pub struct ValidateClassVarUserAttributeLsbPass {
 }
 
 impl Pass for ValidateClassVarUserAttributeLsbPass {
-    fn on_ty_class__bottom_up<Ex, En>(
-        &mut self,
-        elem: &mut oxidized::aast::Class_<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_class__bottom_up(&mut self, _: &Env, elem: &mut nast::Class_) -> ControlFlow<()> {
         self.final_class = if elem.final_ {
             Some(elem.name.clone())
         } else {
             None
         };
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_class_var_bottom_up<Ex, En>(
-        &mut self,
-        elem: &mut ClassVar<Ex, En>,
-        _cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_class_var_bottom_up(&mut self, env: &Env, elem: &mut ClassVar) -> ControlFlow<()> {
         if let Some(ua) = elem
             .user_attributes
             .0
@@ -53,23 +32,19 @@ impl Pass for ValidateClassVarUserAttributeLsbPass {
         {
             // Non-static properties cannot have attribute `__LSB`
             if !elem.is_static {
-                errs.push(NamingPhaseError::Naming(
-                    NamingError::NonstaticPropertyWithLsb(ua.name.pos().clone()),
-                ))
+                env.emit_error(NamingError::NonstaticPropertyWithLsb(ua.name.pos().clone()))
             }
             // `__LSB` attribute is unnecessary in final classes
             if let Some(id) = &self.final_class {
-                errs.push(NamingPhaseError::Naming(
-                    NamingError::UnnecessaryAttribute {
-                        pos: ua.name.pos().clone(),
-                        attr: sn::user_attributes::LSB.to_string(),
-                        class_pos: id.pos().clone(),
-                        class_name: id.name().to_string(),
-                        suggestion: None,
-                    },
-                ));
+                env.emit_error(NamingError::UnnecessaryAttribute {
+                    pos: ua.name.pos().clone(),
+                    attr: sn::user_attributes::LSB.to_string(),
+                    class_pos: id.pos().clone(),
+                    class_name: id.name().to_string(),
+                    suggestion: None,
+                });
             }
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 }

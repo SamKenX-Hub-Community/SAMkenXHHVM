@@ -23,7 +23,7 @@ class module_CONSTANTS implements \IThriftConstants {
 
   /**
    * Original thrift constant:-
-   * struct module.MyStruct var3
+   * module.MyStruct var3
    */
   <<__Memoize>>
   public static function var3()[write_props]: \thrift\test\MyStruct{
@@ -52,7 +52,7 @@ class module_CONSTANTS implements \IThriftConstants {
 
   /**
    * Original thrift constant:-
-   * struct module.MyStruct var6
+   * module.MyStruct var6
    */
   <<__Memoize>>
   public static function var6()[write_props]: \thrift\test\MyStruct{
@@ -81,7 +81,7 @@ class module_CONSTANTS implements \IThriftConstants {
 
   /**
    * Original thrift constant:-
-   * struct module.Person2 person
+   * module.Person2 person
    */
   <<__Memoize>>
   public static function person()[write_props]: \thrift\test\Person2{
@@ -106,7 +106,7 @@ class module_CONSTANTS implements \IThriftConstants {
 
   /**
    * Original thrift constant:-
-   * struct module.Person2 person_no_transitive
+   * module.Person2 person_no_transitive
    */
   <<__Memoize>>
   public static function person_no_transitive()[write_props]: \thrift\test\Person2{
@@ -119,13 +119,13 @@ class module_CONSTANTS implements \IThriftConstants {
 
   /**
    * Original thrift constant:-
-   * bool type_adapted
+   * module.AdaptedBool type_adapted
    */
   const \thrift\test\AdaptedBool type_adapted = true;
 
   /**
    * Original thrift constant:-
-   * struct module.MoveOnly nested_adapted
+   * module.MoveOnly nested_adapted
    */
   <<__Memoize>>
   public static function nested_adapted()[write_props]: \thrift\test\MoveOnly{
@@ -141,7 +141,7 @@ class module_CONSTANTS implements \IThriftConstants {
 
   /**
    * Original thrift constant:-
-   * list<byte> container_of_adapted
+   * list<module.AdaptedByte> container_of_adapted
    */
   <<__Memoize>>
   public static function container_of_adapted()[write_props]: \ConstVector<\thrift\test\AdaptedByte>{

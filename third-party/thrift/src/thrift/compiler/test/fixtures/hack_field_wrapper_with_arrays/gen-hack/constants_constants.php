@@ -9,13 +9,13 @@
 class constants_CONSTANTS implements \IThriftConstants {
   /**
    * Original thrift constant:-
-   * enum constants.Company my_company
+   * constants.MyCompany my_company
    */
   const MyCompany my_company = Company::FACEBOOK;
 
   /**
    * Original thrift constant:-
-   * struct constants.Internship instagram
+   * constants.Internship instagram
    */
   <<__Memoize>>
   public static function instagram()[write_props]: Internship{
@@ -37,7 +37,7 @@ class constants_CONSTANTS implements \IThriftConstants {
 
   /**
    * Original thrift constant:-
-   * list<struct constants.Internship> internList
+   * list<constants.Internship> internList
    */
   <<__Memoize>>
   public static function internList()[write_props]: vec<Internship>{
@@ -73,7 +73,7 @@ class constants_CONSTANTS implements \IThriftConstants {
 
   /**
    * Original thrift constant:-
-   * list<struct constants.SWE> engineers
+   * list<constants.SWE> engineers
    */
   <<__Memoize>>
   public static function engineers()[write_props]: vec<SWE>{
@@ -101,7 +101,7 @@ class constants_CONSTANTS implements \IThriftConstants {
 
   /**
    * Original thrift constant:-
-   * list<struct include.StructWithWrapper> wrapped_structs
+   * list<include.StructWithWrapper> wrapped_structs
    */
   <<__Memoize>>
   public static function wrapped_structs()[write_props]: vec<StructWithWrapper>{
@@ -121,7 +121,7 @@ class constants_CONSTANTS implements \IThriftConstants {
 
   /**
    * Original thrift constant:-
-   * list<i64> wrapped_ints
+   * list<include.i64WithWrapper> wrapped_ints
    */
   <<__Memoize>>
   public static function wrapped_ints()[write_props]: vec<i64WithWrapper>{

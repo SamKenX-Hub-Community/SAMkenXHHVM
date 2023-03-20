@@ -4,8 +4,6 @@
 // LICENSE file in the "hack" directory of this source tree.
 
 #![feature(box_patterns)]
-#![feature(is_some_and)]
-#![feature(let_chains)]
 
 /// Used to combine multiple types implementing `Pass` into nested `Passes` types
 /// without requiring them to hand write it so :
@@ -19,38 +17,122 @@ macro_rules! passes {
     };
 }
 
-pub mod config;
 mod elab_utils;
+mod env;
+mod lambda_captures;
 mod pass;
 mod passes;
 mod transform;
 
-use config::ProgramSpecificOptions;
-use oxidized::ast;
+/// Private convenience module for simplifying imports in pass implementations.
+mod prelude {
+    pub use std::ops::ControlFlow;
+    pub use std::ops::ControlFlow::Break;
+    pub use std::ops::ControlFlow::Continue;
+
+    pub use naming_special_names_rust as sn;
+    pub use oxidized::naming_error::NamingError;
+    pub use oxidized::naming_error::UnsupportedFeature;
+    pub use oxidized::naming_phase_error::ExperimentalFeature;
+    pub use oxidized::naming_phase_error::NamingPhaseError;
+    pub use oxidized::nast;
+    pub use oxidized::nast_check_error::NastCheckError;
+    pub use oxidized::parsing_error::ParsingError;
+
+    pub(crate) use crate::elab_utils;
+    pub use crate::env::Env;
+    pub use crate::pass::Pass;
+    pub use crate::transform::Transform;
+}
+
+use env::Env;
+use env::ProgramSpecificOptions;
+use ocamlrep::rc::RcOc;
+use oxidized::namespace_env;
 use oxidized::naming_phase_error::NamingPhaseError;
+use oxidized::nast;
 use oxidized::typechecker_options::TypecheckerOptions;
 use pass::Pass;
+use relative_path::RelativePath;
 use transform::Transform;
 
 pub fn elaborate_program(
-    program: &mut ast::Program,
     tco: &TypecheckerOptions,
+    path: &RelativePath,
+    program: &mut nast::Program,
 ) -> Vec<NamingPhaseError> {
-    let pos = program.first_pos();
-    let filename = pos.map(|pos| pos.filename().path());
-    let dir = filename.and_then(|file| file.parent());
+    elaborate_namespaces_visitor::elaborate_program(ns_env(tco), program);
+    let mut env = make_env(tco, path);
+    lambda_captures::elaborate_program(&mut env, program);
+    elaborate(env, program)
+}
 
-    let is_hhi = pos.map_or(false, |pos| {
-        pos.filename().prefix() == relative_path::Prefix::Hhi
-    });
+pub fn elaborate_fun_def(
+    tco: &TypecheckerOptions,
+    path: &RelativePath,
+    f: &mut nast::FunDef,
+) -> Vec<NamingPhaseError> {
+    elaborate_namespaces_visitor::elaborate_fun_def(ns_env(tco), f);
+    let mut env = make_env(tco, path);
+    lambda_captures::elaborate_fun_def(&mut env, f);
+    elaborate(env, f)
+}
 
-    let allow_type_constant_in_enum_class = tco
-        .tco_allow_all_locations_for_type_constant_in_enum_class
-        || dir.map_or(false, |dir| {
-            tco.tco_allowed_locations_for_type_constant_in_enum_class
-                .iter()
-                .any(|prefix| dir.starts_with(prefix))
-        });
+pub fn elaborate_class_(
+    tco: &TypecheckerOptions,
+    path: &RelativePath,
+    c: &mut nast::Class_,
+) -> Vec<NamingPhaseError> {
+    elaborate_namespaces_visitor::elaborate_class_(ns_env(tco), c);
+    let mut env = make_env(tco, path);
+    lambda_captures::elaborate_class_(&mut env, c);
+    elaborate(env, c)
+}
+
+pub fn elaborate_module_def(
+    tco: &TypecheckerOptions,
+    path: &RelativePath,
+    m: &mut nast::ModuleDef,
+) -> Vec<NamingPhaseError> {
+    elaborate_namespaces_visitor::elaborate_module_def(ns_env(tco), m);
+    let mut env = make_env(tco, path);
+    lambda_captures::elaborate_module_def(&mut env, m);
+    elaborate(env, m)
+}
+
+pub fn elaborate_gconst(
+    tco: &TypecheckerOptions,
+    path: &RelativePath,
+    c: &mut nast::Gconst,
+) -> Vec<NamingPhaseError> {
+    elaborate_namespaces_visitor::elaborate_gconst(ns_env(tco), c);
+    let mut env = make_env(tco, path);
+    lambda_captures::elaborate_gconst(&mut env, c);
+    elaborate(env, c)
+}
+
+pub fn elaborate_typedef(
+    tco: &TypecheckerOptions,
+    path: &RelativePath,
+    t: &mut nast::Typedef,
+) -> Vec<NamingPhaseError> {
+    elaborate_namespaces_visitor::elaborate_typedef(ns_env(tco), t);
+    let mut env = make_env(tco, path);
+    lambda_captures::elaborate_typedef(&mut env, t);
+    elaborate(env, t)
+}
+
+fn ns_env(tco: &TypecheckerOptions) -> RcOc<namespace_env::Env> {
+    RcOc::new(namespace_env::Env::empty(
+        vec![],
+        tco.po_codegen,
+        tco.po_disable_xhp_element_mangling,
+    ))
+}
+
+fn make_env(tco: &TypecheckerOptions, rel_path: &RelativePath) -> Env {
+    let is_hhi = rel_path.is_hhi();
+    let path = rel_path.path();
 
     let allow_module_declarations = tco.tco_allow_all_files_for_module_declarations
         || tco
@@ -58,30 +140,20 @@ pub fn elaborate_program(
             .iter()
             .any(|spec| {
                 !spec.is_empty()
-                    && filename.map_or(false, |filename| {
-                        spec.ends_with('*') && filename.starts_with(&spec[..spec.len() - 1])
-                            || filename.to_str().unwrap() == spec
-                    })
+                    && (spec.ends_with('*') && path.starts_with(&spec[..spec.len() - 1])
+                        || path == std::path::Path::new(spec))
             });
 
-    elaborate(
-        program,
+    Env::new(
         tco,
         &ProgramSpecificOptions {
             is_hhi,
-            allow_type_constant_in_enum_class,
             allow_module_declarations,
         },
     )
 }
 
-fn elaborate<T: Transform>(
-    node: &mut T,
-    tco: &TypecheckerOptions,
-    pso: &ProgramSpecificOptions,
-) -> Vec<NamingPhaseError> {
-    let cfg = config::Config::new(tco, pso);
-
+fn elaborate<T: Transform>(env: Env, node: &mut T) -> Vec<NamingPhaseError> {
     #[rustfmt::skip]
     let mut passes = passes![
         // Stop on `Invalid` expressions
@@ -201,12 +273,6 @@ fn elaborate<T: Transform>(
         // and `everything_sdt` typechecker options
         // passes::validate_supportdyn::ValidateSupportdynPass::default(),
 
-        // Validate uses of enum class type constants - depends on:
-        // - `allow_all_locations_for_type_constant_in_enum_class`
-        // - `allowed_locations_for_type_constant_in_enum_class`
-        // typecheck options
-        passes::validate_enum_class_typeconst::ValidateEnumClassTypeconstPass::default(),
-
         // Validate use of module definitions - depends on:
         // - `allow_all_files_for_module_declarations`
         // - `allowed_files_for_module_declarations`
@@ -235,11 +301,9 @@ fn elaborate<T: Transform>(
         // and instance and static member variables in an interface definition
         passes::validate_interface::ValidateInterfacePass::default(),
 
-
         // Checks for use of reserved names in functions, methods, class identifiers
         // and class constants
         passes::validate_illegal_name::ValidateIllegalNamePass::default(),
-
 
         passes::validate_control_context::ValidateControlContextPass::default(),
 
@@ -249,9 +313,22 @@ fn elaborate<T: Transform>(
 
         passes::validate_hint_habstr::ValidateHintHabstrPass::default(),
 
+        passes::validate_class_methods::ValidateClassMethodsPass::default(),
+
+        passes::validate_global_const::ValidateGlobalConstPass::default(),
+
+        passes::validate_class_member::ValidateClassMemberPass::default(),
+
+        passes::validate_shape_name::ValidateShapeNamePass::default(),
+
+        passes::validate_function_pointer::ValidateFunctionPointerPass::default(),
+
+        passes::validate_php_lambda::ValidatePhpLambdaPass::default(),
+
+        passes::validate_xhp_attribute::ValidateXhpAttributePass::default(),
+
     ];
 
-    let mut errs = Vec::default();
-    node.transform(&cfg, &mut errs, &mut passes);
-    errs
+    node.transform(&env, &mut passes);
+    env.into_errors()
 }

@@ -7,7 +7,6 @@ pub use crate::gen::aast_defs as aast;
 
 pub mod aast_defs_impl;
 pub mod aast_impl;
-pub mod ast;
 pub mod ast_defs_impl;
 pub mod errors_impl;
 pub mod global_options_impl;
@@ -35,3 +34,4 @@ pub mod typing_set;
 
 mod decl_parser_options_impl;
 mod full_fidelity_parser_env_impl;
+mod naming_phase_error_impl;

@@ -28,9 +28,11 @@ pub fn gen(ctx: &Context) -> TokenStream {
 
         use oxidized::ast_defs::*;
         use oxidized::aast_defs::*;
-        use oxidized::naming_phase_error::NamingPhaseError;
 
-        use crate::config::Config;
+        use crate::env::Env;
+
+        type Ex = ();
+        type En = ();
 
         pub trait Pass {
             #(#pass_methods)*
@@ -73,29 +75,26 @@ fn gen_pass_methods(s: synstructure::Structure<'_>, body_type: Body) -> TokenStr
     let ty = &s.ast().ident;
     let name_td = super::gen_pass_method_name(ty.to_string(), Direction::TopDown);
     let name_bu = super::gen_pass_method_name(ty.to_string(), Direction::BottomUp);
-    let (ty_params, ty_generics, _) = s.ast().generics.split_for_impl();
+    let (_, ty_generics, _) = s.ast().generics.split_for_impl();
     let fld_methods = gen_fld_methods(&s, body_type);
     let body_td = body_type.gen(&name_td);
     let body_bu = body_type.gen(&name_bu);
-    let where_clause = ex_where_clause(&s.referenced_ty_params());
     quote! {
         #[inline(always)]
-        fn #name_td #ty_params(
+        fn #name_td(
             &mut self,
+            env: &Env,
             elem: &mut #ty #ty_generics,
-            cfg: &Config,
-            errs: &mut Vec<NamingPhaseError>,
-        ) -> ControlFlow<(), ()> #where_clause {
+        ) -> ControlFlow<()> {
             #body_td
         }
 
         #[inline(always)]
-        fn #name_bu #ty_params(
+        fn #name_bu(
             &mut self,
+            env: &Env,
             elem: &mut #ty #ty_generics,
-            cfg: &Config,
-            errs: &mut Vec<NamingPhaseError>,
-        ) -> ControlFlow<(), ()> #where_clause {
+        ) -> ControlFlow<()> {
             #body_bu
         }
 
@@ -114,8 +113,8 @@ impl Body {
         match self {
             Body::Default => quote!(Continue(())),
             Body::Passes => quote! {
-                self.fst.#name(elem, cfg, errs)?;
-                self.snd.#name(elem, cfg, errs)
+                self.fst.#name(env, elem)?;
+                self.snd.#name(env, elem)
             },
         }
     }
@@ -155,29 +154,25 @@ fn gen_fld_method(
         ast.ident.as_ref().unwrap().to_string(),
         Direction::BottomUp,
     );
-    let ty_params = binding_info.referenced_ty_params();
     let field_ty = &ast.ty;
     let body_td = body_type.gen(&name_td);
     let body_bu = body_type.gen(&name_bu);
-    let where_clause = ex_where_clause(&ty_params);
     quote! {
         #[inline(always)]
-        fn #name_td <#(#ty_params,)*>(
+        fn #name_td(
             &mut self,
+            env: &Env,
             elem: &mut #field_ty,
-            cfg: &Config,
-            errs: &mut Vec<NamingPhaseError>,
-        ) -> ControlFlow<(), ()> #where_clause {
+        ) -> ControlFlow<()> {
             #body_td
         }
 
         #[inline(always)]
-        fn #name_bu <#(#ty_params,)*>(
+        fn #name_bu(
             &mut self,
+            env: &Env,
             elem: &mut #field_ty,
-            cfg: &Config,
-            errs: &mut Vec<NamingPhaseError>,
-        ) -> ControlFlow<(), ()> #where_clause {
+        ) -> ControlFlow<()> {
             #body_bu
         }
     }
@@ -197,37 +192,25 @@ fn gen_ctor_method(
         super::gen_pass_ctor_method_name(ty_name, ast.ident.to_string(), Direction::TopDown);
     let name_bu =
         super::gen_pass_ctor_method_name(ty_name, ast.ident.to_string(), Direction::BottomUp);
-    let ty_params = variant_info.referenced_ty_params();
     let body_td = body_type.gen(&name_td);
     let body_bu = body_type.gen(&name_bu);
-    let where_clause = ex_where_clause(&ty_params);
     quote! {
         #[inline(always)]
-        fn #name_td <#(#ty_params,)*>(
+        fn #name_td(
             &mut self,
+            env: &Env,
             elem: &mut #variant_ty,
-            cfg: &Config,
-            errs: &mut Vec<NamingPhaseError>,
-        ) -> ControlFlow<(), ()> #where_clause {
+        ) -> ControlFlow<()> {
             #body_td
         }
 
         #[inline(always)]
-        fn #name_bu <#(#ty_params,)*>(
+        fn #name_bu(
             &mut self,
+            env: &Env,
             elem: &mut #variant_ty,
-            cfg: &Config,
-            errs: &mut Vec<NamingPhaseError>,
-        ) -> ControlFlow<(), ()> #where_clause {
+        ) -> ControlFlow<()> {
             #body_bu
         }
-    }
-}
-
-fn ex_where_clause(referenced_ty_params: &[&syn::Ident]) -> TokenStream {
-    if referenced_ty_params.iter().any(|tp| *tp == "Ex") {
-        quote!(where Ex: Default)
-    } else {
-        quote!()
     }
 }

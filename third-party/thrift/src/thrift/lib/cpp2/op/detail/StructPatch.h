@@ -104,7 +104,7 @@ class BaseEnsurePatch : public BaseClearPatch<Patch, Derived> {
   using Base = BaseClearPatch<Patch, Derived>;
   using T = typename Base::value_type;
   template <typename Id>
-  using F = type::native_type<get_field_tag<Id, T>>;
+  using F = type::native_type<get_field_tag<T, Id>>;
 
  public:
   using Base::Base;
@@ -205,7 +205,7 @@ class BaseEnsurePatch : public BaseClearPatch<Patch, Derived> {
       for_each_field_id<T>([&](auto id) { // ensure
         auto&& field = op::get<>(id, *data_.assign());
         if (!isAbsent(field) &&
-            !op::isEmpty<op::get_type_tag<decltype(id), T>>(*field)) {
+            !op::isEmpty<op::get_type_tag<T, decltype(id)>>(*field)) {
           op::get<>(id, *data_.ensure()) = *field;
         }
       });
@@ -232,7 +232,7 @@ class BaseEnsurePatch : public BaseClearPatch<Patch, Derived> {
   template <typename Id, typename U>
   decltype(auto) getRawPatch(U&& patch) const {
     // Field Ids must always be used to access patch(Prior).
-    return *patch->get(get_field_id<Id, T>{});
+    return *patch->get(get_field_id<T, Id>{});
   }
 };
 
@@ -251,7 +251,7 @@ class StructPatch : public BaseEnsurePatch<Patch, StructPatch<Patch>> {
   using Base = BaseEnsurePatch<Patch, StructPatch>;
   using T = typename Base::value_type;
   template <typename Id>
-  using F = type::native_type<get_field_tag<Id, T>>;
+  using F = type::native_type<get_field_tag<T, Id>>;
 
  public:
   using Base::apply;
@@ -401,7 +401,7 @@ class UnionPatch : public BaseEnsurePatch<Patch, UnionPatch<Patch>> {
   using T = typename Base::value_type;
   using P = typename Base::patch_type;
   template <typename Id>
-  using F = type::native_type<get_field_tag<Id, T>>;
+  using F = type::native_type<get_field_tag<T, Id>>;
 
  public:
   using Base::Base;

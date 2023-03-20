@@ -3,8 +3,6 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 
-use std::sync::Arc;
-
 use ir::func_builder::TransformInstr;
 use ir::func_builder::TransformState;
 use ir::instr::CallDetail;
@@ -27,13 +25,16 @@ use ir::Func;
 use ir::FuncBuilder;
 use ir::FuncBuilderEx as _;
 use ir::GlobalId;
+use ir::InitPropOp;
 use ir::Instr;
 use ir::InstrId;
 use ir::IsTypeOp;
 use ir::LocId;
 use ir::LocalId;
+use ir::MemberOpBuilder;
 use ir::MethodId;
 use ir::ObjMethodOp;
+use ir::PropId;
 use ir::SpecialClsRef;
 use ir::TypeStructResolveOp;
 use ir::UnitBytesId;
@@ -44,11 +45,9 @@ use super::func_builder::FuncBuilderEx as _;
 use crate::class::IsStatic;
 use crate::func::FuncInfo;
 use crate::hack;
-use crate::mangle::Mangle as _;
-use crate::mangle::MangleWithClass as _;
 
 /// Lower individual Instrs in the Func to simpler forms.
-pub(crate) fn lower_instrs(builder: &mut FuncBuilder<'_>, func_info: Arc<FuncInfo<'_>>) {
+pub(crate) fn lower_instrs(builder: &mut FuncBuilder<'_>, func_info: &FuncInfo<'_>) {
     let mut lowerer = LowerInstrs {
         changed: false,
         func_info,
@@ -70,10 +69,24 @@ pub(crate) fn lower_instrs(builder: &mut FuncBuilder<'_>, func_info: Arc<FuncInf
 
 struct LowerInstrs<'a> {
     changed: bool,
-    func_info: Arc<FuncInfo<'a>>,
+    func_info: &'a FuncInfo<'a>,
 }
 
 impl LowerInstrs<'_> {
+    fn c_get_g(&self, builder: &mut FuncBuilder<'_>, vid: ValueId, _loc: LocId) -> Option<Instr> {
+        // A lot of times the name for the global comes from a static
+        // string name - see if we can dig it up and turn this into a
+        // Textual::LoadGlobal.
+        vid.constant()
+            .and_then(|cid| match builder.func.constant(cid) {
+                Constant::String(s) => {
+                    let id = ir::GlobalId::new(*s);
+                    Some(Instr::Special(Special::Textual(Textual::LoadGlobal(id))))
+                }
+                _ => None,
+            })
+    }
+
     fn handle_hhbc_with_builtin(&self, hhbc: &Hhbc) -> Option<hack::Hhbc> {
         let builtin = match hhbc {
             Hhbc::Add(..) => hack::Hhbc::Add,
@@ -124,6 +137,7 @@ impl LowerInstrs<'_> {
             Hhbc::Print(..) => hack::Hhbc::Print,
             Hhbc::RecordReifiedGeneric(..) => hack::Hhbc::RecordReifiedGeneric,
             Hhbc::Sub(..) => hack::Hhbc::Sub,
+            Hhbc::ThrowNonExhaustiveSwitch(..) => hack::Hhbc::ThrowNonExhaustiveSwitch,
             _ => return None,
         };
         Some(builtin)
@@ -165,6 +179,24 @@ impl LowerInstrs<'_> {
             }
             _ => None,
         }
+    }
+
+    fn check_prop(&self, builder: &mut FuncBuilder<'_>, _pid: PropId, _loc: LocId) -> Instr {
+        // CheckProp checks to see if the prop has already been initialized - we'll just always say "no".
+        Instr::copy(builder.emit_constant(Constant::Bool(false)))
+    }
+
+    fn init_prop(
+        &self,
+        builder: &mut FuncBuilder<'_>,
+        vid: ValueId,
+        pid: PropId,
+        _op: InitPropOp,
+        loc: LocId,
+    ) -> Instr {
+        // $this->pid = vid
+        MemberOpBuilder::base_h(loc).emit_set_m_pt(builder, pid, vid);
+        Instr::tombstone()
     }
 
     fn iter_init(
@@ -255,14 +287,14 @@ impl LowerInstrs<'_> {
     ) -> Vec<ValueId> {
         let name = match *self.func_info {
             FuncInfo::Method(ref mi) => {
-                mi.name
-                    .mangle_with_class(mi.class.name, mi.is_static, &builder.strings)
+                crate::mangle::FunctionName::method(mi.class.name, mi.is_static, mi.name)
             }
-            FuncInfo::Function(ref fi) => fi.name.mangle(&builder.strings),
+            FuncInfo::Function(ref fi) => crate::mangle::FunctionName::Function(fi.name),
         };
 
         let mut ops = Vec::new();
 
+        let name = format!("{}", name.display(&builder.strings));
         let name = GlobalId::new(builder.strings.intern_str(format!(
             "memocache::{}",
             crate::util::escaped_ident(name.into())
@@ -439,11 +471,19 @@ impl TransformInstr for LowerInstrs<'_> {
                 let lid = LocalId::Named(this);
                 Instr::Hhbc(Hhbc::CGetL(lid, loc))
             }
+            Instr::Hhbc(Hhbc::CheckProp(pid, loc)) => self.check_prop(builder, pid, loc),
             Instr::Hhbc(Hhbc::CheckThis(loc)) => {
                 let builtin = hack::Hhbc::CheckThis;
                 let op = BareThisOp::NoNotice;
                 let this = builder.emit(Instr::Hhbc(Hhbc::BareThis(op, loc)));
                 builder.hhbc_builtin(builtin, &[this], loc)
+            }
+            Instr::Hhbc(Hhbc::CGetG(name, loc)) => {
+                if let Some(instr) = self.c_get_g(builder, name, loc) {
+                    instr
+                } else {
+                    return Instr::Hhbc(Hhbc::CGetG(name, loc));
+                }
             }
             Instr::Hhbc(Hhbc::ClsCns(cls, const_id, loc)) => {
                 let builtin = hack::Hhbc::ClsCns;
@@ -464,6 +504,9 @@ impl TransformInstr for LowerInstrs<'_> {
                 };
 
                 builder.hhbc_builtin(builtin, &[vid], loc)
+            }
+            Instr::Hhbc(Hhbc::InitProp(vid, pid, op, loc)) => {
+                self.init_prop(builder, vid, pid, op, loc)
             }
             Instr::Hhbc(Hhbc::InstanceOfD(vid, cid, loc)) => {
                 let cid = builder.emit_constant(Constant::String(cid.id));

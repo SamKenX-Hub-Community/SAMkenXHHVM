@@ -35,6 +35,7 @@ private:
   void initResumableWaitHandle();
   void initAsyncGenerator();
   void initAwaitAllWaitHandle();
+  void initConcurrentWaitHandle();
   void initConditionWaitHandle();
   void initSleepWaitHandle();
   void initRescheduleWaitHandle();

@@ -42,8 +42,6 @@ type serialized_globals = Serialized_globals
 let serialize_globals () = Serialized_globals
 
 type rollout_flags = {
-  longlived_workers: bool;
-  log_from_client_when_slow_monitor_connections: bool;
   log_saved_state_age_and_distance: bool;
   naming_sqlite_in_hack_64: bool;
   use_hack_64_naming_table: bool;
@@ -185,6 +183,10 @@ let client_restart ~data:_ = ()
 let client_check_start () = ()
 
 let client_check _ _ = ()
+
+let client_lsp_shellout
+    ~root:_ ~command_line:_ ~result_count:_ ~result_extra_telemetry:_ =
+  ()
 
 let client_lsp_method_handled
     ~root:_

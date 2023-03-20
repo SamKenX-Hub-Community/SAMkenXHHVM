@@ -10,18 +10,12 @@ use bstr::ByteSlice;
 use sha1::Digest;
 use sha1::Sha1;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ConfigFile {
     map: BTreeMap<String, String>,
 }
 
 impl ConfigFile {
-    pub fn empty() -> Self {
-        Self {
-            map: BTreeMap::new(),
-        }
-    }
-
     pub fn from_file(path: impl AsRef<Path>) -> std::io::Result<Self> {
         let contents = std::fs::read(path.as_ref())?;
         Ok(Self::from_slice(&contents))
@@ -104,6 +98,20 @@ impl ConfigFile {
 
     pub fn get_bool(&self, key: &str) -> Option<Result<bool, std::str::ParseBoolError>> {
         self.map.get(key).map(|s| s.parse())
+    }
+
+    pub fn bool_if_min_version(
+        &self,
+        key: &str,
+        _current_version: Option<&str>,
+    ) -> Option<Result<bool, std::str::ParseBoolError>> {
+        Some(match self.get_bool(key)? {
+            Ok(b) => Ok(b),
+            Err(e) => {
+                // TODO handle versions
+                Err(e)
+            }
+        })
     }
 
     pub fn get_str_list(&self, key: &str) -> Option<impl Iterator<Item = &str>> {

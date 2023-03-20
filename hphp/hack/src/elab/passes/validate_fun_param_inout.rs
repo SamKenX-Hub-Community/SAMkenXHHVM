@@ -2,62 +2,31 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
-use std::ops::ControlFlow;
 
-use naming_special_names_rust as sn;
-use oxidized::aast_defs::FunDef;
-use oxidized::aast_defs::FunParam;
-use oxidized::aast_defs::Method_;
-use oxidized::aast_defs::UserAttributes;
-use oxidized::ast_defs::Id;
-use oxidized::ast_defs::ParamKind;
-use oxidized::naming_phase_error::NamingPhaseError;
-use oxidized::nast_check_error::NastCheckError;
+use nast::FunDef;
+use nast::FunParam;
+use nast::Id;
+use nast::Method_;
+use nast::ParamKind;
+use nast::UserAttributes;
 
-use crate::config::Config;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Copy, Clone, Default)]
 pub struct ValidateFunParamInoutPass;
 
 impl Pass for ValidateFunParamInoutPass {
-    fn on_ty_fun_def_bottom_up<Ex, En>(
-        &mut self,
-        elem: &mut FunDef<Ex, En>,
-        _cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
-        check_params(
-            &elem.name,
-            &elem.fun.user_attributes,
-            &elem.fun.params,
-            errs,
-        );
-        ControlFlow::Continue(())
+    fn on_ty_fun_def_bottom_up(&mut self, env: &Env, elem: &mut FunDef) -> ControlFlow<()> {
+        check_params(env, &elem.name, &elem.fun.user_attributes, &elem.fun.params);
+        Continue(())
     }
-    fn on_ty_method__bottom_up<Ex, En>(
-        &mut self,
-        elem: &mut Method_<Ex, En>,
-        _cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
-        check_params(&elem.name, &elem.user_attributes, &elem.params, errs);
-        ControlFlow::Continue(())
+    fn on_ty_method__bottom_up(&mut self, env: &Env, elem: &mut Method_) -> ControlFlow<()> {
+        check_params(env, &elem.name, &elem.user_attributes, &elem.params);
+        Continue(())
     }
 }
 
-fn check_params<Ex, En>(
-    id: &Id,
-    attrs: &UserAttributes<Ex, En>,
-    params: &[FunParam<Ex, En>],
-    errs: &mut Vec<NamingPhaseError>,
-) {
+fn check_params(env: &Env, id: &Id, attrs: &UserAttributes, params: &[FunParam]) {
     let in_as_set_function = sn::members::AS_LOWERCASE_SET.contains(id.name());
     let has_memoize_user_attr = has_memoize_user_attr(attrs);
     // We can skip the check entirely if neither condition is true since we would never
@@ -75,19 +44,22 @@ fn check_params<Ex, En>(
                     has_inout_param = Some(fp.pos.clone());
                 }
                 if in_as_set_function {
-                    errs.push(NamingPhaseError::NastCheck(
-                        NastCheckError::InoutParamsSpecial(fp.pos.clone()),
-                    ))
+                    env.emit_error(NastCheckError::InoutParamsSpecial(fp.pos.clone()))
                 }
             }
         });
-        if let Some(param_pos) = has_inout_param && has_memoize_user_attr {
-        errs.push(NamingPhaseError::NastCheck(NastCheckError::InoutParamsMemoize { pos: id.pos().clone(), param_pos }))
-      }
+        if let Some(param_pos) = has_inout_param {
+            if has_memoize_user_attr {
+                env.emit_error(NastCheckError::InoutParamsMemoize {
+                    pos: id.pos().clone(),
+                    param_pos,
+                })
+            }
+        }
     }
 }
 
-fn has_memoize_user_attr<Ex, En>(attrs: &UserAttributes<Ex, En>) -> bool {
+fn has_memoize_user_attr(attrs: &UserAttributes) -> bool {
     attrs.0.iter().any(|ua| {
         ua.name.name() == sn::user_attributes::MEMOIZE
             || ua.name.name() == sn::user_attributes::MEMOIZE_LSB

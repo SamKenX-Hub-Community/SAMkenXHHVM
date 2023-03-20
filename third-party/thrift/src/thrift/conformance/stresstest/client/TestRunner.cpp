@@ -44,6 +44,12 @@ DEFINE_string(
     client_ca_path,
     "folly/io/async/test/certs/ca-cert.pem",
     "Path to client trusted CA file");
+DEFINE_bool(continuous, false, "Runs a single test continuously");
+DEFINE_int64(
+    stats_interval,
+    10,
+    "How often to poll in secs stats when running continuously");
+DEFINE_bool(io_uring, false, "Flag to enable io_uring on the client");
 
 namespace apache {
 namespace thrift {
@@ -121,11 +127,9 @@ StressTestStats TestRunner::run(std::unique_ptr<StressTestBase> test) {
 
   // initialize the client runner
   ClientRunner runner(cfg_);
-
   // run the test
   runner.run(test.get());
   runner.stop();
-
   // collect and print statistics
   return StressTestStats{
       .memoryStats = runner.getMemoryStats(),
@@ -155,6 +159,7 @@ StressTestStats TestRunner::run(std::unique_ptr<StressTestBase> test) {
   connCfg.certPath = FLAGS_client_cert_path;
   connCfg.keyPath = FLAGS_client_key_path;
   connCfg.trustedCertsPath = FLAGS_client_ca_path;
+  connCfg.ioUring = FLAGS_io_uring;
 
   ClientConfig config{};
   config.numClientThreads = FLAGS_client_threads <= 0
@@ -167,6 +172,63 @@ StressTestStats TestRunner::run(std::unique_ptr<StressTestBase> test) {
   config.connConfig = std::move(connCfg);
 
   return config;
+}
+void TestRunner::runTests() {
+  LOG(INFO) << "Using io_uring: " << (FLAGS_io_uring ? "true" : "false");
+  if (FLAGS_continuous) {
+    runContinuously();
+  } else {
+    runFixedTime();
+  }
+}
+
+void TestRunner::runContinuously() {
+  LOG(INFO) << "Starting Continuous Benchmark";
+  auto& testName = getSelectedTests().front();
+  LOG(INFO) << fmt::format("Running stress test '{}'", testName);
+  runContinuously(instantiate(testName));
+}
+
+void TestRunner::runContinuously(std::unique_ptr<StressTestBase> test) {
+  resetMemoryStats();
+
+  // initialize the client runner
+  ClientRunner runner(cfg_);
+
+  scheduleContinuousStats(runner);
+
+  // run the test
+  runner.run(test.get());
+  runner.stop();
+}
+
+void TestRunner::scheduleContinuousStats(ClientRunner& runner) {
+  LOG(INFO) << "scheduling stats poller every " << FLAGS_runtime_s
+            << " seconds";
+  functionScheduler_.addFunction(
+      [&] {
+        LOG(INFO) << "\nStress Test Stats:";
+        auto stats = StressTestStats{
+            .memoryStats = runner.getMemoryStats(),
+            .rpcStats = runner.getRpcStats(),
+        };
+        stats.log();
+
+        runner.resetStats();
+      },
+      std::chrono::seconds(FLAGS_runtime_s),
+      "stats",
+      std::chrono::seconds(FLAGS_runtime_s));
+  functionScheduler_.start();
+}
+
+void TestRunner::runFixedTime() {
+  LOG(INFO) << fmt::format("Starting Fixed Duration Benchmark");
+  for (const auto& test : getSelectedTests()) {
+    LOG(INFO) << fmt::format("Running stress test '{}'", test);
+    auto result = run(test);
+    result.log();
+  }
 }
 
 } // namespace stress

@@ -17,7 +17,8 @@
 #pragma once
 
 #include <filesystem>
-#include <regex>
+#include <memory>
+#include <re2/re2.h>
 #include <vector>
 
 #include "hphp/util/hash-map.h"
@@ -25,18 +26,28 @@
 
 namespace HPHP {
 
+struct StringData;
+
 struct PackageInfo {
   struct Package {
     hphp_vector_string_set m_uses;
     hphp_vector_string_set m_includes;
+
+    template <typename SerDe> void serde(SerDe& sd) {
+      sd(m_uses, stdltstr{})
+        (m_includes, stdltstr{})
+        ;
+    }
   };
 
   struct Deployment {
     hphp_vector_string_set m_packages;
-    std::vector<std::regex> m_domains;
-    // Need to maintain the string form of regex for cache key mangling
-    // C++ does not provide a way to convert a regex back to string
-    hphp_vector_string_set m_domainsOriginal;
+    std::vector<std::shared_ptr<re2::RE2>> m_domains;
+
+    template <typename SerDe> void serde(SerDe& sd) {
+      // m_domains omitted on purpose, as it is not needed to be serialized
+      sd(m_packages, stdltstr{});
+    }
   };
 
   using PackageMap = hphp_vector_map<std::string, Package>;
@@ -45,7 +56,16 @@ struct PackageInfo {
   const PackageMap& packages() const { return m_packages; }
   const DeploymentMap& deployments() const { return m_deployments; }
 
+  const Deployment* getActiveDeployment() const;
+  bool isPackageInActiveDeployment(const StringData* package) const;
+
   std::string mangleForCacheKey() const;
+
+  template <typename SerDe> void serde(SerDe& sd) {
+    sd(m_packages, stdltstr{})
+      (m_deployments, stdltstr{})
+      ;
+  }
 
   static PackageInfo fromFile(const std::filesystem::path&);
   static PackageInfo defaults();

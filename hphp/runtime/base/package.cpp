@@ -16,6 +16,11 @@
 
 #include "hphp/runtime/base/package.h"
 
+#include "hphp/runtime/base/execution-context.h"
+#include "hphp/runtime/base/string-data.h"
+
+#include "hphp/util/trace.h"
+
 //TODO(T146965521) Until Rust FFI symbol redefinition problem can be resolved
 #ifdef FACEBOOK
 #include "hphp/hack/src/package/ffi_bridge/package_ffi.rs.h"
@@ -63,15 +68,14 @@ PackageInfo PackageInfo::fromFile(const std::filesystem::path& path) {
   }
 
   for (auto& d : info.deployments) {
-    std::vector<std::regex> domains;
+    std::vector<std::shared_ptr<re2::RE2>> domains;
     for (auto& s : d.deployment.domains) {
-      domains.push_back(std::regex(std::string(s)));
+      domains.push_back(std::make_shared<re2::RE2>(std::string(s)));
     }
     deployments.emplace(std::string(d.name),
                         Deployment {
                           convert(d.deployment.packages),
-                          domains,
-                          convert(d.deployment.domains),
+                          std::move(domains),
                         });
   }
 #endif
@@ -90,6 +94,14 @@ folly::dynamic mangleVecForCacheKey(const hphp_vector_string_set& data) {
   for (auto& s : data) result.push_back(s);
   return result;
 }
+
+folly::dynamic mangleVecForCacheKey(
+  const std::vector<std::shared_ptr<re2::RE2>>& data
+) {
+  folly::dynamic result = folly::dynamic::array();
+  for (auto& r : data) result.push_back(r->pattern());
+  return result;
+}
 } // namespace
 
 std::string PackageInfo::mangleForCacheKey() const {
@@ -105,11 +117,35 @@ std::string PackageInfo::mangleForCacheKey() const {
   for (auto& [name, deployment] : deployments()) {
     folly::dynamic entry = folly::dynamic::object();
     entry["packages"] = mangleVecForCacheKey(deployment.m_packages);
-    entry["domains"] = mangleVecForCacheKey(deployment.m_domainsOriginal);
+    entry["domains"] = mangleVecForCacheKey(deployment.m_domains);
     result[name] = entry;
   }
 
   return folly::toJson(result);
+}
+
+const PackageInfo::Deployment* PackageInfo::getActiveDeployment() const {
+  if (RO::RepoAuthoritative || !RuntimeOption::ServerExecutionMode()) {
+    auto const it = deployments().find(RO::EvalActiveDeployment);
+    if (it == end(deployments())) return nullptr;
+    return &it->second;
+  }
+  if (!g_context || !g_context->getTransport()) return nullptr;
+  auto const host = g_context->getTransport()->getHeader("Host");
+  for (auto const& [_, deployment]: deployments()) {
+    for (auto const& domain: deployment.m_domains) {
+      if (re2::RE2::FullMatch(host, *domain)) return &deployment;
+    }
+  }
+  return nullptr;
+}
+
+bool PackageInfo::isPackageInActiveDeployment(const StringData* package) const {
+  if (!package || package->empty()) return false;
+  auto const activeDeployment = getActiveDeployment();
+  // If there's no active deployment, return whether package exists at all
+  if (!activeDeployment) return packages().contains(package->toCppString());
+  return activeDeployment->m_packages.contains(package->toCppString());
 }
 
 } // namespace HPHP

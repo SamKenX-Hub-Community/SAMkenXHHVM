@@ -502,12 +502,6 @@ pub mod autoimported_functions {
 
     pub const INVARIANT_VIOLATION: &str = "\\HH\\invariant_violation";
 
-    pub const FUN_: &str = "\\HH\\fun";
-
-    pub const INST_METH: &str = "\\HH\\inst_meth";
-
-    pub const CLASS_METH: &str = "\\HH\\class_meth";
-
     pub const METH_CALLER: &str = "\\HH\\meth_caller";
 }
 
@@ -1172,7 +1166,6 @@ pub mod unstable_features {
     pub const EXPRESSION_TREES: &str = "expression_trees";
     pub const MODULES: &str = "modules";
     pub const MODULE_REFERENCES: &str = "module_references";
-    pub const PACKAGES: &str = "packages";
 }
 
 pub mod regex {

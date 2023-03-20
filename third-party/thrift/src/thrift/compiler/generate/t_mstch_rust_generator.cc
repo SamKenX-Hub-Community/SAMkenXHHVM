@@ -25,6 +25,7 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/replace.hpp>
+#include <fmt/core.h>
 
 #include <thrift/compiler/ast/t_struct.h>
 #include <thrift/compiler/generate/mstch_objects.h>
@@ -357,6 +358,27 @@ bool type_has_transitive_adapter(const t_type* type) {
   return false;
 }
 
+const t_type* step_through_typedefs(const t_type* t, bool break_on_adapter) {
+  while (t->is_typedef()) {
+    auto typedef_type = dynamic_cast<const t_typedef*>(t);
+    if (!typedef_type) {
+      return t;
+    }
+
+    if ((*typedef_type).has_annotation("rust.newtype")) {
+      return t;
+    }
+
+    if (break_on_adapter && node_has_adapter(*typedef_type)) {
+      return t;
+    }
+
+    t = typedef_type->get_type();
+  }
+
+  return t;
+}
+
 bool node_has_custom_rust_type(const t_named& node) {
   return node.has_annotation("rust.type") ||
       node.has_annotation("rust.newtype");
@@ -399,24 +421,7 @@ mstch::node adapter_node(
     mstch_context& context,
     mstch_element_position pos) {
   // Step through typedefs.
-  const t_type* curr_type = type;
-  while (curr_type->is_typedef()) {
-    auto typedef_type = dynamic_cast<const t_typedef*>(curr_type);
-    if (!typedef_type) {
-      break;
-    }
-
-    if (node_has_adapter(*typedef_type)) {
-      break;
-    }
-
-    if ((*typedef_type).has_annotation("rust.newtype")) {
-      break;
-    }
-
-    curr_type = typedef_type->get_type();
-  }
-
+  const t_type* curr_type = step_through_typedefs(type, true);
   const t_type* transitive_type = nullptr;
 
   if (type_has_transitive_adapter(curr_type)) {
@@ -610,7 +615,27 @@ class rust_mstch_program : public mstch_program {
         if (lhs_annotation != rhs_annotation) {
           return lhs_annotation < rhs_annotation;
         }
-        return lhs->get_full_name() < rhs->get_full_name();
+
+        std::function<std::string(const t_type*)> get_resolved_name =
+            [&](const t_type* t) {
+              t = t->get_true_type();
+              if (auto c = dynamic_cast<const t_list*>(t)) {
+                return fmt::format(
+                    "list<{}>", get_resolved_name(c->get_elem_type()));
+              }
+              if (auto c = dynamic_cast<const t_set*>(t)) {
+                return fmt::format(
+                    "set<{}>", get_resolved_name(c->get_elem_type()));
+              }
+              if (auto c = dynamic_cast<const t_map*>(t)) {
+                return fmt::format(
+                    "map<{},{}>",
+                    get_resolved_name(c->get_key_type()),
+                    get_resolved_name(c->get_val_type()));
+              }
+              return t->get_full_name();
+            };
+        return get_resolved_name(lhs) < get_resolved_name(rhs);
       }
     };
     std::set<const t_type*, rust_type_less> nonstandard_types;
@@ -1095,14 +1120,7 @@ class mstch_rust_value : public mstch_base {
         depth_(depth),
         options_(options) {
     // Step through any non-newtype typedefs.
-    while (type_->is_typedef() && !type_->has_annotation("rust.newtype")) {
-      auto typedef_type = dynamic_cast<const t_typedef*>(type_);
-      if (!typedef_type) {
-        break;
-      }
-
-      type_ = typedef_type->get_type();
-    }
+    type_ = step_through_typedefs(type_, false);
 
     register_methods(
         this,
@@ -1906,11 +1924,40 @@ bool annotation_validator::visit(t_enum* e) {
 
 bool annotation_validator::visit(t_program* p) {
   for (auto t : p->typedefs()) {
-    if (node_has_adapter(*t) && node_has_custom_rust_type(*t)) {
-      report_error(
-          *t,
-          "Typedef `{}` cannot have both an adapter and `rust.type` or `rust.newtype`",
-          (*t).name());
+    if (node_has_adapter(*t)) {
+      if (node_has_custom_rust_type(*t)) {
+        report_error(
+            *t,
+            "Typedef `{}` cannot have both an adapter and `rust.type` or `rust.newtype`",
+            (*t).name());
+      }
+
+      // To be spec compliant, adapted typedefs can be composed only if they are
+      // wrapped. For example, the following is not allowed:
+      // ```
+      // @rust.Adapter{ name = "Foo" }
+      // typedef string Foo
+      //
+      // @rust.Adapter{ name = "Bar" }
+      // typedef Foo Bar
+      // ```
+      // But the following is allowed:
+      // ```
+      // @rust.Adapter{ name = "Foo" }
+      // typedef string Foo
+      //
+      // @rust.Adapter{ name = "Bar" }
+      // typedef list<Foo> Bar
+      // ```
+      const t_type* typedef_stepped =
+          step_through_typedefs(t->get_type(), true);
+
+      if (node_has_adapter(*typedef_stepped)) {
+        report_error(
+            *t,
+            "Typedef `{}` cannot have a direct transitive adapter",
+            (*t).name());
+      }
     }
   }
 

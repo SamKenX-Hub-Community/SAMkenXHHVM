@@ -19,7 +19,56 @@ var _ = thrift.ZERO
 
 type IncludedInt64 = int64
 
+func NewIncludedInt64() IncludedInt64 {
+  return 0
+}
+
+func WriteIncludedInt64(item IncludedInt64, p thrift.Protocol) error {
+  if err := p.WriteI64(item); err != nil {
+    return err
+}
+  return nil
+}
+
+func ReadIncludedInt64(p thrift.Protocol) (IncludedInt64, error) {
+  var decodeResult IncludedInt64
+  decodeErr := func() error {
+    result, err := p.ReadI64()
+if err != nil {
+    return err
+}
+    decodeResult = result
+    return nil
+  }()
+  return decodeResult, decodeErr
+}
+
 type TransitiveFoo = transitive.Foo
+
+func NewTransitiveFoo() *TransitiveFoo {
+  return transitive.NewFoo()
+}
+
+func WriteTransitiveFoo(item *TransitiveFoo, p thrift.Protocol) error {
+  if err := item.Write(p); err != nil {
+    return err
+}
+  return nil
+}
+
+func ReadTransitiveFoo(p thrift.Protocol) (TransitiveFoo, error) {
+  var decodeResult TransitiveFoo
+  decodeErr := func() error {
+    result := *transitive.NewFoo()
+err := result.Read(p)
+if err != nil {
+    return err
+}
+    decodeResult = result
+    return nil
+  }()
+  return decodeResult, decodeErr
+}
 
 type Included struct {
     MyIntField int64 `thrift:"MyIntField,1" json:"MyIntField" db:"MyIntField"`
@@ -39,11 +88,23 @@ func NewIncluded() *Included {
 // Deprecated: Use NewIncluded().MyTransitiveField instead.
 var Included_MyTransitiveField_DEFAULT = NewIncluded().MyTransitiveField
 
+func (x *Included) GetMyIntFieldNonCompat() int64 {
+    return x.MyIntField
+}
+
 func (x *Included) GetMyIntField() int64 {
     return x.MyIntField
 }
 
+func (x *Included) GetMyTransitiveFieldNonCompat() *transitive.Foo {
+    return x.MyTransitiveField
+}
+
 func (x *Included) GetMyTransitiveField() *transitive.Foo {
+    if !x.IsSetMyTransitiveField() {
+      return transitive.NewFoo()
+    }
+
     return x.MyTransitiveField
 }
 
@@ -67,7 +128,7 @@ func (x *Included) writeField1(p thrift.Protocol) error {  // MyIntField
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetMyIntField()
+    item := x.GetMyIntFieldNonCompat()
     if err := p.WriteI64(item); err != nil {
     return err
 }
@@ -87,7 +148,7 @@ func (x *Included) writeField2(p thrift.Protocol) error {  // MyTransitiveField
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetMyTransitiveField()
+    item := x.GetMyTransitiveFieldNonCompat()
     if err := item.Write(p); err != nil {
     return err
 }

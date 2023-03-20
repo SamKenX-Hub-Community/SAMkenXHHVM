@@ -123,7 +123,7 @@ class Internship implements \IThriftAsyncStruct, \IThriftStructMetadata, \IThrif
   public string $title;
   /**
    * Original thrift field:-
-   * 3: enum constants.Company employer
+   * 3: constants.Company employer
    */
   public ?Company $employer;
   /**
@@ -143,7 +143,7 @@ class Internship implements \IThriftAsyncStruct, \IThriftStructMetadata, \IThrif
   public ?string $school;
   /**
    * Original thrift field:-
-   * 6: i64 intern_id
+   * 6: include.i64WithWrapper intern_id
    */
   public i64WithWrapper $intern_id;
 
@@ -460,7 +460,7 @@ class SWE implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftShapish
   const int STRUCTURAL_ID = 1922683334218183646;
   /**
    * Original thrift field:-
-   * 1: enum constants.Company employer
+   * 1: constants.Company employer
    */
   public ?Company $employer;
   /**

@@ -16,6 +16,7 @@ Program(
                         "AwaitAllWaitHandle": "HH\\AwaitAllWaitHandle",
                         "Awaitable": "HH\\Awaitable",
                         "Collection": "HH\\Collection",
+                        "ConcurrentWaitHandle": "HH\\ConcurrentWaitHandle",
                         "ConditionWaitHandle": "HH\\ConditionWaitHandle",
                         "Container": "HH\\Container",
                         "ExternalThreadEventWaitHandle": "HH\\ExternalThreadEventWaitHandle",
@@ -93,6 +94,7 @@ Program(
                         "meth_caller": "HH\\meth_caller",
                         "objprof_get_data": "HH\\objprof_get_data",
                         "objprof_get_paths": "HH\\objprof_get_paths",
+                        "package_exists": "HH\\package_exists",
                         "server_warmup_status": "HH\\server_warmup_status",
                         "thread_mark_stack": "HH\\thread_mark_stack",
                         "thread_memory_stats": "HH\\thread_memory_stats",
@@ -130,8 +132,6 @@ Program(
                             ),
                         ),
                     ),
-                    tparams: [],
-                    where_constraints: [],
                     params: [
                         FunParam {
                             annotation: (),
@@ -143,7 +143,7 @@ Program(
                                         Happly(
                                             Id(
                                                 |tuple_hints.php(12:13-18),
-                                                "tuple",
+                                                "\\tuple",
                                             ),
                                             [
                                                 Hint(
@@ -195,6 +195,8 @@ Program(
                 },
                 internal: false,
                 module: None,
+                tparams: [],
+                where_constraints: [],
             },
         ),
     ],

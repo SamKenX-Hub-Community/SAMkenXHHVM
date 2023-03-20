@@ -47,7 +47,22 @@ module.exports = {
             id: "fb/howtos/implementing-a-server/index",
           },
           items: [
-            'fb/howtos/implementing-a-server/cpp',
+            {
+              type: 'category',
+              label: 'C++',
+              items: [
+                'fb/howtos/implementing-a-server/cpp/getting-started',
+                'fb/howtos/implementing-a-server/cpp/implementing-rpcs',
+                'fb/howtos/implementing-a-server/cpp/tailer-services',
+                {
+                  type: 'category',
+                  label: 'Archived',
+                  items: [
+                    'fb/howtos/implementing-a-server/cpp/archived/thrift-server-example',
+                  ]
+                }
+              ]
+            },
             'fb/howtos/implementing-a-server/java',
             'fb/howtos/implementing-a-server/python'
           ]
@@ -86,8 +101,6 @@ module.exports = {
           },
           items: [
             "spec/definition/interface",
-            "spec/definition/universal-name",
-            "spec/definition/program",
             "spec/definition/data",
             "spec/definition/value",
             "spec/definition/annotation",
@@ -338,6 +351,9 @@ module.exports = {
         id: "fb/server/index",
       },
       items: [
+        'fb/server/server-lifecycle',
+        'fb/server/background-tasks',
+        'fb/server/flavors-of-main',
         'fb/server/components',
         'fb/server/transport',
         'fb/server/threading-models',

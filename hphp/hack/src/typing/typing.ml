@@ -1820,6 +1820,27 @@ let refine_and_simplify_intersection
     in
     intersect ~hint_first ~is_class env reason ivar_ty hint_ty
 
+let ish_weakening env hint hint_ty =
+  match hint with
+  | (_, Aast.Happly ((_, name), _)) ->
+    let enum_opt = Option.(Env.get_enum env name >>= Cls.enum_type) in
+    begin
+      match enum_opt with
+      | Some { te_base; _ } -> begin
+        match Typing_defs.get_node te_base with
+        | Typing_defs.(Tprim Tarraykey) -> hint_ty
+        | _ ->
+          MakeType.intersection
+            Reason.Rnone
+            [
+              MakeType.locl_like Reason.Rnone hint_ty;
+              MakeType.arraykey Reason.Rnone;
+            ]
+      end
+      | _ -> hint_ty
+    end
+  | _ -> hint_ty
+
 let refine_for_is ~hint_first env tparamet ivar reason hint =
   let (env, lset) =
     match snd hint with
@@ -1837,6 +1858,12 @@ let refine_for_is ~hint_first env tparamet ivar reason hint =
     in
     Option.iter ~f:Errors.add_typing_error ty_err_opt;
     let hint_ty = strip_supportdyn hint_ty in
+    let hint_ty =
+      if Env.get_tcopt env |> TypecheckerOptions.enable_sound_dynamic then
+        ish_weakening env hint hint_ty
+      else
+        hint_ty
+    in
     let (env, hint_ty) =
       if not tparamet then
         Inter.negate_type env reason hint_ty ~approx:TUtils.ApproxUp
@@ -3137,10 +3164,7 @@ and lvalues env el =
  * look for sketchy null checks in the condition. *)
 (* TODO TAST: type refinement should be made explicit in the typed AST *)
 and eif env ~(expected : ExpectedTy.t option) ?in_await p c e1 e2 =
-  let condition = condition ~lhs_of_null_coalesce:false in
-  let (env, tc, tyc) =
-    raw_expr ~lhs_of_null_coalesce:false env c ~allow_awaitable:false
-  in
+  let (env, tc, tyc) = raw_expr env c ~allow_awaitable:false in
   let parent_lenv = env.lenv in
   let (env, _lset) = condition env true tc in
   let (env, te1, ty1) =
@@ -3253,17 +3277,15 @@ and expr_
   (*
    * Given a list of types, computes their supertype. If any of the types are
    * unknown (e.g., comes from PHP), the supertype will be Typing_utils.tany env.
-   * The optional coerce_for_op parameter controls whether any arguments of type
-   * dynamic can be coerced to enforceable types because they are arguments to a
-   * built-in operator.
+   * If the optional bound parameter is present then arguments of type
+   * dynamic can be coerced to this bound.
    *)
   let compute_supertype
       ~(expected : ExpectedTy.t option)
       ~reason
       ~use_pos
       ?bound
-      ?(coerce_for_op = false)
-      ?(can_pessimise = false)
+      ~can_pessimise
       r
       env
       tys =
@@ -3295,7 +3317,7 @@ and expr_
     | Tany _ -> (env, supertype, List.map tys ~f:(fun _ -> None))
     | _ ->
       let really_coerce =
-        coerce_for_op
+        Option.is_some bound
         (* Don't do coercion when we are pessimising *)
         && not
              (can_pessimise
@@ -3312,6 +3334,7 @@ and expr_
         else
           let (env, pess_supertype) =
             if can_pessimise then
+              (* If pessimised_builtins is set then make like type *)
               Typing_array_access.maybe_pessimise_type env supertype
             else
               (env, supertype)
@@ -3367,9 +3390,8 @@ and expr_
   let compute_exprs_and_supertype
       ~(expected : ExpectedTy.t option)
       ?(reason = Reason.URarray_value)
-      ?(can_pessimise = false)
+      ~can_pessimise
       ~bound
-      ~coerce_for_op
       ~use_pos
       r
       env
@@ -3399,7 +3421,6 @@ and expr_
         ~reason
         ~use_pos
         ?bound
-        ~coerce_for_op
         ~can_pessimise
         r
         env
@@ -3509,23 +3530,16 @@ and expr_
     make_result env p Aast.Omitted ty
   | Varray (th, el)
   | ValCollection (_, th, el) ->
-    let ( get_expected_kind,
-          name,
-          subtype_val,
-          coerce_for_op,
-          make_expr,
-          make_ty,
-          key_bound ) =
+    let (get_expected_kind, name, subtype_val, make_expr, make_ty, key_bound) =
       match e with
       | ValCollection ((kind_pos, kind), _, _) ->
         let class_name = Nast.vc_kind_to_name kind in
-        let (subtype_val, coerce_for_op, key_bound) =
+        let (subtype_val, key_bound) =
           match kind with
           | Set
           | ImmSet
           | Keyset ->
             ( arraykey_value p class_name true,
-              true,
               Some
                 (MakeType.arraykey
                    (Reason.Rtype_variable_generics (p, "Tk", strip_ns class_name)))
@@ -3533,12 +3547,11 @@ and expr_
           | Vector
           | ImmVector
           | Vec ->
-            (array_value, false, None)
+            (array_value, None)
         in
         ( get_vc_inst env p kind,
           class_name,
           subtype_val,
-          coerce_for_op,
           (fun th elements ->
             Aast.ValCollection ((kind_pos, kind), th, elements)),
           (fun value_ty ->
@@ -3548,7 +3561,6 @@ and expr_
         ( get_vc_inst env p Vec,
           "varray",
           array_value,
-          false,
           (fun th elements -> Aast.ValCollection ((p, Vec), th, elements)),
           (fun value_ty -> MakeType.vec (Reason.Rwitness p) value_ty),
           None )
@@ -3580,7 +3592,6 @@ and expr_
         ~use_pos:p
         ~reason:Reason.URvector
         ~can_pessimise:true
-        ~coerce_for_op
         ~bound:key_bound
         (Reason.Rtype_variable_generics (p, "T", strip_ns name))
         env
@@ -3642,7 +3653,6 @@ and expr_
         ~reason:(Reason.URkey name)
         ~bound:(Some (MakeType.arraykey r))
         ~can_pessimise:true
-        ~coerce_for_op:true
         r
         env
         kl
@@ -3654,7 +3664,6 @@ and expr_
         ~use_pos:p
         ~reason:(Reason.URvalue name)
         ~can_pessimise:true
-        ~coerce_for_op:false
         ~bound:None
         (Reason.Rtype_variable_generics (p, "Tv", strip_ns name))
         env
@@ -3992,41 +4001,36 @@ and expr_
           (env, Some ty1_expected, Some ty2_expected, None)
         | _ -> (env, None, None, None))
     in
-    let (env, te1, ty1) = expr ?expected:expected1 env e1 in
-    let (env, te2, ty2) = expr ?expected:expected2 env e2 in
     let (_, p1, _) = e1 in
     let (_, p2, _) = e2 in
-    let (env, ty1, err_opt1) =
-      compute_supertype
+    let (env, tel1, ty1) =
+      compute_exprs_and_supertype
         ~expected:expected1
-        ~reason:Reason.URpair_value
         ~use_pos:p1
+        ~reason:Reason.URpair_value
+        ~bound:None
+        ~can_pessimise:false
         (Reason.Rtype_variable_generics (p1, "T1", "Pair"))
         env
-        [ty1]
+        [e1]
+        array_value
     in
-    let (env, ty2, err_opt2) =
-      compute_supertype
+    let (env, tel2, ty2) =
+      compute_exprs_and_supertype
         ~expected:expected2
-        ~reason:Reason.URpair_value
         ~use_pos:p2
+        ~reason:Reason.URpair_value
+        ~bound:None
+        ~can_pessimise:false
         (Reason.Rtype_variable_generics (p2, "T2", "Pair"))
         env
-        [ty2]
+        [e2]
+        array_value
     in
     let ty = MakeType.pair (Reason.Rwitness p) ty1 ty2 in
-    make_result
-      env
-      p
-      (Aast.Pair
-         ( th,
-           hole_on_ty_mismatch
-             te1
-             ~ty_mismatch_opt:(Option.join @@ List.hd err_opt1),
-           hole_on_ty_mismatch
-             te2
-             ~ty_mismatch_opt:(Option.join @@ List.hd err_opt2) ))
-      ty
+    let te1 = List.hd_exn tel1 in
+    let te2 = List.hd_exn tel2 in
+    make_result env p (Aast.Pair (th, te1, te2)) ty
   | Array_get (e, None) ->
     let (env, te, _) = update_array_type p env e valkind in
     let env = might_throw env in
@@ -4153,39 +4157,22 @@ and expr_
     let fty = set_readonly_this fty in
     make_result env p e fty
   | Binop (Ast_defs.QuestionQuestion, e1, e2) ->
-    let (_, e1_pos, _) = e1 in
-    let (_, e2_pos, _) = e2 in
     let (env, te1, ty1) =
       raw_expr ~lhs_of_null_coalesce:true env e1 ~allow_awaitable:true
     in
+    let parent_lenv = env.lenv in
+    let lenv1 = env.lenv in
     let (env, te2, ty2) = expr ?expected env e2 ~allow_awaitable:true in
-    let (env, ty1') = Env.fresh_type env e1_pos in
-    let (env, e1) =
-      SubType.sub_type env ty1 (MakeType.nullable_locl Reason.Rnone ty1')
-      @@ Some (Typing_error.Reasons_callback.unify_error_at e1_pos)
+    let lenv2 = env.lenv in
+    let env = LEnv.union_lenvs env parent_lenv lenv1 lenv2 in
+    (* There are two cases: either the left argument was null in which case we
+       evaluate the second argument which gets as ty2, or that ty1 wasn't null.
+       The following intersection adds the nonnull information. *)
+    let (env, ty1) =
+      Inter.intersect env ~r:Reason.Rnone ty1 (MakeType.nonnull Reason.Rnone)
     in
-    (* Essentially mimic a call to
-     *   function coalesce<Tr, Ta as Tr, Tb as Tr>(?Ta, Tb): Tr
-     * That way we let the constraint solver take care of the union logic.
-     *)
-    let (env, ty_result) = Env.fresh_type env e2_pos in
-    let (env, e2) =
-      SubType.sub_type env ty1' ty_result
-      @@ Some (Typing_error.Reasons_callback.unify_error_at p)
-    in
-    let (env, e3) =
-      SubType.sub_type env ty2 ty_result
-      @@ Some (Typing_error.Reasons_callback.unify_error_at p)
-    in
-    let ty_err_opt =
-      Typing_error.multiple_opt @@ List.filter_map ~f:Fn.id [e1; e2; e3]
-    in
-    Option.iter ~f:Errors.add_typing_error ty_err_opt;
-    make_result
-      env
-      p
-      (Aast.Binop (Ast_defs.QuestionQuestion, te1, te2))
-      ty_result
+    let (env, ty) = Union.union ~approx_cancel_neg:true env ty1 ty2 in
+    make_result env p (Aast.Binop (Ast_defs.QuestionQuestion, te1, te2)) ty
   | Binop (Ast_defs.Eq op_opt, e1, e2) ->
     let make_result env p te ty =
       let (env, te, ty) = make_result env p te ty in
@@ -4665,6 +4652,12 @@ and expr_
     let hint_ty = strip_supportdyn hint_ty in
     let enable_sound_dynamic =
       TypecheckerOptions.enable_sound_dynamic env.genv.tcopt
+    in
+    let hint_ty =
+      if enable_sound_dynamic then
+        ish_weakening env hint hint_ty
+      else
+        hint_ty
     in
     let ((env, ty_err_opt2), hint_ty) =
       if Typing_defs.is_dynamic hint_ty then
@@ -5671,9 +5664,8 @@ and closure_make
   let env =
     Typing_env.set_fun_tast_info env Tast.{ has_implicit_return; has_readonly }
   in
-  let (env, tparams) = List.map_env env f.f_tparams ~f:type_param in
-  let () =
-    if sdt_dynamic_check_required then
+  let env =
+    if sdt_dynamic_check_required then begin
       Fn.ignore
       @@ check_function_dynamically_callable
            ~this_class
@@ -5681,9 +5673,15 @@ and closure_make
            None
            f
            params_decl_ty
-           hret.et_type
-    else
-      ()
+           hret.et_type;
+      (* The following modification is independent from the line above that
+         does the dynamic check. Check status is changed to dynamic assumptions
+         within the call above. Because we don't store alternative lambdas in
+         the TAST, we unconditionally overwrite the check status to be under
+         normal assumptions here. *)
+      { env with checked = Tast.CUnderNormalAssumptions }
+    end else
+      env
   in
   let tfun_ =
     {
@@ -5692,8 +5690,6 @@ and closure_make
       Aast.f_span = f.f_span;
       Aast.f_ret = (hret.et_type, hint_of_type_hint f.f_ret);
       Aast.f_readonly_ret = f.f_readonly_ret;
-      Aast.f_tparams = tparams;
-      Aast.f_where_constraints = f.f_where_constraints;
       Aast.f_fun_kind = f.f_fun_kind;
       Aast.f_user_attributes = user_attributes;
       Aast.f_body = { Aast.fb_ast = tb };
@@ -9344,9 +9340,7 @@ and call_untyped_unpack env f_pos unpacked_element =
  * Build an environment for the true or false branch of
  * conditional statements.
  *)
-and condition ?lhs_of_null_coalesce env tparamet ((ty, p, e) as te : Tast.expr)
-    =
-  let condition = condition ?lhs_of_null_coalesce in
+and condition env tparamet ((ty, p, e) as te : Tast.expr) =
   match e with
   | Aast.Hole (e, _, _, _) -> condition env tparamet e
   | Aast.True when not tparamet ->
@@ -9512,7 +9506,7 @@ and file_attributes env file_attrs =
           Aast.fa_namespace = fa.fa_namespace;
         } ))
 
-and type_param env t =
+and type_param env (t : Nast.tparam) =
   let (env, user_attributes) =
     attributes_check_def env SN.AttributeKinds.typeparam t.tp_user_attributes
   in

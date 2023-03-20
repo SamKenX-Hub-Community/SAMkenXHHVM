@@ -17,11 +17,154 @@ var _ = thrift.ZERO
 
 type MyCompany = Company
 
+func NewMyCompany() MyCompany {
+  return 0
+}
+
+func WriteMyCompany(item MyCompany, p thrift.Protocol) error {
+  if err := p.WriteI32(int32(item)); err != nil {
+    return err
+}
+  return nil
+}
+
+func ReadMyCompany(p thrift.Protocol) (MyCompany, error) {
+  var decodeResult MyCompany
+  decodeErr := func() error {
+    enumResult, err := p.ReadI32()
+if err != nil {
+    return err
+}
+result := Company(enumResult)
+    decodeResult = result
+    return nil
+  }()
+  return decodeResult, decodeErr
+}
+
 type MyStringIdentifier = string
+
+func NewMyStringIdentifier() MyStringIdentifier {
+  return ""
+}
+
+func WriteMyStringIdentifier(item MyStringIdentifier, p thrift.Protocol) error {
+  if err := p.WriteString(item); err != nil {
+    return err
+}
+  return nil
+}
+
+func ReadMyStringIdentifier(p thrift.Protocol) (MyStringIdentifier, error) {
+  var decodeResult MyStringIdentifier
+  decodeErr := func() error {
+    result, err := p.ReadString()
+if err != nil {
+    return err
+}
+    decodeResult = result
+    return nil
+  }()
+  return decodeResult, decodeErr
+}
 
 type MyIntIdentifier = int32
 
+func NewMyIntIdentifier() MyIntIdentifier {
+  return 0
+}
+
+func WriteMyIntIdentifier(item MyIntIdentifier, p thrift.Protocol) error {
+  if err := p.WriteI32(item); err != nil {
+    return err
+}
+  return nil
+}
+
+func ReadMyIntIdentifier(p thrift.Protocol) (MyIntIdentifier, error) {
+  var decodeResult MyIntIdentifier
+  decodeErr := func() error {
+    result, err := p.ReadI32()
+if err != nil {
+    return err
+}
+    decodeResult = result
+    return nil
+  }()
+  return decodeResult, decodeErr
+}
+
 type MyMapIdentifier = map[string]string
+
+func NewMyMapIdentifier() MyMapIdentifier {
+  return nil
+}
+
+func WriteMyMapIdentifier(item MyMapIdentifier, p thrift.Protocol) error {
+  if err := p.WriteMapBegin(thrift.STRING, thrift.STRING, len(item)); err != nil {
+    return thrift.PrependError("error writing map begin: ", err)
+}
+for k, v := range item {
+    {
+        item := k
+        if err := p.WriteString(item); err != nil {
+    return err
+}
+    }
+
+    {
+        item := v
+        if err := p.WriteString(item); err != nil {
+    return err
+}
+    }
+}
+if err := p.WriteMapEnd(); err != nil {
+    return thrift.PrependError("error writing map end: ", err)
+}
+  return nil
+}
+
+func ReadMyMapIdentifier(p thrift.Protocol) (MyMapIdentifier, error) {
+  var decodeResult MyMapIdentifier
+  decodeErr := func() error {
+    _ /* keyType */, _ /* valueType */, size, err := p.ReadMapBegin()
+if err != nil {
+    return thrift.PrependError("error reading map begin: ", err)
+}
+
+mapResult := make(map[string]string, size)
+for i := 0; i < size; i++ {
+    var key string
+    {
+        result, err := p.ReadString()
+if err != nil {
+    return err
+}
+        key = result
+    }
+
+    var value string
+    {
+        result, err := p.ReadString()
+if err != nil {
+    return err
+}
+        value = result
+    }
+
+    mapResult[key] = value
+}
+
+if err := p.ReadMapEnd(); err != nil {
+    return thrift.PrependError("error reading map end: ", err)
+}
+result := mapResult
+    decodeResult = result
+    return nil
+  }()
+  return decodeResult, decodeErr
+}
 
 type EmptyEnum int32
 
@@ -101,10 +244,10 @@ var (
     }
 
     CityValues = []City{
-        0,
-        1,
-        2,
-        3,
+        City_NYC,
+        City_MPK,
+        City_SEA,
+        City_LON,
     }
 )
 
@@ -166,10 +309,10 @@ var (
     }
 
     CompanyValues = []Company{
-        0,
-        1,
-        2,
-        3,
+        Company_FACEBOOK,
+        Company_WHATSAPP,
+        Company_OCULUS,
+        Company_INSTAGRAM,
     }
 )
 
@@ -221,24 +364,56 @@ var Internship_Compensation_DEFAULT = NewInternship().Compensation
 // Deprecated: Use NewInternship().School instead.
 var Internship_School_DEFAULT = NewInternship().School
 
+func (x *Internship) GetWeeksNonCompat() int32 {
+    return x.Weeks
+}
+
 func (x *Internship) GetWeeks() int32 {
     return x.Weeks
+}
+
+func (x *Internship) GetTitleNonCompat() string {
+    return x.Title
 }
 
 func (x *Internship) GetTitle() string {
     return x.Title
 }
 
-func (x *Internship) GetEmployer() *Company {
+func (x *Internship) GetEmployerNonCompat() *Company {
     return x.Employer
 }
 
-func (x *Internship) GetCompensation() *float64 {
+func (x *Internship) GetEmployer() Company {
+    if !x.IsSetEmployer() {
+      return 0
+    }
+
+    return *x.Employer
+}
+
+func (x *Internship) GetCompensationNonCompat() *float64 {
     return x.Compensation
 }
 
-func (x *Internship) GetSchool() *string {
+func (x *Internship) GetCompensation() float64 {
+    if !x.IsSetCompensation() {
+      return 0.0
+    }
+
+    return *x.Compensation
+}
+
+func (x *Internship) GetSchoolNonCompat() *string {
     return x.School
+}
+
+func (x *Internship) GetSchool() string {
+    if !x.IsSetSchool() {
+      return ""
+    }
+
+    return *x.School
 }
 
 func (x *Internship) SetWeeks(value int32) *Internship {
@@ -285,7 +460,7 @@ func (x *Internship) writeField1(p thrift.Protocol) error {  // Weeks
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetWeeks()
+    item := x.GetWeeksNonCompat()
     if err := p.WriteI32(item); err != nil {
     return err
 }
@@ -301,7 +476,7 @@ func (x *Internship) writeField2(p thrift.Protocol) error {  // Title
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetTitle()
+    item := x.GetTitleNonCompat()
     if err := p.WriteString(item); err != nil {
     return err
 }
@@ -321,7 +496,7 @@ func (x *Internship) writeField3(p thrift.Protocol) error {  // Employer
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetEmployer()
+    item := *x.GetEmployerNonCompat()
     if err := p.WriteI32(int32(item)); err != nil {
     return err
 }
@@ -341,7 +516,7 @@ func (x *Internship) writeField4(p thrift.Protocol) error {  // Compensation
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetCompensation()
+    item := *x.GetCompensationNonCompat()
     if err := p.WriteDouble(item); err != nil {
     return err
 }
@@ -361,7 +536,7 @@ func (x *Internship) writeField5(p thrift.Protocol) error {  // School
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetSchool()
+    item := *x.GetSchoolNonCompat()
     if err := p.WriteString(item); err != nil {
     return err
 }
@@ -568,8 +743,16 @@ func NewRange() *Range {
     return (&Range{})
 }
 
+func (x *Range) GetMinNonCompat() int32 {
+    return x.Min
+}
+
 func (x *Range) GetMin() int32 {
     return x.Min
+}
+
+func (x *Range) GetMaxNonCompat() int32 {
+    return x.Max
 }
 
 func (x *Range) GetMax() int32 {
@@ -593,7 +776,7 @@ func (x *Range) writeField1(p thrift.Protocol) error {  // Min
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetMin()
+    item := x.GetMinNonCompat()
     if err := p.WriteI32(item); err != nil {
     return err
 }
@@ -609,7 +792,7 @@ func (x *Range) writeField2(p thrift.Protocol) error {  // Max
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetMax()
+    item := x.GetMaxNonCompat()
     if err := p.WriteI32(item); err != nil {
     return err
 }
@@ -748,8 +931,16 @@ func NewStruct1() *Struct1 {
         SetB("<uninitialized>")
 }
 
+func (x *Struct1) GetANonCompat() int32 {
+    return x.A
+}
+
 func (x *Struct1) GetA() int32 {
     return x.A
+}
+
+func (x *Struct1) GetBNonCompat() string {
+    return x.B
 }
 
 func (x *Struct1) GetB() string {
@@ -773,7 +964,7 @@ func (x *Struct1) writeField1(p thrift.Protocol) error {  // A
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetA()
+    item := x.GetANonCompat()
     if err := p.WriteI32(item); err != nil {
     return err
 }
@@ -789,7 +980,7 @@ func (x *Struct1) writeField2(p thrift.Protocol) error {  // B
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetB()
+    item := x.GetBNonCompat()
     if err := p.WriteString(item); err != nil {
     return err
 }
@@ -931,19 +1122,43 @@ func NewStruct2() *Struct2 {
 // Deprecated: Use NewStruct2().C instead.
 var Struct2_C_DEFAULT = NewStruct2().C
 
+func (x *Struct2) GetANonCompat() int32 {
+    return x.A
+}
+
 func (x *Struct2) GetA() int32 {
     return x.A
+}
+
+func (x *Struct2) GetBNonCompat() string {
+    return x.B
 }
 
 func (x *Struct2) GetB() string {
     return x.B
 }
 
-func (x *Struct2) GetC() *Struct1 {
+func (x *Struct2) GetCNonCompat() *Struct1 {
     return x.C
 }
 
+func (x *Struct2) GetC() *Struct1 {
+    if !x.IsSetC() {
+      return NewStruct1()
+    }
+
+    return x.C
+}
+
+func (x *Struct2) GetDNonCompat() []int32 {
+    return x.D
+}
+
 func (x *Struct2) GetD() []int32 {
+    if !x.IsSetD() {
+      return nil
+    }
+
     return x.D
 }
 
@@ -982,7 +1197,7 @@ func (x *Struct2) writeField1(p thrift.Protocol) error {  // A
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetA()
+    item := x.GetANonCompat()
     if err := p.WriteI32(item); err != nil {
     return err
 }
@@ -998,7 +1213,7 @@ func (x *Struct2) writeField2(p thrift.Protocol) error {  // B
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetB()
+    item := x.GetBNonCompat()
     if err := p.WriteString(item); err != nil {
     return err
 }
@@ -1018,7 +1233,7 @@ func (x *Struct2) writeField3(p thrift.Protocol) error {  // C
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetC()
+    item := x.GetCNonCompat()
     if err := item.Write(p); err != nil {
     return err
 }
@@ -1038,7 +1253,7 @@ func (x *Struct2) writeField4(p thrift.Protocol) error {  // D
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetD()
+    item := x.GetDNonCompat()
     if err := p.WriteListBegin(thrift.I32, len(item)); err != nil {
     return thrift.PrependError("error writing list begin: ", err)
 }
@@ -1255,15 +1470,31 @@ func NewStruct3() *Struct3 {
 // Deprecated: Use NewStruct3().C instead.
 var Struct3_C_DEFAULT = NewStruct3().C
 
+func (x *Struct3) GetANonCompat() string {
+    return x.A
+}
+
 func (x *Struct3) GetA() string {
     return x.A
+}
+
+func (x *Struct3) GetBNonCompat() int32 {
+    return x.B
 }
 
 func (x *Struct3) GetB() int32 {
     return x.B
 }
 
+func (x *Struct3) GetCNonCompat() *Struct2 {
+    return x.C
+}
+
 func (x *Struct3) GetC() *Struct2 {
+    if !x.IsSetC() {
+      return NewStruct2()
+    }
+
     return x.C
 }
 
@@ -1293,7 +1524,7 @@ func (x *Struct3) writeField1(p thrift.Protocol) error {  // A
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetA()
+    item := x.GetANonCompat()
     if err := p.WriteString(item); err != nil {
     return err
 }
@@ -1309,7 +1540,7 @@ func (x *Struct3) writeField2(p thrift.Protocol) error {  // B
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetB()
+    item := x.GetBNonCompat()
     if err := p.WriteI32(item); err != nil {
     return err
 }
@@ -1329,7 +1560,7 @@ func (x *Struct3) writeField3(p thrift.Protocol) error {  // C
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetC()
+    item := x.GetCNonCompat()
     if err := item.Write(p); err != nil {
     return err
 }
@@ -1497,16 +1728,36 @@ var Struct4_B_DEFAULT = NewStruct4().B
 // Deprecated: Use NewStruct4().C instead.
 var Struct4_C_DEFAULT = NewStruct4().C
 
+func (x *Struct4) GetANonCompat() int32 {
+    return x.A
+}
+
 func (x *Struct4) GetA() int32 {
     return x.A
 }
 
-func (x *Struct4) GetB() *float64 {
+func (x *Struct4) GetBNonCompat() *float64 {
     return x.B
 }
 
-func (x *Struct4) GetC() *byte {
+func (x *Struct4) GetB() float64 {
+    if !x.IsSetB() {
+      return 0.0
+    }
+
+    return *x.B
+}
+
+func (x *Struct4) GetCNonCompat() *byte {
     return x.C
+}
+
+func (x *Struct4) GetC() byte {
+    if !x.IsSetC() {
+      return 0
+    }
+
+    return *x.C
 }
 
 func (x *Struct4) SetA(value int32) *Struct4 {
@@ -1538,7 +1789,7 @@ func (x *Struct4) writeField1(p thrift.Protocol) error {  // A
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetA()
+    item := x.GetANonCompat()
     if err := p.WriteI32(item); err != nil {
     return err
 }
@@ -1558,7 +1809,7 @@ func (x *Struct4) writeField2(p thrift.Protocol) error {  // B
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetB()
+    item := *x.GetBNonCompat()
     if err := p.WriteDouble(item); err != nil {
     return err
 }
@@ -1578,7 +1829,7 @@ func (x *Struct4) writeField3(p thrift.Protocol) error {  // C
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetC()
+    item := *x.GetCNonCompat()
     if err := p.WriteByte(item); err != nil {
     return err
 }
@@ -1744,12 +1995,28 @@ var Union1_I_DEFAULT = NewUnion1().I
 // Deprecated: Use NewUnion1().D instead.
 var Union1_D_DEFAULT = NewUnion1().D
 
-func (x *Union1) GetI() *int32 {
+func (x *Union1) GetINonCompat() *int32 {
     return x.I
 }
 
-func (x *Union1) GetD() *float64 {
+func (x *Union1) GetI() int32 {
+    if !x.IsSetI() {
+      return 0
+    }
+
+    return *x.I
+}
+
+func (x *Union1) GetDNonCompat() *float64 {
     return x.D
+}
+
+func (x *Union1) GetD() float64 {
+    if !x.IsSetD() {
+      return 0.0
+    }
+
+    return *x.D
 }
 
 func (x *Union1) SetI(value int32) *Union1 {
@@ -1779,7 +2046,7 @@ func (x *Union1) writeField1(p thrift.Protocol) error {  // I
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetI()
+    item := *x.GetINonCompat()
     if err := p.WriteI32(item); err != nil {
     return err
 }
@@ -1799,7 +2066,7 @@ func (x *Union1) writeField2(p thrift.Protocol) error {  // D
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetD()
+    item := *x.GetDNonCompat()
     if err := p.WriteDouble(item); err != nil {
     return err
 }
@@ -1950,19 +2217,51 @@ var Union2_S_DEFAULT = NewUnion2().S
 // Deprecated: Use NewUnion2().U instead.
 var Union2_U_DEFAULT = NewUnion2().U
 
-func (x *Union2) GetI() *int32 {
+func (x *Union2) GetINonCompat() *int32 {
     return x.I
 }
 
-func (x *Union2) GetD() *float64 {
+func (x *Union2) GetI() int32 {
+    if !x.IsSetI() {
+      return 0
+    }
+
+    return *x.I
+}
+
+func (x *Union2) GetDNonCompat() *float64 {
     return x.D
 }
 
-func (x *Union2) GetS() *Struct1 {
+func (x *Union2) GetD() float64 {
+    if !x.IsSetD() {
+      return 0.0
+    }
+
+    return *x.D
+}
+
+func (x *Union2) GetSNonCompat() *Struct1 {
     return x.S
 }
 
+func (x *Union2) GetS() *Struct1 {
+    if !x.IsSetS() {
+      return NewStruct1()
+    }
+
+    return x.S
+}
+
+func (x *Union2) GetUNonCompat() *Union1 {
+    return x.U
+}
+
 func (x *Union2) GetU() *Union1 {
+    if !x.IsSetU() {
+      return NewUnion1()
+    }
+
     return x.U
 }
 
@@ -2011,7 +2310,7 @@ func (x *Union2) writeField1(p thrift.Protocol) error {  // I
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetI()
+    item := *x.GetINonCompat()
     if err := p.WriteI32(item); err != nil {
     return err
 }
@@ -2031,7 +2330,7 @@ func (x *Union2) writeField2(p thrift.Protocol) error {  // D
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := *x.GetD()
+    item := *x.GetDNonCompat()
     if err := p.WriteDouble(item); err != nil {
     return err
 }
@@ -2051,7 +2350,7 @@ func (x *Union2) writeField3(p thrift.Protocol) error {  // S
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetS()
+    item := x.GetSNonCompat()
     if err := item.Write(p); err != nil {
     return err
 }
@@ -2071,7 +2370,7 @@ func (x *Union2) writeField4(p thrift.Protocol) error {  // U
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetU()
+    item := x.GetUNonCompat()
     if err := item.Write(p); err != nil {
     return err
 }

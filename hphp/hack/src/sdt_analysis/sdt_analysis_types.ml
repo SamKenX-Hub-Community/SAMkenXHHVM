@@ -27,7 +27,7 @@ end
 type abstraction = Ast_defs.abstraction =
   | Concrete
   | Abstract
-[@@deriving eq, hash, ord, show { with_path = false }]
+[@@deriving eq, hash, ord, sexp, show { with_path = false }]
 
 let hash_abstraction : abstraction -> int =
   Obj.magic hash_abstraction (* workaround for T92019055 *)
@@ -38,7 +38,7 @@ type classish_kind = Ast_defs.classish_kind =
   | Ctrait  (** Kind for `trait` *)
   | Cenum  (** Kind for `enum` *)
   | Cenum_class of abstraction
-[@@deriving eq, hash, ord, show { with_path = false }]
+[@@deriving eq, hash, ord, sexp, show { with_path = false }]
 
 let hash_classish_kind : classish_kind -> int =
   Obj.magic hash_classish_kind (* workaround for T92019055 *)
@@ -46,7 +46,6 @@ let hash_classish_kind : classish_kind -> int =
 module CustomInterConstraint = struct
   type t = {
     classish_kind_opt: classish_kind option;
-        (** classish_kind is `None` for functions *)
     hierarchy_for_final_item: string list option;
   }
   [@@deriving eq, hash, ord, show { with_path = false }]
@@ -95,7 +94,7 @@ end
 
 module Summary = struct
   type nadable_kind =
-    | ClassLike of classish_kind
+    | ClassLike of classish_kind option
     | Function
 
   type nadable = {

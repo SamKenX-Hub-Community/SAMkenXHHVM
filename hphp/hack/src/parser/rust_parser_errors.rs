@@ -91,7 +91,6 @@ enum UnstableFeatures {
     Readonly,
     Modules,
     ModuleReferences,
-    Packages,
     ClassConstDefault,
     TypeConstMultipleBounds,
     TypeConstSuperBound,
@@ -118,7 +117,6 @@ impl UnstableFeatures {
             UnstableFeatures::Readonly => Preview,
             UnstableFeatures::Modules => OngoingRelease,
             UnstableFeatures::ModuleReferences => Unstable,
-            UnstableFeatures::Packages => Unstable,
             UnstableFeatures::ContextAliasDeclaration => Unstable,
             UnstableFeatures::ContextAliasDeclarationShort => Preview,
             UnstableFeatures::TypeConstMultipleBounds => Preview,
@@ -311,10 +309,6 @@ fn strip_ns(name: &str) -> &str {
         Some('\\') => &name[1..],
         _ => name,
     }
-}
-
-fn strip_hh_ns(name: &str) -> &str {
-    name.trim_start_matches("\\HH\\")
 }
 
 // test a node is a syntaxlist and that the list contains an element
@@ -3083,35 +3077,6 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
                 if strip_ns(self.text(recv)) == strip_ns(sn::readonly::AS_MUT) {
                     self.mark_uses_readonly()
                 }
-
-                if self.text(recv) == strip_hh_ns(sn::autoimported_functions::FUN_)
-                    && !self.env.codegen
-                {
-                    let mut arg_node_list = syntax_to_list_no_separators(arg_list);
-                    match arg_node_list.next() {
-                        Some(name) if arg_node_list.count() == 0 => self.errors.push(
-                            make_error_from_node(recv, errors::fun_disabled(self.text(name))),
-                        ),
-                        _ => self.errors.push(make_error_from_node(
-                            recv,
-                            errors::fun_requires_const_string,
-                        )),
-                    }
-                }
-
-                if self.text(recv) == strip_hh_ns(sn::autoimported_functions::CLASS_METH)
-                    && !self.env.codegen
-                {
-                    self.errors
-                        .push(make_error_from_node(recv, errors::class_meth_disabled))
-                }
-
-                if self.text(recv) == strip_hh_ns(sn::autoimported_functions::INST_METH)
-                    && !self.env.codegen
-                {
-                    self.errors
-                        .push(make_error_from_node(recv, errors::inst_meth_disabled))
-                }
             }
 
             ETSpliceExpression(_) => {
@@ -3717,20 +3682,12 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
     }
 
     fn enum_class_errors(&mut self, node: S<'a>) {
-        if let EnumClassDeclaration(c) = &node.children {
+        if let EnumClassDeclaration(_c) = &node.children {
             self.invalid_modifier_errors("Enum classes", node, |kind| {
                 kind == TokenKind::Abstract
                     || kind == TokenKind::Internal
                     || kind == TokenKind::Public
             });
-            for n in c.elements.syntax_node_to_list_skip_separator() {
-                match &n.children {
-                    TypeConstDeclaration(_) => {
-                        self.check_can_use_feature(n, &UnstableFeatures::EnumClassTypeConstants)
-                    }
-                    _ => {}
-                }
-            }
         }
     }
 
@@ -4395,11 +4352,7 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
 
         let is_whitelisted_function = |self_: &Self, receiver_token| {
             let text = self_.text(receiver_token);
-
-            (!self_.env.parser_options.po_disallow_func_ptrs_in_constants
-                && (text == strip_hh_ns(sn::autoimported_functions::FUN_)
-                    || text == strip_hh_ns(sn::autoimported_functions::CLASS_METH)))
-                || (text == sn::std_lib_functions::ARRAY_MARK_LEGACY)
+            (text == sn::std_lib_functions::ARRAY_MARK_LEGACY)
                 || (text == strip_ns(sn::std_lib_functions::ARRAY_MARK_LEGACY))
                 || (text == sn::std_lib_functions::ARRAY_UNMARK_LEGACY)
                 || (text == strip_ns(sn::std_lib_functions::ARRAY_UNMARK_LEGACY))
@@ -5254,7 +5207,6 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
                 self.env.context.active_classish = Some(node)
             }
             TypeRefinement(_) => {
-                self.check_can_use_feature(node, &UnstableFeatures::TypeRefinements);
                 self.type_refinement_errors(node);
             }
             FileAttributeSpecification(_) => self.file_attribute_spec(node),
@@ -5265,9 +5217,6 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
             }
             ModuleMembershipDeclaration(_) => {
                 self.in_module = true;
-            }
-            PackageDeclaration(_) => {
-                self.check_can_use_feature(node, &UnstableFeatures::Packages);
             }
             _ => {}
         };

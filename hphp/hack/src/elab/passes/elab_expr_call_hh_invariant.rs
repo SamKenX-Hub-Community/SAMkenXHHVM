@@ -2,25 +2,18 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
-use std::ops::ControlFlow;
 
-use naming_special_names_rust as sn;
-use oxidized::aast_defs::Block;
-use oxidized::aast_defs::Expr;
-use oxidized::aast_defs::Expr_;
-use oxidized::aast_defs::Stmt;
-use oxidized::aast_defs::Stmt_;
-use oxidized::ast_defs::Id;
-use oxidized::ast_defs::ParamKind;
-use oxidized::ast_defs::Pos;
-use oxidized::ast_defs::Uop;
-use oxidized::naming_error::NamingError;
-use oxidized::naming_phase_error::NamingPhaseError;
-use oxidized::nast_check_error::NastCheckError;
+use nast::Block;
+use nast::Expr;
+use nast::Expr_;
+use nast::Id;
+use nast::ParamKind;
+use nast::Pos;
+use nast::Stmt;
+use nast::Stmt_;
+use nast::Uop;
 
-use crate::config::Config;
-use crate::elab_utils;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Clone, Copy, Default)]
 pub struct ElabExprCallHhInvariantPass;
@@ -28,20 +21,15 @@ pub struct ElabExprCallHhInvariantPass;
 impl Pass for ElabExprCallHhInvariantPass {
     // We are elaborating a `Call` `Expr` into a `Stmt` so the transformation
     // is defined on `Stmt`
-    fn on_ty_stmt__bottom_up<Ex: Default, En>(
-        &mut self,
-        elem: &mut Stmt_<Ex, En>,
-        _cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
-        match check_call(elem, errs) {
-            Check::Ignore => ControlFlow::Continue(()),
+    fn on_ty_stmt__bottom_up(&mut self, env: &Env, elem: &mut Stmt_) -> ControlFlow<()> {
+        match check_call(env, elem) {
+            Check::Ignore => Continue(()),
             Check::Invalidate => {
                 if let Stmt_::Expr(box expr) = elem {
                     let inner_expr = std::mem::replace(expr, elab_utils::expr::null());
                     *expr = elab_utils::expr::invalid(inner_expr);
                 }
-                ControlFlow::Break(())
+                Break(())
             }
             Check::Elaborate => {
                 let old_stmt_ = std::mem::replace(elem, Stmt_::Noop);
@@ -59,7 +47,7 @@ impl Pass for ElabExprCallHhInvariantPass {
                     let (pk, expr) = exprs.remove(0);
                     // Raise error if this is an inout param
                     if let ParamKind::Pinout(ref pk_pos) = pk {
-                        errs.push(NamingPhaseError::NastCheck(
+                        env.emit_error(NamingPhaseError::NastCheck(
                             NastCheckError::InoutInTransformedPseudofunction {
                                 pos: Pos::merge(pk_pos, &fn_expr_pos).unwrap(),
                                 fn_name: sn::autoimported_functions::INVARIANT_VIOLATION
@@ -91,7 +79,7 @@ impl Pass for ElabExprCallHhInvariantPass {
                             let false_block =
                                 Block(vec![Stmt(elab_utils::pos::null(), Stmt_::Noop)]);
                             let cond_expr = Expr(
-                                Ex::default(),
+                                (),
                                 cond_pos.clone(),
                                 Expr_::Unop(Box::new((
                                     Uop::Unot,
@@ -102,7 +90,7 @@ impl Pass for ElabExprCallHhInvariantPass {
                         }
                     }
                 }
-                ControlFlow::Continue(())
+                Continue(())
             }
         }
     }
@@ -114,7 +102,7 @@ enum Check {
     Elaborate,
 }
 
-fn check_call<Ex, En>(stmt: &Stmt_<Ex, En>, errs: &mut Vec<NamingPhaseError>) -> Check {
+fn check_call(env: &Env, stmt: &Stmt_) -> Check {
     match stmt {
         Stmt_::Expr(box Expr(
             _,
@@ -122,14 +110,14 @@ fn check_call<Ex, En>(stmt: &Stmt_<Ex, En>, errs: &mut Vec<NamingPhaseError>) ->
             Expr_::Call(box (Expr(_, fn_expr_pos, Expr_::Id(box Id(_, fn_name))), _, exprs, _)),
         )) if fn_name == sn::autoimported_functions::INVARIANT => match exprs.get(0..1) {
             None | Some(&[]) => {
-                errs.push(NamingPhaseError::Naming(NamingError::TooFewArguments(
+                env.emit_error(NamingPhaseError::Naming(NamingError::TooFewArguments(
                     fn_expr_pos.clone(),
                 )));
                 Check::Invalidate
             }
             Some(&[(ParamKind::Pnormal, _), ..]) => Check::Elaborate,
             Some(&[(ParamKind::Pinout(ref pk_pos), _), ..]) => {
-                errs.push(NamingPhaseError::NastCheck(
+                env.emit_error(NamingPhaseError::NastCheck(
                     NastCheckError::InoutInTransformedPseudofunction {
                         pos: Pos::merge(fn_expr_pos, pk_pos).unwrap(),
                         fn_name: sn::autoimported_functions::INVARIANT.to_string(),
@@ -147,15 +135,13 @@ fn check_call<Ex, En>(stmt: &Stmt_<Ex, En>, errs: &mut Vec<NamingPhaseError>) ->
 mod tests {
 
     use super::*;
-    use crate::elab_utils;
-    use crate::Transform;
 
     #[test]
     fn test_valid() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCallHhInvariantPass;
-        let mut elem: Stmt_<(), ()> = Stmt_::Expr(Box::new(Expr(
+        let mut elem = Stmt_::Expr(Box::new(Expr(
             (),
             elab_utils::pos::null(),
             Expr_::Call(Box::new((
@@ -172,9 +158,9 @@ mod tests {
                 None,
             ))),
         )));
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
-        assert!(errs.is_empty());
+        assert!(env.into_errors().is_empty());
 
         assert!(match elem {
             Stmt_::If(box (
@@ -212,10 +198,10 @@ mod tests {
 
     #[test]
     fn test_valid_false() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCallHhInvariantPass;
-        let mut elem: Stmt_<(), ()> = Stmt_::Expr(Box::new(Expr(
+        let mut elem = Stmt_::Expr(Box::new(Expr(
             (),
             elab_utils::pos::null(),
             Expr_::Call(Box::new((
@@ -235,9 +221,9 @@ mod tests {
                 None,
             ))),
         )));
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
-        assert!(errs.is_empty());
+        assert!(env.into_errors().is_empty());
 
         assert!(match elem {
             Stmt_::Expr(box Expr(
@@ -251,10 +237,10 @@ mod tests {
 
     #[test]
     fn test_too_few_args() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCallHhInvariantPass;
-        let mut elem: Stmt_<(), ()> = Stmt_::Expr(Box::new(Expr(
+        let mut elem = Stmt_::Expr(Box::new(Expr(
             (),
             elab_utils::pos::null(),
             Expr_::Call(Box::new((
@@ -271,9 +257,9 @@ mod tests {
                 None,
             ))),
         )));
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
-        let too_few_args_err_opt = errs.pop();
+        let too_few_args_err_opt = env.into_errors().pop();
         assert!(matches!(
             too_few_args_err_opt,
             Some(NamingPhaseError::Naming(NamingError::TooFewArguments(_)))

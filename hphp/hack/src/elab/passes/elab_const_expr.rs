@@ -2,33 +2,27 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
-use std::ops::ControlFlow;
 
 use bitflags::bitflags;
-use naming_special_names_rust as sn;
-use oxidized::aast_defs::ClassConstKind;
-use oxidized::aast_defs::ClassId;
-use oxidized::aast_defs::ClassId_;
-use oxidized::aast_defs::Class_;
-use oxidized::aast_defs::Expr;
-use oxidized::aast_defs::Expr_;
-use oxidized::aast_defs::FunDef;
-use oxidized::aast_defs::Gconst;
-use oxidized::aast_defs::Hint;
-use oxidized::aast_defs::Hint_;
-use oxidized::aast_defs::KvcKind;
-use oxidized::aast_defs::ModuleDef;
-use oxidized::aast_defs::Typedef;
-use oxidized::aast_defs::VcKind;
-use oxidized::ast_defs::Bop;
-use oxidized::ast_defs::ClassishKind;
-use oxidized::ast_defs::Uop;
-use oxidized::naming_error::NamingError;
-use oxidized::naming_phase_error::NamingPhaseError;
+use nast::Bop;
+use nast::ClassConstKind;
+use nast::ClassId;
+use nast::ClassId_;
+use nast::Class_;
+use nast::ClassishKind;
+use nast::Expr;
+use nast::Expr_;
+use nast::FunDef;
+use nast::Gconst;
+use nast::Hint;
+use nast::Hint_;
+use nast::KvcKind;
+use nast::ModuleDef;
+use nast::Typedef;
+use nast::Uop;
+use nast::VcKind;
 
-use crate::config::Config;
-use crate::elab_utils;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Copy, Clone)]
 pub struct ElabConstExprPass {
@@ -76,24 +70,16 @@ impl Pass for ElabConstExprPass {
     // pattern matching. We prefer to do this since we can stop the transformation
     // early in these cases. For cases where we need to pattern match on the
     // expression more deeply, we use the bottom-up pass
-    fn on_ty_expr_top_down<Ex, En>(
-        &mut self,
-        elem: &mut Expr<Ex, En>,
-        _cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_expr_top_down(&mut self, env: &Env, elem: &mut Expr) -> ControlFlow<()> {
         if !self.enforce_const_expr() {
-            ControlFlow::Continue(())
+            Continue(())
         } else {
             let Expr(_, pos, expr_) = elem;
-            let invalid = |expr_: &mut Expr_<_, _>| {
+            let invalid = |expr_: &mut Expr_| {
                 let inner_expr_ = std::mem::replace(expr_, Expr_::Null);
                 let inner_expr = elab_utils::expr::from_expr_(inner_expr_);
                 *expr_ = Expr_::Invalid(Box::new(Some(inner_expr)));
-                ControlFlow::Break(())
+                Break(())
             };
 
             match &expr_ {
@@ -111,69 +97,55 @@ impl Pass for ElabConstExprPass {
                 | Expr_::Varray(..)
                 | Expr_::Tuple(..)
                 | Expr_::Shape(..)
-                | Expr_::Upcast(..) => ControlFlow::Continue(()),
+                | Expr_::Upcast(..) => Continue(()),
 
                 // -- markers --------------------------------------------------
-                Expr_::Invalid(..) | Expr_::Hole(..) => ControlFlow::Continue(()),
+                Expr_::Invalid(..) | Expr_::Hole(..) => Continue(()),
 
                 // -- handled bottom-up ----------------------------------------
-                Expr_::ClassConst(_) => ControlFlow::Continue(()),
+                Expr_::ClassConst(_) => Continue(()),
 
                 // -- conditionally valid --------------------------------------
                 Expr_::As(box (_, Hint(_, box hint_), _)) => match hint_ {
                     // NB we can perform this top-down since the all valid hints
                     // are already in canonical
-                    Hint_::Hlike(..) => ControlFlow::Continue(()),
-                    Hint_::Happly(id, _) if id.name() == sn::fb::INCORRECT_TYPE => {
-                        ControlFlow::Continue(())
-                    }
+                    Hint_::Hlike(..) => Continue(()),
+                    Hint_::Happly(id, _) if id.name() == sn::fb::INCORRECT_TYPE => Continue(()),
                     // TODO[mjt] another example of inconsistency around error positions
                     Hint_::Happly(id, _) => {
-                        errs.push(NamingPhaseError::Naming(NamingError::IllegalConstant(
-                            id.0.clone(),
-                        )));
+                        env.emit_error(NamingError::IllegalConstant(id.0.clone()));
                         invalid(expr_)
                     }
                     _ => {
-                        errs.push(NamingPhaseError::Naming(NamingError::IllegalConstant(
-                            pos.clone(),
-                        )));
+                        env.emit_error(NamingError::IllegalConstant(pos.clone()));
                         invalid(expr_)
                     }
                 },
                 Expr_::Unop(box (uop, _)) => match uop {
-                    Uop::Uplus | Uop::Uminus | Uop::Utild | Uop::Unot => ControlFlow::Continue(()),
+                    Uop::Uplus | Uop::Uminus | Uop::Utild | Uop::Unot => Continue(()),
                     _ => {
-                        errs.push(NamingPhaseError::Naming(NamingError::IllegalConstant(
-                            pos.clone(),
-                        )));
+                        env.emit_error(NamingError::IllegalConstant(pos.clone()));
                         invalid(expr_)
                     }
                 },
                 Expr_::Binop(box (bop, _, _)) => match bop {
                     Bop::Eq(_) => {
-                        errs.push(NamingPhaseError::Naming(NamingError::IllegalConstant(
-                            pos.clone(),
-                        )));
+                        env.emit_error(NamingError::IllegalConstant(pos.clone()));
                         invalid(expr_)
                     }
-                    _ => ControlFlow::Continue(()),
+                    _ => Continue(()),
                 },
                 Expr_::ValCollection(box ((_, vc_kind), _, _)) => match vc_kind {
-                    VcKind::Vec | VcKind::Keyset => ControlFlow::Continue(()),
+                    VcKind::Vec | VcKind::Keyset => Continue(()),
                     _ => {
-                        errs.push(NamingPhaseError::Naming(NamingError::IllegalConstant(
-                            pos.clone(),
-                        )));
+                        env.emit_error(NamingError::IllegalConstant(pos.clone()));
                         invalid(expr_)
                     }
                 },
                 Expr_::KeyValCollection(box ((_, kvc_kind), _, _)) => match kvc_kind {
-                    KvcKind::Dict => ControlFlow::Continue(()),
+                    KvcKind::Dict => Continue(()),
                     _ => {
-                        errs.push(NamingPhaseError::Naming(NamingError::IllegalConstant(
-                            pos.clone(),
-                        )));
+                        env.emit_error(NamingError::IllegalConstant(pos.clone()));
                         invalid(expr_)
                     }
                 },
@@ -183,23 +155,19 @@ impl Pass for ElabConstExprPass {
                             || id.name() == sn::pseudo_functions::UNSAFE_CAST
                             || id.name() == sn::pseudo_functions::UNSAFE_NONNULL_CAST =>
                     {
-                        ControlFlow::Continue(())
+                        Continue(())
                     }
                     _ => {
-                        errs.push(NamingPhaseError::Naming(NamingError::IllegalConstant(
-                            pos.clone(),
-                        )));
+                        env.emit_error(NamingError::IllegalConstant(pos.clone()));
                         invalid(expr_)
                     }
                 },
 
                 Expr_::Omitted => {
                     if matches!(self.mode, file_info::Mode::Mhhi) {
-                        ControlFlow::Continue(())
+                        Continue(())
                     } else {
-                        errs.push(NamingPhaseError::Naming(NamingError::IllegalConstant(
-                            pos.clone(),
-                        )));
+                        env.emit_error(NamingError::IllegalConstant(pos.clone()));
                         invalid(expr_)
                     }
                 }
@@ -231,9 +199,7 @@ impl Pass for ElabConstExprPass {
                 | Expr_::String2(..)
                 | Expr_::Yield(..)
                 | Expr_::Xml(..) => {
-                    errs.push(NamingPhaseError::Naming(NamingError::IllegalConstant(
-                        pos.clone(),
-                    )));
+                    env.emit_error(NamingError::IllegalConstant(pos.clone()));
                     invalid(expr_)
                 }
 
@@ -245,63 +211,41 @@ impl Pass for ElabConstExprPass {
 
     // Handle non-constant expressions which require pattern matching on some
     // element of the expression which is not yet transformed in the top-down pass
-    fn on_ty_expr_bottom_up<Ex, En>(
-        &mut self,
-        elem: &mut Expr<Ex, En>,
-        _cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_expr_bottom_up(&mut self, env: &Env, elem: &mut Expr) -> ControlFlow<()> {
         if !self.enforce_const_expr() {
-            ControlFlow::Continue(())
+            Continue(())
         } else {
             let Expr(_, pos, expr_) = elem;
-            let invalid = |expr_: &mut Expr_<_, _>| {
+            let invalid = |expr_: &mut Expr_| {
                 let inner_expr_ = std::mem::replace(expr_, Expr_::Null);
                 let inner_expr = elab_utils::expr::from_expr_(inner_expr_);
                 *expr_ = Expr_::Invalid(Box::new(Some(inner_expr)));
-                ControlFlow::Break(())
+                Break(())
             };
 
             match expr_ {
                 Expr_::ClassConst(box (ClassId(_, _, class_id_), _)) => match class_id_ {
                     ClassId_::CIstatic => {
-                        errs.push(NamingPhaseError::Naming(NamingError::IllegalConstant(
-                            pos.clone(),
-                        )));
+                        env.emit_error(NamingError::IllegalConstant(pos.clone()));
                         invalid(expr_)
                     }
 
-                    ClassId_::CIparent | ClassId_::CIself | ClassId_::CI(..) => {
-                        ControlFlow::Continue(())
-                    }
+                    ClassId_::CIparent | ClassId_::CIself | ClassId_::CI(..) => Continue(()),
 
                     ClassId_::CIexpr(Expr(_, _, expr_)) => match expr_ {
-                        Expr_::This | Expr_::Id(..) => ControlFlow::Continue(()),
+                        Expr_::This | Expr_::Id(..) => Continue(()),
                         _ => {
-                            errs.push(NamingPhaseError::Naming(NamingError::IllegalConstant(
-                                pos.clone(),
-                            )));
+                            env.emit_error(NamingError::IllegalConstant(pos.clone()));
                             invalid(expr_)
                         }
                     },
                 },
-                _ => ControlFlow::Continue(()),
+                _ => Continue(()),
             }
         }
     }
 
-    fn on_ty_class__top_down<Ex, En>(
-        &mut self,
-        elem: &mut Class_<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_class__top_down(&mut self, _: &Env, elem: &mut Class_) -> ControlFlow<()> {
         self.set_in_enum_class(match elem.kind {
             ClassishKind::CenumClass(_) => true,
             ClassishKind::Cclass(..)
@@ -310,74 +254,38 @@ impl Pass for ElabConstExprPass {
             | ClassishKind::Ctrait => false,
         });
         self.mode = elem.mode;
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_class_const_kind_top_down<Ex, En>(
+    fn on_ty_class_const_kind_top_down(
         &mut self,
-        elem: &mut ClassConstKind<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+        _: &Env,
+        elem: &mut ClassConstKind,
+    ) -> ControlFlow<()> {
         self.set_enforce_const_expr(
             !self.in_enum_class() && matches!(elem, ClassConstKind::CCConcrete(_)),
         );
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_typedef_top_down<Ex, En>(
-        &mut self,
-        elem: &mut Typedef<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_typedef_top_down(&mut self, _: &Env, elem: &mut Typedef) -> ControlFlow<()> {
         self.mode = elem.mode;
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_gconst_top_down<Ex, En>(
-        &mut self,
-        elem: &mut Gconst<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_gconst_top_down(&mut self, _: &Env, elem: &mut Gconst) -> ControlFlow<()> {
         self.mode = elem.mode;
         self.set_enforce_const_expr(true);
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_fun_def_top_down<Ex, En>(
-        &mut self,
-        elem: &mut FunDef<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_fun_def_top_down(&mut self, _: &Env, elem: &mut FunDef) -> ControlFlow<()> {
         self.mode = elem.mode;
-        ControlFlow::Continue(())
+        Continue(())
     }
 
-    fn on_ty_module_def_top_down<Ex, En>(
-        &mut self,
-        elem: &mut ModuleDef<Ex, En>,
-        _cfg: &Config,
-        _errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_module_def_top_down(&mut self, _: &Env, elem: &mut ModuleDef) -> ControlFlow<()> {
         self.mode = elem.mode;
-        ControlFlow::Continue(())
+        Continue(())
     }
 }

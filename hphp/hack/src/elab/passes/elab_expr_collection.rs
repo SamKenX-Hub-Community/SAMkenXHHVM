@@ -2,28 +2,23 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
-use std::ops::ControlFlow;
 
-use naming_special_names_rust as sn;
-use oxidized::aast_defs::Afield;
-use oxidized::aast_defs::CollectionTarg;
-use oxidized::aast_defs::Expr;
-use oxidized::aast_defs::Expr_;
-use oxidized::aast_defs::Field;
-use oxidized::aast_defs::Hint;
-use oxidized::aast_defs::Hint_;
-use oxidized::aast_defs::KvcKind;
-use oxidized::aast_defs::Lid;
-use oxidized::aast_defs::Targ;
-use oxidized::aast_defs::VcKind;
-use oxidized::ast_defs::Id;
+use nast::Afield;
+use nast::CollectionTarg;
+use nast::Expr;
+use nast::Expr_;
+use nast::Field;
+use nast::Hint;
+use nast::Hint_;
+use nast::Id;
+use nast::KvcKind;
+use nast::Lid;
+use nast::Pos;
+use nast::Targ;
+use nast::VcKind;
 use oxidized::local_id;
-use oxidized::naming_error::NamingError;
-use oxidized::naming_phase_error::NamingPhaseError;
-use oxidized::tast::Pos;
 
-use crate::config::Config;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Clone, Copy, Default)]
 pub struct ElabExprCollectionPass;
@@ -42,161 +37,138 @@ impl Pass for ElabExprCollectionPass {
     /// errors in the explicit type arguments and the expressions
     /// within the collection literal.
 
-    fn on_ty_expr_top_down<Ex: Default, En>(
-        &mut self,
-        elem: &mut Expr<Ex, En>,
-        _ctx: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()> {
+    fn on_ty_expr_top_down(&mut self, env: &Env, elem: &mut Expr) -> ControlFlow<()> {
         let Expr(_annot, _pos, expr_) = elem;
 
         if let Expr_::Collection(c) = expr_ {
-            let (Id(pos, cname), ctarg_opt, afields) = c as &mut (_, _, Vec<Afield<Ex, En>>);
+            let (Id(pos, cname), ctarg_opt, afields) = c as &mut (_, _, Vec<Afield>);
 
             match collection_kind(cname) {
                 CollectionKind::VcKind(vc_kind) => {
-                    let targ_opt = targ_from_collection_targs(ctarg_opt, errs, pos);
-                    let exprs: Vec<Expr<Ex, En>> = afields
+                    let targ_opt = targ_from_collection_targs(env, ctarg_opt, pos);
+                    let exprs: Vec<Expr> = afields
                         .iter_mut()
-                        .map(|afield| expr_from_afield(afield, errs, cname))
+                        .map(|afield| expr_from_afield(env, afield, cname))
                         .collect();
                     *expr_ = Expr_::ValCollection(Box::new((
                         (std::mem::replace(pos, Pos::NONE), vc_kind),
                         targ_opt,
                         exprs,
                     )));
-                    ControlFlow::Continue(())
+                    Continue(())
                 }
 
                 CollectionKind::KvcKind(kvc_kind) => {
-                    let targs_opt = targs_from_collection_targs(ctarg_opt, errs, pos);
-                    let fields: Vec<Field<Ex, En>> = afields
+                    let targs_opt = targs_from_collection_targs(env, ctarg_opt, pos);
+                    let fields: Vec<Field> = afields
                         .iter_mut()
-                        .map(|afield| field_from_afield(afield, errs, cname))
+                        .map(|afield| field_from_afield(env, afield, cname))
                         .collect();
                     *expr_ = Expr_::KeyValCollection(Box::new((
                         (std::mem::replace(pos, Pos::NONE), kvc_kind),
                         targs_opt,
                         fields,
                     )));
-                    ControlFlow::Continue(())
+                    Continue(())
                 }
 
                 CollectionKind::Pair => {
                     match &mut (afields.pop(), afields.pop(), afields.pop()) {
                         // We have exactly two args so this _may_ be a valid pair
                         (Some(afield2), Some(afield1), None) => {
-                            let targs_opt = targs_from_collection_targs(ctarg_opt, errs, pos);
-                            let expr1 = expr_from_afield(afield1, errs, cname);
-                            let expr2 = expr_from_afield(afield2, errs, cname);
+                            let targs_opt = targs_from_collection_targs(env, ctarg_opt, pos);
+                            let expr1 = expr_from_afield(env, afield1, cname);
+                            let expr2 = expr_from_afield(env, afield2, cname);
                             *expr_ = Expr_::Pair(Box::new((targs_opt, expr1, expr2)));
-                            ControlFlow::Continue(())
+                            Continue(())
                         }
 
                         // We have fewer than two args, this cannot be a valid [Pair] so replace
                         // with [Invalid]
                         (_, None, _) => {
-                            errs.push(NamingPhaseError::Naming(NamingError::TooFewArguments(
-                                pos.clone(),
-                            )));
-                            let inner_expr = std::mem::replace(
-                                elem,
-                                Expr(Ex::default(), Pos::NONE, Expr_::Null),
-                            );
+                            env.emit_error(NamingError::TooFewArguments(pos.clone()));
+                            let inner_expr =
+                                std::mem::replace(elem, Expr((), Pos::NONE, Expr_::Null));
                             *elem = Expr(
-                                Ex::default(),
+                                (),
                                 inner_expr.1.clone(),
                                 Expr_::Invalid(Box::new(Some(inner_expr))),
                             );
-                            ControlFlow::Break(())
+                            Break(())
                         }
 
                         // We have more than two args, this cannot be a valid `Pair` so replace
                         // with `Invalid`.
                         _ => {
-                            errs.push(NamingPhaseError::Naming(NamingError::TooManyArguments(
-                                pos.clone(),
-                            )));
-                            let inner_expr = std::mem::replace(
-                                elem,
-                                Expr(Ex::default(), Pos::NONE, Expr_::Null),
-                            );
+                            env.emit_error(NamingError::TooManyArguments(pos.clone()));
+                            let inner_expr =
+                                std::mem::replace(elem, Expr((), Pos::NONE, Expr_::Null));
                             *elem = Expr(
-                                Ex::default(),
+                                (),
                                 inner_expr.1.clone(),
                                 Expr_::Invalid(Box::new(Some(inner_expr))),
                             );
-                            ControlFlow::Break(())
+                            Break(())
                         }
                     }
                 }
 
                 CollectionKind::NotACollection => {
-                    errs.push(NamingPhaseError::Naming(NamingError::ExpectedCollection {
+                    env.emit_error(NamingError::ExpectedCollection {
                         pos: pos.clone(),
                         cname: cname.clone(),
-                    }));
-                    let inner_expr =
-                        std::mem::replace(elem, Expr(Ex::default(), Pos::NONE, Expr_::Null));
+                    });
+                    let inner_expr = std::mem::replace(elem, Expr((), Pos::NONE, Expr_::Null));
                     let Expr(_, expr_pos, _) = &inner_expr;
                     *elem = Expr(
-                        Ex::default(),
+                        (),
                         expr_pos.clone(),
                         Expr_::Invalid(Box::new(Some(inner_expr))),
                     );
-                    ControlFlow::Break(())
+                    Break(())
                 }
             }
         } else {
-            ControlFlow::Continue(())
+            Continue(())
         }
     }
 }
 
-/* Extract the expression from [AFvalue]s; if we encounter an [AFkvalue] we
-   raise an error and drop the value expression
-*/
-fn expr_from_afield<Ex: Default, En>(
-    afield: &mut Afield<Ex, En>,
-    errs: &mut Vec<NamingPhaseError>,
-    cname: &str,
-) -> Expr<Ex, En> {
+/// Extract the expression from [AFvalue]s; if we encounter an [AFkvalue] we
+/// raise an error and drop the value expression
+fn expr_from_afield(env: &Env, afield: &mut Afield, cname: &str) -> Expr {
     match afield {
-        Afield::AFvalue(e) => std::mem::replace(e, Expr(Ex::default(), Pos::NONE, Expr_::Null)),
+        Afield::AFvalue(e) => std::mem::replace(e, Expr((), Pos::NONE, Expr_::Null)),
         Afield::AFkvalue(e, _) => {
             let Expr(_, expr_pos, _) = &e;
-            errs.push(NamingPhaseError::Naming(NamingError::UnexpectedArrow {
+            env.emit_error(NamingError::UnexpectedArrow {
                 pos: expr_pos.clone(),
                 cname: cname.to_string(),
-            }));
-            std::mem::replace(e, Expr(Ex::default(), Pos::NONE, Expr_::Null))
+            });
+            std::mem::replace(e, Expr((), Pos::NONE, Expr_::Null))
         }
     }
 }
 
-// Extract the expressions from [AFkvalue]s into a `Field`; if we encounter an
-// `AFvalue` we raise an error and generate a synthetic lvar as the second
-// expression in the `Field`
-fn field_from_afield<Ex: Default, En>(
-    afield: &mut Afield<Ex, En>,
-    errs: &mut Vec<NamingPhaseError>,
-    cname: &str,
-) -> Field<Ex, En> {
+/// Extract the expressions from [AFkvalue]s into a `Field`; if we encounter an
+/// `AFvalue` we raise an error and generate a synthetic lvar as the second
+/// expression in the `Field`
+fn field_from_afield(env: &Env, afield: &mut Afield, cname: &str) -> Field {
     match afield {
         Afield::AFkvalue(ek, ev) => {
-            let ek = std::mem::replace(ek, Expr(Ex::default(), Pos::NONE, Expr_::Null));
-            let ev = std::mem::replace(ev, Expr(Ex::default(), Pos::NONE, Expr_::Null));
+            let ek = std::mem::replace(ek, Expr((), Pos::NONE, Expr_::Null));
+            let ev = std::mem::replace(ev, Expr((), Pos::NONE, Expr_::Null));
             Field(ek, ev)
         }
         Afield::AFvalue(e) => {
-            errs.push(NamingPhaseError::Naming(NamingError::MissingArrow {
+            env.emit_error(NamingError::MissingArrow {
                 pos: e.1.clone(),
                 cname: cname.to_string(),
-            }));
-            let ek = std::mem::replace(e, Expr(Ex::default(), Pos::NONE, Expr_::Null));
+            });
+            let ek = std::mem::replace(e, Expr((), Pos::NONE, Expr_::Null));
             // TODO[mjt]: replace with `Invalid` expression?
             let ev = Expr(
-                Ex::default(),
+                (),
                 Pos::NONE,
                 Expr_::Lvar(Box::new(Lid(
                     ek.1.clone(),
@@ -209,24 +181,19 @@ fn field_from_afield<Ex: Default, En>(
 }
 
 // Get val collection hint if present; if we a keyval hint, raise an error and return `None`
-fn targ_from_collection_targs<Ex: Default>(
-    ctarg_opt: &mut Option<CollectionTarg<Ex>>,
-    errs: &mut Vec<NamingPhaseError>,
+fn targ_from_collection_targs(
+    env: &Env,
+    ctarg_opt: &mut Option<CollectionTarg>,
     pos: &Pos,
-) -> Option<Targ<Ex>> {
+) -> Option<Targ> {
     if let Some(ctarg) = ctarg_opt {
         match ctarg {
             CollectionTarg::CollectionTV(tv) => {
-                let tv = std::mem::replace(
-                    tv,
-                    Targ(Ex::default(), Hint(Pos::NONE, Box::new(Hint_::Herr))),
-                );
+                let tv = std::mem::replace(tv, Targ((), Hint(Pos::NONE, Box::new(Hint_::Herr))));
                 Some(tv)
             }
             CollectionTarg::CollectionTKV(..) => {
-                errs.push(NamingPhaseError::Naming(NamingError::TooManyArguments(
-                    pos.clone(),
-                )));
+                env.emit_error(NamingError::TooManyArguments(pos.clone()));
                 None
             }
         }
@@ -236,28 +203,20 @@ fn targ_from_collection_targs<Ex: Default>(
 }
 
 // Get keyval collection hint if present; if we a val hint, raise an error and return `None`
-fn targs_from_collection_targs<Ex: Default>(
-    ctarg_opt: &mut Option<CollectionTarg<Ex>>,
-    errs: &mut Vec<NamingPhaseError>,
+fn targs_from_collection_targs(
+    env: &Env,
+    ctarg_opt: &mut Option<CollectionTarg>,
     pos: &Pos,
-) -> Option<(Targ<Ex>, Targ<Ex>)> {
+) -> Option<(Targ, Targ)> {
     if let Some(ctarg) = ctarg_opt {
         match ctarg {
             CollectionTarg::CollectionTKV(tk, tv) => {
-                let tk = std::mem::replace(
-                    tk,
-                    Targ(Ex::default(), Hint(Pos::NONE, Box::new(Hint_::Herr))),
-                );
-                let tv = std::mem::replace(
-                    tv,
-                    Targ(Ex::default(), Hint(Pos::NONE, Box::new(Hint_::Herr))),
-                );
+                let tk = std::mem::replace(tk, Targ((), Hint(Pos::NONE, Box::new(Hint_::Herr))));
+                let tv = std::mem::replace(tv, Targ((), Hint(Pos::NONE, Box::new(Hint_::Herr))));
                 Some((tk, tv))
             }
             CollectionTarg::CollectionTV(..) => {
-                errs.push(NamingPhaseError::Naming(NamingError::TooFewArguments(
-                    pos.clone(),
-                )));
+                env.emit_error(NamingError::TooFewArguments(pos.clone()));
                 None
             }
         }
@@ -311,17 +270,16 @@ fn vc_kind_opt(name: &str) -> Option<VcKind> {
 mod tests {
 
     use super::*;
-    use crate::Transform;
 
     // -- ValCollection --------------------------------------------------------
 
     #[test]
     fn test_val_collection_empty() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -331,20 +289,20 @@ mod tests {
             ))),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         let Expr(_, _, expr_) = elem;
-        assert_eq!(errs.len(), 0);
+        assert_eq!(env.into_errors().len(), 0);
         assert!(matches!(expr_, Expr_::ValCollection(_)));
     }
 
     #[test]
     fn test_val_collection_afvalue() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -358,20 +316,20 @@ mod tests {
             ))),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         let Expr(_, _, expr_) = elem;
-        assert_eq!(errs.len(), 0);
+        assert_eq!(env.into_errors().len(), 0);
         assert!(matches!(expr_, Expr_::ValCollection(_)));
     }
 
     #[test]
     fn test_val_collection_afkvalue() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -384,11 +342,11 @@ mod tests {
             ))),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         let Expr(_, _, expr_) = elem;
         assert!(matches!(
-            errs.pop(),
+            env.into_errors().pop(),
             Some(NamingPhaseError::Naming(
                 NamingError::UnexpectedArrow { .. }
             ))
@@ -398,11 +356,11 @@ mod tests {
 
     #[test]
     fn test_val_collection_val_arg() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -415,20 +373,20 @@ mod tests {
             ))),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         let Expr(_, _, expr_) = elem;
-        assert_eq!(errs.len(), 0);
+        assert_eq!(env.into_errors().len(), 0);
         assert!(matches!(expr_, Expr_::ValCollection(_)));
     }
 
     #[test]
     fn test_val_collection_key_val_arg() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -441,11 +399,11 @@ mod tests {
             ))),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         let Expr(_, _, expr_) = elem;
         assert!(matches!(
-            errs.pop(),
+            env.into_errors().pop(),
             Some(NamingPhaseError::Naming(NamingError::TooManyArguments(_)))
         ));
         assert!(match expr_ {
@@ -461,11 +419,11 @@ mod tests {
 
     #[test]
     fn test_key_val_collection_empty() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -475,20 +433,20 @@ mod tests {
             ))),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         let Expr(_, _, expr_) = elem;
-        assert_eq!(errs.len(), 0);
+        assert_eq!(env.into_errors().len(), 0);
         assert!(matches!(expr_, Expr_::KeyValCollection(_)));
     }
 
     #[test]
     fn test_key_val_collection_afvalue() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -502,11 +460,11 @@ mod tests {
             ))),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         let Expr(_, _, expr_) = elem;
         assert!(matches!(
-            errs.pop(),
+            env.into_errors().pop(),
             Some(NamingPhaseError::Naming(NamingError::MissingArrow { .. }))
         ));
         assert!(matches!(expr_, Expr_::KeyValCollection(_)));
@@ -514,11 +472,11 @@ mod tests {
 
     #[test]
     fn test_key_val_collection_afkvalue() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -531,20 +489,20 @@ mod tests {
             ))),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         let Expr(_, _, expr_) = elem;
-        assert_eq!(errs.len(), 0);
+        assert_eq!(env.into_errors().len(), 0);
         assert!(matches!(expr_, Expr_::KeyValCollection(_)));
     }
 
     #[test]
     fn test_key_val_collection_val_arg() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -557,11 +515,11 @@ mod tests {
             ))),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         let Expr(_, _, expr_) = elem;
         assert!(matches!(
-            errs.pop(),
+            env.into_errors().pop(),
             Some(NamingPhaseError::Naming(NamingError::TooFewArguments(_)))
         ));
         assert!(match expr_ {
@@ -575,11 +533,11 @@ mod tests {
 
     #[test]
     fn test_key_val_collection_key_val_arg() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -592,20 +550,20 @@ mod tests {
             ))),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         let Expr(_, _, expr_) = elem;
-        assert_eq!(errs.len(), 0);
+        assert_eq!(env.into_errors().len(), 0);
         assert!(matches!(expr_, Expr_::KeyValCollection(_)));
     }
     // -- Pair -----------------------------------------------------------------
     #[test]
     fn test_pair() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -618,20 +576,20 @@ mod tests {
             ))),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         let Expr(_, _, expr_) = elem;
-        assert_eq!(errs.len(), 0);
+        assert_eq!(env.into_errors().len(), 0);
         assert!(matches!(expr_, Expr_::Pair(_)));
     }
 
     #[test]
     fn test_pair_too_few_exprs() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -645,11 +603,11 @@ mod tests {
             ))),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         let Expr(_, _, expr_) = elem;
         assert!(matches!(
-            errs.pop(),
+            env.into_errors().pop(),
             Some(NamingPhaseError::Naming(NamingError::TooFewArguments(_)))
         ));
         assert!(matches!(expr_, Expr_::Invalid(_)));
@@ -657,11 +615,11 @@ mod tests {
 
     #[test]
     fn test_pair_too_many_exprs() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -675,11 +633,11 @@ mod tests {
             ))),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         let Expr(_, _, expr_) = elem;
         assert!(matches!(
-            errs.pop(),
+            env.into_errors().pop(),
             Some(NamingPhaseError::Naming(NamingError::TooManyArguments(_)))
         ));
         assert!(matches!(expr_, Expr_::Invalid(_)));
@@ -687,11 +645,11 @@ mod tests {
 
     #[test]
     fn test_pair_val_arg() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -707,11 +665,11 @@ mod tests {
             ))),
         );
 
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
 
         let Expr(_, _, expr_) = elem;
         assert!(matches!(
-            errs.pop(),
+            env.into_errors().pop(),
             Some(NamingPhaseError::Naming(NamingError::TooFewArguments(_)))
         ));
         assert!(match expr_ {
@@ -725,11 +683,11 @@ mod tests {
 
     #[test]
     fn test_pair_key_val_arg() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -744,9 +702,9 @@ mod tests {
                 ],
             ))),
         );
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
         let Expr(_, _, expr_) = elem;
-        assert_eq!(errs.len(), 0);
+        assert_eq!(env.into_errors().len(), 0);
         assert!(matches!(expr_, Expr_::Pair(_)));
     }
 
@@ -754,11 +712,11 @@ mod tests {
 
     #[test]
     fn test_not_a_collection() {
-        let cfg = Config::default();
-        let mut errs = Vec::default();
+        let env = Env::default();
+
         let mut pass = ElabExprCollectionPass;
 
-        let mut elem: Expr<(), ()> = Expr(
+        let mut elem = Expr(
             (),
             Pos::NONE,
             Expr_::Collection(Box::new((
@@ -767,10 +725,10 @@ mod tests {
                 vec![],
             ))),
         );
-        elem.transform(&cfg, &mut errs, &mut pass);
+        elem.transform(&env, &mut pass);
         let Expr(_, _, expr_) = elem;
         assert!(matches!(
-            errs.pop(),
+            env.into_errors().pop(),
             Some(NamingPhaseError::Naming(
                 NamingError::ExpectedCollection { .. }
             ))

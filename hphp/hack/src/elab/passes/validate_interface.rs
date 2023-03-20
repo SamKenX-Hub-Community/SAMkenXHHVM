@@ -2,37 +2,23 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
-use std::ops::ControlFlow;
 
 use itertools::FoldWhile;
 use itertools::Itertools;
-use oxidized::aast_defs::Class_;
-use oxidized::aast_defs::Hint;
-use oxidized::naming_phase_error::NamingPhaseError;
-use oxidized::nast_check_error::NastCheckError;
+use nast::Class_;
+use nast::Hint;
 
-use crate::config::Config;
-use crate::Pass;
+use crate::prelude::*;
 
 #[derive(Clone, Copy, Default)]
 pub struct ValidateInterfacePass;
 
 impl Pass for ValidateInterfacePass {
-    fn on_ty_class__bottom_up<Ex, En>(
-        &mut self,
-        elem: &mut Class_<Ex, En>,
-        _cfg: &Config,
-        errs: &mut Vec<NamingPhaseError>,
-    ) -> ControlFlow<(), ()>
-    where
-        Ex: Default,
-    {
+    fn on_ty_class__bottom_up(&mut self, env: &Env, elem: &mut Class_) -> ControlFlow<()> {
         if elem.kind.is_cinterface() {
             // Raise an error for each `use` clause
             elem.uses.iter().for_each(|Hint(pos, _)| {
-                errs.push(NamingPhaseError::NastCheck(
-                    NastCheckError::InterfaceUsesTrait(pos.clone()),
-                ))
+                env.emit_error(NastCheckError::InterfaceUsesTrait(pos.clone()))
             });
 
             // Raise an error for the first static and instance member variable
@@ -58,26 +44,18 @@ impl Pass for ValidateInterfacePass {
                 )
                 .into_inner();
             if let Some(pos) = instance_var_pos_opt {
-                errs.push(NamingPhaseError::NastCheck(
-                    NastCheckError::InterfaceWithMemberVariable(pos),
-                ))
+                env.emit_error(NastCheckError::InterfaceWithMemberVariable(pos))
             }
             if let Some(pos) = static_var_pos_opt {
-                errs.push(NamingPhaseError::NastCheck(
-                    NastCheckError::InterfaceWithStaticMemberVariable(pos),
-                ))
+                env.emit_error(NastCheckError::InterfaceWithStaticMemberVariable(pos))
             }
 
             // Raise an error for each method with a non-empty body
             elem.methods
                 .iter()
                 .filter(|m| !m.body.fb_ast.0.is_empty())
-                .for_each(|m| {
-                    errs.push(NamingPhaseError::NastCheck(NastCheckError::AbstractBody(
-                        m.name.pos().clone(),
-                    )))
-                });
+                .for_each(|m| env.emit_error(NastCheckError::AbstractBody(m.name.pos().clone())));
         }
-        ControlFlow::Continue(())
+        Continue(())
     }
 }

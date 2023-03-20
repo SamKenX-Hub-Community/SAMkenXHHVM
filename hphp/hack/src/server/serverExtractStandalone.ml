@@ -34,7 +34,7 @@ let value_or_not_found err_msg opt = value_exn (DependencyNotFound err_msg) opt
 
 (* -- Pretty-printing constants --------------------------------------------- *)
 
-let __FN_MAKE_DEFAULT__ = "extract_standalone_make_default"
+let __CONST_DEFAULT__ = "EXTRACT_STANDALONE_DEFAULT"
 
 let __FILE_PREFIX__ = "////"
 
@@ -764,16 +764,10 @@ end = struct
     List.iter tparams ~f:(add_tparam_attr_deps ctx env)
 
   and add_fun_attr_deps ctx env fd =
-    let Aast.
-          {
-            f_user_attributes = attrs;
-            f_params = params;
-            f_tparams = tparams;
-            _;
-          } =
+    let Aast.{ f_user_attributes = attrs; f_params = params; _ } =
       fd.Aast.fd_fun
     in
-    add_arg_attr_deps ctx env (attrs, params, tparams)
+    add_arg_attr_deps ctx env (attrs, params, fd.Aast.fd_tparams)
 
   and add_method_attr_deps
       ctx
@@ -1126,7 +1120,7 @@ end = struct
     else
       Fmt.string ppf param_name
 
-  let pp_fun_param_default ppf _ = Fmt.pf ppf {| = \%s()|} __FN_MAKE_DEFAULT__
+  let pp_fun_param_default ppf _ = Fmt.pf ppf {| = \%s|} __CONST_DEFAULT__
 
   let update_hfun_context (pos, hints) ~name =
     ( pos,
@@ -1322,7 +1316,7 @@ end = struct
     (* -- Global functions -------------------------------------------------- *)
 
     let pp_fun ppf (name, fd) =
-      let Aast.{ f_user_attributes; f_tparams; f_params; f_ret; f_ctxs; _ } =
+      let Aast.{ f_user_attributes; f_params; f_ret; f_ctxs; _ } =
         fd.Aast.fd_fun
       in
       Fmt.(
@@ -1333,7 +1327,7 @@ end = struct
           f_user_attributes
           (strip_ns name)
           pp_tparams
-          f_tparams
+          fd.Aast.fd_tparams
           pp_fun_params
           f_params
           (option pp_contexts)
@@ -2339,8 +2333,8 @@ end = struct
 
   let __DEPS_ON_DEFAULT__ =
     Format.sprintf
-      {|@.function %s()[]: nothing {@.  throw new \Exception();@.}|}
-      __FN_MAKE_DEFAULT__
+      {|@.const nothing %s = HH\FIXME\UNSAFE_CAST<mixed, nothing>("");@.|}
+      __CONST_DEFAULT__
 
   let __DEPS_ON_ANY__ =
     Format.sprintf

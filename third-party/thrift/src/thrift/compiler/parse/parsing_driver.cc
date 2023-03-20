@@ -456,24 +456,6 @@ std::unique_ptr<t_throws> parsing_driver::new_throws(
   return result;
 }
 
-void parsing_driver::set_fields(t_structured& tstruct, t_field_list&& fields) {
-  if (mode != parsing_mode::PROGRAM) {
-    return;
-  }
-  assert(tstruct.fields().empty());
-  t_field_id next_id = -1;
-  for (auto& field : fields) {
-    maybe_allocate_field_id(next_id, *field);
-    if (!tstruct.try_append_field(std::move(field))) {
-      diags_.error(
-          *field,
-          "Field identifier {} for \"{}\" has already been used.",
-          field->get_key(),
-          field->get_name());
-    }
-  }
-}
-
 t_type_ref parsing_driver::new_type_ref(
     const t_type& type,
     std::unique_ptr<t_annotations> annotations,
@@ -501,13 +483,14 @@ t_type_ref parsing_driver::new_type_ref(
   // NOTE(afuller): This is not a safe assumption as it breaks all
   // dynamic casts and t_type::is_* calls.
   return *add_unnamed_typedef(
-      std::make_unique<t_typedef>(
+      t_typedef::make_unnamed(
           const_cast<t_program*>(type.program()), type.get_name(), type),
       std::move(annotations),
       range);
 }
 
 t_type_ref parsing_driver::new_type_ref(
+    source_range range,
     std::unique_ptr<t_templated_type> node,
     std::unique_ptr<t_annotations> annotations) {
   if (mode != parsing_mode::PROGRAM) {
@@ -517,6 +500,7 @@ t_type_ref parsing_driver::new_type_ref(
   assert(node != nullptr);
   const t_type* type = node.get();
   set_annotations(node.get(), std::move(annotations));
+  node->set_src_range(range);
   program->add_type_instantiation(std::move(node));
   return *type;
 }
@@ -593,7 +577,7 @@ void parsing_driver::allocate_field_id(t_field_id& next_id, t_field& field) {
   if (params_.strict >= 192) {
     diags_.error(
         field,
-        "Implicit field keys are deprecated and not allowed with -strict");
+        "Implicit field ids are deprecated and not allowed with -strict");
   }
   if (next_id < t_field::min_id) {
     diags_.error(
@@ -613,45 +597,56 @@ void parsing_driver::maybe_allocate_field_id(
   }
 
   // Check the explicitly provided id.
-  if (field.id() <= 0) {
-    // TODO(afuller): Move this validation to ast_validator.
-    if (params_.allow_neg_field_keys) {
-      /*
-       * allow_neg_field_keys exists to allow users to add explicitly
-       * specified id values to old .thrift files without breaking
-       * protocol compatibility.
-       */
-      if (field.id() != next_id) {
-        diags_.warning(
-            field,
-            "Nonpositive field id ({}) differs from what would be "
-            "auto-assigned by thrift ({}).",
-            field.id(),
-            next_id);
-      }
-    } else if (field.id() == next_id) {
+  if (field.id() > 0) {
+    return;
+  }
+  if (params_.allow_neg_field_keys) {
+    // allow_neg_field_keys exists to allow users to add explicitly specified
+    // id values to old .thrift files without breaking protocol compatibility.
+    if (field.id() != next_id) {
       diags_.warning(
           field,
-          "Nonpositive value ({}) not allowed as a field id.",
-          field.id());
-    } else {
-      // TODO(afuller): Make ignoring the user provided value a failure.
-      diags_.warning(
-          field,
-          "Nonpositive field id ({}) differs from what is auto-assigned by "
-          "thrift. The id must be positive or {}.",
+          "Nonpositive field id ({}) differs from what would be "
+          "auto-assigned by thrift ({}).",
           field.id(),
           next_id);
-      // Ignore user provided value and auto assign an id.
-      allocate_field_id(next_id, field);
     }
-    // Skip past any negative, manually assigned ids.
-    if (field.id() < 0) {
-      /*
-       * Update next field id to be one less than the value.
-       * The FieldList parsing will catch any duplicate id values.
-       */
-      next_id = field.id() - 1;
+  } else if (field.id() == next_id) {
+    diags_.warning(
+        field, "Nonpositive value ({}) not allowed as a field id.", field.id());
+  } else {
+    // TODO(afuller): Make ignoring the user provided value a failure.
+    diags_.warning(
+        field,
+        "Nonpositive field id ({}) differs from what is auto-assigned by "
+        "thrift. The id must be positive or {}.",
+        field.id(),
+        next_id);
+    // Ignore user provided value and auto assign an id.
+    allocate_field_id(next_id, field);
+  }
+  // Skip past any negative, manually assigned ids.
+  if (field.id() < 0) {
+    // Update the next field id to be one less than the value.
+    // The field_list parsing will catch any duplicates.
+    next_id = field.id() - 1;
+  }
+}
+
+void parsing_driver::set_fields(t_structured& s, t_field_list&& fields) {
+  if (mode != parsing_mode::PROGRAM) {
+    return;
+  }
+  assert(s.fields().empty());
+  t_field_id next_id = -1;
+  for (auto& field : fields) {
+    maybe_allocate_field_id(next_id, *field);
+    if (!s.try_append_field(std::move(field))) {
+      diags_.error(
+          *field,
+          "Field id {} for `{}` has already been used.",
+          field->id(),
+          field->name());
     }
   }
 }
@@ -814,24 +809,73 @@ std::unique_ptr<t_service> parsing_driver::on_service(
   return service;
 }
 
+std::unique_ptr<t_function> parsing_driver::on_function(
+    source_range range,
+    std::unique_ptr<stmt_attrs> attrs,
+    t_function_qualifier qual,
+    std::vector<t_type_ref> return_type,
+    const identifier& name,
+    t_field_list params,
+    std::unique_ptr<t_throws> throws,
+    std::unique_ptr<t_annotations> annotations) {
+  auto function = std::make_unique<t_function>(
+      program, std::move(return_type), fmt::to_string(name.str));
+  function->set_qualifier(qual);
+  set_fields(function->params(), std::move(params));
+  function->set_exceptions(std::move(throws));
+  function->set_src_range(range);
+  // TODO: Leave the param list unnamed.
+  function->params().set_name(function->name() + "_args");
+  set_attributes(*function, std::move(attrs), std::move(annotations), range);
+  return function;
+}
+
+t_type_ref parsing_driver::on_stream_return_type(
+    source_range range, type_throws_spec spec) {
+  auto stream_response =
+      std::make_unique<t_stream_response>(std::move(spec.type));
+  stream_response->set_exceptions(std::move(spec.throws));
+  return new_type_ref(range, std::move(stream_response), {});
+}
+
+t_type_ref parsing_driver::on_sink_return_type(
+    source_range range,
+    type_throws_spec sink_spec,
+    type_throws_spec final_response_spec) {
+  auto sink = std::make_unique<t_sink>(
+      std::move(sink_spec.type), std::move(final_response_spec.type));
+  sink->set_sink_exceptions(std::move(sink_spec.throws));
+  sink->set_final_response_exceptions(std::move(final_response_spec.throws));
+  return new_type_ref(range, std::move(sink), {});
+}
+
 t_type_ref parsing_driver::on_list_type(
-    t_type_ref element_type, std::unique_ptr<t_annotations> annotations) {
+    source_range range,
+    t_type_ref element_type,
+    std::unique_ptr<t_annotations> annotations) {
   return new_type_ref(
+      range,
       std::make_unique<t_list>(std::move(element_type)),
       std::move(annotations));
 }
 
 t_type_ref parsing_driver::on_set_type(
-    t_type_ref key_type, std::unique_ptr<t_annotations> annotations) {
+    source_range range,
+    t_type_ref key_type,
+    std::unique_ptr<t_annotations> annotations) {
   return new_type_ref(
-      std::make_unique<t_set>(std::move(key_type)), std::move(annotations));
+      range,
+      std::make_unique<t_set>(std::move(key_type)),
+      std::move(annotations));
 }
 
 t_type_ref parsing_driver::on_map_type(
+    source_range range,
     t_type_ref key_type,
     t_type_ref value_type,
     std::unique_ptr<t_annotations> annotations) {
   return new_type_ref(
+      range,
       std::make_unique<t_map>(std::move(key_type), std::move(value_type)),
       std::move(annotations));
 }

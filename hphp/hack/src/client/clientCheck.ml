@@ -154,9 +154,6 @@ let connect ?(use_priority_pipe = false) args =
         no_load;
         watchman_debug_logging;
         log_inference_constraints;
-        log_on_slow_monitor_connect =
-          local_config
-            .ServerLocalConfig.log_from_client_when_slow_monitor_connections;
         remote;
         progress_callback =
           Option.some_if show_spinner (ClientConnect.tty_progress_reporter ());
@@ -347,6 +344,15 @@ let main (args : client_check_env) (local_config : ServerLocalConfig.t) :
       let%lwt results =
         rpc_with_retry args
         @@ Rpc.IDE_FIND_REFS (labelled_file, line, char, include_defs)
+      in
+      ClientFindRefs.go_ide results args.output_json;
+      Lwt.return (Exit_status.No_error, Telemetry.create ())
+    | MODE_IDE_GO_TO_IMPL arg ->
+      let (filename, pos) = parse_ide_find_refs_arg arg in
+      let (line, char) = parse_position_string ~split_on:"," pos in
+      let labelled_file = ServerCommandTypes.LabelledFileName filename in
+      let%lwt results =
+        rpc_with_retry args @@ Rpc.IDE_GO_TO_IMPL (labelled_file, line, char)
       in
       ClientFindRefs.go_ide results args.output_json;
       Lwt.return (Exit_status.No_error, Telemetry.create ())

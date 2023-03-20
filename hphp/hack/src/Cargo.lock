@@ -1469,6 +1469,8 @@ version = "0.0.0"
 dependencies = [
  "bitflags",
  "bstr 1.2.0",
+ "core_utils_rust",
+ "elaborate_namespaces_visitor",
  "file_info",
  "hash",
  "itertools 0.10.5",
@@ -1482,10 +1484,10 @@ dependencies = [
 name = "elab_ffi"
 version = "0.0.0"
 dependencies = [
- "elaborate_namespaces_visitor",
- "ocamlrep",
+ "elab",
  "ocamlrep_ocamlpool",
  "oxidized",
+ "relative_path",
 ]
 
 [[package]]
@@ -2332,6 +2334,7 @@ dependencies = [
 name = "hh_config"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "config_file",
  "oxidized",
  "serde",
@@ -2859,9 +2862,9 @@ version = "0.0.0"
 dependencies = [
  "arena_deserializer",
  "arena_trait",
- "eq_modulo_pos",
  "no_pos_hash",
  "ocamlrep",
+ "oxidized",
  "rc_pos",
  "serde",
 ]
@@ -3571,6 +3574,7 @@ dependencies = [
  "relative_path",
  "rust_to_ocaml_attr",
  "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -5034,15 +5038,15 @@ dependencies = [
 
 [[package]]
 name = "tempfile"
-version = "3.3.0"
+version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af18f7ae1acd354b992402e9ec5864359d693cd8a79dcbef59f76891701c1e95"
 dependencies = [
  "cfg-if 1.0.0",
  "fastrand",
- "libc",
  "redox_syscall 0.2.10",
- "remove_dir_all",
- "winapi",
+ "rustix 0.36.8",
+ "windows-sys 0.42.0",
 ]
 
 [[package]]
@@ -5109,7 +5113,6 @@ dependencies = [
  "anyhow",
  "ascii",
  "escaper",
- "ffi",
  "hash",
  "ir",
  "itertools 0.10.5",

@@ -32,6 +32,7 @@
 #include "mcrouter/routes/ExtraRouteHandleProviderIf.h"
 #include "mcrouter/routes/FailoverRoute.h"
 #include "mcrouter/routes/HashRouteFactory.h"
+#include "mcrouter/routes/McBucketRoute.h"
 #include "mcrouter/routes/PoolRouteUtils.h"
 #include "mcrouter/routes/RateLimitRoute.h"
 #include "mcrouter/routes/RateLimiter.h"
@@ -43,6 +44,8 @@
 namespace facebook {
 namespace memcache {
 namespace mcrouter {
+
+static constexpr uint32_t kMaxTotalFanout = 32 * 1024;
 
 extern template MemcacheRouterInfo::RouteHandlePtr
 createHashRoute<MemcacheRouterInfo>(
@@ -254,6 +257,7 @@ McRouteHandleProvider<RouterInfo>::makePool(
     // servers
     auto jhostnames = json.get_ptr("hostnames");
     auto jfailureDomains = json.get_ptr("failure_domains");
+    auto jAdditionalFanout = json.get_ptr("additional_fanout");
     checkLogic(
         !jfailureDomains || jfailureDomains->isArray(),
         "failure_domains is not an array");
@@ -272,6 +276,23 @@ McRouteHandleProvider<RouterInfo>::makePool(
         "expected {}, got {}",
         jservers->size(),
         jfailureDomains ? jfailureDomains->size() : 0);
+
+    checkLogic(
+        !jAdditionalFanout || jAdditionalFanout->isInt(),
+        "additional_fanout is not an integer");
+    uint32_t additionalFanout = 0;
+    if (jAdditionalFanout) {
+      additionalFanout = jAdditionalFanout->getInt();
+    }
+    checkLogic(
+        additionalFanout <=
+            kMaxTotalFanout - proxy_.router().opts().num_proxies,
+        "additional_fanout + num_proxies must be <= {}",
+        kMaxTotalFanout);
+
+    checkLogic(
+        additionalFanout == 0 || !proxy_.router().opts().thread_affinity,
+        "additional_fanout is not supported with thread_affinity");
 
     int32_t poolStatIndex = proxy_.router().getStatsEnabledPoolIndex(name);
 
@@ -298,57 +319,70 @@ McRouteHandleProvider<RouterInfo>::makePool(
         proxy_.stats().increment(dest_with_no_failure_domain_count_stat);
       }
 
-      auto ap = createAccessPoint(
-          server.stringPiece(), failureDomain, proxy_.router(), *apAttr);
-
-      auto it = accessPoints_.find(name);
-      if (it == accessPoints_.end()) {
-        std::unordered_set<std::shared_ptr<const AccessPoint>> accessPoints;
-        it = accessPoints_.emplace(name, std::move(accessPoints)).first;
+      uint32_t fanoutForThisProxy = 1;
+      uint32_t numProxies = proxy_.router().opts().num_proxies;
+      uint32_t proxyId = proxy_.getId();
+      assert(proxyId < numProxies); // is numProxies = 0 ever valid?
+      if (numProxies > 0 && additionalFanout > 0) {
+        uint32_t totalFanout = numProxies + additionalFanout;
+        fanoutForThisProxy =
+            totalFanout / numProxies + (proxyId < (totalFanout % numProxies));
       }
-      folly::StringPiece nameSp = it->first;
+      for (uint32_t idx = 0; idx < fanoutForThisProxy; ++idx) {
+        auto ap = createAccessPoint(
+            server.stringPiece(), failureDomain, proxy_.router(), *apAttr);
 
-      if (ap->getProtocol() == mc_thrift_protocol) {
-        checkLogic(
-            ap->getSecurityMech() == SecurityMech::NONE ||
-                ap->getSecurityMech() == SecurityMech::TLS ||
-                ap->getSecurityMech() == SecurityMech::TLS13_FIZZ ||
-                ap->getSecurityMech() == SecurityMech::TLS_TO_PLAINTEXT,
-            "Security mechanism must be 'plain', 'tls', 'fizz' or "
-            "'tls_to_plain' for ThriftTransport, got {}",
-            securityMechToString(ap->getSecurityMech()));
+        auto it = accessPoints_.find(name);
+        if (it == accessPoints_.end()) {
+          std::unordered_set<std::shared_ptr<const AccessPoint>> accessPoints;
+          it = accessPoints_.emplace(name, std::move(accessPoints)).first;
+        }
+        folly::StringPiece nameSp = it->first;
 
-        using Transport = ThriftTransport<RouterInfo>;
-        auto destResult = createDestinationRoute<Transport>(
-            std::move(ap),
-            timeout,
-            connectTimeout,
-            qosClass,
-            qosPath,
-            nameSp,
-            i,
-            poolStatIndex,
-            disableRequestDeadlineCheck,
-            poolTkoTracker,
-            keepRoutingPrefix);
-        it->second.insert(destResult.second);
-        destinations.push_back(std::move(destResult.first));
-      } else {
-        using Transport = AsyncMcClient;
-        auto destResult = createDestinationRoute<Transport>(
-            std::move(ap),
-            timeout,
-            connectTimeout,
-            qosClass,
-            qosPath,
-            nameSp,
-            i,
-            poolStatIndex,
-            disableRequestDeadlineCheck,
-            poolTkoTracker,
-            keepRoutingPrefix);
-        it->second.insert(destResult.second);
-        destinations.push_back(std::move(destResult.first));
+        if (ap->getProtocol() == mc_thrift_protocol) {
+          checkLogic(
+              ap->getSecurityMech() == SecurityMech::NONE ||
+                  ap->getSecurityMech() == SecurityMech::TLS ||
+                  ap->getSecurityMech() == SecurityMech::TLS13_FIZZ ||
+                  ap->getSecurityMech() == SecurityMech::TLS_TO_PLAINTEXT,
+              "Security mechanism must be 'plain', 'tls', 'fizz' or "
+              "'tls_to_plain' for ThriftTransport, got {}",
+              securityMechToString(ap->getSecurityMech()));
+
+          using Transport = ThriftTransport<RouterInfo>;
+          auto destResult = createDestinationRoute<Transport>(
+              std::move(ap),
+              timeout,
+              connectTimeout,
+              qosClass,
+              qosPath,
+              nameSp,
+              i,
+              poolStatIndex,
+              disableRequestDeadlineCheck,
+              poolTkoTracker,
+              keepRoutingPrefix,
+              idx);
+          it->second.insert(destResult.second);
+          destinations.push_back(std::move(destResult.first));
+        } else {
+          using Transport = AsyncMcClient;
+          auto destResult = createDestinationRoute<Transport>(
+              std::move(ap),
+              timeout,
+              connectTimeout,
+              qosClass,
+              qosPath,
+              nameSp,
+              i,
+              poolStatIndex,
+              disableRequestDeadlineCheck,
+              poolTkoTracker,
+              keepRoutingPrefix,
+              idx);
+          it->second.insert(destResult.second);
+          destinations.push_back(std::move(destResult.first));
+        }
       }
     } // servers
 
@@ -422,9 +456,10 @@ McRouteHandleProvider<RouterInfo>::createDestinationRoute(
     int32_t poolStatIndex,
     bool disableRequestDeadlineCheck,
     const std::shared_ptr<PoolTkoTracker>& poolTkoTracker,
-    bool keepRoutingPrefix) {
+    bool keepRoutingPrefix,
+    uint32_t idx) {
   auto pdstn = proxy_.destinationMap()->template emplace<Transport>(
-      std::move(ap), timeout, qosClass, qosPath, poolTkoTracker);
+      std::move(ap), timeout, qosClass, qosPath, poolTkoTracker, idx);
   pdstn->updateShortestTimeout(connectTimeout, timeout);
   auto resAp = pdstn->accessPoint();
 
@@ -478,6 +513,20 @@ McRouteHandleProvider<MemcacheRouterInfo>::createSRRoute(
 
 template <class RouterInfo>
 std::shared_ptr<typename RouterInfo::RouteHandleIf>
+McRouteHandleProvider<RouterInfo>::bucketize(
+    std::shared_ptr<typename RouterInfo::RouteHandleIf> route,
+    const folly::dynamic& /*json*/) {
+  return route;
+}
+
+template <>
+std::shared_ptr<MemcacheRouterInfo::RouteHandleIf>
+McRouteHandleProvider<MemcacheRouterInfo>::bucketize(
+    std::shared_ptr<typename MemcacheRouterInfo::RouteHandleIf> route,
+    const folly::dynamic&);
+
+template <class RouterInfo>
+std::shared_ptr<typename RouterInfo::RouteHandleIf>
 McRouteHandleProvider<RouterInfo>::makePoolRoute(
     RouteHandleFactory<RouteHandleIf>& factory,
     const folly::dynamic& json) {
@@ -528,6 +577,11 @@ McRouteHandleProvider<RouterInfo>::makePoolRoute(
           }
         }
       }
+      if (auto* jNeedBucketization = json.get_ptr("bucketize")) {
+        if (parseBool(*jNeedBucketization, "bucketize")) {
+          jhashWithWeights["bucketize"] = true;
+        }
+      }
     }
     auto route = createHashRoute<RouterInfo>(
         jhashWithWeights, std::move(destinations), factory.getThreadId());
@@ -556,7 +610,9 @@ McRouteHandleProvider<RouterInfo>::makePoolRoute(
     if (needAsynclog) {
       route = createAsynclogRoute(std::move(route), asynclogName.str());
     }
-
+    if (json.isObject()) {
+      route = bucketize(std::move(route), json);
+    }
     return route;
   } catch (const std::exception& e) {
     throwLogic("PoolRoute {}: {}", poolJson.name, e.what());

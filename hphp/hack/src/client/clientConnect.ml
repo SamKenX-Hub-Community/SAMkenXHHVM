@@ -29,7 +29,6 @@ type env = {
   no_load: bool;
   watchman_debug_logging: bool;
   log_inference_constraints: bool;
-  log_on_slow_monitor_connect: bool;
   remote: bool;
   progress_callback: (string option -> unit) option;
   do_post_handoff_handshake: bool;
@@ -76,59 +75,35 @@ let tty_progress_reporter () =
 (** What is the latest progress message written by the server into a file?
 We store this in a mutable variable, so we can know whether it's changed and hence whether
 to display the warning banner. *)
-let latest_server_progress : ServerCommandTypes.server_progress ref =
-  ref
-    ServerCommandTypes.
-      {
-        server_progress = "connecting";
-        server_warning = None;
-        server_timestamp = 0.;
-      }
+let latest_server_progress : ServerProgress.t ref =
+  ref ServerProgress.{ message = "connecting"; timestamp = 0.; pid = 0 }
 
 (** This reads from the progress file and assigns into mutable variable "latest_status_progress",
 and returns whether there was new status. *)
-let check_progress ~(server_progress_file : string) : bool =
-  let open ServerCommandTypes in
-  let server_progress =
-    ServerCommandTypesUtils.read_progress_file ~server_progress_file
-  in
+let check_progress () : bool =
+  let server_progress = ServerProgress.read () in
   if
     not
       (Float.equal
-         server_progress.server_timestamp
-         !latest_server_progress.server_timestamp)
+         server_progress.ServerProgress.timestamp
+         !latest_server_progress.ServerProgress.timestamp)
   then begin
     log
-      "check_progress: [%s] %s / %s"
-      (Utils.timestring server_progress.server_timestamp)
-      server_progress.server_progress
-      (Option.value server_progress.server_warning ~default:"[none]");
+      "check_progress: [%s] %s"
+      (Utils.timestring server_progress.ServerProgress.timestamp)
+      server_progress.ServerProgress.message;
     latest_server_progress := server_progress;
     true
   end else
     false
 
-let show_progress
-    (progress_callback : string option -> unit) ~(server_progress_file : string)
-    : unit =
-  let open ServerCommandTypes in
-  let had_warning = Option.is_some !latest_server_progress.server_warning in
-  let (_any_changes : bool) = check_progress ~server_progress_file in
-  if not had_warning then
-    Option.iter
-      !latest_server_progress.server_warning
-      ~f:(Printf.eprintf "\n%s\n%!");
-  let progress = !latest_server_progress.server_progress in
-  let final_suffix =
-    if Option.is_some !latest_server_progress.server_warning then
-      " - this can take a long time, see warning above]"
-    else
-      "]"
-  in
+let show_progress (progress_callback : string option -> unit) : unit =
+  let (_any_changes : bool) = check_progress () in
+  let message = !latest_server_progress.ServerProgress.message in
   (* We always show progress, even if there were no changes, just so the user
      can see the spinner keep turning around. It looks better that way for things
      like "loading saved-state" which would otherwise look stuck for 30s. *)
-  progress_callback (Some ("[" ^ progress ^ final_suffix));
+  progress_callback (Some ("[" ^ message ^ "]"));
   ()
 
 let check_for_deadline deadline_opt =
@@ -153,9 +128,6 @@ let rec wait_for_server_message
     ~(server_specific_files : ServerCommandTypes.server_specific_files)
     ~(progress_callback : (string option -> unit) option)
     ~(root : Path.t) : _ ServerCommandTypes.message_type Lwt.t =
-  let server_progress_file =
-    server_specific_files.ServerCommandTypes.server_progress_file
-  in
   check_for_deadline deadline;
   let%lwt (readable, _, _) =
     Lwt_utils.select
@@ -165,7 +137,7 @@ let rec wait_for_server_message
       1.0
   in
   if List.is_empty readable then (
-    Option.iter progress_callback ~f:(show_progress ~server_progress_file);
+    Option.iter progress_callback ~f:show_progress;
     wait_for_server_message
       ~connection_log_id
       ~expected_message
@@ -207,8 +179,7 @@ let rec wait_for_server_message
           ~connection_log_id
           "wait_for_server_message: didn't want %s"
           (ServerCommandTypesUtils.debug_describe_message_type msg);
-        if not is_ping then
-          Option.iter progress_callback ~f:(show_progress ~server_progress_file);
+        if not is_ping then Option.iter progress_callback ~f:show_progress;
         wait_for_server_message
           ~connection_log_id
           ~expected_message
@@ -307,13 +278,13 @@ let rec connect ?(allow_macos_hack = true) (env : env) (start_time : float) :
     {
       MonitorRpc.force_dormant_start = env.force_dormant_start;
       pipe_name =
-        HhServerMonitorConfig.pipe_type_to_string
+        ServerController.pipe_type_to_string
           (if env.force_dormant_start then
-            HhServerMonitorConfig.Force_dormant_start_only
+            ServerController.Force_dormant_start_only
           else if env.use_priority_pipe then
-            HhServerMonitorConfig.Priority
+            ServerController.Priority
           else
-            HhServerMonitorConfig.Default);
+            ServerController.Default);
     }
   in
   let tracker = Connection_tracker.create () in
@@ -328,7 +299,7 @@ let rec connect ?(allow_macos_hack = true) (env : env) (start_time : float) :
      if it timed out. That's because I distrust infinite timeouts, just in case something got stuck for
      unknown causes, and maybe retrying the connection attempt will get it unstuck? -- a sort of
      "try turning it off then on again". This timeout must be comfortably longer than the monitor's
-     own 30s timeout in serverMonitor.hand_off_client_connection_wrapper to handoff to the server;
+     own 30s timeout in MonitorMain.hand_off_client_connection_wrapper to handoff to the server;
      if it were shorter, then the monitor's incoming queue would be entirely full of requests that
      were all stale by the time it got to handle them. *)
   let timeout =
@@ -342,13 +313,9 @@ let rec connect ?(allow_macos_hack = true) (env : env) (start_time : float) :
     "ClientConnect.connect: attempting MonitorConnection.connect_once (%ds)"
     timeout;
   let conn =
-    MonitorConnection.connect_once
-      ~log_on_slow_connect:env.log_on_slow_monitor_connect
-      ~tracker
-      ~timeout
-      env.root
-      handoff_options
+    MonitorConnection.connect_once ~tracker ~timeout env.root handoff_options
   in
+
   let t_connected_to_monitor = Unix.gettimeofday () in
   match conn with
   | Ok (ic, oc, server_specific_files) ->
@@ -386,7 +353,7 @@ let rec connect ?(allow_macos_hack = true) (env : env) (start_time : float) :
         if the server needs to run a long typecheck phase before communication
         with the client, e.g. for cold starts.
 
-        For shorter startup times, ServerMonitor.Sent_fds_collector attempts to
+        For shorter startup times, MonitorMain.Sent_fds_collector attempts to
         compensate for this issue by having the monitor wait a few seconds after
         handoff before attempting to close its connection fd.
 
@@ -420,14 +387,12 @@ let rec connect ?(allow_macos_hack = true) (env : env) (start_time : float) :
         }
   | Error e ->
     (match e with
-    | ServerMonitorUtils.Server_died
-    | ServerMonitorUtils.(
-        Connect_to_monitor_failure { server_exists = true; _ }) ->
+    | MonitorUtils.Server_died
+    | MonitorUtils.(Connect_to_monitor_failure { server_exists = true; _ }) ->
       log ~tracker "connect: no response yet from server; will retry...";
       Unix.sleepf 0.1;
       connect env start_time
-    | ServerMonitorUtils.(
-        Connect_to_monitor_failure { server_exists = false; _ }) ->
+    | MonitorUtils.(Connect_to_monitor_failure { server_exists = false; _ }) ->
       log ~tracker "connect: autostart=%b" env.autostart;
       if env.autostart then (
         let {
@@ -440,7 +405,6 @@ let rec connect ?(allow_macos_hack = true) (env : env) (start_time : float) :
           no_load;
           watchman_debug_logging;
           log_inference_constraints;
-          log_on_slow_monitor_connect = _;
           remote = _;
           progress_callback = _;
           do_post_handoff_handshake = _;
@@ -487,21 +451,21 @@ let rec connect ?(allow_macos_hack = true) (env : env) (start_time : float) :
           ^^ " yourself or run hh_client without --autostart-server false\n%!");
         raise Exit_status.(Exit_with No_server_running_should_retry)
       )
-    | ServerMonitorUtils.Server_dormant_out_of_retries ->
+    | MonitorUtils.Server_dormant_out_of_retries ->
       Printf.eprintf
         ("Ran out of retries while waiting for Mercurial to finish rebase. Starting "
         ^^ "the server in the middle of rebase is strongly not recommended and you should "
         ^^ "first finish the rebase before retrying. If you really "
         ^^ "know what you're doing, maybe try --force-dormant-start true\n%!");
       raise Exit_status.(Exit_with Out_of_retries)
-    | ServerMonitorUtils.Server_dormant ->
+    | MonitorUtils.Server_dormant ->
       Printf.eprintf
         ("Error: No server running and connection limit reached for waiting"
         ^^ " on next server to be started. Please wait patiently. If you really"
         ^^ " know what you're doing, maybe try --force-dormant-start true\n%!");
       raise Exit_status.(Exit_with No_server_running_should_retry)
-    | ServerMonitorUtils.Build_id_mismatched mismatch_info_opt ->
-      ServerMonitorUtils.(
+    | MonitorUtils.Build_id_mismatched mismatch_info_opt ->
+      MonitorUtils.(
         Printf.eprintf
           "hh_server's version doesn't match the client's, so it will exit.\n";
         begin
