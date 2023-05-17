@@ -4,9 +4,9 @@
 package module // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 
@@ -22,7 +22,8 @@ type GetEntityRequest struct {
 var _ thrift.Struct = &GetEntityRequest{}
 
 func NewGetEntityRequest() *GetEntityRequest {
-    return (&GetEntityRequest{})
+    return (&GetEntityRequest{}).
+        SetIdNonCompat("")
 }
 
 func (x *GetEntityRequest) GetIdNonCompat() string {
@@ -33,11 +34,15 @@ func (x *GetEntityRequest) GetId() string {
     return x.Id
 }
 
-func (x *GetEntityRequest) SetId(value string) *GetEntityRequest {
+func (x *GetEntityRequest) SetIdNonCompat(value string) *GetEntityRequest {
     x.Id = value
     return x
 }
 
+func (x *GetEntityRequest) SetId(value string) *GetEntityRequest {
+    x.Id = value
+    return x
+}
 
 func (x *GetEntityRequest) writeField1(p thrift.Protocol) error {  // Id
     if err := p.WriteFieldBegin("id", thrift.STRING, 1); err != nil {
@@ -61,7 +66,7 @@ if err != nil {
     return err
 }
 
-    x.SetId(result)
+    x.SetIdNonCompat(result)
     return nil
 }
 
@@ -90,6 +95,7 @@ func (x *GetEntityRequestBuilder) Emit() *GetEntityRequest {
     var objCopy GetEntityRequest = *x.obj
     return &objCopy
 }
+
 func (x *GetEntityRequest) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("GetEntityRequest"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -147,6 +153,7 @@ func (x *GetEntityRequest) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type GetEntityResponse struct {
     Entity string `thrift:"entity,1" json:"entity" db:"entity"`
 }
@@ -154,7 +161,8 @@ type GetEntityResponse struct {
 var _ thrift.Struct = &GetEntityResponse{}
 
 func NewGetEntityResponse() *GetEntityResponse {
-    return (&GetEntityResponse{})
+    return (&GetEntityResponse{}).
+        SetEntityNonCompat("")
 }
 
 func (x *GetEntityResponse) GetEntityNonCompat() string {
@@ -165,11 +173,15 @@ func (x *GetEntityResponse) GetEntity() string {
     return x.Entity
 }
 
-func (x *GetEntityResponse) SetEntity(value string) *GetEntityResponse {
+func (x *GetEntityResponse) SetEntityNonCompat(value string) *GetEntityResponse {
     x.Entity = value
     return x
 }
 
+func (x *GetEntityResponse) SetEntity(value string) *GetEntityResponse {
+    x.Entity = value
+    return x
+}
 
 func (x *GetEntityResponse) writeField1(p thrift.Protocol) error {  // Entity
     if err := p.WriteFieldBegin("entity", thrift.STRING, 1); err != nil {
@@ -193,7 +205,7 @@ if err != nil {
     return err
 }
 
-    x.SetEntity(result)
+    x.SetEntityNonCompat(result)
     return nil
 }
 
@@ -222,6 +234,7 @@ func (x *GetEntityResponseBuilder) Emit() *GetEntityResponse {
     var objCopy GetEntityResponse = *x.obj
     return &objCopy
 }
+
 func (x *GetEntityResponse) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("GetEntityResponse"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -278,3 +291,4 @@ func (x *GetEntityResponse) Read(p thrift.Protocol) error {
 
     return nil
 }
+

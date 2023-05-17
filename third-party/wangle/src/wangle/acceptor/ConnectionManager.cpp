@@ -326,6 +326,32 @@ void ConnectionManager::dropConnections(double pct) {
   }
 }
 
+void ConnectionManager::dropEstablishedConnections(
+    double pct,
+    const std::function<bool(ManagedConnection*)>& filter) {
+  const size_t N = conns_.size();
+  const size_t numToDrop = N * folly::constexpr_clamp(pct, 0., 1.);
+  size_t droppedConns = 0;
+  auto it = --idleIterator_;
+  auto front = conns_.iterator_to(conns_.front());
+  bool last{false};
+  while (!conns_.empty() && droppedConns < numToDrop) {
+    // We are traversing linked list from middle to the left towards front
+    // we want to know when we reach the begining of the list.
+    last = it == front;
+
+    ManagedConnection& conn = *(it--);
+    if (filter(&conn)) {
+      conn.dropConnection();
+      droppedConns++;
+    }
+
+    if (last) {
+      return;
+    }
+  }
+}
+
 void ConnectionManager::reportActivity(ManagedConnection& conn) {
   conn.reportActivity();
   onActivated(conn);
@@ -384,33 +410,6 @@ size_t ConnectionManager::dropIdleConnections(size_t num) {
     count++;
   }
 
-  return count;
-}
-
-/**
- * Note that the active ones are organized in the increasing reported activity
- * time order
- */
-size_t ConnectionManager::dropActiveConnections(
-    size_t num,
-    std::chrono::milliseconds inActivityThresholdTimeMs) {
-  VLOG(4) << "attempt to drop " << num << " active connections";
-  size_t count = 0;
-  while (count < num && conns_.begin() != idleIterator_) {
-    auto it = --idleIterator_;
-    if (!it->getLastActivityElapsedTime() ||
-        *it->getLastActivityElapsedTime() <= inActivityThresholdTimeMs) {
-      VLOG(4) << "conn's idletime: "
-              << it->getLastActivityElapsedTime()->count()
-              << ", in-activity threshold: "
-              << inActivityThresholdTimeMs.count() << ", dropped " << count
-              << "/" << num;
-      return count;
-    }
-    ManagedConnection& conn = *it;
-    conn.dropConnection();
-    count++;
-  }
   return count;
 }
 

@@ -22,7 +22,7 @@ class ExampleDsl {
       'static_methods' => vec<mixed>,
     ) $metadata,
     (function(ExampleDsl): ExampleDsl::TAst) $ast,
-  ): ExprTree<ExampleDsl, ExampleDsl::TAst, TInfer> {
+  )[]: ExprTree<ExampleDsl, ExampleDsl::TAst, TInfer> {
     throw new Exception();
   }
 
@@ -69,7 +69,7 @@ class ExampleDsl {
   public function visitBool(?ExprPos $_, bool $_): ExampleDsl::TAst {
     throw new Exception();
   }
-  public function visitString(?ExprPos $_, string $_): ExampleDsl::TAst {
+  public function visitString(?ExprPos $_, string $_)[]: ExampleDsl::TAst {
     throw new Exception();
   }
   public function visitNull(?ExprPos $_): ExampleDsl::TAst {
@@ -108,7 +108,7 @@ class ExampleDsl {
   public function visitGlobalFunction<T>(
     ?ExprPos $_,
     (function(ExampleContext): Awaitable<ExprTree<ExampleDsl, ExampleDsl::TAst, T>>) $_,
-  ): ExampleDsl::TAst {
+  )[]: ExampleDsl::TAst {
     throw new Exception();
   }
 
@@ -123,7 +123,7 @@ class ExampleDsl {
     ?ExprPos $_,
     ExampleDsl::TAst $_callee,
     vec<ExampleDsl::TAst> $_args,
-  ): ExampleDsl::TAst {
+  )[]: ExampleDsl::TAst {
     throw new Exception();
   }
 
@@ -197,8 +197,8 @@ class ExampleDsl {
   public function splice<T>(
     ?ExprPos $_,
     string $_key,
-    Spliceable<ExampleDsl, ExampleDsl::TAst, T> $_,
-  ): ExampleDsl::TAst {
+    ExampleDslExpression<T> $_,
+  )[]: ExampleDsl::TAst {
     throw new Exception();
   }
 }
@@ -276,3 +276,5 @@ interface ExampleVoid {}
 interface ExampleFunction<T> {
   public function __unwrap(): T;
 }
+
+type ExampleDslExpression<T> = Spliceable<ExampleDsl, ExampleDsl::TAst, T>;

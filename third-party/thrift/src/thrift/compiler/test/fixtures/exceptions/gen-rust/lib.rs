@@ -743,7 +743,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "Raiser";
-                METHOD_NAME = "Raiser.doBland";
+                SERVICE_METHOD_NAME = "Raiser.doBland";
             }
             let args = self::Args_Raiser_doBland {
                 _phantom: ::std::marker::PhantomData,
@@ -758,8 +758,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "Raiser.doBland"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "Raiser.doBland"));
 
             async move {
                 let reply_env = call.await?;
@@ -775,7 +775,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("Raiser.doBland"))
+            .instrument(::tracing::info_span!("stream", method = "Raiser.doBland"))
             .boxed()
         }
 
@@ -789,7 +789,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "Raiser";
-                METHOD_NAME = "Raiser.doRaise";
+                SERVICE_METHOD_NAME = "Raiser.doRaise";
             }
             let args = self::Args_Raiser_doRaise {
                 _phantom: ::std::marker::PhantomData,
@@ -804,8 +804,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "Raiser.doRaise"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "Raiser.doRaise"));
 
             async move {
                 let reply_env = call.await?;
@@ -821,7 +821,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("Raiser.doRaise"))
+            .instrument(::tracing::info_span!("stream", method = "Raiser.doRaise"))
             .boxed()
         }
 
@@ -835,7 +835,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "Raiser";
-                METHOD_NAME = "Raiser.get200";
+                SERVICE_METHOD_NAME = "Raiser.get200";
             }
             let args = self::Args_Raiser_get200 {
                 _phantom: ::std::marker::PhantomData,
@@ -850,8 +850,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "Raiser.get200"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "Raiser.get200"));
 
             async move {
                 let reply_env = call.await?;
@@ -867,7 +867,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("Raiser.get200"))
+            .instrument(::tracing::info_span!("stream", method = "Raiser.get200"))
             .boxed()
         }
 
@@ -881,7 +881,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "Raiser";
-                METHOD_NAME = "Raiser.get500";
+                SERVICE_METHOD_NAME = "Raiser.get500";
             }
             let args = self::Args_Raiser_get500 {
                 _phantom: ::std::marker::PhantomData,
@@ -896,8 +896,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "Raiser.get500"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "Raiser.get500"));
 
             async move {
                 let reply_env = call.await?;
@@ -913,7 +913,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("Raiser.get500"))
+            .instrument(::tracing::info_span!("stream", method = "Raiser.get500"))
             .boxed()
         }
     }
@@ -1468,8 +1468,10 @@ pub mod server {
         H: Raiser,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
         RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         pub fn new(service: H) -> Self {
             Self {
@@ -1487,6 +1489,7 @@ pub mod server {
         async fn handle_doBland<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -1496,20 +1499,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "Raiser";
-                METHOD_NAME = "Raiser.doBland";
+                METHOD_NAME = "doBland";
+                SERVICE_METHOD_NAME = "Raiser.doBland";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_Raiser_doBland = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.doBland(
@@ -1521,7 +1526,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "Raiser.doBland", "success");
                     crate::services::raiser::DoBlandExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::raiser::DoBlandExn::Success(_))) => {
@@ -1531,11 +1536,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "Raiser.doBland", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("Raiser.doBland", exn);
+                    ::tracing::error!(method = "Raiser.doBland", panic = ?aexn);
                     crate::services::raiser::DoBlandExn::ApplicationException(aexn)
                 }
             };
@@ -1556,6 +1562,7 @@ pub mod server {
         async fn handle_doRaise<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -1565,20 +1572,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "Raiser";
-                METHOD_NAME = "Raiser.doRaise";
+                METHOD_NAME = "doRaise";
+                SERVICE_METHOD_NAME = "Raiser.doRaise";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_Raiser_doRaise = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.doRaise(
@@ -1590,7 +1599,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "Raiser.doRaise", "success");
                     crate::services::raiser::DoRaiseExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::raiser::DoRaiseExn::Success(_))) => {
@@ -1600,11 +1609,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "Raiser.doRaise", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("Raiser.doRaise", exn);
+                    ::tracing::error!(method = "Raiser.doRaise", panic = ?aexn);
                     crate::services::raiser::DoRaiseExn::ApplicationException(aexn)
                 }
             };
@@ -1625,6 +1635,7 @@ pub mod server {
         async fn handle_get200<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -1634,20 +1645,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "Raiser";
-                METHOD_NAME = "Raiser.get200";
+                METHOD_NAME = "get200";
+                SERVICE_METHOD_NAME = "Raiser.get200";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_Raiser_get200 = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.get200(
@@ -1659,7 +1672,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "Raiser.get200", "success");
                     crate::services::raiser::Get200Exn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::raiser::Get200Exn::Success(_))) => {
@@ -1669,11 +1682,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "Raiser.get200", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("Raiser.get200", exn);
+                    ::tracing::error!(method = "Raiser.get200", panic = ?aexn);
                     crate::services::raiser::Get200Exn::ApplicationException(aexn)
                 }
             };
@@ -1694,6 +1708,7 @@ pub mod server {
         async fn handle_get500<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -1703,20 +1718,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "Raiser";
-                METHOD_NAME = "Raiser.get500";
+                METHOD_NAME = "get500";
+                SERVICE_METHOD_NAME = "Raiser.get500";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_Raiser_get500 = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.get500(
@@ -1728,7 +1745,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "Raiser.get500", "success");
                     crate::services::raiser::Get500Exn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::raiser::Get500Exn::Success(_))) => {
@@ -1738,11 +1755,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "Raiser.get500", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("Raiser.get500", exn);
+                    ::tracing::error!(method = "Raiser.get500", panic = ?aexn);
                     crate::services::raiser::Get500Exn::ApplicationException(aexn)
                 }
             };
@@ -1768,9 +1786,11 @@ pub mod server {
         H: Raiser,
         P::Frame: ::std::marker::Send + 'static,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         type RequestContext = R;
         type ReplyState = RS;
@@ -1791,22 +1811,23 @@ pub mod server {
             &self,
             idx: ::std::primitive::usize,
             _p: &mut P::Deserializer,
-            _r: &R,
+            _req: ::fbthrift::ProtocolDecoded<P>,
+            _req_ctxt: &R,
             _reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
         ) -> ::anyhow::Result<()> {
             match idx {
                 0usize => {
-                    self.handle_doBland(_p, _r, _reply_state, _seqid).await
+                    self.handle_doBland(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 1usize => {
-                    self.handle_doRaise(_p, _r, _reply_state, _seqid).await
+                    self.handle_doRaise(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 2usize => {
-                    self.handle_get200(_p, _r, _reply_state, _seqid).await
+                    self.handle_get200(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 3usize => {
-                    self.handle_get500(_p, _r, _reply_state, _seqid).await
+                    self.handle_get500(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 bad => panic!(
                     "{}: unexpected method idx {}",
@@ -1852,9 +1873,11 @@ pub mod server {
         P::Frame: ::std::marker::Send + 'static,
         H: Raiser,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         type Handler = H;
         type RequestContext = R;
@@ -1867,8 +1890,8 @@ pub mod server {
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
         ) -> ::anyhow::Result<()> {
-            use ::fbthrift::{BufExt as _, ProtocolReader as _, ServiceProcessor as _};
-            let mut p = P::deserializer(req);
+            use ::fbthrift::{ProtocolReader as _, ServiceProcessor as _};
+            let mut p = P::deserializer(req.clone());
             let (idx, mty, seqid) = p.read_message_begin(|name| self.method_idx(name))?;
             if mty != ::fbthrift::MessageType::Call {
                 return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ApplicationException::new(
@@ -1879,11 +1902,10 @@ pub mod server {
             let idx = match idx {
                 ::std::result::Result::Ok(idx) => idx,
                 ::std::result::Result::Err(_) => {
-                    let cur = P::into_buffer(p).reset();
-                    return self.supa.call(cur, req_ctxt, reply_state).await;
+                    return self.supa.call(req, req_ctxt, reply_state).await;
                 }
             };
-            self.handle_method(idx, &mut p, req_ctxt, reply_state, seqid).await?;
+            self.handle_method(idx, &mut p, req, req_ctxt, reply_state, seqid).await?;
             p.read_message_end()?;
 
             Ok(())
@@ -1935,8 +1957,10 @@ pub mod server {
         F: ::fbthrift::Framing + ::std::marker::Send + ::std::marker::Sync + 'static,
         H: Raiser,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = F::DecBuf> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<F, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = F> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        RS: ::fbthrift::ReplyState<F, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::FramingDecoded<F>: ::std::clone::Clone,
+        ::fbthrift::FramingEncodedFinal<F>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         match proto {
             ::fbthrift::ProtocolID::BinaryProtocol => {
@@ -2098,7 +2122,7 @@ pub mod mock {
         }
     }
 
-    mod r#impl {
+    pub mod r#impl {
         pub mod raiser {
 
             pub struct doBland<'mock> {
@@ -2112,7 +2136,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> doBland<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|| panic!(
                             "{}::{} is not mocked",
@@ -2157,7 +2181,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> doRaise<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|| panic!(
                             "{}::{} is not mocked",
@@ -2202,7 +2226,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> get200<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|| panic!(
                             "{}::{} is not mocked",
@@ -2247,7 +2271,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> get500<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|| panic!(
                             "{}::{} is not mocked",
@@ -2360,18 +2384,84 @@ pub mod errors {
         }
 
         /// Errors for doRaise (client side).
-        #[derive(Debug, ::thiserror::Error)]
+        #[derive(Debug)]
         pub enum DoRaiseError {
-            #[error("Raiser::doRaise failed with {0:?}")]
             b(crate::types::Banal),
-            #[error("Raiser::doRaise failed with {0:?}")]
             f(crate::types::Fiery),
-            #[error("Raiser::doRaise failed with {0:?}")]
             s(crate::types::Serious),
-            #[error("Application exception: {0:?}")]
             ApplicationException(::fbthrift::types::ApplicationException),
-            #[error("{0}")]
             ThriftError(::anyhow::Error),
+        }
+
+        /// Human-readable string representation of the Thrift client error.
+        ///
+        /// By default, this will not print the full cause chain. If you would like to print the underlying error
+        /// cause, either use `format!("{:?}", anyhow::Error::from(client_err))` or print this using the
+        /// alternate formatter `{:#}` instead of just `{}`.
+        impl ::std::fmt::Display for DoRaiseError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
+                match self {
+                    Self::b(inner) => {
+                        if f.alternate() {
+                            write!(f, "Raiser::doRaise failed with variant `b`: {:#}", inner)?;
+                        } else {
+                            write!(f, "Raiser::doRaise failed with b(Banal)")?;
+                        }
+                    }
+                    Self::f(inner) => {
+                        if f.alternate() {
+                            write!(f, "Raiser::doRaise failed with variant `f`: {:#}", inner)?;
+                        } else {
+                            write!(f, "Raiser::doRaise failed with f(Fiery)")?;
+                        }
+                    }
+                    Self::s(inner) => {
+                        if f.alternate() {
+                            write!(f, "Raiser::doRaise failed with variant `s`: {:#}", inner)?;
+                        } else {
+                            write!(f, "Raiser::doRaise failed with s(Serious)")?;
+                        }
+                    }
+                    Self::ApplicationException(inner) => {
+                        write!(f, "Raiser::doRaise failed with ApplicationException")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                    Self::ThriftError(inner) => {
+                        write!(f, "Raiser::doRaise failed with ThriftError")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+        }
+
+        impl ::std::error::Error for DoRaiseError {
+            fn source(&self) -> ::std::option::Option<&(dyn ::std::error::Error + 'static)> {
+                match self {
+                    Self::b(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::f(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::s(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ApplicationException(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ThriftError(ref inner) => {
+                        Some(inner.as_ref())
+                    }
+                }
+            }
         }
 
         impl ::std::convert::From<crate::types::Banal> for DoRaiseError {
@@ -2467,18 +2557,84 @@ pub mod errors {
         }
 
         /// Errors for get500 (client side).
-        #[derive(Debug, ::thiserror::Error)]
+        #[derive(Debug)]
         pub enum Get500Error {
-            #[error("Raiser::get500 failed with {0:?}")]
             f(crate::types::Fiery),
-            #[error("Raiser::get500 failed with {0:?}")]
             b(crate::types::Banal),
-            #[error("Raiser::get500 failed with {0:?}")]
             s(crate::types::Serious),
-            #[error("Application exception: {0:?}")]
             ApplicationException(::fbthrift::types::ApplicationException),
-            #[error("{0}")]
             ThriftError(::anyhow::Error),
+        }
+
+        /// Human-readable string representation of the Thrift client error.
+        ///
+        /// By default, this will not print the full cause chain. If you would like to print the underlying error
+        /// cause, either use `format!("{:?}", anyhow::Error::from(client_err))` or print this using the
+        /// alternate formatter `{:#}` instead of just `{}`.
+        impl ::std::fmt::Display for Get500Error {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
+                match self {
+                    Self::f(inner) => {
+                        if f.alternate() {
+                            write!(f, "Raiser::get500 failed with variant `f`: {:#}", inner)?;
+                        } else {
+                            write!(f, "Raiser::get500 failed with f(Fiery)")?;
+                        }
+                    }
+                    Self::b(inner) => {
+                        if f.alternate() {
+                            write!(f, "Raiser::get500 failed with variant `b`: {:#}", inner)?;
+                        } else {
+                            write!(f, "Raiser::get500 failed with b(Banal)")?;
+                        }
+                    }
+                    Self::s(inner) => {
+                        if f.alternate() {
+                            write!(f, "Raiser::get500 failed with variant `s`: {:#}", inner)?;
+                        } else {
+                            write!(f, "Raiser::get500 failed with s(Serious)")?;
+                        }
+                    }
+                    Self::ApplicationException(inner) => {
+                        write!(f, "Raiser::get500 failed with ApplicationException")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                    Self::ThriftError(inner) => {
+                        write!(f, "Raiser::get500 failed with ThriftError")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+        }
+
+        impl ::std::error::Error for Get500Error {
+            fn source(&self) -> ::std::option::Option<&(dyn ::std::error::Error + 'static)> {
+                match self {
+                    Self::f(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::b(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::s(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ApplicationException(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ThriftError(ref inner) => {
+                        Some(inner.as_ref())
+                    }
+                }
+            }
         }
 
         impl ::std::convert::From<crate::types::Fiery> for Get500Error {

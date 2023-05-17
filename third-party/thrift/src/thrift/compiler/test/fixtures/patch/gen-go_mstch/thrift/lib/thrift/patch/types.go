@@ -4,13 +4,13 @@
 package patch // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  thrift0 "thrift/annotation/thrift"
-  scope "thrift/annotation/scope"
-  cpp "thrift/annotation/cpp"
-  standard "thrift/lib/thrift/standard"
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift0 "thrift/annotation/thrift"
+    scope "thrift/annotation/scope"
+    cpp "thrift/annotation/cpp"
+    standard "thrift/lib/thrift/standard"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = thrift0.GoUnusedProtection__
@@ -22,6 +22,32 @@ var _ = standard.GoUnusedProtection__
 var _ = fmt.Printf
 var _ = thrift.ZERO
 
+
+type ListPatchIndex = int32
+
+func NewListPatchIndex() ListPatchIndex {
+  return 0
+}
+
+func WriteListPatchIndex(item ListPatchIndex, p thrift.Protocol) error {
+  if err := p.WriteI32(item); err != nil {
+    return err
+}
+  return nil
+}
+
+func ReadListPatchIndex(p thrift.Protocol) (ListPatchIndex, error) {
+  var decodeResult ListPatchIndex
+  decodeErr := func() error {
+    result, err := p.ReadI32()
+if err != nil {
+    return err
+}
+    decodeResult = result
+    return nil
+  }()
+  return decodeResult, decodeErr
+}
 
 type PatchOp int32
 
@@ -147,6 +173,7 @@ func (x *GeneratePatchBuilder) Emit() *GeneratePatch {
     var objCopy GeneratePatch = *x.obj
     return &objCopy
 }
+
 func (x *GeneratePatch) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("GeneratePatch"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -196,6 +223,7 @@ func (x *GeneratePatch) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type AssignOnlyPatch struct {
 }
 // Compile time interface enforcer
@@ -225,6 +253,7 @@ func (x *AssignOnlyPatchBuilder) Emit() *AssignOnlyPatch {
     var objCopy AssignOnlyPatch = *x.obj
     return &objCopy
 }
+
 func (x *AssignOnlyPatch) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("AssignOnlyPatch"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -274,6 +303,7 @@ func (x *AssignOnlyPatch) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type BoolPatch struct {
     Assign *bool `thrift:"assign,1,optional" json:"assign,omitempty" db:"assign"`
     Clear bool `thrift:"clear,2" json:"clear" db:"clear"`
@@ -283,11 +313,10 @@ type BoolPatch struct {
 var _ thrift.Struct = &BoolPatch{}
 
 func NewBoolPatch() *BoolPatch {
-    return (&BoolPatch{})
+    return (&BoolPatch{}).
+        SetClearNonCompat(false).
+        SetInvertNonCompat(false)
 }
-
-// Deprecated: Use NewBoolPatch().Assign instead.
-var BoolPatch_Assign_DEFAULT = NewBoolPatch().Assign
 
 func (x *BoolPatch) GetAssignNonCompat() *bool {
     return x.Assign
@@ -295,7 +324,7 @@ func (x *BoolPatch) GetAssignNonCompat() *bool {
 
 func (x *BoolPatch) GetAssign() bool {
     if !x.IsSetAssign() {
-      return false
+        return false
     }
 
     return *x.Assign
@@ -317,13 +346,28 @@ func (x *BoolPatch) GetInvert() bool {
     return x.Invert
 }
 
-func (x *BoolPatch) SetAssign(value bool) *BoolPatch {
+func (x *BoolPatch) SetAssignNonCompat(value bool) *BoolPatch {
     x.Assign = &value
+    return x
+}
+
+func (x *BoolPatch) SetAssign(value *bool) *BoolPatch {
+    x.Assign = value
+    return x
+}
+
+func (x *BoolPatch) SetClearNonCompat(value bool) *BoolPatch {
+    x.Clear = value
     return x
 }
 
 func (x *BoolPatch) SetClear(value bool) *BoolPatch {
     x.Clear = value
+    return x
+}
+
+func (x *BoolPatch) SetInvertNonCompat(value bool) *BoolPatch {
+    x.Invert = value
     return x
 }
 
@@ -335,8 +379,6 @@ func (x *BoolPatch) SetInvert(value bool) *BoolPatch {
 func (x *BoolPatch) IsSetAssign() bool {
     return x.Assign != nil
 }
-
-
 
 func (x *BoolPatch) writeField1(p thrift.Protocol) error {  // Assign
     if !x.IsSetAssign() {
@@ -396,7 +438,7 @@ if err != nil {
     return err
 }
 
-    x.SetAssign(result)
+    x.SetAssignNonCompat(result)
     return nil
 }
 
@@ -406,7 +448,7 @@ if err != nil {
     return err
 }
 
-    x.SetClear(result)
+    x.SetClearNonCompat(result)
     return nil
 }
 
@@ -416,9 +458,12 @@ if err != nil {
     return err
 }
 
-    x.SetInvert(result)
+    x.SetInvertNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewBoolPatch().GetAssign() instead.
+var BoolPatch_Assign_DEFAULT = NewBoolPatch().GetAssign()
 
 func (x *BoolPatch) String() string {
     return fmt.Sprintf("%+v", x)
@@ -455,6 +500,7 @@ func (x *BoolPatchBuilder) Emit() *BoolPatch {
     var objCopy BoolPatch = *x.obj
     return &objCopy
 }
+
 func (x *BoolPatch) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("BoolPatch"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -528,28 +574,28 @@ func (x *BoolPatch) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type BytePatch struct {
-    Assign *byte `thrift:"assign,1,optional" json:"assign,omitempty" db:"assign"`
+    Assign *int8 `thrift:"assign,1,optional" json:"assign,omitempty" db:"assign"`
     Clear bool `thrift:"clear,2" json:"clear" db:"clear"`
-    Add byte `thrift:"add,8" json:"add" db:"add"`
+    Add int8 `thrift:"add,8" json:"add" db:"add"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &BytePatch{}
 
 func NewBytePatch() *BytePatch {
-    return (&BytePatch{})
+    return (&BytePatch{}).
+        SetClearNonCompat(false).
+        SetAddNonCompat(0)
 }
 
-// Deprecated: Use NewBytePatch().Assign instead.
-var BytePatch_Assign_DEFAULT = NewBytePatch().Assign
-
-func (x *BytePatch) GetAssignNonCompat() *byte {
+func (x *BytePatch) GetAssignNonCompat() *int8 {
     return x.Assign
 }
 
-func (x *BytePatch) GetAssign() byte {
+func (x *BytePatch) GetAssign() int8 {
     if !x.IsSetAssign() {
-      return 0
+        return 0
     }
 
     return *x.Assign
@@ -563,16 +609,26 @@ func (x *BytePatch) GetClear() bool {
     return x.Clear
 }
 
-func (x *BytePatch) GetAddNonCompat() byte {
+func (x *BytePatch) GetAddNonCompat() int8 {
     return x.Add
 }
 
-func (x *BytePatch) GetAdd() byte {
+func (x *BytePatch) GetAdd() int8 {
     return x.Add
 }
 
-func (x *BytePatch) SetAssign(value byte) *BytePatch {
+func (x *BytePatch) SetAssignNonCompat(value int8) *BytePatch {
     x.Assign = &value
+    return x
+}
+
+func (x *BytePatch) SetAssign(value *int8) *BytePatch {
+    x.Assign = value
+    return x
+}
+
+func (x *BytePatch) SetClearNonCompat(value bool) *BytePatch {
+    x.Clear = value
     return x
 }
 
@@ -581,7 +637,12 @@ func (x *BytePatch) SetClear(value bool) *BytePatch {
     return x
 }
 
-func (x *BytePatch) SetAdd(value byte) *BytePatch {
+func (x *BytePatch) SetAddNonCompat(value int8) *BytePatch {
+    x.Add = value
+    return x
+}
+
+func (x *BytePatch) SetAdd(value int8) *BytePatch {
     x.Add = value
     return x
 }
@@ -589,8 +650,6 @@ func (x *BytePatch) SetAdd(value byte) *BytePatch {
 func (x *BytePatch) IsSetAssign() bool {
     return x.Assign != nil
 }
-
-
 
 func (x *BytePatch) writeField1(p thrift.Protocol) error {  // Assign
     if !x.IsSetAssign() {
@@ -602,7 +661,7 @@ func (x *BytePatch) writeField1(p thrift.Protocol) error {  // Assign
     }
 
     item := *x.GetAssignNonCompat()
-    if err := p.WriteByte(item); err != nil {
+    if err := p.WriteByte(byte(item)); err != nil {
     return err
 }
 
@@ -634,7 +693,7 @@ func (x *BytePatch) writeField8(p thrift.Protocol) error {  // Add
     }
 
     item := x.GetAddNonCompat()
-    if err := p.WriteByte(item); err != nil {
+    if err := p.WriteByte(byte(item)); err != nil {
     return err
 }
 
@@ -645,12 +704,13 @@ func (x *BytePatch) writeField8(p thrift.Protocol) error {  // Add
 }
 
 func (x *BytePatch) readField1(p thrift.Protocol) error {  // Assign
-    result, err := p.ReadByte()
+    resultByte, err := p.ReadByte()
+result := int8(resultByte)
 if err != nil {
     return err
 }
 
-    x.SetAssign(result)
+    x.SetAssignNonCompat(result)
     return nil
 }
 
@@ -660,19 +720,23 @@ if err != nil {
     return err
 }
 
-    x.SetClear(result)
+    x.SetClearNonCompat(result)
     return nil
 }
 
 func (x *BytePatch) readField8(p thrift.Protocol) error {  // Add
-    result, err := p.ReadByte()
+    resultByte, err := p.ReadByte()
+result := int8(resultByte)
 if err != nil {
     return err
 }
 
-    x.SetAdd(result)
+    x.SetAddNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewBytePatch().GetAssign() instead.
+var BytePatch_Assign_DEFAULT = NewBytePatch().GetAssign()
 
 func (x *BytePatch) String() string {
     return fmt.Sprintf("%+v", x)
@@ -690,7 +754,7 @@ func NewBytePatchBuilder() *BytePatchBuilder {
     }
 }
 
-func (x *BytePatchBuilder) Assign(value *byte) *BytePatchBuilder {
+func (x *BytePatchBuilder) Assign(value *int8) *BytePatchBuilder {
     x.obj.Assign = value
     return x
 }
@@ -700,7 +764,7 @@ func (x *BytePatchBuilder) Clear(value bool) *BytePatchBuilder {
     return x
 }
 
-func (x *BytePatchBuilder) Add(value byte) *BytePatchBuilder {
+func (x *BytePatchBuilder) Add(value int8) *BytePatchBuilder {
     x.obj.Add = value
     return x
 }
@@ -709,6 +773,7 @@ func (x *BytePatchBuilder) Emit() *BytePatch {
     var objCopy BytePatch = *x.obj
     return &objCopy
 }
+
 func (x *BytePatch) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("BytePatch"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -782,6 +847,7 @@ func (x *BytePatch) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type I16Patch struct {
     Assign *int16 `thrift:"assign,1,optional" json:"assign,omitempty" db:"assign"`
     Clear bool `thrift:"clear,2" json:"clear" db:"clear"`
@@ -791,11 +857,10 @@ type I16Patch struct {
 var _ thrift.Struct = &I16Patch{}
 
 func NewI16Patch() *I16Patch {
-    return (&I16Patch{})
+    return (&I16Patch{}).
+        SetClearNonCompat(false).
+        SetAddNonCompat(0)
 }
-
-// Deprecated: Use NewI16Patch().Assign instead.
-var I16Patch_Assign_DEFAULT = NewI16Patch().Assign
 
 func (x *I16Patch) GetAssignNonCompat() *int16 {
     return x.Assign
@@ -803,7 +868,7 @@ func (x *I16Patch) GetAssignNonCompat() *int16 {
 
 func (x *I16Patch) GetAssign() int16 {
     if !x.IsSetAssign() {
-      return 0
+        return 0
     }
 
     return *x.Assign
@@ -825,13 +890,28 @@ func (x *I16Patch) GetAdd() int16 {
     return x.Add
 }
 
-func (x *I16Patch) SetAssign(value int16) *I16Patch {
+func (x *I16Patch) SetAssignNonCompat(value int16) *I16Patch {
     x.Assign = &value
+    return x
+}
+
+func (x *I16Patch) SetAssign(value *int16) *I16Patch {
+    x.Assign = value
+    return x
+}
+
+func (x *I16Patch) SetClearNonCompat(value bool) *I16Patch {
+    x.Clear = value
     return x
 }
 
 func (x *I16Patch) SetClear(value bool) *I16Patch {
     x.Clear = value
+    return x
+}
+
+func (x *I16Patch) SetAddNonCompat(value int16) *I16Patch {
+    x.Add = value
     return x
 }
 
@@ -843,8 +923,6 @@ func (x *I16Patch) SetAdd(value int16) *I16Patch {
 func (x *I16Patch) IsSetAssign() bool {
     return x.Assign != nil
 }
-
-
 
 func (x *I16Patch) writeField1(p thrift.Protocol) error {  // Assign
     if !x.IsSetAssign() {
@@ -904,7 +982,7 @@ if err != nil {
     return err
 }
 
-    x.SetAssign(result)
+    x.SetAssignNonCompat(result)
     return nil
 }
 
@@ -914,7 +992,7 @@ if err != nil {
     return err
 }
 
-    x.SetClear(result)
+    x.SetClearNonCompat(result)
     return nil
 }
 
@@ -924,9 +1002,12 @@ if err != nil {
     return err
 }
 
-    x.SetAdd(result)
+    x.SetAddNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewI16Patch().GetAssign() instead.
+var I16Patch_Assign_DEFAULT = NewI16Patch().GetAssign()
 
 func (x *I16Patch) String() string {
     return fmt.Sprintf("%+v", x)
@@ -963,6 +1044,7 @@ func (x *I16PatchBuilder) Emit() *I16Patch {
     var objCopy I16Patch = *x.obj
     return &objCopy
 }
+
 func (x *I16Patch) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("I16Patch"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1036,6 +1118,7 @@ func (x *I16Patch) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type I32Patch struct {
     Assign *int32 `thrift:"assign,1,optional" json:"assign,omitempty" db:"assign"`
     Clear bool `thrift:"clear,2" json:"clear" db:"clear"`
@@ -1045,11 +1128,10 @@ type I32Patch struct {
 var _ thrift.Struct = &I32Patch{}
 
 func NewI32Patch() *I32Patch {
-    return (&I32Patch{})
+    return (&I32Patch{}).
+        SetClearNonCompat(false).
+        SetAddNonCompat(0)
 }
-
-// Deprecated: Use NewI32Patch().Assign instead.
-var I32Patch_Assign_DEFAULT = NewI32Patch().Assign
 
 func (x *I32Patch) GetAssignNonCompat() *int32 {
     return x.Assign
@@ -1057,7 +1139,7 @@ func (x *I32Patch) GetAssignNonCompat() *int32 {
 
 func (x *I32Patch) GetAssign() int32 {
     if !x.IsSetAssign() {
-      return 0
+        return 0
     }
 
     return *x.Assign
@@ -1079,13 +1161,28 @@ func (x *I32Patch) GetAdd() int32 {
     return x.Add
 }
 
-func (x *I32Patch) SetAssign(value int32) *I32Patch {
+func (x *I32Patch) SetAssignNonCompat(value int32) *I32Patch {
     x.Assign = &value
+    return x
+}
+
+func (x *I32Patch) SetAssign(value *int32) *I32Patch {
+    x.Assign = value
+    return x
+}
+
+func (x *I32Patch) SetClearNonCompat(value bool) *I32Patch {
+    x.Clear = value
     return x
 }
 
 func (x *I32Patch) SetClear(value bool) *I32Patch {
     x.Clear = value
+    return x
+}
+
+func (x *I32Patch) SetAddNonCompat(value int32) *I32Patch {
+    x.Add = value
     return x
 }
 
@@ -1097,8 +1194,6 @@ func (x *I32Patch) SetAdd(value int32) *I32Patch {
 func (x *I32Patch) IsSetAssign() bool {
     return x.Assign != nil
 }
-
-
 
 func (x *I32Patch) writeField1(p thrift.Protocol) error {  // Assign
     if !x.IsSetAssign() {
@@ -1158,7 +1253,7 @@ if err != nil {
     return err
 }
 
-    x.SetAssign(result)
+    x.SetAssignNonCompat(result)
     return nil
 }
 
@@ -1168,7 +1263,7 @@ if err != nil {
     return err
 }
 
-    x.SetClear(result)
+    x.SetClearNonCompat(result)
     return nil
 }
 
@@ -1178,9 +1273,12 @@ if err != nil {
     return err
 }
 
-    x.SetAdd(result)
+    x.SetAddNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewI32Patch().GetAssign() instead.
+var I32Patch_Assign_DEFAULT = NewI32Patch().GetAssign()
 
 func (x *I32Patch) String() string {
     return fmt.Sprintf("%+v", x)
@@ -1217,6 +1315,7 @@ func (x *I32PatchBuilder) Emit() *I32Patch {
     var objCopy I32Patch = *x.obj
     return &objCopy
 }
+
 func (x *I32Patch) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("I32Patch"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1290,6 +1389,7 @@ func (x *I32Patch) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type I64Patch struct {
     Assign *int64 `thrift:"assign,1,optional" json:"assign,omitempty" db:"assign"`
     Clear bool `thrift:"clear,2" json:"clear" db:"clear"`
@@ -1299,11 +1399,10 @@ type I64Patch struct {
 var _ thrift.Struct = &I64Patch{}
 
 func NewI64Patch() *I64Patch {
-    return (&I64Patch{})
+    return (&I64Patch{}).
+        SetClearNonCompat(false).
+        SetAddNonCompat(0)
 }
-
-// Deprecated: Use NewI64Patch().Assign instead.
-var I64Patch_Assign_DEFAULT = NewI64Patch().Assign
 
 func (x *I64Patch) GetAssignNonCompat() *int64 {
     return x.Assign
@@ -1311,7 +1410,7 @@ func (x *I64Patch) GetAssignNonCompat() *int64 {
 
 func (x *I64Patch) GetAssign() int64 {
     if !x.IsSetAssign() {
-      return 0
+        return 0
     }
 
     return *x.Assign
@@ -1333,13 +1432,28 @@ func (x *I64Patch) GetAdd() int64 {
     return x.Add
 }
 
-func (x *I64Patch) SetAssign(value int64) *I64Patch {
+func (x *I64Patch) SetAssignNonCompat(value int64) *I64Patch {
     x.Assign = &value
+    return x
+}
+
+func (x *I64Patch) SetAssign(value *int64) *I64Patch {
+    x.Assign = value
+    return x
+}
+
+func (x *I64Patch) SetClearNonCompat(value bool) *I64Patch {
+    x.Clear = value
     return x
 }
 
 func (x *I64Patch) SetClear(value bool) *I64Patch {
     x.Clear = value
+    return x
+}
+
+func (x *I64Patch) SetAddNonCompat(value int64) *I64Patch {
+    x.Add = value
     return x
 }
 
@@ -1351,8 +1465,6 @@ func (x *I64Patch) SetAdd(value int64) *I64Patch {
 func (x *I64Patch) IsSetAssign() bool {
     return x.Assign != nil
 }
-
-
 
 func (x *I64Patch) writeField1(p thrift.Protocol) error {  // Assign
     if !x.IsSetAssign() {
@@ -1412,7 +1524,7 @@ if err != nil {
     return err
 }
 
-    x.SetAssign(result)
+    x.SetAssignNonCompat(result)
     return nil
 }
 
@@ -1422,7 +1534,7 @@ if err != nil {
     return err
 }
 
-    x.SetClear(result)
+    x.SetClearNonCompat(result)
     return nil
 }
 
@@ -1432,9 +1544,12 @@ if err != nil {
     return err
 }
 
-    x.SetAdd(result)
+    x.SetAddNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewI64Patch().GetAssign() instead.
+var I64Patch_Assign_DEFAULT = NewI64Patch().GetAssign()
 
 func (x *I64Patch) String() string {
     return fmt.Sprintf("%+v", x)
@@ -1471,6 +1586,7 @@ func (x *I64PatchBuilder) Emit() *I64Patch {
     var objCopy I64Patch = *x.obj
     return &objCopy
 }
+
 func (x *I64Patch) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("I64Patch"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1544,6 +1660,7 @@ func (x *I64Patch) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type FloatPatch struct {
     Assign *float32 `thrift:"assign,1,optional" json:"assign,omitempty" db:"assign"`
     Clear bool `thrift:"clear,2" json:"clear" db:"clear"`
@@ -1553,11 +1670,10 @@ type FloatPatch struct {
 var _ thrift.Struct = &FloatPatch{}
 
 func NewFloatPatch() *FloatPatch {
-    return (&FloatPatch{})
+    return (&FloatPatch{}).
+        SetClearNonCompat(false).
+        SetAddNonCompat(0.0)
 }
-
-// Deprecated: Use NewFloatPatch().Assign instead.
-var FloatPatch_Assign_DEFAULT = NewFloatPatch().Assign
 
 func (x *FloatPatch) GetAssignNonCompat() *float32 {
     return x.Assign
@@ -1565,7 +1681,7 @@ func (x *FloatPatch) GetAssignNonCompat() *float32 {
 
 func (x *FloatPatch) GetAssign() float32 {
     if !x.IsSetAssign() {
-      return 0.0
+        return 0.0
     }
 
     return *x.Assign
@@ -1587,13 +1703,28 @@ func (x *FloatPatch) GetAdd() float32 {
     return x.Add
 }
 
-func (x *FloatPatch) SetAssign(value float32) *FloatPatch {
+func (x *FloatPatch) SetAssignNonCompat(value float32) *FloatPatch {
     x.Assign = &value
+    return x
+}
+
+func (x *FloatPatch) SetAssign(value *float32) *FloatPatch {
+    x.Assign = value
+    return x
+}
+
+func (x *FloatPatch) SetClearNonCompat(value bool) *FloatPatch {
+    x.Clear = value
     return x
 }
 
 func (x *FloatPatch) SetClear(value bool) *FloatPatch {
     x.Clear = value
+    return x
+}
+
+func (x *FloatPatch) SetAddNonCompat(value float32) *FloatPatch {
+    x.Add = value
     return x
 }
 
@@ -1605,8 +1736,6 @@ func (x *FloatPatch) SetAdd(value float32) *FloatPatch {
 func (x *FloatPatch) IsSetAssign() bool {
     return x.Assign != nil
 }
-
-
 
 func (x *FloatPatch) writeField1(p thrift.Protocol) error {  // Assign
     if !x.IsSetAssign() {
@@ -1666,7 +1795,7 @@ if err != nil {
     return err
 }
 
-    x.SetAssign(result)
+    x.SetAssignNonCompat(result)
     return nil
 }
 
@@ -1676,7 +1805,7 @@ if err != nil {
     return err
 }
 
-    x.SetClear(result)
+    x.SetClearNonCompat(result)
     return nil
 }
 
@@ -1686,9 +1815,12 @@ if err != nil {
     return err
 }
 
-    x.SetAdd(result)
+    x.SetAddNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewFloatPatch().GetAssign() instead.
+var FloatPatch_Assign_DEFAULT = NewFloatPatch().GetAssign()
 
 func (x *FloatPatch) String() string {
     return fmt.Sprintf("%+v", x)
@@ -1725,6 +1857,7 @@ func (x *FloatPatchBuilder) Emit() *FloatPatch {
     var objCopy FloatPatch = *x.obj
     return &objCopy
 }
+
 func (x *FloatPatch) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("FloatPatch"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1798,6 +1931,7 @@ func (x *FloatPatch) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type DoublePatch struct {
     Assign *float64 `thrift:"assign,1,optional" json:"assign,omitempty" db:"assign"`
     Clear bool `thrift:"clear,2" json:"clear" db:"clear"`
@@ -1807,11 +1941,10 @@ type DoublePatch struct {
 var _ thrift.Struct = &DoublePatch{}
 
 func NewDoublePatch() *DoublePatch {
-    return (&DoublePatch{})
+    return (&DoublePatch{}).
+        SetClearNonCompat(false).
+        SetAddNonCompat(0.0)
 }
-
-// Deprecated: Use NewDoublePatch().Assign instead.
-var DoublePatch_Assign_DEFAULT = NewDoublePatch().Assign
 
 func (x *DoublePatch) GetAssignNonCompat() *float64 {
     return x.Assign
@@ -1819,7 +1952,7 @@ func (x *DoublePatch) GetAssignNonCompat() *float64 {
 
 func (x *DoublePatch) GetAssign() float64 {
     if !x.IsSetAssign() {
-      return 0.0
+        return 0.0
     }
 
     return *x.Assign
@@ -1841,13 +1974,28 @@ func (x *DoublePatch) GetAdd() float64 {
     return x.Add
 }
 
-func (x *DoublePatch) SetAssign(value float64) *DoublePatch {
+func (x *DoublePatch) SetAssignNonCompat(value float64) *DoublePatch {
     x.Assign = &value
+    return x
+}
+
+func (x *DoublePatch) SetAssign(value *float64) *DoublePatch {
+    x.Assign = value
+    return x
+}
+
+func (x *DoublePatch) SetClearNonCompat(value bool) *DoublePatch {
+    x.Clear = value
     return x
 }
 
 func (x *DoublePatch) SetClear(value bool) *DoublePatch {
     x.Clear = value
+    return x
+}
+
+func (x *DoublePatch) SetAddNonCompat(value float64) *DoublePatch {
+    x.Add = value
     return x
 }
 
@@ -1859,8 +2007,6 @@ func (x *DoublePatch) SetAdd(value float64) *DoublePatch {
 func (x *DoublePatch) IsSetAssign() bool {
     return x.Assign != nil
 }
-
-
 
 func (x *DoublePatch) writeField1(p thrift.Protocol) error {  // Assign
     if !x.IsSetAssign() {
@@ -1920,7 +2066,7 @@ if err != nil {
     return err
 }
 
-    x.SetAssign(result)
+    x.SetAssignNonCompat(result)
     return nil
 }
 
@@ -1930,7 +2076,7 @@ if err != nil {
     return err
 }
 
-    x.SetClear(result)
+    x.SetClearNonCompat(result)
     return nil
 }
 
@@ -1940,9 +2086,12 @@ if err != nil {
     return err
 }
 
-    x.SetAdd(result)
+    x.SetAddNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewDoublePatch().GetAssign() instead.
+var DoublePatch_Assign_DEFAULT = NewDoublePatch().GetAssign()
 
 func (x *DoublePatch) String() string {
     return fmt.Sprintf("%+v", x)
@@ -1979,6 +2128,7 @@ func (x *DoublePatchBuilder) Emit() *DoublePatch {
     var objCopy DoublePatch = *x.obj
     return &objCopy
 }
+
 func (x *DoublePatch) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("DoublePatch"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2052,6 +2202,7 @@ func (x *DoublePatch) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type StringPatch struct {
     Assign *string `thrift:"assign,1,optional" json:"assign,omitempty" db:"assign"`
     Clear bool `thrift:"clear,2" json:"clear" db:"clear"`
@@ -2062,11 +2213,11 @@ type StringPatch struct {
 var _ thrift.Struct = &StringPatch{}
 
 func NewStringPatch() *StringPatch {
-    return (&StringPatch{})
+    return (&StringPatch{}).
+        SetClearNonCompat(false).
+        SetPrependNonCompat("").
+        SetAppendNonCompat("")
 }
-
-// Deprecated: Use NewStringPatch().Assign instead.
-var StringPatch_Assign_DEFAULT = NewStringPatch().Assign
 
 func (x *StringPatch) GetAssignNonCompat() *string {
     return x.Assign
@@ -2074,7 +2225,7 @@ func (x *StringPatch) GetAssignNonCompat() *string {
 
 func (x *StringPatch) GetAssign() string {
     if !x.IsSetAssign() {
-      return ""
+        return ""
     }
 
     return *x.Assign
@@ -2104,8 +2255,18 @@ func (x *StringPatch) GetAppend() string {
     return x.Append
 }
 
-func (x *StringPatch) SetAssign(value string) *StringPatch {
+func (x *StringPatch) SetAssignNonCompat(value string) *StringPatch {
     x.Assign = &value
+    return x
+}
+
+func (x *StringPatch) SetAssign(value *string) *StringPatch {
+    x.Assign = value
+    return x
+}
+
+func (x *StringPatch) SetClearNonCompat(value bool) *StringPatch {
+    x.Clear = value
     return x
 }
 
@@ -2114,8 +2275,18 @@ func (x *StringPatch) SetClear(value bool) *StringPatch {
     return x
 }
 
+func (x *StringPatch) SetPrependNonCompat(value string) *StringPatch {
+    x.Prepend = value
+    return x
+}
+
 func (x *StringPatch) SetPrepend(value string) *StringPatch {
     x.Prepend = value
+    return x
+}
+
+func (x *StringPatch) SetAppendNonCompat(value string) *StringPatch {
+    x.Append = value
     return x
 }
 
@@ -2127,9 +2298,6 @@ func (x *StringPatch) SetAppend(value string) *StringPatch {
 func (x *StringPatch) IsSetAssign() bool {
     return x.Assign != nil
 }
-
-
-
 
 func (x *StringPatch) writeField1(p thrift.Protocol) error {  // Assign
     if !x.IsSetAssign() {
@@ -2205,7 +2373,7 @@ if err != nil {
     return err
 }
 
-    x.SetAssign(result)
+    x.SetAssignNonCompat(result)
     return nil
 }
 
@@ -2215,7 +2383,7 @@ if err != nil {
     return err
 }
 
-    x.SetClear(result)
+    x.SetClearNonCompat(result)
     return nil
 }
 
@@ -2225,7 +2393,7 @@ if err != nil {
     return err
 }
 
-    x.SetPrepend(result)
+    x.SetPrependNonCompat(result)
     return nil
 }
 
@@ -2235,9 +2403,12 @@ if err != nil {
     return err
 }
 
-    x.SetAppend(result)
+    x.SetAppendNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewStringPatch().GetAssign() instead.
+var StringPatch_Assign_DEFAULT = NewStringPatch().GetAssign()
 
 func (x *StringPatch) String() string {
     return fmt.Sprintf("%+v", x)
@@ -2279,6 +2450,7 @@ func (x *StringPatchBuilder) Emit() *StringPatch {
     var objCopy StringPatch = *x.obj
     return &objCopy
 }
+
 func (x *StringPatch) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("StringPatch"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2360,6 +2532,7 @@ func (x *StringPatch) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type BinaryPatch struct {
     Assign standard.ByteBuffer `thrift:"assign,1,optional" json:"assign,omitempty" db:"assign"`
     Clear bool `thrift:"clear,2" json:"clear" db:"clear"`
@@ -2370,7 +2543,10 @@ type BinaryPatch struct {
 var _ thrift.Struct = &BinaryPatch{}
 
 func NewBinaryPatch() *BinaryPatch {
-    return (&BinaryPatch{})
+    return (&BinaryPatch{}).
+        SetClearNonCompat(false).
+        SetPrependNonCompat(standard.NewByteBuffer()).
+        SetAppendNonCompat(standard.NewByteBuffer())
 }
 
 func (x *BinaryPatch) GetAssignNonCompat() standard.ByteBuffer {
@@ -2379,7 +2555,7 @@ func (x *BinaryPatch) GetAssignNonCompat() standard.ByteBuffer {
 
 func (x *BinaryPatch) GetAssign() standard.ByteBuffer {
     if !x.IsSetAssign() {
-      return standard.NewByteBuffer()
+        return standard.NewByteBuffer()
     }
 
     return x.Assign
@@ -2399,7 +2575,7 @@ func (x *BinaryPatch) GetPrependNonCompat() standard.ByteBuffer {
 
 func (x *BinaryPatch) GetPrepend() standard.ByteBuffer {
     if !x.IsSetPrepend() {
-      return standard.NewByteBuffer()
+        return standard.NewByteBuffer()
     }
 
     return x.Prepend
@@ -2411,14 +2587,24 @@ func (x *BinaryPatch) GetAppendNonCompat() standard.ByteBuffer {
 
 func (x *BinaryPatch) GetAppend() standard.ByteBuffer {
     if !x.IsSetAppend() {
-      return standard.NewByteBuffer()
+        return standard.NewByteBuffer()
     }
 
     return x.Append
 }
 
+func (x *BinaryPatch) SetAssignNonCompat(value standard.ByteBuffer) *BinaryPatch {
+    x.Assign = value
+    return x
+}
+
 func (x *BinaryPatch) SetAssign(value standard.ByteBuffer) *BinaryPatch {
     x.Assign = value
+    return x
+}
+
+func (x *BinaryPatch) SetClearNonCompat(value bool) *BinaryPatch {
+    x.Clear = value
     return x
 }
 
@@ -2427,8 +2613,18 @@ func (x *BinaryPatch) SetClear(value bool) *BinaryPatch {
     return x
 }
 
+func (x *BinaryPatch) SetPrependNonCompat(value standard.ByteBuffer) *BinaryPatch {
+    x.Prepend = value
+    return x
+}
+
 func (x *BinaryPatch) SetPrepend(value standard.ByteBuffer) *BinaryPatch {
     x.Prepend = value
+    return x
+}
+
+func (x *BinaryPatch) SetAppendNonCompat(value standard.ByteBuffer) *BinaryPatch {
+    x.Append = value
     return x
 }
 
@@ -2440,7 +2636,6 @@ func (x *BinaryPatch) SetAppend(value standard.ByteBuffer) *BinaryPatch {
 func (x *BinaryPatch) IsSetAssign() bool {
     return x.Assign != nil
 }
-
 
 func (x *BinaryPatch) IsSetPrepend() bool {
     return x.Prepend != nil
@@ -2535,7 +2730,7 @@ if err != nil {
     return err
 }
 
-    x.SetAssign(result)
+    x.SetAssignNonCompat(result)
     return nil
 }
 
@@ -2545,7 +2740,7 @@ if err != nil {
     return err
 }
 
-    x.SetClear(result)
+    x.SetClearNonCompat(result)
     return nil
 }
 
@@ -2555,7 +2750,7 @@ if err != nil {
     return err
 }
 
-    x.SetPrepend(result)
+    x.SetPrependNonCompat(result)
     return nil
 }
 
@@ -2565,7 +2760,7 @@ if err != nil {
     return err
 }
 
-    x.SetAppend(result)
+    x.SetAppendNonCompat(result)
     return nil
 }
 
@@ -2609,6 +2804,7 @@ func (x *BinaryPatchBuilder) Emit() *BinaryPatch {
     var objCopy BinaryPatch = *x.obj
     return &objCopy
 }
+
 func (x *BinaryPatch) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("BinaryPatch"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2689,3 +2885,4 @@ func (x *BinaryPatch) Read(p thrift.Protocol) error {
 
     return nil
 }
+

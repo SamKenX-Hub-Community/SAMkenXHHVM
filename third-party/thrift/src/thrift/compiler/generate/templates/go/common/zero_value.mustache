@@ -16,7 +16,13 @@
 
 }}{{!
 
-This template define the default value for a given type.
+  This template defines a zero-value representation for a given type.
+
+  All type values are rendered as "concrete" values, except for structs - which
+  are rendered as struct pointers. Callers are responsible for dereferencing
+  appropriately if needed.
+
+  const/value.mustache and common/zero_value.mustache have complete type partity.
 
 }}{{#type:typedef?}}{{!
   }}{{#type:typedef}}{{!
@@ -41,9 +47,9 @@ This template define the default value for a given type.
   }}{{#type:double?}}0.0{{/type:double?}}{{!
   }}{{#type:float?}}0.0{{/type:float?}}{{!
   }}{{#type:enum?}}0{{/type:enum?}}{{!
-  }}{{#type:list?}}nil{{/type:list?}}{{!
-  }}{{#type:set?}}nil{{/type:set?}}{{!
-  }}{{#type:map?}}nil{{/type:map?}}{{!
+  }}{{#type:list?}}make({{> common/type}}, 0){{/type:list?}}{{!
+  }}{{#type:set?}}make({{> common/type}}, 0){{/type:set?}}{{!
+  }}{{#type:map?}}make({{> common/type}}){{/type:map?}}{{!
   }}{{#type:struct?}}{{!
     }}{{#type:struct}}{{!
       }}{{struct:go_qualified_new_func}}(){{!

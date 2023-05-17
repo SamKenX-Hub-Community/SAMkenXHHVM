@@ -81,6 +81,10 @@ quic::QuicErrorCode quicControlStreamError(quic::QuicErrorCode error) {
   }
   folly::assume_unreachable();
 }
+
+quic::Priority toQuicPriority(const proxygen::HTTPPriority& pri) {
+  return quic::Priority(pri.urgency, pri.incremental, pri.orderId);
+}
 } // namespace
 
 using namespace proxygen::hq;
@@ -508,7 +512,7 @@ size_t HQSession::sendPriority(HTTPCodec::StreamID id, HTTPPriority priority) {
   if (streams_.find(id) == streams_.end() && !findPushStream(id)) {
     return 0;
   }
-  sock_->setStreamPriority(id, priority.urgency, priority.incremental);
+  sock_->setStreamPriority(id, toQuicPriority(priority));
   // PRIORITY_UPDATE frames are sent by clients on the control stream.
   // Servers do not send PRIORITY_UPDATE
   if (direction_ == TransportDirection::DOWNSTREAM) {
@@ -536,7 +540,7 @@ size_t HQSession::sendPushPriority(hq::PushId pushId, HTTPPriority priority) {
                << " with pushId=" << pushId << " presented in id map";
     return 0;
   }
-  sock_->setStreamPriority(streamId, priority.urgency, priority.incremental);
+  sock_->setStreamPriority(streamId, toQuicPriority(priority));
   auto controlStream = findControlStream(UnidirectionalStreamType::CONTROL);
   if (!controlStream) {
     return 0;
@@ -688,7 +692,12 @@ size_t HQSession::sendSettings() {
         case hq::SettingId::MAX_HEADER_LIST_SIZE:
           // TODO: qpackCodec_.setMaxUncompressed(setting.value)
           break;
+        case hq::SettingId::ENABLE_CONNECT_PROTOCOL:
         case hq::SettingId::H3_DATAGRAM:
+        case hq::SettingId::H3_DATAGRAM_DRAFT_8:
+        case hq::SettingId::H3_DATAGRAM_RFC:
+        case hq::SettingId::ENABLE_WEBTRANSPORT:
+        case hq::SettingId::WEBTRANSPORT_MAX_SESSIONS:
           break;
       }
     }
@@ -1460,8 +1469,16 @@ void HQSession::applySettings(const SettingsList& settings) {
           // this setting is stored in ingressSettings_ and enforced in the
           // StreamCodec
           break;
+        case hq::SettingId::ENABLE_CONNECT_PROTOCOL:
+          // TODO
+          break;
         case hq::SettingId::H3_DATAGRAM:
+        case hq::SettingId::H3_DATAGRAM_DRAFT_8:
+        case hq::SettingId::H3_DATAGRAM_RFC:
           datagram = static_cast<bool>(setting.value);
+          break;
+        case hq::SettingId::ENABLE_WEBTRANSPORT:
+        case hq::SettingId::WEBTRANSPORT_MAX_SESSIONS:
           break;
       }
     }
@@ -1540,7 +1557,7 @@ void HQSession::onPriority(quic::StreamId streamId, const HTTPPriority& pri) {
     priorityUpdatesBuffer_.insert(streamId, pri);
     return;
   }
-  sock_->setStreamPriority(streamId, pri.urgency, pri.incremental);
+  sock_->setStreamPriority(streamId, toQuicPriority(pri));
 }
 
 void HQSession::onPushPriority(hq::PushId pushId, const HTTPPriority& pri) {
@@ -1568,7 +1585,7 @@ void HQSession::onPushPriority(hq::PushId pushId, const HTTPPriority& pri) {
   if (!stream) {
     return;
   }
-  sock_->setStreamPriority(streamId, pri.urgency, pri.incremental);
+  sock_->setStreamPriority(streamId, toQuicPriority(pri));
 }
 
 void HQSession::notifyEgressBodyBuffered(int64_t bytes) {
@@ -2112,6 +2129,9 @@ HQSession::createStreamTransport(quic::StreamId streamId) {
 
   // tracks max historical streams
   HTTPSessionBase::onNewOutgoingStream(getNumOutgoingStreams());
+  if (infoCallback_) {
+    infoCallback_->onTransactionAttached(*this);
+  }
 
   return &matchPair.first->second;
 }
@@ -2348,10 +2368,10 @@ void HQSession::detachStreamTransport(HQStreamTransportBase* hqStream) {
       getConnectionManager()->onDeactivated(*this);
     }
     resetTimeout();
-  } else {
-    if (infoCallback_) {
-      infoCallback_->onTransactionDetached(*this);
-    }
+  }
+
+  if (infoCallback_) {
+    infoCallback_->onTransactionDetached(*this);
   }
 }
 
@@ -2462,6 +2482,23 @@ void HQSession::HQStreamTransportBase::onHeadersComplete(
   //  in the HQDownstreamSession, which does not
   //  receive push promises. Will only be called once
   session_.setupOnHeadersComplete(&txn_, msg.get());
+
+  // Inform observers when request headers (i.e. ingress, from downstream
+  // client) are processed.
+  if (session_.direction_ == TransportDirection::DOWNSTREAM) {
+    if (auto msgPtr = msg.get()) {
+      const auto event =
+          HTTPSessionObserverInterface::RequestStartedEvent::Builder()
+              .setHeaders(msgPtr->getHeaders())
+              .build();
+      session_.sessionObserverContainer_.invokeInterfaceMethod<
+          HTTPSessionObserverInterface::Events::requestStarted>(
+          [&event](auto observer, auto observed) {
+            observer->requestStarted(observed, event);
+          });
+    }
+  }
+
   if (!txn_.getHandler()) {
     txn_.sendAbort();
     return;
@@ -2497,13 +2534,11 @@ void HQSession::HQStreamTransportBase::onHeadersComplete(
   if (sock) {
     auto itr = session_.priorityUpdatesBuffer_.find(streamId);
     if (itr != session_.priorityUpdatesBuffer_.end()) {
-      sock->setStreamPriority(
-          streamId, itr->second.urgency, itr->second.incremental);
+      sock->setStreamPriority(streamId, toQuicPriority(itr->second));
     } else {
       const auto httpPriority = httpPriorityFromHTTPMessage(*msg);
       if (httpPriority) {
-        sock->setStreamPriority(
-            streamId, httpPriority->urgency, httpPriority->incremental);
+        sock->setStreamPriority(streamId, toQuicPriority(httpPriority.value()));
       }
     }
   }
@@ -2641,8 +2676,7 @@ void HQSession::HQStreamTransportBase::updatePriority(
   auto streamId = getStreamId();
   auto httpPriority = httpPriorityFromHTTPMessage(headers);
   if (sock && httpPriority) {
-    sock->setStreamPriority(
-        streamId, httpPriority->urgency, httpPriority->incremental);
+    sock->setStreamPriority(streamId, toQuicPriority(httpPriority.value()));
   }
 }
 
@@ -2802,6 +2836,20 @@ void HQSession::HQStreamTransportBase::sendHeaders(HTTPTransaction* txn,
       sock->getState()->qLogger->addStreamStateUpdate(
           streamId, quic::kEOM, timeDiff);
     }
+  }
+
+  // If this is a client sending request headers to upstream
+  // invoke requestStarted event for attached observers.
+  if (session_.direction_ == TransportDirection::UPSTREAM) {
+    const auto event =
+        HTTPSessionObserverInterface::RequestStartedEvent::Builder()
+            .setHeaders(headers.getHeaders())
+            .build();
+    session_.sessionObserverContainer_.invokeInterfaceMethod<
+        HTTPSessionObserverInterface::Events::requestStarted>(
+        [&event](auto observer, auto observed) {
+          observer->requestStarted(observed, event);
+        });
   }
 }
 
@@ -3525,6 +3573,7 @@ void HQSession::onDatagramsAvailable() noexcept {
           kErrorConnection);
       break;
     }
+    // TODO: draft 8 and rfc don't include context ID
     auto ctxId = quic::decodeQuicInteger(cursor);
     if (!ctxId) {
       dropConnectionAsync(

@@ -4,11 +4,11 @@
 package internals // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  scope "thrift/annotation/scope"
-  thrift0 "thrift/annotation/thrift"
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    scope "thrift/annotation/scope"
+    thrift0 "thrift/annotation/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = scope.GoUnusedProtection__
@@ -26,7 +26,8 @@ type InjectMetadataFields struct {
 var _ thrift.Struct = &InjectMetadataFields{}
 
 func NewInjectMetadataFields() *InjectMetadataFields {
-    return (&InjectMetadataFields{})
+    return (&InjectMetadataFields{}).
+        SetTypeNonCompat("")
 }
 
 func (x *InjectMetadataFields) GetTypeNonCompat() string {
@@ -37,11 +38,15 @@ func (x *InjectMetadataFields) GetType() string {
     return x.Type
 }
 
-func (x *InjectMetadataFields) SetType(value string) *InjectMetadataFields {
+func (x *InjectMetadataFields) SetTypeNonCompat(value string) *InjectMetadataFields {
     x.Type = value
     return x
 }
 
+func (x *InjectMetadataFields) SetType(value string) *InjectMetadataFields {
+    x.Type = value
+    return x
+}
 
 func (x *InjectMetadataFields) writeField1(p thrift.Protocol) error {  // Type
     if err := p.WriteFieldBegin("type", thrift.STRING, 1); err != nil {
@@ -65,7 +70,7 @@ if err != nil {
     return err
 }
 
-    x.SetType(result)
+    x.SetTypeNonCompat(result)
     return nil
 }
 
@@ -94,6 +99,7 @@ func (x *InjectMetadataFieldsBuilder) Emit() *InjectMetadataFields {
     var objCopy InjectMetadataFields = *x.obj
     return &objCopy
 }
+
 func (x *InjectMetadataFields) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("InjectMetadataFields"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -150,3 +156,4 @@ func (x *InjectMetadataFields) Read(p thrift.Protocol) error {
 
     return nil
 }
+

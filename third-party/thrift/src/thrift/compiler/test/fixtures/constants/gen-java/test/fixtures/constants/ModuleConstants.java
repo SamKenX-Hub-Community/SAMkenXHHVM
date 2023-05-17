@@ -19,10 +19,7 @@ public final class ModuleConstants {
 
     public static final String NAME = "Mark Zuckerberg";
 
-    public static final String MULTI_LINE_STRING = "This
-is a
-multi line string.
-";
+    public static final String MULTI_LINE_STRING = "This\nis a\nmulti line string.\n";
 
     public static final List<Map<String, Integer>> STATES = ImmutableList.<Map<String, Integer>>builder()
         .add(ImmutableMap.<String, Integer>builder()
@@ -114,7 +111,7 @@ multi line string.
 
     public static final test.fixtures.constants.Union1 U_1_2 = test.fixtures.constants.Union1.fromD((double)5.6);
 
-    public static final test.fixtures.constants.Union1 U_1_3 = test.fixtures.constants.Union1;
+    public static final test.fixtures.constants.Union1 U_1_3 = new test.fixtures.constants.Union1();
 
     public static final test.fixtures.constants.Union2 U_2_1 = test.fixtures.constants.Union2.fromI(51);
 
@@ -126,7 +123,7 @@ multi line string.
 
     public static final test.fixtures.constants.Union2 U_2_5 = test.fixtures.constants.Union2.fromU(test.fixtures.constants.Union1.fromD((double)9.8));
 
-    public static final test.fixtures.constants.Union2 U_2_6 = test.fixtures.constants.Union2.fromU(test.fixtures.constants.Union1);
+    public static final test.fixtures.constants.Union2 U_2_6 = test.fixtures.constants.Union2.fromU(new test.fixtures.constants.Union1());
 
     public static final String APOSTROPHE = "'";
 
@@ -136,32 +133,40 @@ multi line string.
 
     public static final String BACKSLASH = "\\";
 
-    public static final String ESCAPED_A = "\u0061";
+    public static final String ESCAPED_A = "a";
 
     public static final Map<String, Integer> CHAR2ASCII = ImmutableMap.<String, Integer>builder()
         .put("'", 39)
         .put("\"", 34)
         .put("\\", 92)
-        .put("\u0061", 97)
+        .put("a", 97)
         .build();
 
     public static final List<String> ESCAPED_STRINGS = ImmutableList.<String>builder()
-        .add("\u0061")
-        .add("\u00ab")
-        .add("\u006a")
-        .add("\u00a6")
-        .add("\u0061yyy")
-        .add("\u00abyyy")
-        .add("\u006ayyy")
-        .add("\u00a6yyy")
-        .add("zzz\u0061")
-        .add("zzz\u00ab")
-        .add("zzz\u006a")
-        .add("zzz\u00a6")
-        .add("zzz\u0061yyy")
-        .add("zzz\u00abyyy")
-        .add("zzz\u006ayyy")
-        .add("zzz\u00a6yyy")
+        .add("\001")
+        .add("\037")
+        .add(" ")
+        .add("'")
+        .add("\"")
+        .add("\n")
+        .add("\015")
+        .add("\011")
+        .add("a")
+        .add("«")
+        .add("j")
+        .add("¦")
+        .add("ayyy")
+        .add("«yyy")
+        .add("jyyy")
+        .add("¦yyy")
+        .add("zzza")
+        .add("zzz«")
+        .add("zzzj")
+        .add("zzz¦")
+        .add("zzzayyy")
+        .add("zzz«yyy")
+        .add("zzzjyyy")
+        .add("zzz¦yyy")
         .build();
 
     public static final boolean FALSE_C = false;

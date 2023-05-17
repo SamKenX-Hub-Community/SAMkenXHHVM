@@ -53,6 +53,111 @@
 using namespace facebook::memcache;
 using namespace facebook::memcache::mcrouter;
 
+namespace facebook {
+namespace memcache {
+namespace mcrouter {
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeAllAsyncRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeAllFastestRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeAllInitialRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeAllMajorityRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeAllSyncRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeBlackholeRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeDevNullRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeErrorRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeHashRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeHostIdRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeLatencyInjectionRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeLatestRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeLoadBalancerRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeLoggingRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeMigrateRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeMissFailoverRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeModifyKeyRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeOperationSelectorRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template hellogoodbye::HelloGoodbyeRouterInfo::RouteHandlePtr
+makeRandomRoute<hellogoodbye::HelloGoodbyeRouterInfo>(
+RouteHandleFactory<hellogoodbye::HelloGoodbyeRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template class ExtraRouteHandleProviderIf<hellogoodbye::HelloGoodbyeRouterInfo>;
+
+} // namespace mcrouter
+} // namespace memcache
+} // namespace facebook
+
 namespace hellogoodbye {
 
 constexpr const char* HelloGoodbyeRouterInfo::name;
@@ -86,8 +191,8 @@ HelloGoodbyeRouterInfo::buildRouteMap() {
       {"OperationSelectorRoute",
        &makeOperationSelectorRoute<HelloGoodbyeRouterInfo>},
       {"RandomRoute", &makeRandomRoute<HelloGoodbyeRouterInfo>},
-{"DuplicateRoute", &makeDuplicateRoute<HelloGoodbyeRouterInfo>},
-{"CarbonLookasideRoute", &makeCarbonLookasideRoute<HelloGoodbyeRouterInfo>},
+      {"DuplicateRoute", &makeDuplicateRoute<HelloGoodbyeRouterInfo>},
+      {"CarbonLookasideRoute", &makeCarbonLookasideRoute<HelloGoodbyeRouterInfo>},
   };
   return map;
 }
@@ -97,9 +202,8 @@ HelloGoodbyeRouterInfo::buildRouteMapWithProxy() {
   return RouteHandleFactoryMapWithProxy();
 }
 
-/* static */
-std::unique_ptr<ExtraRouteHandleProviderIf<HelloGoodbyeRouterInfo>>
-HelloGoodbyeRouterInfo::buildExtraProvider() {
-  return std::make_unique<McExtraRouteHandleProvider<HelloGoodbyeRouterInfo>>();
+/* static */ HelloGoodbyeRouterInfo::RouteHandleFactoryMapForWrapper
+HelloGoodbyeRouterInfo::buildRouteMapForWrapper() {
+  return RouteHandleFactoryMapForWrapper();
 }
 } // namespace hellogoodbye

@@ -51,6 +51,8 @@ type file_attribute = (unit, unit) Aast.file_attribute
 
 type fun_ = (unit, unit) Aast.fun_
 
+type capture_lid = unit Aast.capture_lid
+
 type efun = (unit, unit) Aast.efun
 
 type fun_def = (unit, unit) Aast.fun_def
@@ -537,7 +539,7 @@ module Visitor_DEPRECATED = struct
 
       method on_efun : 'a -> efun -> 'a
 
-      method on_lfun : 'a -> fun_ -> id list -> 'a
+      method on_lfun : 'a -> fun_ -> capture_lid list -> 'a
 
       method on_xml : 'a -> sid -> xhp_attribute list -> expr list -> 'a
 
@@ -779,7 +781,7 @@ module Visitor_DEPRECATED = struct
         | Cast (hint, e) -> this#on_cast acc hint e
         | ExpressionTree et -> this#on_expression_tree acc et
         | Unop (uop, e) -> this#on_unop acc uop e
-        | Binop (bop, e1, e2) -> this#on_binop acc bop e1 e2
+        | Binop { bop; lhs; rhs } -> this#on_binop acc bop lhs rhs
         | Pipe (id, e1, e2) -> this#on_pipe acc id e1 e2
         | Eif (e1, e2, e3) -> this#on_eif acc e1 e2 e3
         | Is (e, h) -> this#on_is acc e h
@@ -800,6 +802,7 @@ module Visitor_DEPRECATED = struct
           this#on_enum_class_label acc opt_sid name
         | ReadonlyExpr e -> this#on_readonly_expr acc e
         | Hole (e, _, _, _) -> this#on_expr acc e
+        | Package id -> this#on_id acc id
         | Invalid (Some e) -> this#on_expr acc e
         | Invalid _ -> acc
 

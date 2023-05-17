@@ -26,7 +26,8 @@ let is_magic =
 (* Class consts and typeconsts cannot be named "class" *)
 let error_if_is_named_class (pos, name) =
   if String.equal (String.lowercase name) "class" then
-    Errors.add_naming_error @@ Naming_error.Illegal_member_variable_class pos
+    Errors.add_error
+      Naming_error.(to_user_error @@ Illegal_member_variable_class pos)
 
 let handler =
   object
@@ -51,7 +52,7 @@ let handler =
         else if
           String.equal const SN.PseudoConsts.g__CLASS__ && Option.is_none ck
         then
-          Errors.add_naming_error @@ Naming_error.Illegal_CLASS pos
+          Errors.add_error Naming_error.(to_user_error @@ Illegal_CLASS pos)
         else if
           String.equal const SN.PseudoConsts.g__TRAIT__
           && not
@@ -60,20 +61,23 @@ let handler =
                   ck
                   (Some Ast_defs.Ctrait))
         then
-          Errors.add_naming_error @@ Naming_error.Illegal_TRAIT pos
+          Errors.add_error Naming_error.(to_user_error @@ Illegal_TRAIT pos)
       | Class_const ((_, _, CIexpr (_, _, Id (_, "parent"))), (_, m_name))
         when Option.equal String.equal func_name (Some m_name) ->
         ()
       | Class_const (_, ((pos, meth_name) as mid))
         when is_magic mid
              && not (Option.equal String.equal func_name (Some meth_name)) ->
-        Errors.add_nast_check_error @@ Nast_check_error.Magic { pos; meth_name }
+        Errors.add_error
+          Nast_check_error.(to_user_error @@ Magic { pos; meth_name })
       | Obj_get (_, (_, _, Id s), _, _) when is_magic s ->
         let (pos, meth_name) = s in
-        Errors.add_nast_check_error @@ Nast_check_error.Magic { pos; meth_name }
+        Errors.add_error
+          Nast_check_error.(to_user_error @@ Magic { pos; meth_name })
       | Method_caller (_, meth) when is_magic meth ->
         let (pos, meth_name) = meth in
-        Errors.add_nast_check_error @@ Nast_check_error.Magic { pos; meth_name }
+        Errors.add_error
+          Nast_check_error.(to_user_error @@ Magic { pos; meth_name })
       | _ -> ()
 
     method! at_fun_def _ fd =
@@ -83,13 +87,15 @@ let handler =
         String.equal fname_lower SN.Members.__construct
         || String.equal fname_lower "using"
       then
-        Errors.add_nast_check_error
-        @@ Nast_check_error.Illegal_function_name { pos; name = fname }
+        Errors.add_error
+          Nast_check_error.(
+            to_user_error @@ Illegal_function_name { pos; name = fname })
 
     method! at_method_ env m =
       let (pos, name) = m.m_name in
       if String.equal name SN.Members.__destruct then
-        Errors.add_nast_check_error @@ Nast_check_error.Illegal_destructor pos;
+        Errors.add_error
+          Nast_check_error.(to_user_error @@ Illegal_destructor pos);
       match env.class_name with
       | Some _ -> ()
       | None -> assert false

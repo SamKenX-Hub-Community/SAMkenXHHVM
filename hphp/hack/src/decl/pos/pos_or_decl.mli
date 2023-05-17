@@ -16,7 +16,7 @@
     This type is for either of these positions.
     It's used in the decl heap and in places that can take any kind of positions,
     e.g. error secondary positions. *)
-type t [@@deriving eq, ord, show]
+type t [@@deriving eq, hash, ord, show]
 
 module Map : WrappedMap.S with type key = t
 
@@ -25,6 +25,7 @@ type ctx = {
   decl: Decl_reference.t option;
   file: Relative_path.t;
 }
+[@@deriving show]
 
 val none : t
 

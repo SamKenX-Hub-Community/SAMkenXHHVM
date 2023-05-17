@@ -589,10 +589,7 @@ myInt = 1337
 
 name = "Mark Zuckerberg"
 
-multi_line_string = """This
-is a
-multi line string.
-"""
+multi_line_string = "This\nis a\nmulti line string.\n"
 
 states = _fbthrift_python_types.List(_fbthrift_python_types.MapTypeInfo(_fbthrift_python_types.typeinfo_string, _fbthrift_python_types.typeinfo_i32), (_fbthrift_python_types.Map(_fbthrift_python_types.typeinfo_string, _fbthrift_python_types.typeinfo_i32, {"San Diego": 3211000, "Sacramento": 479600, "SF": 837400}), _fbthrift_python_types.Map(_fbthrift_python_types.typeinfo_string, _fbthrift_python_types.typeinfo_i32, {"New York": 8406000, "Albany": 98400}), ))
 
@@ -664,15 +661,15 @@ apostrophe = "'"
 
 tripleApostrophe = "'''"
 
-quotationMark = '"'
+quotationMark = "\""
 
 backslash = "\\"
 
-escaped_a = "\x61"
+escaped_a = "a"
 
-char2ascii = _fbthrift_python_types.Map(_fbthrift_python_types.typeinfo_string, _fbthrift_python_types.typeinfo_i32, {"'": 39, '"': 34, "\\": 92, "\x61": 97})
+char2ascii = _fbthrift_python_types.Map(_fbthrift_python_types.typeinfo_string, _fbthrift_python_types.typeinfo_i32, {"'": 39, "\"": 34, "\\": 92, "a": 97})
 
-escaped_strings = _fbthrift_python_types.List(_fbthrift_python_types.typeinfo_string, ("\x61", "\xab", "\x6a", "\xa6", "\x61yyy", "\xabyyy", "\x6ayyy", "\xa6yyy", "zzz\x61", "zzz\xab", "zzz\x6a", "zzz\xa6", "zzz\x61yyy", "zzz\xabyyy", "zzz\x6ayyy", "zzz\xa6yyy", ))
+escaped_strings = _fbthrift_python_types.List(_fbthrift_python_types.typeinfo_string, ("\001", "\037", " ", "'", "\"", "\n", "\r", "\011", "a", "\302\253", "j", "\302\246", "ayyy", "\302\253yyy", "jyyy", "\302\246yyy", "zzza", "zzz\302\253", "zzzj", "zzz\302\246", "zzzayyy", "zzz\302\253yyy", "zzzjyyy", "zzz\302\246yyy", ))
 
 false_c = False
 

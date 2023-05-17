@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<6bb648494ab4d92932a2c5463541b030>>
+// @generated SignedSource<<1a35eb939716e5a45dfe6227e9be0fd1>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -138,9 +138,6 @@ pub enum ConstraintKind {
 }
 impl TrivialDrop for ConstraintKind {}
 arena_deserializer::impl_deserialize_in_arena!(ConstraintKind);
-
-#[rust_to_ocaml(and)]
-pub type Reified = bool;
 
 #[derive(
     Clone,
@@ -584,6 +581,7 @@ pub enum TypedefVisibility {
     Transparent,
     Opaque,
     OpaqueModule,
+    CaseType,
 }
 impl TrivialDrop for TypedefVisibility {}
 arena_deserializer::impl_deserialize_in_arena!(TypedefVisibility);
@@ -607,7 +605,7 @@ arena_deserializer::impl_deserialize_in_arena!(TypedefVisibility);
 )]
 #[rust_to_ocaml(and)]
 #[rust_to_ocaml(attr = "transform.opaque")]
-#[rust_to_ocaml(attr = r#"deriving ((show { with_path = false }), eq, ord,
+#[rust_to_ocaml(attr = r#"deriving ((show { with_path = false }), eq, hash, ord,
     (transform ~restart:(`Disallow `Encode_as_result)),
     (visitors
        {

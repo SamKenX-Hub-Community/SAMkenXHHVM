@@ -41,19 +41,23 @@ class AssignPatch : public BaseAssignPatch<Patch, AssignPatch<Patch>> {
   using Base::Base;
   using Base::operator=;
 
-  void apply(T& val) const { applyAssign(val); }
+  template <typename Visitor>
+  void customVisit(Visitor&& v) const {
+    if (auto p = data_.assign()) {
+      std::forward<Visitor>(v).assign(*p);
+    }
+  }
 
-  /// Merges another patch into the current patch. After the merge
-  /// (`patch.merge(next)`), `patch.apply(value)` is equivalent to
-  /// `next.apply(patch.apply(value))`.
-  template <typename U>
-  void merge(U&& next) {
-    mergeAssign(std::forward<U>(next));
+  void apply(T& val) const {
+    struct Visitor {
+      T& v;
+      void assign(const T& t) { v = t; }
+    };
+    return customVisit(Visitor{val});
   }
 
  private:
-  using Base::applyAssign;
-  using Base::mergeAssign;
+  using Base::data_;
 };
 
 /// Patch for a Thrift bool.
@@ -82,25 +86,33 @@ class BoolPatch : public BaseClearPatch<Patch, BoolPatch<Patch>> {
     val = !val;
   }
 
-  void apply(T& val) const {
-    if (!Base::template applyAssignAndClear<type::bool_t>(val) &&
-        *data_.invert()) {
-      val = !val;
+  template <typename Visitor>
+  void customVisit(Visitor&& v) const {
+    if (false) {
+      // Test whether the required methods exist in Visitor
+      v.assign(T{});
+      v.clear();
+      v.invert();
+    }
+    if (!Base::template customVisitAssignAndClear(v) && *data_.invert()) {
+      std::forward<Visitor>(v).invert();
     }
   }
 
-  /// @copydoc AssignPatch::merge
-  template <typename U>
-  void merge(U&& next) {
-    if (!mergeAssignAndClear(std::forward<U>(next))) {
-      *data_.invert() ^= *next.toThrift().invert();
-    }
+  void apply(T& val) const {
+    struct Visitor {
+      T& v;
+      void assign(T b) { v = b; }
+      void clear() { v = false; }
+      void invert() { v = !v; }
+    };
+
+    return customVisit(Visitor{val});
   }
 
  private:
   using Base::assignOr;
   using Base::data_;
-  using Base::mergeAssignAndClear;
 
   friend BoolPatch operator!(BoolPatch val) { return (val.invert(), val); }
 };
@@ -150,18 +162,28 @@ class NumberPatch : public BaseClearPatch<Patch, NumberPatch<Patch>> {
     assignOr(*data_.add()) -= std::forward<U>(val);
   }
 
-  void apply(T& val) const {
-    if (!Base::template applyAssignAndClear<Tag>(val)) {
-      val += *data_.add();
+  template <typename Visitor>
+  void customVisit(Visitor&& v) const {
+    if (false) {
+      // Test whether the required methods exist in Visitor
+      v.assign(T{});
+      v.clear();
+      v.add(T{});
+    }
+    if (!Base::template customVisitAssignAndClear(v)) {
+      v.add(*data_.add());
     }
   }
 
-  /// @copydoc AssignPatch::merge
-  template <typename U>
-  void merge(U&& next) {
-    if (!mergeAssignAndClear(std::forward<U>(next))) {
-      *data_.add() += *next.toThrift().add();
-    }
+  void apply(T& val) const {
+    struct Visitor {
+      T& v;
+      void assign(const T& t) { v = t; }
+      void clear() { v = 0; }
+      void add(const T& t) { v += t; }
+    };
+
+    return customVisit(Visitor{val});
   }
 
   /// Increases the value.
@@ -181,7 +203,6 @@ class NumberPatch : public BaseClearPatch<Patch, NumberPatch<Patch>> {
  private:
   using Base::assignOr;
   using Base::data_;
-  using Base::mergeAssignAndClear;
 
   template <typename U>
   friend NumberPatch operator+(NumberPatch lhs, U&& rhs) {
@@ -213,6 +234,7 @@ class NumberPatch : public BaseClearPatch<Patch, NumberPatch<Patch>> {
 template <typename Patch, typename Derived>
 class BaseStringPatch : public BaseContainerPatch<Patch, Derived> {
   using Base = BaseContainerPatch<Patch, Derived>;
+  using T = typename Base::value_type;
 
  public:
   using Base::Base;
@@ -239,6 +261,21 @@ class BaseStringPatch : public BaseContainerPatch<Patch, Derived> {
   Derived& operator+=(U&& val) {
     derived().append(std::forward<U>(val));
     return derived();
+  }
+
+  template <class Visitor>
+  void customVisit(Visitor&& v) const {
+    if (false) {
+      // Test whether the required methods exist in Visitor
+      v.assign(T{});
+      v.clear();
+      v.prepend(T{});
+      v.append(T{});
+    }
+    if (!Base::template customVisitAssignAndClear(std::forward<Visitor>(v))) {
+      std::forward<Visitor>(v).prepend(*data_.prepend());
+      std::forward<Visitor>(v).append(*data_.append());
+    }
   }
 
  protected:
@@ -292,27 +329,28 @@ class StringPatch : public BaseStringPatch<Patch, StringPatch<Patch>> {
   }
 
   void apply(T& val) const {
-    if (!applyAssignOrClear(val)) {
-      val = *data_.prepend() + std::move(val) + *data_.append();
-    }
-  }
+    struct Visitor {
+      T& v;
+      void assign(const T& t) { v = t; }
+      void clear() { v = ""; }
+      // TODO: Optimize this
+      void prepend(const T& t) { v = t + v; }
+      void append(const T& t) { v += t; }
+    };
 
-  /// @copydoc AssignPatch::merge
-  template <typename U>
-  void merge(U&& next) {
-    if (!mergeAssignAndClear(std::forward<U>(next))) {
-      *data_.prepend() = *std::forward<U>(next).toThrift().prepend() +
-          std::move(*data_.prepend());
-      data_.append()->append(*std::forward<U>(next).toThrift().append());
-    }
+    return Base::customVisit(Visitor{val});
   }
 
  private:
-  using Base::applyAssignOrClear;
   using Base::assignOr;
   using Base::data_;
-  using Base::mergeAssignAndClear;
 };
+
+inline const folly::IOBuf& emptyIOBuf() {
+  static const auto empty =
+      folly::IOBuf::wrapBufferAsValue(folly::StringPiece(""));
+  return empty;
+}
 
 /// Patch for a Thrift Binary.
 ///
@@ -353,37 +391,28 @@ class BinaryPatch : public BaseStringPatch<Patch, BinaryPatch<Patch>> {
   }
 
   void apply(T& val) const {
-    if (applyAssignOrClear(val)) {
-      return;
-    }
-    folly::IOBufQueue queue{folly::IOBufQueue::cacheChainLength()};
-    queue.append(std::move(*data_.prepend()));
-    queue.append(val);
-    queue.append(std::move(*data_.append()));
-    val = queue.moveAsValue();
-  }
+    struct Visitor {
+      T& v;
+      std::deque<const T*> bufs = {&v};
+      void assign(const T& t) { bufs = {&t}; }
+      void clear() { bufs = {&emptyIOBuf()}; }
+      void prepend(const T& t) { bufs.push_front(&t); }
+      void append(const T& t) { bufs.push_back(&t); }
+      ~Visitor() {
+        folly::IOBufQueue queue{folly::IOBufQueue::cacheChainLength()};
+        for (auto buf : bufs) {
+          queue.append(*buf);
+        }
+        v = queue.moveAsValue();
+      }
+    };
 
-  /// @copydoc AssignPatch::merge
-  template <typename U>
-  void merge(U&& next) {
-    if (!mergeAssignAndClear(std::forward<U>(next))) {
-      folly::IOBufQueue prependQueue{folly::IOBufQueue::cacheChainLength()};
-      prependQueue.append(*std::forward<U>(next).toThrift().prepend());
-      prependQueue.append(std::move(*data_.prepend()));
-      data_.prepend() = prependQueue.moveAsValue();
-
-      folly::IOBufQueue appendQueue{folly::IOBufQueue::cacheChainLength()};
-      appendQueue.append(std::move(*data_.append()));
-      appendQueue.append(*std::forward<U>(next).toThrift().append());
-      data_.append() = appendQueue.moveAsValue();
-    }
+    return Base::customVisit(Visitor{val});
   }
 
  private:
-  using Base::applyAssignOrClear;
   using Base::assignOr;
   using Base::data_;
-  using Base::mergeAssignAndClear;
 };
 
 } // namespace detail

@@ -72,23 +72,29 @@ folly::Synchronized<RegistryIdManager>& registryIdManager() {
 } // namespace
 
 namespace detail {
-
 THRIFT_PLUGGABLE_FUNC_REGISTER(uint64_t, getCurrentServerTick) {
   return 0;
 }
 
+THRIFT_PLUGGABLE_FUNC_REGISTER(
+    std::unique_ptr<folly::WorkerProvider>,
+    createIOWorkerProvider,
+    folly::Executor*,
+    RequestsRegistry*) {
+  return nullptr;
+}
 } // namespace detail
 
 void RecentRequestCounter::increment() {
   auto currBucket = getCurrentBucket();
-  counts_[currBucket].first += 1;
-  counts_[currBucket].second = ++currActiveCount_;
+  counts_[currBucket].arrivalCount += 1;
+  counts_[currBucket].activeCount = ++currActiveCount_;
 }
 
 void RecentRequestCounter::decrement() {
   if (currActiveCount_ > 0) {
     auto currBucket = getCurrentBucket();
-    counts_[currBucket].second = --currActiveCount_;
+    counts_[currBucket].activeCount = --currActiveCount_;
   }
 }
 
@@ -104,6 +110,11 @@ RecentRequestCounter::Values RecentRequestCounter::get() const {
   return ret;
 }
 
+void RecentRequestCounter::incrementOverloadCount() {
+  auto currBucket = getCurrentBucket();
+  counts_[currBucket].overloadCount += 1;
+}
+
 uint64_t RecentRequestCounter::getCurrentBucket() const {
   // Remove old request counts from counts_ and update lastTick_
   uint64_t currentTick = detail::getCurrentServerTick();
@@ -114,8 +125,9 @@ uint64_t RecentRequestCounter::getCurrentBucket() const {
 
     while (ticksToClear) {
       auto index = (lastTick_ + ticksToClear--) % kBuckets;
-      counts_[index].first = 0;
-      counts_[index].second = currActiveCount_;
+      counts_[index].arrivalCount = 0;
+      counts_[index].activeCount = currActiveCount_;
+      counts_[index].overloadCount = 0;
     }
     lastTick_ = currentTick;
     currentBucket_ = lastTick_ % kBuckets;

@@ -91,6 +91,8 @@ val print_documentRename : Lsp.Rename.result -> Hh_json.json
 
 val print_diagnostics : Lsp.PublishDiagnostics.params -> Hh_json.json
 
+val print_codeActionResult : Lsp.CodeAction.result -> Hh_json.json
+
 val print_logMessage : Lsp.MessageType.t -> string -> Hh_json.json
 
 val print_showMessage : Lsp.MessageType.t -> string -> Hh_json.json
@@ -151,13 +153,6 @@ val parse_documentHighlight :
   Hh_json.json option -> Lsp.DocumentHighlight.params
 
 val print_documentHighlight : Lsp.DocumentHighlight.result -> Hh_json.json
-
-val parse_typeCoverage : Hh_json.json option -> Lsp.TypeCoverageFB.params
-
-val print_typeCoverage : Lsp.TypeCoverageFB.result -> Hh_json.json
-
-val parse_toggleTypeCoverage :
-  Hh_json.json option -> Lsp.ToggleTypeCoverageFB.params
 
 val parse_documentFormatting :
   Hh_json.json option -> Lsp.DocumentFormatting.params

@@ -41,11 +41,10 @@ let type_decl
   ServerProgress.write "evaluating type declarations";
   let bucket_size = genv.local_config.SLC.type_decl_bucket_size in
   let ctx = Provider_utils.ctx_from_server_env env in
-  let errorl = Decl_service.go ~bucket_size ctx genv.workers defs_per_file in
+  Decl_service.go ~bucket_size ctx genv.workers defs_per_file;
   Stats.(stats.init_heap_size <- SharedMem.SMTelemetry.heap_size ());
   HackEventLogger.type_decl_end t;
   let t = Hh_logger.log_duration "Type-decl" t in
-  let env = { env with errorl = Errors.merge errorl env.errorl } in
   (env, t)
 
 let init
@@ -68,18 +67,12 @@ let init
 
   (* We don't support a saved state for eager init. *)
   let (get_next, t) =
-    ServerInitCommon.indexing ~telemetry_label:"eager.init.indexing" genv
-  in
-  let lazy_parse =
-    match lazy_level with
-    | Parse -> true
-    | _ -> false
+    ServerInitCommon.directory_walk ~telemetry_label:"eager.init.indexing" genv
   in
   (* Parsing entire repo, too many files to trace *)
   let trace = false in
   let (env, t) =
-    ServerInitCommon.parsing
-      ~lazy_parse
+    ServerInitCommon.parse_files_and_update_forward_naming_table
       genv
       env
       ~get_next
@@ -95,27 +88,22 @@ let init
       env.naming_table
       ~source:SearchUtils.Init;
   let (env, t) =
-    ServerInitCommon.naming
+    ServerInitCommon
+    .update_reverse_naming_table_from_env_and_get_duplicate_name_errors
       env
       t
       ~telemetry_label:"eager.init.naming"
       ~cgroup_steps
   in
+  ServerInitCommon.validate_no_errors Errors.Typing env.errorl;
   let defs_per_file = Naming_table.to_defs_per_file env.naming_table in
-  let failed_parsing = Errors.get_failed_files env.errorl Errors.Parsing in
-  let defs_per_file =
-    Relative_path.Set.fold
-      failed_parsing
-      ~f:(fun x m -> Relative_path.Map.remove m x)
-      ~init:defs_per_file
-  in
   let (env, t) =
     match lazy_level with
     | Off -> type_decl genv env defs_per_file t
     | _ -> (env, t)
   in
   (* Type-checking everything *)
-  ServerInitCommon.type_check
+  ServerInitCommon.defer_or_do_type_check
     genv
     env
     (Relative_path.Map.keys defs_per_file)

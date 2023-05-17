@@ -133,7 +133,10 @@ func (c *ServiceChannelClient) Func(ctx context.Context, arg1 StringWithAdapter,
     }
     out := newRespServiceFunc()
     err := c.ch.Call(ctx, "func", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *ServiceClient) Func(arg1 StringWithAdapter, arg2 string, arg3 *Foo) (MyI32, error) {
@@ -149,12 +152,14 @@ type reqServiceFunc struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqServiceFunc{}
 
-func newReqServiceFunc() *reqServiceFunc {
-    return (&reqServiceFunc{})
-}
+type ServiceFuncArgs = reqServiceFunc
 
-// Deprecated: Use newReqServiceFunc().Arg3 instead.
-var reqServiceFunc_Arg3_DEFAULT = newReqServiceFunc().Arg3
+func newReqServiceFunc() *reqServiceFunc {
+    return (&reqServiceFunc{}).
+        SetArg1NonCompat(NewStringWithAdapter()).
+        SetArg2NonCompat("").
+        SetArg3NonCompat(*NewFoo())
+}
 
 func (x *reqServiceFunc) GetArg1NonCompat() StringWithAdapter {
     return x.Arg1
@@ -178,14 +183,24 @@ func (x *reqServiceFunc) GetArg3NonCompat() *Foo {
 
 func (x *reqServiceFunc) GetArg3() *Foo {
     if !x.IsSetArg3() {
-      return NewFoo()
+        return NewFoo()
     }
 
     return x.Arg3
 }
 
+func (x *reqServiceFunc) SetArg1NonCompat(value StringWithAdapter) *reqServiceFunc {
+    x.Arg1 = value
+    return x
+}
+
 func (x *reqServiceFunc) SetArg1(value StringWithAdapter) *reqServiceFunc {
     x.Arg1 = value
+    return x
+}
+
+func (x *reqServiceFunc) SetArg2NonCompat(value string) *reqServiceFunc {
+    x.Arg2 = value
     return x
 }
 
@@ -194,12 +209,15 @@ func (x *reqServiceFunc) SetArg2(value string) *reqServiceFunc {
     return x
 }
 
-func (x *reqServiceFunc) SetArg3(value Foo) *reqServiceFunc {
+func (x *reqServiceFunc) SetArg3NonCompat(value Foo) *reqServiceFunc {
     x.Arg3 = &value
     return x
 }
 
-
+func (x *reqServiceFunc) SetArg3(value *Foo) *reqServiceFunc {
+    x.Arg3 = value
+    return x
+}
 
 func (x *reqServiceFunc) IsSetArg3() bool {
     return x.Arg3 != nil
@@ -264,7 +282,7 @@ if err != nil {
     return err
 }
 
-    x.SetArg1(result)
+    x.SetArg1NonCompat(result)
     return nil
 }
 
@@ -274,7 +292,7 @@ if err != nil {
     return err
 }
 
-    x.SetArg2(result)
+    x.SetArg2NonCompat(result)
     return nil
 }
 
@@ -285,8 +303,19 @@ if err != nil {
     return err
 }
 
-    x.SetArg3(result)
+    x.SetArg3NonCompat(result)
     return nil
+}
+
+// Deprecated: Use newReqServiceFunc().GetArg3() instead.
+var reqServiceFunc_Arg3_DEFAULT = newReqServiceFunc().GetArg3()
+
+// Deprecated: Use newReqServiceFunc().GetArg3() instead.
+func (x *reqServiceFunc) DefaultGetArg3() *Foo {
+    if !x.IsSetArg3() {
+        return NewFoo()
+    }
+    return x.Arg3
 }
 
 func (x *reqServiceFunc) String() string {
@@ -324,6 +353,7 @@ func (x *reqServiceFuncBuilder) Emit() *reqServiceFunc {
     var objCopy reqServiceFunc = *x.obj
     return &objCopy
 }
+
 func (x *reqServiceFunc) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqServiceFunc"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -396,14 +426,17 @@ func (x *reqServiceFunc) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respServiceFunc struct {
-    Value MyI32 `thrift:"value,0,required" json:"value" db:"value"`
+    Value MyI32 `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respServiceFunc{}
+var _ thrift.WritableResult = &respServiceFunc{}
 
 func newRespServiceFunc() *respServiceFunc {
-    return (&respServiceFunc{})
+    return (&respServiceFunc{}).
+        SetValueNonCompat(NewMyI32())
 }
 
 func (x *respServiceFunc) GetValueNonCompat() MyI32 {
@@ -414,11 +447,15 @@ func (x *respServiceFunc) GetValue() MyI32 {
     return x.Value
 }
 
-func (x *respServiceFunc) SetValue(value MyI32) *respServiceFunc {
+func (x *respServiceFunc) SetValueNonCompat(value MyI32) *respServiceFunc {
     x.Value = value
     return x
 }
 
+func (x *respServiceFunc) SetValue(value MyI32) *respServiceFunc {
+    x.Value = value
+    return x
+}
 
 func (x *respServiceFunc) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.I32, 0); err != nil {
@@ -443,7 +480,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -472,6 +509,11 @@ func (x *respServiceFuncBuilder) Emit() *respServiceFunc {
     var objCopy respServiceFunc = *x.obj
     return &objCopy
 }
+
+func (x *respServiceFunc) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respServiceFunc) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respServiceFunc"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -528,6 +570,7 @@ func (x *respServiceFunc) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type ServiceProcessor struct {
@@ -592,9 +635,11 @@ func (p *procFuncServiceFunc) Read(iprot thrift.Protocol) (thrift.Struct, thrift
 func (p *procFuncServiceFunc) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Func", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -613,13 +658,13 @@ func (p *procFuncServiceFunc) Write(seqId int32, result thrift.WritableStruct, o
 func (p *procFuncServiceFunc) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqServiceFunc)
     result := newRespServiceFunc()
-    if retval, err := p.handler.Func(args.Arg1, args.Arg2, args.Arg3); err != nil {
+    retval, err := p.handler.Func(args.Arg1, args.Arg2, args.Arg3)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Func: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -726,7 +771,10 @@ func (c *AdapterServiceChannelClient) Count(ctx context.Context) (*CountingStruc
     }
     out := newRespAdapterServiceCount()
     err := c.ch.Call(ctx, "count", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *AdapterServiceClient) Count() (*CountingStruct, error) {
@@ -736,11 +784,14 @@ func (c *AdapterServiceClient) Count() (*CountingStruct, error) {
 
 func (c *AdapterServiceChannelClient) AdaptedTypes(ctx context.Context, arg *HeapAllocated) (*HeapAllocated, error) {
     in := &reqAdapterServiceAdaptedTypes{
-        Arg_: arg,
+        Arg: arg,
     }
     out := newRespAdapterServiceAdaptedTypes()
     err := c.ch.Call(ctx, "adaptedTypes", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *AdapterServiceClient) AdaptedTypes(arg *HeapAllocated) (*HeapAllocated, error) {
@@ -752,6 +803,8 @@ type reqAdapterServiceCount struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqAdapterServiceCount{}
+
+type AdapterServiceCountArgs = reqAdapterServiceCount
 
 func newReqAdapterServiceCount() *reqAdapterServiceCount {
     return (&reqAdapterServiceCount{})
@@ -777,6 +830,7 @@ func (x *reqAdapterServiceCountBuilder) Emit() *reqAdapterServiceCount {
     var objCopy reqAdapterServiceCount = *x.obj
     return &objCopy
 }
+
 func (x *reqAdapterServiceCount) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqAdapterServiceCount"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -825,18 +879,18 @@ func (x *reqAdapterServiceCount) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respAdapterServiceCount struct {
-    Value *CountingStruct `thrift:"value,0,required" json:"value" db:"value"`
+    Value *CountingStruct `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respAdapterServiceCount{}
+var _ thrift.WritableResult = &respAdapterServiceCount{}
 
 func newRespAdapterServiceCount() *respAdapterServiceCount {
-    return (&respAdapterServiceCount{})
+    return (&respAdapterServiceCount{}).
+        SetValueNonCompat(*NewCountingStruct())
 }
-
-// Deprecated: Use newRespAdapterServiceCount().Value instead.
-var respAdapterServiceCount_Value_DEFAULT = newRespAdapterServiceCount().Value
 
 func (x *respAdapterServiceCount) GetValueNonCompat() *CountingStruct {
     return x.Value
@@ -844,14 +898,19 @@ func (x *respAdapterServiceCount) GetValueNonCompat() *CountingStruct {
 
 func (x *respAdapterServiceCount) GetValue() *CountingStruct {
     if !x.IsSetValue() {
-      return NewCountingStruct()
+        return NewCountingStruct()
     }
 
     return x.Value
 }
 
-func (x *respAdapterServiceCount) SetValue(value CountingStruct) *respAdapterServiceCount {
+func (x *respAdapterServiceCount) SetValueNonCompat(value CountingStruct) *respAdapterServiceCount {
     x.Value = &value
+    return x
+}
+
+func (x *respAdapterServiceCount) SetValue(value *CountingStruct) *respAdapterServiceCount {
+    x.Value = value
     return x
 }
 
@@ -886,8 +945,19 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
+}
+
+// Deprecated: Use newRespAdapterServiceCount().GetValue() instead.
+var respAdapterServiceCount_Value_DEFAULT = newRespAdapterServiceCount().GetValue()
+
+// Deprecated: Use newRespAdapterServiceCount().GetValue() instead.
+func (x *respAdapterServiceCount) DefaultGetValue() *CountingStruct {
+    if !x.IsSetValue() {
+        return NewCountingStruct()
+    }
+    return x.Value
 }
 
 func (x *respAdapterServiceCount) String() string {
@@ -915,6 +985,11 @@ func (x *respAdapterServiceCountBuilder) Emit() *respAdapterServiceCount {
     var objCopy respAdapterServiceCount = *x.obj
     return &objCopy
 }
+
+func (x *respAdapterServiceCount) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respAdapterServiceCount) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respAdapterServiceCount"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -971,42 +1046,48 @@ func (x *respAdapterServiceCount) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqAdapterServiceAdaptedTypes struct {
-    Arg_ *HeapAllocated `thrift:"arg,1" json:"arg" db:"arg"`
+    Arg *HeapAllocated `thrift:"arg,1" json:"arg" db:"arg"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqAdapterServiceAdaptedTypes{}
 
+type AdapterServiceAdaptedTypesArgs = reqAdapterServiceAdaptedTypes
+
 func newReqAdapterServiceAdaptedTypes() *reqAdapterServiceAdaptedTypes {
-    return (&reqAdapterServiceAdaptedTypes{})
+    return (&reqAdapterServiceAdaptedTypes{}).
+        SetArgNonCompat(*NewHeapAllocated())
 }
 
-// Deprecated: Use newReqAdapterServiceAdaptedTypes().Arg_ instead.
-var reqAdapterServiceAdaptedTypes_Arg__DEFAULT = newReqAdapterServiceAdaptedTypes().Arg_
-
-func (x *reqAdapterServiceAdaptedTypes) GetArg_NonCompat() *HeapAllocated {
-    return x.Arg_
+func (x *reqAdapterServiceAdaptedTypes) GetArgNonCompat() *HeapAllocated {
+    return x.Arg
 }
 
-func (x *reqAdapterServiceAdaptedTypes) GetArg_() *HeapAllocated {
-    if !x.IsSetArg_() {
-      return NewHeapAllocated()
+func (x *reqAdapterServiceAdaptedTypes) GetArg() *HeapAllocated {
+    if !x.IsSetArg() {
+        return NewHeapAllocated()
     }
 
-    return x.Arg_
+    return x.Arg
 }
 
-func (x *reqAdapterServiceAdaptedTypes) SetArg_(value HeapAllocated) *reqAdapterServiceAdaptedTypes {
-    x.Arg_ = &value
+func (x *reqAdapterServiceAdaptedTypes) SetArgNonCompat(value HeapAllocated) *reqAdapterServiceAdaptedTypes {
+    x.Arg = &value
     return x
 }
 
-func (x *reqAdapterServiceAdaptedTypes) IsSetArg_() bool {
-    return x.Arg_ != nil
+func (x *reqAdapterServiceAdaptedTypes) SetArg(value *HeapAllocated) *reqAdapterServiceAdaptedTypes {
+    x.Arg = value
+    return x
 }
 
-func (x *reqAdapterServiceAdaptedTypes) writeField1(p thrift.Protocol) error {  // Arg_
-    if !x.IsSetArg_() {
+func (x *reqAdapterServiceAdaptedTypes) IsSetArg() bool {
+    return x.Arg != nil
+}
+
+func (x *reqAdapterServiceAdaptedTypes) writeField1(p thrift.Protocol) error {  // Arg
+    if !x.IsSetArg() {
         return nil
     }
 
@@ -1014,7 +1095,7 @@ func (x *reqAdapterServiceAdaptedTypes) writeField1(p thrift.Protocol) error {  
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetArg_NonCompat()
+    item := x.GetArgNonCompat()
     if err := item.Write(p); err != nil {
     return err
 }
@@ -1025,15 +1106,26 @@ func (x *reqAdapterServiceAdaptedTypes) writeField1(p thrift.Protocol) error {  
     return nil
 }
 
-func (x *reqAdapterServiceAdaptedTypes) readField1(p thrift.Protocol) error {  // Arg_
+func (x *reqAdapterServiceAdaptedTypes) readField1(p thrift.Protocol) error {  // Arg
     result := *NewHeapAllocated()
 err := result.Read(p)
 if err != nil {
     return err
 }
 
-    x.SetArg_(result)
+    x.SetArgNonCompat(result)
     return nil
+}
+
+// Deprecated: Use newReqAdapterServiceAdaptedTypes().GetArg() instead.
+var reqAdapterServiceAdaptedTypes_Arg_DEFAULT = newReqAdapterServiceAdaptedTypes().GetArg()
+
+// Deprecated: Use newReqAdapterServiceAdaptedTypes().GetArg() instead.
+func (x *reqAdapterServiceAdaptedTypes) DefaultGetArg() *HeapAllocated {
+    if !x.IsSetArg() {
+        return NewHeapAllocated()
+    }
+    return x.Arg
 }
 
 func (x *reqAdapterServiceAdaptedTypes) String() string {
@@ -1052,8 +1144,8 @@ func newReqAdapterServiceAdaptedTypesBuilder() *reqAdapterServiceAdaptedTypesBui
     }
 }
 
-func (x *reqAdapterServiceAdaptedTypesBuilder) Arg_(value *HeapAllocated) *reqAdapterServiceAdaptedTypesBuilder {
-    x.obj.Arg_ = value
+func (x *reqAdapterServiceAdaptedTypesBuilder) Arg(value *HeapAllocated) *reqAdapterServiceAdaptedTypesBuilder {
+    x.obj.Arg = value
     return x
 }
 
@@ -1061,6 +1153,7 @@ func (x *reqAdapterServiceAdaptedTypesBuilder) Emit() *reqAdapterServiceAdaptedT
     var objCopy reqAdapterServiceAdaptedTypes = *x.obj
     return &objCopy
 }
+
 func (x *reqAdapterServiceAdaptedTypes) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqAdapterServiceAdaptedTypes"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1117,18 +1210,18 @@ func (x *reqAdapterServiceAdaptedTypes) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respAdapterServiceAdaptedTypes struct {
-    Value *HeapAllocated `thrift:"value,0,required" json:"value" db:"value"`
+    Value *HeapAllocated `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respAdapterServiceAdaptedTypes{}
+var _ thrift.WritableResult = &respAdapterServiceAdaptedTypes{}
 
 func newRespAdapterServiceAdaptedTypes() *respAdapterServiceAdaptedTypes {
-    return (&respAdapterServiceAdaptedTypes{})
+    return (&respAdapterServiceAdaptedTypes{}).
+        SetValueNonCompat(*NewHeapAllocated())
 }
-
-// Deprecated: Use newRespAdapterServiceAdaptedTypes().Value instead.
-var respAdapterServiceAdaptedTypes_Value_DEFAULT = newRespAdapterServiceAdaptedTypes().Value
 
 func (x *respAdapterServiceAdaptedTypes) GetValueNonCompat() *HeapAllocated {
     return x.Value
@@ -1136,14 +1229,19 @@ func (x *respAdapterServiceAdaptedTypes) GetValueNonCompat() *HeapAllocated {
 
 func (x *respAdapterServiceAdaptedTypes) GetValue() *HeapAllocated {
     if !x.IsSetValue() {
-      return NewHeapAllocated()
+        return NewHeapAllocated()
     }
 
     return x.Value
 }
 
-func (x *respAdapterServiceAdaptedTypes) SetValue(value HeapAllocated) *respAdapterServiceAdaptedTypes {
+func (x *respAdapterServiceAdaptedTypes) SetValueNonCompat(value HeapAllocated) *respAdapterServiceAdaptedTypes {
     x.Value = &value
+    return x
+}
+
+func (x *respAdapterServiceAdaptedTypes) SetValue(value *HeapAllocated) *respAdapterServiceAdaptedTypes {
+    x.Value = value
     return x
 }
 
@@ -1178,8 +1276,19 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
+}
+
+// Deprecated: Use newRespAdapterServiceAdaptedTypes().GetValue() instead.
+var respAdapterServiceAdaptedTypes_Value_DEFAULT = newRespAdapterServiceAdaptedTypes().GetValue()
+
+// Deprecated: Use newRespAdapterServiceAdaptedTypes().GetValue() instead.
+func (x *respAdapterServiceAdaptedTypes) DefaultGetValue() *HeapAllocated {
+    if !x.IsSetValue() {
+        return NewHeapAllocated()
+    }
+    return x.Value
 }
 
 func (x *respAdapterServiceAdaptedTypes) String() string {
@@ -1207,6 +1316,11 @@ func (x *respAdapterServiceAdaptedTypesBuilder) Emit() *respAdapterServiceAdapte
     var objCopy respAdapterServiceAdaptedTypes = *x.obj
     return &objCopy
 }
+
+func (x *respAdapterServiceAdaptedTypes) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respAdapterServiceAdaptedTypes) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respAdapterServiceAdaptedTypes"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1263,6 +1377,7 @@ func (x *respAdapterServiceAdaptedTypes) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type AdapterServiceProcessor struct {
@@ -1329,9 +1444,11 @@ func (p *procFuncAdapterServiceCount) Read(iprot thrift.Protocol) (thrift.Struct
 func (p *procFuncAdapterServiceCount) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Count", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -1349,13 +1466,13 @@ func (p *procFuncAdapterServiceCount) Write(seqId int32, result thrift.WritableS
 
 func (p *procFuncAdapterServiceCount) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespAdapterServiceCount()
-    if retval, err := p.handler.Count(); err != nil {
+    retval, err := p.handler.Count()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Count: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -1378,9 +1495,11 @@ func (p *procFuncAdapterServiceAdaptedTypes) Read(iprot thrift.Protocol) (thrift
 func (p *procFuncAdapterServiceAdaptedTypes) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("AdaptedTypes", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -1399,13 +1518,13 @@ func (p *procFuncAdapterServiceAdaptedTypes) Write(seqId int32, result thrift.Wr
 func (p *procFuncAdapterServiceAdaptedTypes) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqAdapterServiceAdaptedTypes)
     result := newRespAdapterServiceAdaptedTypes()
-    if retval, err := p.handler.AdaptedTypes(args.Arg_); err != nil {
+    retval, err := p.handler.AdaptedTypes(args.Arg)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing AdaptedTypes: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 

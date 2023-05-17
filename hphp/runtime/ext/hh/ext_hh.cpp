@@ -73,48 +73,7 @@ const StaticString
 ///////////////////////////////////////////////////////////////////////////////
 bool HHVM_FUNCTION(autoload_is_native) {
   auto const* autoloadMap = AutoloadHandler::s_instance->getAutoloadMap();
-  return autoloadMap && autoloadMap->isNative();
-}
-
-bool HHVM_FUNCTION(autoload_set_paths,
-                   const Variant& map,
-                   const String& root) {
-  // If we are using a native autoload map you are not allowed to override it
-  // in repo mode
-  if (RuntimeOption::RepoAuthoritative) {
-    return false;
-  }
-
-  if (!RuntimeOption::AutoloadUserlandEnabled) {
-    SystemLib::throwInvalidOperationExceptionObject(
-      "Attempted to call HH\\autoload_set_paths() when "
-      "Autoload.UserlandEnabled is false. HH\\autoload_set_paths() will soon "
-      "be deleted so HHVM internals can start depending on native "
-      "autoloading.");
-  } else if (HHVM_FN(autoload_is_native)()) {
-    raise_notice(
-      "Attempted to call HH\\autoload_set_paths() while the native autoloader "
-      "is enabled. HH\\autoload_set_paths() disables the native autoloader, "
-      "putting us on a deprecated code path that will soon stop working.");
-  }
-
-  if (map.isArray()) {
-    return AutoloadHandler::s_instance->setMap(map.asCArrRef(), root);
-  }
-  if (!(map.isObject() && map.toObject()->isCollection())) {
-    return false;
-  }
-  // Assume we have Map<string, Map<string, string>> - convert to
-  // array<string, array<string, string>>
-  //
-  // Exception for 'failure' which should be a callable.
-  auto as_array = map.toArray();
-  for (auto it = as_array.begin(); !it.end(); it.next()) {
-    if (it.second().isObject() && it.second().toObject()->isCollection()) {
-      as_array.set(it.first(), it.second().toArray());
-    }
-  }
-  return AutoloadHandler::s_instance->setMap(as_array, root);
+  return autoloadMap != nullptr;
 }
 
 namespace {
@@ -132,14 +91,6 @@ Variant autoload_symbol_to_path(const String& symbol, AutoloadMap::KindOf kind) 
 }
 
 } // end anonymous namespace
-
-Array HHVM_FUNCTION(autoload_get_paths) {
-  auto const* map = AutoloadHandler::s_instance->getAutoloadMap();
-  if (!map) {
-    SystemLib::throwInvalidArgumentExceptionObject("Autoloader not enabled");
-  }
-  return map->getAllFiles();
-}
 
 Variant HHVM_FUNCTION(autoload_type_to_path, const String& type) {
   return autoload_symbol_to_path(type, AutoloadMap::KindOf::Type);
@@ -1470,23 +1421,17 @@ namespace {
 const StaticString
   s_uses("uses"),
   s_includes("includes"),
+  s_soft_includes("soft_includes"),
   s_packages("packages"),
+  s_soft_packages("soft_packages"),
   s_domains("domains");
-
-const PackageInfo getPackageInfo() {
-  VMRegAnchor _;
-  auto const func =
-    fromCaller([] (const BTFrame& frm) { return frm.func(); });
-  assertx(func);
-  return RepoOptions::forFile(func->filename()->data()).packageInfo();
-}
-
 } // namespace
+
 Array HHVM_FUNCTION(get_all_packages) {
-  auto const packageInfo = getPackageInfo();
+  auto const& packageInfo = g_context->getPackageInfo();
   DictInit result(packageInfo.packages().size());
   for (auto const& [name, p] : packageInfo.packages()) {
-    DictInit package(2);
+    DictInit package(3);
 
     VecInit uses(p.m_uses.size());
     for (auto& s : p.m_uses) uses.append(String{makeStaticString(s)});
@@ -1496,6 +1441,9 @@ Array HHVM_FUNCTION(get_all_packages) {
     for (auto& s : p.m_includes) includes.append(String{makeStaticString(s)});
     package.set(s_includes.get(), includes.toVariant());
 
+    VecInit soft_includes(p.m_soft_includes.size());
+    for (auto& s : p.m_soft_includes) soft_includes.append(String{makeStaticString(s)});
+    package.set(s_soft_includes.get(), soft_includes.toVariant());
     result.set(makeStaticString(name), package.toVariant());
   }
 
@@ -1503,14 +1451,18 @@ Array HHVM_FUNCTION(get_all_packages) {
 }
 
 Array HHVM_FUNCTION(get_all_deployments) {
-  auto const packageInfo = getPackageInfo();
+  auto const& packageInfo = g_context->getPackageInfo();
   DictInit result(packageInfo.deployments().size());
   for (auto const& [name, d] : packageInfo.deployments()) {
-    DictInit deployment(2);
+    DictInit deployment(3);
 
     VecInit packages(d.m_packages.size());
     for (auto& s : d.m_packages) packages.append(String{makeStaticString(s)});
     deployment.set(s_packages.get(), packages.toVariant());
+
+    VecInit soft_packages(d.m_soft_packages.size());
+    for (auto& s : d.m_soft_packages) soft_packages.append(String{makeStaticString(s)});
+    deployment.set(s_soft_packages.get(), soft_packages.toVariant());
 
     VecInit domains(d.m_domains.size());
     for (auto& r : d.m_domains) {
@@ -1527,16 +1479,15 @@ Array HHVM_FUNCTION(get_all_deployments) {
 bool HHVM_FUNCTION(package_exists, StringArg name) {
   assertx(name.get());
   if (name.get()->empty()) return false;
-  return getPackageInfo().isPackageInActiveDeployment(name.get());
+  auto const& packageInfo = g_context->getPackageInfo();
+  return packageInfo.isPackageInActiveDeployment(name.get());
 }
 
 static struct HHExtension final : Extension {
-  HHExtension(): Extension("hh", NO_EXTENSION_VERSION_YET) { }
+  HHExtension(): Extension("hh", NO_EXTENSION_VERSION_YET, NO_ONCALL_YET) { }
   void moduleInit() override {
 #define X(nm) HHVM_NAMED_FE(HH\\nm, HHVM_FN(nm))
     X(autoload_is_native);
-    X(autoload_set_paths);
-    X(autoload_get_paths);
     X(autoload_type_to_path);
     X(autoload_function_to_path);
     X(autoload_constant_to_path);
@@ -1626,7 +1577,7 @@ static struct HHExtension final : Extension {
 } s_hh_extension;
 
 static struct XHPExtension final : Extension {
-  XHPExtension(): Extension("xhp", NO_EXTENSION_VERSION_YET) { }
+  XHPExtension(): Extension("xhp", NO_EXTENSION_VERSION_YET, NO_ONCALL_YET) { }
   bool moduleEnabled() const override { return RuntimeOption::EnableXHP; }
 } s_xhp_extension;
 

@@ -4,9 +4,9 @@
 package transitive // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 
@@ -23,7 +23,7 @@ var _ thrift.Struct = &Foo{}
 
 func NewFoo() *Foo {
     return (&Foo{}).
-        SetA(2)
+        SetANonCompat(2)
 }
 
 func (x *Foo) GetANonCompat() int64 {
@@ -34,11 +34,15 @@ func (x *Foo) GetA() int64 {
     return x.A
 }
 
-func (x *Foo) SetA(value int64) *Foo {
+func (x *Foo) SetANonCompat(value int64) *Foo {
     x.A = value
     return x
 }
 
+func (x *Foo) SetA(value int64) *Foo {
+    x.A = value
+    return x
+}
 
 func (x *Foo) writeField1(p thrift.Protocol) error {  // A
     if err := p.WriteFieldBegin("a", thrift.I64, 1); err != nil {
@@ -62,7 +66,7 @@ if err != nil {
     return err
 }
 
-    x.SetA(result)
+    x.SetANonCompat(result)
     return nil
 }
 
@@ -91,6 +95,7 @@ func (x *FooBuilder) Emit() *Foo {
     var objCopy Foo = *x.obj
     return &objCopy
 }
+
 func (x *Foo) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Foo"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -147,3 +152,4 @@ func (x *Foo) Read(p thrift.Protocol) error {
 
     return nil
 }
+

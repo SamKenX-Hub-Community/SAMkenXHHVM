@@ -42,7 +42,11 @@ let lock_and_load_deptable
   match deptable with
   | CustomDeptable fn ->
     let () =
-      if not ignore_hh_version then
+      if
+        not
+          (Saved_state_loader.ignore_saved_state_version_mismatch
+             ~ignore_hh_version)
+      then
         let build_revision =
           SaveStateService.saved_state_build_revision_read ~base_file_name
         in
@@ -59,7 +63,7 @@ let lock_and_load_deptable
      * instead of stored in a global *)
     Hh_logger.log "Custom dependency graph will be loaded lazily from %s" fn
 
-let merge_saved_state_futures
+let run_saved_state_future
     (genv : genv)
     (ctx : Provider_context.t)
     (dependency_table_saved_state_future :
@@ -68,191 +72,113 @@ let merge_saved_state_futures
         Saved_state_loader.load_result,
         ServerInitTypes.load_state_error )
       result
-      Future.t)
-    (naming_table_saved_state_future :
-      ( ( Saved_state_loader.Naming_table_info.main_artifacts,
-          Saved_state_loader.Naming_table_info.additional_info )
-        Saved_state_loader.load_result
-        option,
-        string )
-      result
       Future.t) : (loaded_info, load_state_error) result =
   let t = Unix.gettimeofday () in
-
-  let merge dependency_table_saved_state_result naming_table_saved_state_result
-      =
-    match dependency_table_saved_state_result with
-    | Error error ->
-      Hh_logger.log
-        "Unhandled Future.error from state loader: %s"
-        (Future.error_to_string error);
-      let e = Exception.wrap_unraised (Future.error_to_exn error) in
-      Error (Load_state_unhandled_exception e)
-    | Ok (Error error) -> Error error
-    | Ok (Ok deptable_result) ->
-      let ( downloaded_naming_table_path,
-            naming_table_manifold_path,
-            dirty_naming_files ) =
-        match naming_table_saved_state_result with
-        | Ok (Ok None) -> (None, None, [])
-        | Ok
-            (Ok
-              (Some
-                {
-                  Saved_state_loader.main_artifacts;
-                  additional_info = ();
-                  changed_files;
-                  manifold_path;
-                  corresponding_rev = _;
-                  mergebase_rev = _;
-                  is_cached = _;
-                })) ->
-          let (_ : float) =
-            Hh_logger.log_duration
-              "Finished downloading naming table and dependency graph."
-              t
-          in
-          let path =
-            main_artifacts
-              .Saved_state_loader.Naming_table_info.naming_table_path
-          in
-          (Some (Path.to_string path), Some manifold_path, changed_files)
-        | Ok (Error err) ->
-          Hh_logger.warn "Failed to download naming table saved state: %s" err;
-          (None, None, [])
-        | Error error ->
-          Hh_logger.warn
-            "Failed to download the naming table saved state: %s"
-            (Future.error_to_string error);
-          (None, None, [])
-      in
-      let ignore_hh_version =
-        ServerArgs.ignore_hh_version genv.ServerEnv.options
-      in
-      let {
-        Saved_state_loader.main_artifacts;
-        additional_info;
-        changed_files = _;
-        manifold_path = _;
-        corresponding_rev;
-        mergebase_rev;
-        is_cached = _;
-      } =
-        deptable_result
-      in
-      let {
-        Saved_state_loader.Naming_and_dep_table_info.naming_table_path =
-          deptable_naming_table_blob_path;
-        dep_table_path;
-        naming_sqlite_table_path;
-        errors_path;
-      } =
-        main_artifacts
-      in
-      let {
-        Saved_state_loader.Naming_and_dep_table_info.mergebase_global_rev;
-        dirty_files_promise;
-        saved_state_distance;
-        saved_state_age;
-      } =
-        additional_info
-      in
-      let deptable = deptable_with_filename (Path.to_string dep_table_path) in
-      lock_and_load_deptable
-        ~base_file_name:(Path.to_string deptable_naming_table_blob_path)
-        ~deptable
-        ~ignore_hh_version;
-      let naming_table_fallback_path =
-        if
-          genv.local_config.SLC.use_hack_64_naming_table
-          && Sys.file_exists (Path.to_string naming_sqlite_table_path)
-        then (
-          Hh_logger.log "Using sqlite naming table from hack/64 saved state";
-          Some (Path.to_string naming_sqlite_table_path)
-        ) else (
-          HackEventLogger.naming_table_sqlite_missing ();
-          if genv.local_config.SLC.disable_naming_table_fallback_loading then (
-            Hh_logger.log
-              "Naming table fallback loading disabled via JustKnob and SQLite table is missing";
-            None
-          ) else
-            ServerCheckUtils.get_naming_table_fallback_path
-              genv
-              downloaded_naming_table_path
-        )
-      in
-      let (old_naming_table, old_errors) =
-        SaveStateService.load_saved_state
-          ctx
-          ~naming_table_path:(Path.to_string deptable_naming_table_blob_path)
-          ~naming_table_fallback_path
-          ~errors_path:(Path.to_string errors_path)
-      in
-      let t = Unix.time () in
-      (match
-         dirty_files_promise
-         |> Future.get
-              ~timeout:
-                genv.local_config.SLC.load_state_natively_dirty_files_timeout
-       with
-      | Error error -> Error (Load_state_dirty_files_failure error)
-      | Ok
-          {
-            Saved_state_loader.Naming_and_dep_table_info.master_changes =
-              dirty_master_files;
-            local_changes = dirty_local_files;
-          } ->
-        let () = HackEventLogger.state_loader_dirty_files t in
-        let dirty_naming_files = Relative_path.Set.of_list dirty_naming_files in
-        let dirty_master_files = dirty_master_files in
-        let dirty_local_files = dirty_local_files in
-
-        let saved_state_delta =
-          match (saved_state_distance, saved_state_age) with
-          | (_, None)
-          | (None, _) ->
-            None
-          | (Some distance, Some age) -> Some { distance; age }
-        in
-        Ok
-          {
-            naming_table_fn = Path.to_string deptable_naming_table_blob_path;
-            deptable_fn = Path.to_string dep_table_path;
-            naming_table_fallback_fn = naming_table_fallback_path;
-            corresponding_rev = Hg.Hg_rev corresponding_rev;
-            mergebase_rev = mergebase_global_rev;
-            mergebase = Some mergebase_rev;
-            dirty_naming_files;
+  match Future.get dependency_table_saved_state_future ~timeout:60 with
+  | Error error ->
+    Hh_logger.log
+      "Unhandled Future.error from state loader: %s"
+      (Future.error_to_string error);
+    let e = Exception.wrap_unraised (Future.error_to_exn error) in
+    Error (Load_state_unhandled_exception e)
+  | Ok (Error error) -> Error error
+  | Ok (Ok deptable_result) ->
+    let (_ : float) =
+      Hh_logger.log_duration
+        "Finished downloading naming table and dependency graph."
+        t
+    in
+    let {
+      Saved_state_loader.main_artifacts;
+      additional_info;
+      changed_files;
+      manifold_path;
+      corresponding_rev;
+      mergebase_rev;
+      is_cached = _;
+    } =
+      deptable_result
+    in
+    let {
+      Saved_state_loader.Naming_and_dep_table_info.naming_table_path =
+        deptable_naming_table_blob_path;
+      dep_table_path;
+      naming_sqlite_table_path;
+      errors_path;
+    } =
+      main_artifacts
+    in
+    let {
+      Saved_state_loader.Naming_and_dep_table_info.mergebase_global_rev;
+      dirty_files_promise;
+      saved_state_distance;
+      saved_state_age;
+    } =
+      additional_info
+    in
+    let ignore_hh_version =
+      ServerArgs.ignore_hh_version genv.ServerEnv.options
+    in
+    let deptable = deptable_with_filename (Path.to_string dep_table_path) in
+    lock_and_load_deptable
+      ~base_file_name:(Path.to_string deptable_naming_table_blob_path)
+      ~deptable
+      ~ignore_hh_version;
+    let naming_table_fallback_path =
+      if Sys.file_exists (Path.to_string naming_sqlite_table_path) then (
+        Hh_logger.log "Using sqlite naming table from hack/64 saved state";
+        Some (Path.to_string naming_sqlite_table_path)
+      ) else
+        ServerCheckUtils.get_naming_table_fallback_path genv
+    in
+    let (old_naming_table, old_errors) =
+      SaveStateService.load_saved_state_exn
+        ctx
+        ~naming_table_fallback_path
+        ~errors_path:(Path.to_string errors_path)
+    in
+    let t = Unix.time () in
+    (match
+       dirty_files_promise
+       |> Future.get
+            ~timeout:
+              genv.local_config.SLC.load_state_natively_dirty_files_timeout
+     with
+    | Error error -> Error (Load_state_dirty_files_failure error)
+    | Ok
+        {
+          Saved_state_loader.Naming_and_dep_table_info.master_changes =
             dirty_master_files;
-            dirty_local_files;
-            old_naming_table;
-            old_errors;
-            saved_state_delta;
-            naming_table_manifold_path;
-          })
-  in
-  let merge left right = Ok (merge left right) in
-  let future =
-    Future.merge
-      dependency_table_saved_state_future
-      naming_table_saved_state_future
-      merge
-  in
-  (* We don't call Future.get on the merged future until it's ready because
-      the implementation of Future.get blocks on the first future until it's
-      ready, then moves on to the second future, but the second future, since
-      it's composed of bound continuations, will not be making as much progress
-      on its own in this case. *)
-  let rec wait_until_ready future =
-    if not (Future.is_ready future) then begin
-      Sys_utils.sleep ~seconds:0.04;
-      wait_until_ready future
-    end else
-      match Future.get future ~timeout:0 with
-      | Ok result -> result
-      | Error error -> failwith (Future.error_to_string error)
-  in
-  wait_until_ready future
+          local_changes = dirty_local_files;
+        } ->
+      let () = HackEventLogger.state_loader_dirty_files t in
+      let dirty_naming_files = Relative_path.Set.of_list changed_files in
+      let dirty_master_files = dirty_master_files in
+      let dirty_local_files = dirty_local_files in
+      let naming_table_manifold_path = Some manifold_path in
+      let saved_state_delta =
+        match (saved_state_distance, saved_state_age) with
+        | (_, None)
+        | (None, _) ->
+          None
+        | (Some distance, Some age) -> Some { distance; age }
+      in
+      Ok
+        {
+          naming_table_fn = Path.to_string naming_sqlite_table_path;
+          deptable_fn = Path.to_string dep_table_path;
+          naming_table_fallback_fn = naming_table_fallback_path;
+          corresponding_rev = Hg.Hg_rev corresponding_rev;
+          mergebase_rev = mergebase_global_rev;
+          mergebase = Some mergebase_rev;
+          dirty_naming_files;
+          dirty_master_files;
+          dirty_local_files;
+          old_naming_table;
+          old_errors;
+          saved_state_delta;
+          naming_table_manifold_path;
+        })
 
 (** [report update p ~other] is called because we just got a report that progress-meter [p]
 should be updated with latest information [update]. The behavior of this function
@@ -295,36 +221,6 @@ let download_and_load_state_exn
     (ref None, ref None)
   in
   let ssopt = genv.local_config.ServerLocalConfig.saved_state in
-  (* TODO(hverr): Support the ignore_hhconfig flag, how to do this with Watchman? *)
-  let _ignore_hhconfig = ServerArgs.saved_state_ignore_hhconfig genv.options in
-  let naming_table_saved_state_future =
-    if genv.local_config.ServerLocalConfig.enable_naming_table_fallback then begin
-      Hh_logger.log "Starting naming table download.";
-
-      let loader_future =
-        State_loader_futures.load
-          ~ssopt
-          ~progress_callback:(fun update ->
-            report
-              update
-              progress_naming_table_load
-              ~other:progress_dep_table_load)
-          ~watchman_opts:
-            Saved_state_loader.Watchman_options.{ root; sockname = None }
-          ~ignore_hh_version
-          ~saved_state_type:Saved_state_loader.Naming_table
-        |> Future.with_timeout
-             ~timeout:genv.local_config.SLC.load_state_natively_download_timeout
-      in
-      Future.continue_and_map_err loader_future @@ fun result ->
-      match result with
-      | Ok (Ok load_state) -> Ok (Some load_state)
-      | Ok (Error e) ->
-        Error (Saved_state_loader.LoadError.long_user_message_of_error e)
-      | Error e -> Error (Future.error_to_string e)
-    end else
-      Future.of_value (Ok None)
-  in
   let dependency_table_saved_state_future :
       ( ( Saved_state_loader.Naming_and_dep_table_info.main_artifacts,
           Saved_state_loader.Naming_and_dep_table_info.additional_info )
@@ -336,16 +232,8 @@ let download_and_load_state_exn
     let saved_state_type =
       if genv.local_config.ServerLocalConfig.load_hack_64_distc_saved_state then
         Saved_state_loader.Naming_and_dep_table_distc
-          {
-            naming_sqlite =
-              genv.local_config.ServerLocalConfig.use_hack_64_naming_table;
-          }
       else
         Saved_state_loader.Naming_and_dep_table
-          {
-            naming_sqlite =
-              genv.local_config.ServerLocalConfig.use_hack_64_naming_table;
-          }
     in
     let loader_future =
       State_loader_futures.load
@@ -369,11 +257,7 @@ let download_and_load_state_exn
     in
     loader_future
   in
-  merge_saved_state_futures
-    genv
-    ctx
-    dependency_table_saved_state_future
-    naming_table_saved_state_future
+  run_saved_state_future genv ctx dependency_table_saved_state_future
 
 let calculate_state_distance_and_age_from_hg
     (root : Path.t) (corresponding_base_revision : string) :
@@ -441,22 +325,18 @@ let use_precomputed_state_exn
     ServerArgs.naming_sqlite_path_for_target_info info
   in
   let naming_table_fallback_path =
-    if
-      genv.local_config.SLC.use_hack_64_naming_table
-      && Sys.file_exists naming_sqlite_table_path
-    then (
-      Hh_logger.log "Using sqlite naming table from hack/64 saved state";
+    if Sys.file_exists naming_sqlite_table_path then (
+      Hh_logger.log "Using sqlite naming table from saved state";
       Some naming_sqlite_table_path
     ) else
-      ServerCheckUtils.get_naming_table_fallback_path genv None
+      ServerCheckUtils.get_naming_table_fallback_path genv
   in
   let errors_path = ServerArgs.errors_path_for_target_info info in
   let (old_naming_table, old_errors) =
     CgroupProfiler.step_start_end cgroup_steps "load saved state"
     @@ fun _cgroup_step ->
-    SaveStateService.load_saved_state
+    SaveStateService.load_saved_state_exn
       ctx
-      ~naming_table_path
       ~naming_table_fallback_path
       ~errors_path
   in
@@ -487,11 +367,13 @@ let use_precomputed_state_exn
     naming_table_manifold_path = None;
   }
 
-(** This function ensures the naming-table is ready for us to do "naming" on the dirty files
-("parsing_files"), i.e. check all the symbols in them, add them to the naming table, and report
-errors if any of the dirty files had duplicate names.
+(** This function ensures the naming-table is ready for us to do [update_reverse_naming_table_from_env_and_get_duplicate_name_errors]
+on the [env.naming_table] forward-naming-table files.
+- In the case of saved-state-init, [env.naming_table] has dirty files so we'll
+  remove them from the global naming table
+- In the case of full init, I don't believe this is ever called...!
 *)
-let naming_from_saved_state
+let remove_items_from_reverse_naming_table_or_build_new_reverse_naming_table
     (ctx : Provider_context.t)
     (old_naming_table : Naming_table.t)
     (parsing_files : Relative_path.Set.t)
@@ -539,6 +421,8 @@ let naming_from_saved_state
               backend
               (modules |> List.map ~f:snd))
     | None ->
+      HackEventLogger.invariant_violation_bug
+        "unexpected saved-state build-new-reverse-naming-table";
       (* Name all the files from the old naming-table (except the new ones we parsed since
          they'll be named by our caller, next). We assume the old naming-table came from a clean
          state, which is why we skip checking for "already bound" conditions. *)
@@ -706,7 +590,7 @@ let get_files_to_recheck
  * similar_files: we only need to typecheck these,
  *    not their dependencies since their decl are unchanged
  * *)
-let type_check_dirty
+let calculate_fanout_and_defer_or_do_type_check
     (genv : ServerEnv.genv)
     (env : ServerEnv.env)
     (old_naming_table : Naming_table.t)
@@ -894,7 +778,7 @@ let type_check_dirty
         |> Telemetry.int_opt ~key:"state_age" ~value:state_age)
     in
     let result =
-      ServerInitCommon.type_check
+      ServerInitCommon.defer_or_do_type_check
         genv
         env
         files_to_check
@@ -914,33 +798,34 @@ let type_check_dirty
     result
 
 let get_updates_exn ~(genv : ServerEnv.genv) ~(root : Path.t) :
-    Relative_path.Set.t =
+    Relative_path.Set.t * Watchman.clock option =
   let start_t = Unix.gettimeofday () in
   Hh_logger.log "Getting files changed while parsing...";
+  ServerNotifier.wait_until_ready genv.notifier;
+  let (changes, clock) = ServerNotifier.get_changes_async genv.notifier in
   let files_changed_while_parsing =
-    ServerNotifierTypes.(
-      genv.wait_until_ready ();
-      match genv.notifier_async () with
-      | Notifier_state_enter _
-      | Notifier_state_leave _
-      | Notifier_unavailable ->
-        Relative_path.Set.empty
-      | Notifier_synchronous_changes updates
-      | Notifier_async_changes updates ->
-        let root = Path.to_string root in
-        let filter p =
-          String.is_prefix p ~prefix:root && FindUtils.file_filter p
-        in
-        SSet.filter updates ~f:filter
-        |> Relative_path.relativize_set Relative_path.Root)
+    match changes with
+    | ServerNotifier.StateEnter _
+    | ServerNotifier.StateLeave _
+    | ServerNotifier.Unavailable ->
+      Relative_path.Set.empty
+    | ServerNotifier.SyncChanges updates
+    | ServerNotifier.AsyncChanges updates ->
+      let root = Path.to_string root in
+      let filter p =
+        String.is_prefix p ~prefix:root && FindUtils.file_filter p
+      in
+      SSet.filter updates ~f:filter
+      |> Relative_path.relativize_set Relative_path.Root
   in
   ignore
     (Hh_logger.log_duration
        "Finished getting files changed while parsing"
        start_t
       : float);
+  Hh_logger.log "Watchclock: %s" (ServerEnv.show_clock clock);
   HackEventLogger.changed_while_parsing_end start_t;
-  files_changed_while_parsing
+  (files_changed_while_parsing, clock)
 
 let initialize_naming_table
     (progress_message : string)
@@ -959,18 +844,14 @@ let initialize_naming_table
         Unix.gettimeofday () )
     | None ->
       let (get_next, t) =
-        ServerInitCommon.indexing ~telemetry_label:"lazy.nt.indexing" genv
+        ServerInitCommon.directory_walk ~telemetry_label:"lazy.nt.indexing" genv
       in
       (get_next, None, t)
   in
-  (* The full_fidelity_parser currently works better in both memory and time
-     with a full parse rather than parsing decl asts and then parsing full ones *)
-  let lazy_parse = not genv.local_config.SLC.use_full_fidelity_parser in
   (* full init - too many files to trace all of them *)
   let trace = false in
   let (env, t) =
-    ServerInitCommon.parsing
-      ~lazy_parse
+    ServerInitCommon.parse_files_and_update_forward_naming_table
       genv
       env
       ~get_next
@@ -983,7 +864,8 @@ let initialize_naming_table
       ~worker_call:MultiWorker.wrapper
   in
   if do_naming then
-    ServerInitCommon.naming
+    ServerInitCommon
+    .update_reverse_naming_table_from_env_and_get_duplicate_name_errors
       env
       t
       ~telemetry_label:"lazy.nt.do_naming.naming"
@@ -997,7 +879,8 @@ let write_symbol_info
     (cgroup_steps : CgroupProfiler.step_group)
     (t : float) : ServerEnv.env * float =
   let (env, t) =
-    ServerInitCommon.naming
+    ServerInitCommon
+    .update_reverse_naming_table_from_env_and_get_duplicate_name_errors
       env
       t
       ~telemetry_label:"write_symbol_info.naming"
@@ -1006,6 +889,7 @@ let write_symbol_info
   let namespace_map = ParserOptions.auto_namespace_map env.tcopt in
   let paths = env.swriteopt.symbol_write_index_paths in
   let paths_file = env.swriteopt.symbol_write_index_paths_file in
+  let referenced_file = env.swriteopt.symbol_write_referenced_out in
   let exclude_hhi = not env.swriteopt.symbol_write_include_hhi in
   let ignore_paths = env.swriteopt.symbol_write_ignore_paths in
   let incremental = env.swriteopt.symbol_write_sym_hash_in in
@@ -1014,11 +898,8 @@ let write_symbol_info
     if List.length paths > 0 || Option.is_some paths_file then
       Symbol_indexable.from_options ~paths ~paths_file
     else
-      let naming_table = env.naming_table in
-      let failed_parsing = Errors.get_failed_files env.errorl Errors.Parsing in
       Symbol_indexable.from_naming_table
-        naming_table
-        ~failed_parsing
+        env.naming_table
         ~exclude_hhi
         ~ignore_paths
   in
@@ -1068,6 +949,7 @@ let write_symbol_info
     Symbol_entrypoint.go
       genv.workers
       ctx
+      ~referenced_file
       ~namespace_map
       ~gen_sym_hash
       ~ownership
@@ -1114,12 +996,7 @@ let full_init
       "INVARIANT_VIOLATION_BUG [%s] count=%d"
       desc
       existing_name_count;
-    HackEventLogger.invariant_violation_bug
-      ~desc
-      ~path:Relative_path.default
-      ~pos:""
-      (Telemetry.create ()
-      |> Telemetry.int_ ~key:"existing_name_count" ~value:existing_name_count)
+    HackEventLogger.invariant_violation_bug desc ~data_int:existing_name_count
   end;
   Hh_logger.log "full init";
   let (env, t) =
@@ -1131,18 +1008,12 @@ let full_init
       env
       cgroup_steps
   in
+  ServerInitCommon.validate_no_errors Errors.Typing env.errorl;
   if not is_check_mode then
     SearchServiceRunner.update_fileinfo_map
       env.naming_table
       ~source:SearchUtils.Init;
   let defs_per_file = Naming_table.to_defs_per_file env.naming_table in
-  let failed_parsing = Errors.get_failed_files env.errorl Errors.Parsing in
-  let defs_per_file =
-    Relative_path.Set.fold
-      failed_parsing
-      ~f:(fun x m -> Relative_path.Map.remove m x)
-      ~init:defs_per_file
-  in
   let fnl = Relative_path.Map.keys defs_per_file in
   let env =
     if is_check_mode then
@@ -1154,7 +1025,7 @@ let full_init
     else
       env
   in
-  ServerInitCommon.type_check
+  ServerInitCommon.defer_or_do_type_check
     genv
     env
     fnl
@@ -1178,9 +1049,10 @@ let post_saved_state_initialization
     ~(do_indexing : bool)
     ~(genv : ServerEnv.genv)
     ~(env : ServerEnv.env)
-    ~(state_result : loaded_info * Relative_path.Set.t)
+    ~(state_result : loaded_info * Relative_path.Set.t * Watchman.clock option)
     (cgroup_steps : CgroupProfiler.step_group) : ServerEnv.env * float =
-  let ((loaded_info : ServerInitTypes.loaded_info), changed_while_parsing) =
+  let ((loaded_info : ServerInitTypes.loaded_info), changed_while_parsing, clock)
+      =
     state_result
   in
   let trace = genv.local_config.SLC.trace_parsing in
@@ -1235,67 +1107,74 @@ let post_saved_state_initialization
     }
   in
 
-  let (decl_and_typing_error_files, naming_and_parsing_error_files) =
-    SaveStateService.partition_error_files_tf
-      old_errors
-      [Errors.Decl; Errors.Typing]
+  let (naming_error_files, _non_naming_error_files) =
+    SaveStateService.partition_error_files_tf old_errors [Errors.Naming]
   in
-  let (_old_parsing_phase, old_parsing_error_files) =
-    match
-      List.find old_errors ~f:(fun (phase, _files) ->
-          match phase with
-          | Errors.Parsing -> true
-          | _ -> false)
-    with
-    | Some (a, b) -> (a, b)
-    | None -> (Errors.Parsing, Relative_path.Set.empty)
-  in
+  let files_with_old_errors = SaveStateService.fold_error_files old_errors in
   Hh_logger.log
-    "Number of files with Decl and Typing errors: %d"
-    (Relative_path.Set.cardinal decl_and_typing_error_files);
+    "Number of files with errors: %d"
+    (Relative_path.Set.cardinal files_with_old_errors);
 
   Hh_logger.log
-    "Number of files with Naming and Parsing errors: %d"
-    (Relative_path.Set.cardinal naming_and_parsing_error_files);
-
-  let (decl_and_typing_error_files, naming_and_parsing_error_files) =
-    SaveStateService.partition_error_files_tf
-      old_errors
-      [Errors.Decl; Errors.Typing]
-  in
+    "Number of files with Naming errors: %d"
+    (Relative_path.Set.cardinal naming_error_files);
 
   (* Load and parse packages.toml if it exists at the root. *)
   let env = PackageConfig.load_and_parse env in
 
-  (* Parse and name all dirty files uniformly *)
-  let dirty_files =
+  (***********************************************************
+    NAMING TABLE.
+    Plan: we'll adjust the forward and reverse naming table to reflect
+    changes to files which changed since the saved-state. We'll also
+    reflect changes in files which had [phase=Errors.(Naming|Parsing)]
+    as well. Notionally that's because our current mechanism for handling
+    duplicate-name-errors requires all affected files to go through
+    the "update reverse naming table" procedure. (but it's redundant
+    because, elsewhere, we don't allow saved-state-generation in case
+    of naming errors...)
+
+    The actual implementation is confusing because it stores fragments
+    of naming-table in places you wouldn't expect:
+
+    1. [old_naming_table], which we got from the saved-state, is a [NamingTable.t]
+       that's "backed" i.e. it reflects just the sqlite file plus a delta, initially empty.
+    2. [env.naming_table] starts out as [Naming_table.empty] as it was created in
+       [ServerMain.setup_server]. We will add to it the forward-naming-table FileInfo.t
+       for all files discussed above, [parsing_files]
+    3. The reverse naming-table is made up of global mutable shmem delta with
+       eventual fallback to sqlite. We will write into that delta the reverse-names
+       that arise from the [parsing_files]. The same step also gathers any
+       duplicate-name errors.
+    4. Finally we'll merge the [env.naming_table] (which is only [parsed_files] at the moment)
+       into [old_naming_table] (which represents the sqlite file), and store the result
+       back in [env.naming_table]. At this point the naming-table, forward and reverse,
+       is complete. *)
+  let t = Unix.gettimeofday () in
+  let naming_files =
     List.fold
       ~init:Relative_path.Set.empty
       ~f:Relative_path.Set.union
       [
-        naming_and_parsing_error_files;
+        naming_error_files;
         dirty_naming_files;
         dirty_master_files;
         dirty_local_files;
+        changed_while_parsing;
       ]
-  in
-  let t = Unix.gettimeofday () in
-  let dirty_files = Relative_path.Set.union dirty_files changed_while_parsing in
-  let parsing_files =
-    Relative_path.Set.filter dirty_files ~f:FindUtils.path_filter
+    |> Relative_path.Set.filter ~f:FindUtils.path_filter
   in
   ( CgroupProfiler.step_start_end cgroup_steps "remove fixmes"
-  @@ fun _cgroup_step -> Fixme_provider.remove_batch parsing_files );
-  let parsing_files_list = Relative_path.Set.elements parsing_files in
+  @@ fun _cgroup_step -> Fixme_provider.remove_batch naming_files );
   (* Parse dirty files only *)
-  let next = MultiWorker.next genv.workers parsing_files_list in
   let (env, t) =
-    ServerInitCommon.parsing
+    ServerInitCommon.parse_files_and_update_forward_naming_table
       genv
       env
-      ~lazy_parse:true
-      ~get_next:next
-      ~count:(List.length parsing_files_list)
+      ~get_next:
+        (MultiWorker.next
+           genv.workers
+           (Relative_path.Set.elements naming_files))
+      ~count:(Relative_path.Set.cardinal naming_files)
       t
       ~trace
       ~cache_decls:false (* Don't overwrite old decls loaded from saved state *)
@@ -1303,15 +1182,16 @@ let post_saved_state_initialization
       ~cgroup_steps
       ~worker_call:MultiWorker.wrapper
   in
+  let defs_per_file = Naming_table.to_defs_per_file env.naming_table in
   SearchServiceRunner.update_fileinfo_map
     env.naming_table
     ~source:SearchUtils.TypeChecker;
   let ctx = Provider_utils.ctx_from_server_env env in
   let t =
-    naming_from_saved_state
+    remove_items_from_reverse_naming_table_or_build_new_reverse_naming_table
       ctx
       old_naming_table
-      parsing_files
+      naming_files
       naming_table_fallback_fn
       t
       ~cgroup_steps
@@ -1321,35 +1201,49 @@ let post_saved_state_initialization
   else
     (* Do global naming on all dirty files *)
     let (env, t) =
-      ServerInitCommon.naming
+      ServerInitCommon
+      .update_reverse_naming_table_from_env_and_get_duplicate_name_errors
         env
         t
         ~telemetry_label:"post_ss1.naming"
         ~cgroup_steps
     in
+    ServerInitCommon.validate_no_errors Errors.Typing env.errorl;
 
-    (* Add all files from defs_per_file to the files_info object *)
-    let defs_per_file = Naming_table.to_defs_per_file env.naming_table in
-    let failed_parsing = Errors.get_failed_files env.errorl Errors.Parsing in
-    let defs_per_file =
-      Relative_path.Set.fold
-        failed_parsing
-        ~f:(fun x m -> Relative_path.Map.remove m x)
-        ~init:defs_per_file
-    in
     let env =
       {
         env with
-        disk_needs_parsing =
-          Relative_path.Set.union env.disk_needs_parsing changed_while_parsing;
+        clock;
+        naming_table = Naming_table.combine old_naming_table env.naming_table;
+        disk_needs_parsing = Relative_path.Set.empty;
+        needs_recheck =
+          Relative_path.Set.union env.needs_recheck files_with_old_errors;
       }
     in
-    (* Separate the dirty files from the files whose decl only changed *)
-    (* Here, for each dirty file, we compare its hash to the one saved
-       in the saved state. If the hashes are the same, then the declarations
-       on the file have not changed and we only need to retypecheck that file,
-       not all of its dependencies.
-       We call these files "similar" to their previous versions. *)
+
+    (***********************************************************
+      FANOUT.
+      What files should be checked?
+
+      We've already said that files-with-errors from the dirty saved state must be
+      rechecked. And we've already produced "duplicate name" errors if needed from
+      all the changed files. The question remaining is, what fanout should be checked?
+
+      Here, for each changed file, we compare its hash to the one saved
+      in the saved state. If the hashes are the same, then the declarations
+      on the file have not changed and we only need to retypecheck that file,
+      not all of its dependencies.
+      We call these files "similar" to their previous versions.
+
+      A similar check is also made later, inside [calculate_fanout_and_defer_or_do_type_check]
+      when it calls [get_files_to_recheck] which calls [Decl_redecl_service.redo_type_decl].
+      That obtains old decls from an online service and uses that for decl-diffing.
+
+      Anyway, the effect of this phase is to calculate fanout, techniques to determine
+      decl-diffing, using the prechecked algorithm too. Then, the fanout files are
+      combined into [env.needs_recheck], as a way of deferring the check until
+      the first iteration of ServerTypeCheck.
+    *)
     let partition_similar dirty_files =
       Relative_path.Set.partition
         (fun f ->
@@ -1369,28 +1263,21 @@ let post_saved_state_initialization
     let (dirty_local_files_unchanged_hash, dirty_local_files_changed_hash) =
       partition_similar dirty_local_files
     in
-    let env =
-      {
-        env with
-        naming_table = Naming_table.combine old_naming_table env.naming_table;
-        (* The only reason old_parsing_error_files are added to disk_needs_parsing
-                   here is because of an issue that seems to be already tracked in T30786759 *)
-        disk_needs_parsing = old_parsing_error_files;
-        needs_recheck =
-          Relative_path.Set.union env.needs_recheck decl_and_typing_error_files;
-      }
+
+    let (env, t) =
+      calculate_fanout_and_defer_or_do_type_check
+        genv
+        env
+        old_naming_table
+        defs_per_file
+        ~dirty_master_files_unchanged_hash
+        ~dirty_master_files_changed_hash
+        ~dirty_local_files_unchanged_hash
+        ~dirty_local_files_changed_hash
+        t
+        cgroup_steps
     in
-    type_check_dirty
-      genv
-      env
-      old_naming_table
-      defs_per_file
-      ~dirty_master_files_unchanged_hash
-      ~dirty_master_files_changed_hash
-      ~dirty_local_files_unchanged_hash
-      ~dirty_local_files_changed_hash
-      t
-      cgroup_steps
+    (env, t)
 
 let saved_state_init
     ~(do_indexing : bool)
@@ -1439,8 +1326,8 @@ let saved_state_init
       match do_ () with
       | Error error -> Error error
       | Ok loaded_info ->
-        let changed_while_parsing = get_updates_exn ~genv ~root in
-        Ok (loaded_info, changed_while_parsing)
+        let (changed_while_parsing, clock) = get_updates_exn ~genv ~root in
+        Ok (loaded_info, changed_while_parsing, clock)
     with
     | exn ->
       let e = Exception.wrap exn in
@@ -1452,18 +1339,19 @@ let saved_state_init
     ~state_result:
       (match state_result with
       | Error _ -> None
-      | Ok (i, _) -> Some (show_loaded_info i))
+      | Ok (i, _, _) -> Some (show_loaded_info i))
     t;
   match state_result with
   | Error err -> Error err
-  | Ok state_result ->
+  | Ok (loaded_info, changed_while_parsing, clock) ->
     ServerProgress.write "loading saved state succeeded";
+    Hh_logger.log "Watchclock: %s" (ServerEnv.show_clock clock);
     let (env, t) =
       post_saved_state_initialization
         ~do_indexing
-        ~state_result
+        ~state_result:(loaded_info, changed_while_parsing, clock)
         ~env
         ~genv
         cgroup_steps
     in
-    Ok ((env, t), state_result)
+    Ok ((env, t), (loaded_info, changed_while_parsing))

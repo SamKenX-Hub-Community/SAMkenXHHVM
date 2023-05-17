@@ -4,6 +4,7 @@
 // LICENSE file in the "hack" directory of this source tree.
 
 use bitflags::bitflags;
+use nast::Binop;
 use nast::Bop;
 use nast::ClassConstKind;
 use nast::ClassId;
@@ -77,7 +78,7 @@ impl Pass for ElabConstExprPass {
             let Expr(_, pos, expr_) = elem;
             let invalid = |expr_: &mut Expr_| {
                 let inner_expr_ = std::mem::replace(expr_, Expr_::Null);
-                let inner_expr = elab_utils::expr::from_expr_(inner_expr_);
+                let inner_expr = Expr(Default::default(), pos.clone(), inner_expr_);
                 *expr_ = Expr_::Invalid(Box::new(Some(inner_expr)));
                 Break(())
             };
@@ -128,7 +129,7 @@ impl Pass for ElabConstExprPass {
                         invalid(expr_)
                     }
                 },
-                Expr_::Binop(box (bop, _, _)) => match bop {
+                Expr_::Binop(box Binop { bop, .. }) => match bop {
                     Bop::Eq(_) => {
                         env.emit_error(NamingError::IllegalConstant(pos.clone()));
                         invalid(expr_)
@@ -198,7 +199,8 @@ impl Pass for ElabConstExprPass {
                 | Expr_::ReadonlyExpr(..)
                 | Expr_::String2(..)
                 | Expr_::Yield(..)
-                | Expr_::Xml(..) => {
+                | Expr_::Xml(..)
+                | Expr_::Package(..) => {
                     env.emit_error(NamingError::IllegalConstant(pos.clone()));
                     invalid(expr_)
                 }
@@ -218,7 +220,7 @@ impl Pass for ElabConstExprPass {
             let Expr(_, pos, expr_) = elem;
             let invalid = |expr_: &mut Expr_| {
                 let inner_expr_ = std::mem::replace(expr_, Expr_::Null);
-                let inner_expr = elab_utils::expr::from_expr_(inner_expr_);
+                let inner_expr = Expr(Default::default(), pos.clone(), inner_expr_);
                 *expr_ = Expr_::Invalid(Box::new(Some(inner_expr)));
                 Break(())
             };

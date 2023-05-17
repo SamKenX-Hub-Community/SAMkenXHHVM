@@ -23,13 +23,13 @@ var _ = thrift.ZERO
 
 
 type FooService interface {
-    SimpleRPC(ctx context.Context) error
+    SimpleRPC(ctx context.Context) (error)
 }
 
 // Deprecated: Use FooService instead.
 type FooServiceClientInterface interface {
     thrift.ClientInterface
-    SimpleRPC() error
+    SimpleRPC() (error)
 }
 
 type FooServiceChannelClient struct {
@@ -115,15 +115,18 @@ func NewFooServiceThreadsafeClientFactory(t thrift.Transport, pf thrift.Protocol
 }
 
 
-func (c *FooServiceChannelClient) SimpleRPC(ctx context.Context) error {
+func (c *FooServiceChannelClient) SimpleRPC(ctx context.Context) (error) {
     in := &reqFooServiceSimpleRPC{
     }
     out := newRespFooServiceSimpleRPC()
     err := c.ch.Call(ctx, "simple_rpc", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *FooServiceClient) SimpleRPC() error {
+func (c *FooServiceClient) SimpleRPC() (error) {
     return c.chClient.SimpleRPC(nil)
 }
 
@@ -132,6 +135,8 @@ type reqFooServiceSimpleRPC struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqFooServiceSimpleRPC{}
+
+type FooServiceSimpleRPCArgs = reqFooServiceSimpleRPC
 
 func newReqFooServiceSimpleRPC() *reqFooServiceSimpleRPC {
     return (&reqFooServiceSimpleRPC{})
@@ -157,6 +162,7 @@ func (x *reqFooServiceSimpleRPCBuilder) Emit() *reqFooServiceSimpleRPC {
     var objCopy reqFooServiceSimpleRPC = *x.obj
     return &objCopy
 }
+
 func (x *reqFooServiceSimpleRPC) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqFooServiceSimpleRPC"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -205,10 +211,12 @@ func (x *reqFooServiceSimpleRPC) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respFooServiceSimpleRPC struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respFooServiceSimpleRPC{}
+var _ thrift.WritableResult = &respFooServiceSimpleRPC{}
 
 func newRespFooServiceSimpleRPC() *respFooServiceSimpleRPC {
     return (&respFooServiceSimpleRPC{})
@@ -234,6 +242,11 @@ func (x *respFooServiceSimpleRPCBuilder) Emit() *respFooServiceSimpleRPC {
     var objCopy respFooServiceSimpleRPC = *x.obj
     return &objCopy
 }
+
+func (x *respFooServiceSimpleRPC) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respFooServiceSimpleRPC) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respFooServiceSimpleRPC"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -282,6 +295,7 @@ func (x *respFooServiceSimpleRPC) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type FooServiceProcessor struct {
@@ -346,9 +360,11 @@ func (p *procFuncFooServiceSimpleRPC) Read(iprot thrift.Protocol) (thrift.Struct
 func (p *procFuncFooServiceSimpleRPC) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("SimpleRPC", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -366,10 +382,12 @@ func (p *procFuncFooServiceSimpleRPC) Write(seqId int32, result thrift.WritableS
 
 func (p *procFuncFooServiceSimpleRPC) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespFooServiceSimpleRPC()
-    if err := p.handler.SimpleRPC(); err != nil {
+    err := p.handler.SimpleRPC()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing SimpleRPC: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -475,7 +493,10 @@ func (c *FB303ServiceChannelClient) SimpleRPC(ctx context.Context, intParameter 
     }
     out := newRespFB303ServiceSimpleRPC()
     err := c.ch.Call(ctx, "simple_rpc", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *FB303ServiceClient) SimpleRPC(intParameter int32) (*ReservedKeyword, error) {
@@ -489,8 +510,11 @@ type reqFB303ServiceSimpleRPC struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqFB303ServiceSimpleRPC{}
 
+type FB303ServiceSimpleRPCArgs = reqFB303ServiceSimpleRPC
+
 func newReqFB303ServiceSimpleRPC() *reqFB303ServiceSimpleRPC {
-    return (&reqFB303ServiceSimpleRPC{})
+    return (&reqFB303ServiceSimpleRPC{}).
+        SetIntParameterNonCompat(0)
 }
 
 func (x *reqFB303ServiceSimpleRPC) GetIntParameterNonCompat() int32 {
@@ -501,11 +525,15 @@ func (x *reqFB303ServiceSimpleRPC) GetIntParameter() int32 {
     return x.IntParameter
 }
 
-func (x *reqFB303ServiceSimpleRPC) SetIntParameter(value int32) *reqFB303ServiceSimpleRPC {
+func (x *reqFB303ServiceSimpleRPC) SetIntParameterNonCompat(value int32) *reqFB303ServiceSimpleRPC {
     x.IntParameter = value
     return x
 }
 
+func (x *reqFB303ServiceSimpleRPC) SetIntParameter(value int32) *reqFB303ServiceSimpleRPC {
+    x.IntParameter = value
+    return x
+}
 
 func (x *reqFB303ServiceSimpleRPC) writeField1(p thrift.Protocol) error {  // IntParameter
     if err := p.WriteFieldBegin("int_parameter", thrift.I32, 1); err != nil {
@@ -529,7 +557,7 @@ if err != nil {
     return err
 }
 
-    x.SetIntParameter(result)
+    x.SetIntParameterNonCompat(result)
     return nil
 }
 
@@ -558,6 +586,7 @@ func (x *reqFB303ServiceSimpleRPCBuilder) Emit() *reqFB303ServiceSimpleRPC {
     var objCopy reqFB303ServiceSimpleRPC = *x.obj
     return &objCopy
 }
+
 func (x *reqFB303ServiceSimpleRPC) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqFB303ServiceSimpleRPC"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -614,18 +643,18 @@ func (x *reqFB303ServiceSimpleRPC) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respFB303ServiceSimpleRPC struct {
-    Value *ReservedKeyword `thrift:"value,0,required" json:"value" db:"value"`
+    Value *ReservedKeyword `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respFB303ServiceSimpleRPC{}
+var _ thrift.WritableResult = &respFB303ServiceSimpleRPC{}
 
 func newRespFB303ServiceSimpleRPC() *respFB303ServiceSimpleRPC {
-    return (&respFB303ServiceSimpleRPC{})
+    return (&respFB303ServiceSimpleRPC{}).
+        SetValueNonCompat(*NewReservedKeyword())
 }
-
-// Deprecated: Use newRespFB303ServiceSimpleRPC().Value instead.
-var respFB303ServiceSimpleRPC_Value_DEFAULT = newRespFB303ServiceSimpleRPC().Value
 
 func (x *respFB303ServiceSimpleRPC) GetValueNonCompat() *ReservedKeyword {
     return x.Value
@@ -633,14 +662,19 @@ func (x *respFB303ServiceSimpleRPC) GetValueNonCompat() *ReservedKeyword {
 
 func (x *respFB303ServiceSimpleRPC) GetValue() *ReservedKeyword {
     if !x.IsSetValue() {
-      return NewReservedKeyword()
+        return NewReservedKeyword()
     }
 
     return x.Value
 }
 
-func (x *respFB303ServiceSimpleRPC) SetValue(value ReservedKeyword) *respFB303ServiceSimpleRPC {
+func (x *respFB303ServiceSimpleRPC) SetValueNonCompat(value ReservedKeyword) *respFB303ServiceSimpleRPC {
     x.Value = &value
+    return x
+}
+
+func (x *respFB303ServiceSimpleRPC) SetValue(value *ReservedKeyword) *respFB303ServiceSimpleRPC {
+    x.Value = value
     return x
 }
 
@@ -675,8 +709,19 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
+}
+
+// Deprecated: Use newRespFB303ServiceSimpleRPC().GetValue() instead.
+var respFB303ServiceSimpleRPC_Value_DEFAULT = newRespFB303ServiceSimpleRPC().GetValue()
+
+// Deprecated: Use newRespFB303ServiceSimpleRPC().GetValue() instead.
+func (x *respFB303ServiceSimpleRPC) DefaultGetValue() *ReservedKeyword {
+    if !x.IsSetValue() {
+        return NewReservedKeyword()
+    }
+    return x.Value
 }
 
 func (x *respFB303ServiceSimpleRPC) String() string {
@@ -704,6 +749,11 @@ func (x *respFB303ServiceSimpleRPCBuilder) Emit() *respFB303ServiceSimpleRPC {
     var objCopy respFB303ServiceSimpleRPC = *x.obj
     return &objCopy
 }
+
+func (x *respFB303ServiceSimpleRPC) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respFB303ServiceSimpleRPC) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respFB303ServiceSimpleRPC"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -760,6 +810,7 @@ func (x *respFB303ServiceSimpleRPC) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type FB303ServiceProcessor struct {
@@ -824,9 +875,11 @@ func (p *procFuncFB303ServiceSimpleRPC) Read(iprot thrift.Protocol) (thrift.Stru
 func (p *procFuncFB303ServiceSimpleRPC) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("SimpleRPC", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -845,13 +898,13 @@ func (p *procFuncFB303ServiceSimpleRPC) Write(seqId int32, result thrift.Writabl
 func (p *procFuncFB303ServiceSimpleRPC) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqFB303ServiceSimpleRPC)
     result := newRespFB303ServiceSimpleRPC()
-    if retval, err := p.handler.SimpleRPC(args.IntParameter); err != nil {
+    retval, err := p.handler.SimpleRPC(args.IntParameter)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing SimpleRPC: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -859,31 +912,31 @@ func (p *procFuncFB303ServiceSimpleRPC) Run(reqStruct thrift.Struct) (thrift.Wri
 
 
 type MyService interface {
-    Ping(ctx context.Context) error
+    Ping(ctx context.Context) (error)
     GetRandomData(ctx context.Context) (string, error)
-    Sink(ctx context.Context, sink int64) error
-    PutDataById(ctx context.Context, id int64, data string) error
+    Sink(ctx context.Context, sink int64) (error)
+    PutDataById(ctx context.Context, id int64, data string) (error)
     HasDataById(ctx context.Context, id int64) (bool, error)
     GetDataById(ctx context.Context, id int64) (string, error)
-    DeleteDataById(ctx context.Context, id int64) error
-    LobDataById(ctx context.Context, id int64, data string) error
+    DeleteDataById(ctx context.Context, id int64) (error)
+    LobDataById(ctx context.Context, id int64, data string) (error)
     InvalidReturnForHack(ctx context.Context) ([]float32, error)
-    RpcSkippedCodegen(ctx context.Context) error
+    RpcSkippedCodegen(ctx context.Context) (error)
 }
 
 // Deprecated: Use MyService instead.
 type MyServiceClientInterface interface {
     thrift.ClientInterface
-    Ping() error
+    Ping() (error)
     GetRandomData() (string, error)
-    Sink(sink int64) error
-    PutDataById(id int64, data string) error
+    Sink(sink int64) (error)
+    PutDataById(id int64, data string) (error)
     HasDataById(id int64) (bool, error)
     GetDataById(id int64) (string, error)
-    DeleteDataById(id int64) error
-    LobDataById(id int64, data string) error
+    DeleteDataById(id int64) (error)
+    LobDataById(id int64, data string) (error)
     InvalidReturnForHack() ([]float32, error)
-    RpcSkippedCodegen() error
+    RpcSkippedCodegen() (error)
 }
 
 type MyServiceChannelClient struct {
@@ -969,15 +1022,18 @@ func NewMyServiceThreadsafeClientFactory(t thrift.Transport, pf thrift.ProtocolF
 }
 
 
-func (c *MyServiceChannelClient) Ping(ctx context.Context) error {
+func (c *MyServiceChannelClient) Ping(ctx context.Context) (error) {
     in := &reqMyServicePing{
     }
     out := newRespMyServicePing()
     err := c.ch.Call(ctx, "ping", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyServiceClient) Ping() error {
+func (c *MyServiceClient) Ping() (error) {
     return c.chClient.Ping(nil)
 }
 
@@ -987,7 +1043,10 @@ func (c *MyServiceChannelClient) GetRandomData(ctx context.Context) (string, err
     }
     out := newRespMyServiceGetRandomData()
     err := c.ch.Call(ctx, "getRandomData", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *MyServiceClient) GetRandomData() (string, error) {
@@ -995,31 +1054,37 @@ func (c *MyServiceClient) GetRandomData() (string, error) {
 }
 
 
-func (c *MyServiceChannelClient) Sink(ctx context.Context, sink int64) error {
+func (c *MyServiceChannelClient) Sink(ctx context.Context, sink int64) (error) {
     in := &reqMyServiceSink{
         Sink: sink,
     }
     out := newRespMyServiceSink()
     err := c.ch.Call(ctx, "sink", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyServiceClient) Sink(sink int64) error {
+func (c *MyServiceClient) Sink(sink int64) (error) {
     return c.chClient.Sink(nil, sink)
 }
 
 
-func (c *MyServiceChannelClient) PutDataById(ctx context.Context, id int64, data string) error {
+func (c *MyServiceChannelClient) PutDataById(ctx context.Context, id int64, data string) (error) {
     in := &reqMyServicePutDataById{
         Id: id,
         Data: data,
     }
     out := newRespMyServicePutDataById()
     err := c.ch.Call(ctx, "putDataById", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyServiceClient) PutDataById(id int64, data string) error {
+func (c *MyServiceClient) PutDataById(id int64, data string) (error) {
     return c.chClient.PutDataById(nil, id, data)
 }
 
@@ -1030,7 +1095,10 @@ func (c *MyServiceChannelClient) HasDataById(ctx context.Context, id int64) (boo
     }
     out := newRespMyServiceHasDataById()
     err := c.ch.Call(ctx, "hasDataById", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *MyServiceClient) HasDataById(id int64) (bool, error) {
@@ -1044,7 +1112,10 @@ func (c *MyServiceChannelClient) GetDataById(ctx context.Context, id int64) (str
     }
     out := newRespMyServiceGetDataById()
     err := c.ch.Call(ctx, "getDataById", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *MyServiceClient) GetDataById(id int64) (string, error) {
@@ -1052,31 +1123,32 @@ func (c *MyServiceClient) GetDataById(id int64) (string, error) {
 }
 
 
-func (c *MyServiceChannelClient) DeleteDataById(ctx context.Context, id int64) error {
+func (c *MyServiceChannelClient) DeleteDataById(ctx context.Context, id int64) (error) {
     in := &reqMyServiceDeleteDataById{
         Id: id,
     }
     out := newRespMyServiceDeleteDataById()
     err := c.ch.Call(ctx, "deleteDataById", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyServiceClient) DeleteDataById(id int64) error {
+func (c *MyServiceClient) DeleteDataById(id int64) (error) {
     return c.chClient.DeleteDataById(nil, id)
 }
 
 
-func (c *MyServiceChannelClient) LobDataById(ctx context.Context, id int64, data string) error {
+func (c *MyServiceChannelClient) LobDataById(ctx context.Context, id int64, data string) (error) {
     in := &reqMyServiceLobDataById{
         Id: id,
         Data: data,
     }
-    out := newRespMyServiceLobDataById()
-    err := c.ch.Call(ctx, "lobDataById", in, out)
-    return err
+    return c.ch.Oneway(ctx, "lobDataById", in)
 }
 
-func (c *MyServiceClient) LobDataById(id int64, data string) error {
+func (c *MyServiceClient) LobDataById(id int64, data string) (error) {
     return c.chClient.LobDataById(nil, id, data)
 }
 
@@ -1086,7 +1158,10 @@ func (c *MyServiceChannelClient) InvalidReturnForHack(ctx context.Context) ([]fl
     }
     out := newRespMyServiceInvalidReturnForHack()
     err := c.ch.Call(ctx, "invalid_return_for_hack", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *MyServiceClient) InvalidReturnForHack() ([]float32, error) {
@@ -1094,15 +1169,18 @@ func (c *MyServiceClient) InvalidReturnForHack() ([]float32, error) {
 }
 
 
-func (c *MyServiceChannelClient) RpcSkippedCodegen(ctx context.Context) error {
+func (c *MyServiceChannelClient) RpcSkippedCodegen(ctx context.Context) (error) {
     in := &reqMyServiceRpcSkippedCodegen{
     }
     out := newRespMyServiceRpcSkippedCodegen()
     err := c.ch.Call(ctx, "rpc_skipped_codegen", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyServiceClient) RpcSkippedCodegen() error {
+func (c *MyServiceClient) RpcSkippedCodegen() (error) {
     return c.chClient.RpcSkippedCodegen(nil)
 }
 
@@ -1111,6 +1189,8 @@ type reqMyServicePing struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServicePing{}
+
+type MyServicePingArgs = reqMyServicePing
 
 func newReqMyServicePing() *reqMyServicePing {
     return (&reqMyServicePing{})
@@ -1136,6 +1216,7 @@ func (x *reqMyServicePingBuilder) Emit() *reqMyServicePing {
     var objCopy reqMyServicePing = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServicePing) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServicePing"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1184,10 +1265,12 @@ func (x *reqMyServicePing) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServicePing struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServicePing{}
+var _ thrift.WritableResult = &respMyServicePing{}
 
 func newRespMyServicePing() *respMyServicePing {
     return (&respMyServicePing{})
@@ -1213,6 +1296,11 @@ func (x *respMyServicePingBuilder) Emit() *respMyServicePing {
     var objCopy respMyServicePing = *x.obj
     return &objCopy
 }
+
+func (x *respMyServicePing) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServicePing) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServicePing"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1261,10 +1349,13 @@ func (x *respMyServicePing) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServiceGetRandomData struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceGetRandomData{}
+
+type MyServiceGetRandomDataArgs = reqMyServiceGetRandomData
 
 func newReqMyServiceGetRandomData() *reqMyServiceGetRandomData {
     return (&reqMyServiceGetRandomData{})
@@ -1290,6 +1381,7 @@ func (x *reqMyServiceGetRandomDataBuilder) Emit() *reqMyServiceGetRandomData {
     var objCopy reqMyServiceGetRandomData = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceGetRandomData) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceGetRandomData"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1338,14 +1430,17 @@ func (x *reqMyServiceGetRandomData) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceGetRandomData struct {
-    Value string `thrift:"value,0,required" json:"value" db:"value"`
+    Value string `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceGetRandomData{}
+var _ thrift.WritableResult = &respMyServiceGetRandomData{}
 
 func newRespMyServiceGetRandomData() *respMyServiceGetRandomData {
-    return (&respMyServiceGetRandomData{})
+    return (&respMyServiceGetRandomData{}).
+        SetValueNonCompat("")
 }
 
 func (x *respMyServiceGetRandomData) GetValueNonCompat() string {
@@ -1356,11 +1451,15 @@ func (x *respMyServiceGetRandomData) GetValue() string {
     return x.Value
 }
 
-func (x *respMyServiceGetRandomData) SetValue(value string) *respMyServiceGetRandomData {
+func (x *respMyServiceGetRandomData) SetValueNonCompat(value string) *respMyServiceGetRandomData {
     x.Value = value
     return x
 }
 
+func (x *respMyServiceGetRandomData) SetValue(value string) *respMyServiceGetRandomData {
+    x.Value = value
+    return x
+}
 
 func (x *respMyServiceGetRandomData) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.STRING, 0); err != nil {
@@ -1384,7 +1483,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -1413,6 +1512,11 @@ func (x *respMyServiceGetRandomDataBuilder) Emit() *respMyServiceGetRandomData {
     var objCopy respMyServiceGetRandomData = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceGetRandomData) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceGetRandomData) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceGetRandomData"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1469,14 +1573,18 @@ func (x *respMyServiceGetRandomData) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServiceSink struct {
     Sink int64 `thrift:"sink,1" json:"sink" db:"sink"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceSink{}
 
+type MyServiceSinkArgs = reqMyServiceSink
+
 func newReqMyServiceSink() *reqMyServiceSink {
-    return (&reqMyServiceSink{})
+    return (&reqMyServiceSink{}).
+        SetSinkNonCompat(0)
 }
 
 func (x *reqMyServiceSink) GetSinkNonCompat() int64 {
@@ -1487,11 +1595,15 @@ func (x *reqMyServiceSink) GetSink() int64 {
     return x.Sink
 }
 
-func (x *reqMyServiceSink) SetSink(value int64) *reqMyServiceSink {
+func (x *reqMyServiceSink) SetSinkNonCompat(value int64) *reqMyServiceSink {
     x.Sink = value
     return x
 }
 
+func (x *reqMyServiceSink) SetSink(value int64) *reqMyServiceSink {
+    x.Sink = value
+    return x
+}
 
 func (x *reqMyServiceSink) writeField1(p thrift.Protocol) error {  // Sink
     if err := p.WriteFieldBegin("sink", thrift.I64, 1); err != nil {
@@ -1515,7 +1627,7 @@ if err != nil {
     return err
 }
 
-    x.SetSink(result)
+    x.SetSinkNonCompat(result)
     return nil
 }
 
@@ -1544,6 +1656,7 @@ func (x *reqMyServiceSinkBuilder) Emit() *reqMyServiceSink {
     var objCopy reqMyServiceSink = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceSink) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceSink"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1600,10 +1713,12 @@ func (x *reqMyServiceSink) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceSink struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceSink{}
+var _ thrift.WritableResult = &respMyServiceSink{}
 
 func newRespMyServiceSink() *respMyServiceSink {
     return (&respMyServiceSink{})
@@ -1629,6 +1744,11 @@ func (x *respMyServiceSinkBuilder) Emit() *respMyServiceSink {
     var objCopy respMyServiceSink = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceSink) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceSink) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceSink"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1677,6 +1797,7 @@ func (x *respMyServiceSink) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServicePutDataById struct {
     Id int64 `thrift:"id,1" json:"id" db:"id"`
     Data string `thrift:"data,2" json:"data" db:"data"`
@@ -1684,8 +1805,12 @@ type reqMyServicePutDataById struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServicePutDataById{}
 
+type MyServicePutDataByIdArgs = reqMyServicePutDataById
+
 func newReqMyServicePutDataById() *reqMyServicePutDataById {
-    return (&reqMyServicePutDataById{})
+    return (&reqMyServicePutDataById{}).
+        SetIdNonCompat(0).
+        SetDataNonCompat("")
 }
 
 func (x *reqMyServicePutDataById) GetIdNonCompat() int64 {
@@ -1704,8 +1829,18 @@ func (x *reqMyServicePutDataById) GetData() string {
     return x.Data
 }
 
+func (x *reqMyServicePutDataById) SetIdNonCompat(value int64) *reqMyServicePutDataById {
+    x.Id = value
+    return x
+}
+
 func (x *reqMyServicePutDataById) SetId(value int64) *reqMyServicePutDataById {
     x.Id = value
+    return x
+}
+
+func (x *reqMyServicePutDataById) SetDataNonCompat(value string) *reqMyServicePutDataById {
+    x.Data = value
     return x
 }
 
@@ -1713,8 +1848,6 @@ func (x *reqMyServicePutDataById) SetData(value string) *reqMyServicePutDataById
     x.Data = value
     return x
 }
-
-
 
 func (x *reqMyServicePutDataById) writeField1(p thrift.Protocol) error {  // Id
     if err := p.WriteFieldBegin("id", thrift.I64, 1); err != nil {
@@ -1754,7 +1887,7 @@ if err != nil {
     return err
 }
 
-    x.SetId(result)
+    x.SetIdNonCompat(result)
     return nil
 }
 
@@ -1764,7 +1897,7 @@ if err != nil {
     return err
 }
 
-    x.SetData(result)
+    x.SetDataNonCompat(result)
     return nil
 }
 
@@ -1798,6 +1931,7 @@ func (x *reqMyServicePutDataByIdBuilder) Emit() *reqMyServicePutDataById {
     var objCopy reqMyServicePutDataById = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServicePutDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServicePutDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1862,10 +1996,12 @@ func (x *reqMyServicePutDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServicePutDataById struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServicePutDataById{}
+var _ thrift.WritableResult = &respMyServicePutDataById{}
 
 func newRespMyServicePutDataById() *respMyServicePutDataById {
     return (&respMyServicePutDataById{})
@@ -1891,6 +2027,11 @@ func (x *respMyServicePutDataByIdBuilder) Emit() *respMyServicePutDataById {
     var objCopy respMyServicePutDataById = *x.obj
     return &objCopy
 }
+
+func (x *respMyServicePutDataById) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServicePutDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServicePutDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1939,14 +2080,18 @@ func (x *respMyServicePutDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServiceHasDataById struct {
     Id int64 `thrift:"id,1" json:"id" db:"id"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceHasDataById{}
 
+type MyServiceHasDataByIdArgs = reqMyServiceHasDataById
+
 func newReqMyServiceHasDataById() *reqMyServiceHasDataById {
-    return (&reqMyServiceHasDataById{})
+    return (&reqMyServiceHasDataById{}).
+        SetIdNonCompat(0)
 }
 
 func (x *reqMyServiceHasDataById) GetIdNonCompat() int64 {
@@ -1957,11 +2102,15 @@ func (x *reqMyServiceHasDataById) GetId() int64 {
     return x.Id
 }
 
-func (x *reqMyServiceHasDataById) SetId(value int64) *reqMyServiceHasDataById {
+func (x *reqMyServiceHasDataById) SetIdNonCompat(value int64) *reqMyServiceHasDataById {
     x.Id = value
     return x
 }
 
+func (x *reqMyServiceHasDataById) SetId(value int64) *reqMyServiceHasDataById {
+    x.Id = value
+    return x
+}
 
 func (x *reqMyServiceHasDataById) writeField1(p thrift.Protocol) error {  // Id
     if err := p.WriteFieldBegin("id", thrift.I64, 1); err != nil {
@@ -1985,7 +2134,7 @@ if err != nil {
     return err
 }
 
-    x.SetId(result)
+    x.SetIdNonCompat(result)
     return nil
 }
 
@@ -2014,6 +2163,7 @@ func (x *reqMyServiceHasDataByIdBuilder) Emit() *reqMyServiceHasDataById {
     var objCopy reqMyServiceHasDataById = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceHasDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceHasDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2070,14 +2220,17 @@ func (x *reqMyServiceHasDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceHasDataById struct {
-    Value bool `thrift:"value,0,required" json:"value" db:"value"`
+    Value bool `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceHasDataById{}
+var _ thrift.WritableResult = &respMyServiceHasDataById{}
 
 func newRespMyServiceHasDataById() *respMyServiceHasDataById {
-    return (&respMyServiceHasDataById{})
+    return (&respMyServiceHasDataById{}).
+        SetValueNonCompat(false)
 }
 
 func (x *respMyServiceHasDataById) GetValueNonCompat() bool {
@@ -2088,11 +2241,15 @@ func (x *respMyServiceHasDataById) GetValue() bool {
     return x.Value
 }
 
-func (x *respMyServiceHasDataById) SetValue(value bool) *respMyServiceHasDataById {
+func (x *respMyServiceHasDataById) SetValueNonCompat(value bool) *respMyServiceHasDataById {
     x.Value = value
     return x
 }
 
+func (x *respMyServiceHasDataById) SetValue(value bool) *respMyServiceHasDataById {
+    x.Value = value
+    return x
+}
 
 func (x *respMyServiceHasDataById) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.BOOL, 0); err != nil {
@@ -2116,7 +2273,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -2145,6 +2302,11 @@ func (x *respMyServiceHasDataByIdBuilder) Emit() *respMyServiceHasDataById {
     var objCopy respMyServiceHasDataById = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceHasDataById) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceHasDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceHasDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2201,14 +2363,18 @@ func (x *respMyServiceHasDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServiceGetDataById struct {
     Id int64 `thrift:"id,1" json:"id" db:"id"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceGetDataById{}
 
+type MyServiceGetDataByIdArgs = reqMyServiceGetDataById
+
 func newReqMyServiceGetDataById() *reqMyServiceGetDataById {
-    return (&reqMyServiceGetDataById{})
+    return (&reqMyServiceGetDataById{}).
+        SetIdNonCompat(0)
 }
 
 func (x *reqMyServiceGetDataById) GetIdNonCompat() int64 {
@@ -2219,11 +2385,15 @@ func (x *reqMyServiceGetDataById) GetId() int64 {
     return x.Id
 }
 
-func (x *reqMyServiceGetDataById) SetId(value int64) *reqMyServiceGetDataById {
+func (x *reqMyServiceGetDataById) SetIdNonCompat(value int64) *reqMyServiceGetDataById {
     x.Id = value
     return x
 }
 
+func (x *reqMyServiceGetDataById) SetId(value int64) *reqMyServiceGetDataById {
+    x.Id = value
+    return x
+}
 
 func (x *reqMyServiceGetDataById) writeField1(p thrift.Protocol) error {  // Id
     if err := p.WriteFieldBegin("id", thrift.I64, 1); err != nil {
@@ -2247,7 +2417,7 @@ if err != nil {
     return err
 }
 
-    x.SetId(result)
+    x.SetIdNonCompat(result)
     return nil
 }
 
@@ -2276,6 +2446,7 @@ func (x *reqMyServiceGetDataByIdBuilder) Emit() *reqMyServiceGetDataById {
     var objCopy reqMyServiceGetDataById = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceGetDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceGetDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2332,14 +2503,17 @@ func (x *reqMyServiceGetDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceGetDataById struct {
-    Value string `thrift:"value,0,required" json:"value" db:"value"`
+    Value string `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceGetDataById{}
+var _ thrift.WritableResult = &respMyServiceGetDataById{}
 
 func newRespMyServiceGetDataById() *respMyServiceGetDataById {
-    return (&respMyServiceGetDataById{})
+    return (&respMyServiceGetDataById{}).
+        SetValueNonCompat("")
 }
 
 func (x *respMyServiceGetDataById) GetValueNonCompat() string {
@@ -2350,11 +2524,15 @@ func (x *respMyServiceGetDataById) GetValue() string {
     return x.Value
 }
 
-func (x *respMyServiceGetDataById) SetValue(value string) *respMyServiceGetDataById {
+func (x *respMyServiceGetDataById) SetValueNonCompat(value string) *respMyServiceGetDataById {
     x.Value = value
     return x
 }
 
+func (x *respMyServiceGetDataById) SetValue(value string) *respMyServiceGetDataById {
+    x.Value = value
+    return x
+}
 
 func (x *respMyServiceGetDataById) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.STRING, 0); err != nil {
@@ -2378,7 +2556,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -2407,6 +2585,11 @@ func (x *respMyServiceGetDataByIdBuilder) Emit() *respMyServiceGetDataById {
     var objCopy respMyServiceGetDataById = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceGetDataById) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceGetDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceGetDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2463,14 +2646,18 @@ func (x *respMyServiceGetDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServiceDeleteDataById struct {
     Id int64 `thrift:"id,1" json:"id" db:"id"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceDeleteDataById{}
 
+type MyServiceDeleteDataByIdArgs = reqMyServiceDeleteDataById
+
 func newReqMyServiceDeleteDataById() *reqMyServiceDeleteDataById {
-    return (&reqMyServiceDeleteDataById{})
+    return (&reqMyServiceDeleteDataById{}).
+        SetIdNonCompat(0)
 }
 
 func (x *reqMyServiceDeleteDataById) GetIdNonCompat() int64 {
@@ -2481,11 +2668,15 @@ func (x *reqMyServiceDeleteDataById) GetId() int64 {
     return x.Id
 }
 
-func (x *reqMyServiceDeleteDataById) SetId(value int64) *reqMyServiceDeleteDataById {
+func (x *reqMyServiceDeleteDataById) SetIdNonCompat(value int64) *reqMyServiceDeleteDataById {
     x.Id = value
     return x
 }
 
+func (x *reqMyServiceDeleteDataById) SetId(value int64) *reqMyServiceDeleteDataById {
+    x.Id = value
+    return x
+}
 
 func (x *reqMyServiceDeleteDataById) writeField1(p thrift.Protocol) error {  // Id
     if err := p.WriteFieldBegin("id", thrift.I64, 1); err != nil {
@@ -2509,7 +2700,7 @@ if err != nil {
     return err
 }
 
-    x.SetId(result)
+    x.SetIdNonCompat(result)
     return nil
 }
 
@@ -2538,6 +2729,7 @@ func (x *reqMyServiceDeleteDataByIdBuilder) Emit() *reqMyServiceDeleteDataById {
     var objCopy reqMyServiceDeleteDataById = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceDeleteDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceDeleteDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2594,10 +2786,12 @@ func (x *reqMyServiceDeleteDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceDeleteDataById struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceDeleteDataById{}
+var _ thrift.WritableResult = &respMyServiceDeleteDataById{}
 
 func newRespMyServiceDeleteDataById() *respMyServiceDeleteDataById {
     return (&respMyServiceDeleteDataById{})
@@ -2623,6 +2817,11 @@ func (x *respMyServiceDeleteDataByIdBuilder) Emit() *respMyServiceDeleteDataById
     var objCopy respMyServiceDeleteDataById = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceDeleteDataById) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceDeleteDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceDeleteDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2671,6 +2870,7 @@ func (x *respMyServiceDeleteDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServiceLobDataById struct {
     Id int64 `thrift:"id,1" json:"id" db:"id"`
     Data string `thrift:"data,2" json:"data" db:"data"`
@@ -2678,8 +2878,12 @@ type reqMyServiceLobDataById struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceLobDataById{}
 
+type MyServiceLobDataByIdArgs = reqMyServiceLobDataById
+
 func newReqMyServiceLobDataById() *reqMyServiceLobDataById {
-    return (&reqMyServiceLobDataById{})
+    return (&reqMyServiceLobDataById{}).
+        SetIdNonCompat(0).
+        SetDataNonCompat("")
 }
 
 func (x *reqMyServiceLobDataById) GetIdNonCompat() int64 {
@@ -2698,8 +2902,18 @@ func (x *reqMyServiceLobDataById) GetData() string {
     return x.Data
 }
 
+func (x *reqMyServiceLobDataById) SetIdNonCompat(value int64) *reqMyServiceLobDataById {
+    x.Id = value
+    return x
+}
+
 func (x *reqMyServiceLobDataById) SetId(value int64) *reqMyServiceLobDataById {
     x.Id = value
+    return x
+}
+
+func (x *reqMyServiceLobDataById) SetDataNonCompat(value string) *reqMyServiceLobDataById {
+    x.Data = value
     return x
 }
 
@@ -2707,8 +2921,6 @@ func (x *reqMyServiceLobDataById) SetData(value string) *reqMyServiceLobDataById
     x.Data = value
     return x
 }
-
-
 
 func (x *reqMyServiceLobDataById) writeField1(p thrift.Protocol) error {  // Id
     if err := p.WriteFieldBegin("id", thrift.I64, 1); err != nil {
@@ -2748,7 +2960,7 @@ if err != nil {
     return err
 }
 
-    x.SetId(result)
+    x.SetIdNonCompat(result)
     return nil
 }
 
@@ -2758,7 +2970,7 @@ if err != nil {
     return err
 }
 
-    x.SetData(result)
+    x.SetDataNonCompat(result)
     return nil
 }
 
@@ -2792,6 +3004,7 @@ func (x *reqMyServiceLobDataByIdBuilder) Emit() *reqMyServiceLobDataById {
     var objCopy reqMyServiceLobDataById = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceLobDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceLobDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2856,10 +3069,12 @@ func (x *reqMyServiceLobDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceLobDataById struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceLobDataById{}
+var _ thrift.WritableResult = &respMyServiceLobDataById{}
 
 func newRespMyServiceLobDataById() *respMyServiceLobDataById {
     return (&respMyServiceLobDataById{})
@@ -2885,6 +3100,11 @@ func (x *respMyServiceLobDataByIdBuilder) Emit() *respMyServiceLobDataById {
     var objCopy respMyServiceLobDataById = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceLobDataById) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceLobDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceLobDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2933,10 +3153,13 @@ func (x *respMyServiceLobDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServiceInvalidReturnForHack struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceInvalidReturnForHack{}
+
+type MyServiceInvalidReturnForHackArgs = reqMyServiceInvalidReturnForHack
 
 func newReqMyServiceInvalidReturnForHack() *reqMyServiceInvalidReturnForHack {
     return (&reqMyServiceInvalidReturnForHack{})
@@ -2962,6 +3185,7 @@ func (x *reqMyServiceInvalidReturnForHackBuilder) Emit() *reqMyServiceInvalidRet
     var objCopy reqMyServiceInvalidReturnForHack = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceInvalidReturnForHack) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceInvalidReturnForHack"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -3010,14 +3234,17 @@ func (x *reqMyServiceInvalidReturnForHack) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceInvalidReturnForHack struct {
-    Value []float32 `thrift:"value,0,required" json:"value" db:"value"`
+    Value []float32 `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceInvalidReturnForHack{}
+var _ thrift.WritableResult = &respMyServiceInvalidReturnForHack{}
 
 func newRespMyServiceInvalidReturnForHack() *respMyServiceInvalidReturnForHack {
-    return (&respMyServiceInvalidReturnForHack{})
+    return (&respMyServiceInvalidReturnForHack{}).
+        SetValueNonCompat(make([]float32, 0))
 }
 
 func (x *respMyServiceInvalidReturnForHack) GetValueNonCompat() []float32 {
@@ -3026,10 +3253,15 @@ func (x *respMyServiceInvalidReturnForHack) GetValueNonCompat() []float32 {
 
 func (x *respMyServiceInvalidReturnForHack) GetValue() []float32 {
     if !x.IsSetValue() {
-      return nil
+        return make([]float32, 0)
     }
 
     return x.Value
+}
+
+func (x *respMyServiceInvalidReturnForHack) SetValueNonCompat(value []float32) *respMyServiceInvalidReturnForHack {
+    x.Value = value
+    return x
 }
 
 func (x *respMyServiceInvalidReturnForHack) SetValue(value []float32) *respMyServiceInvalidReturnForHack {
@@ -3096,7 +3328,7 @@ if err := p.ReadSetEnd(); err != nil {
 }
 result := setResult
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -3125,6 +3357,11 @@ func (x *respMyServiceInvalidReturnForHackBuilder) Emit() *respMyServiceInvalidR
     var objCopy respMyServiceInvalidReturnForHack = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceInvalidReturnForHack) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceInvalidReturnForHack) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceInvalidReturnForHack"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -3181,10 +3418,13 @@ func (x *respMyServiceInvalidReturnForHack) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServiceRpcSkippedCodegen struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceRpcSkippedCodegen{}
+
+type MyServiceRpcSkippedCodegenArgs = reqMyServiceRpcSkippedCodegen
 
 func newReqMyServiceRpcSkippedCodegen() *reqMyServiceRpcSkippedCodegen {
     return (&reqMyServiceRpcSkippedCodegen{})
@@ -3210,6 +3450,7 @@ func (x *reqMyServiceRpcSkippedCodegenBuilder) Emit() *reqMyServiceRpcSkippedCod
     var objCopy reqMyServiceRpcSkippedCodegen = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceRpcSkippedCodegen) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceRpcSkippedCodegen"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -3258,10 +3499,12 @@ func (x *reqMyServiceRpcSkippedCodegen) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceRpcSkippedCodegen struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceRpcSkippedCodegen{}
+var _ thrift.WritableResult = &respMyServiceRpcSkippedCodegen{}
 
 func newRespMyServiceRpcSkippedCodegen() *respMyServiceRpcSkippedCodegen {
     return (&respMyServiceRpcSkippedCodegen{})
@@ -3287,6 +3530,11 @@ func (x *respMyServiceRpcSkippedCodegenBuilder) Emit() *respMyServiceRpcSkippedC
     var objCopy respMyServiceRpcSkippedCodegen = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceRpcSkippedCodegen) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceRpcSkippedCodegen) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceRpcSkippedCodegen"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -3335,6 +3583,7 @@ func (x *respMyServiceRpcSkippedCodegen) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type MyServiceProcessor struct {
@@ -3417,9 +3666,11 @@ func (p *procFuncMyServicePing) Read(iprot thrift.Protocol) (thrift.Struct, thri
 func (p *procFuncMyServicePing) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Ping", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3437,10 +3688,12 @@ func (p *procFuncMyServicePing) Write(seqId int32, result thrift.WritableStruct,
 
 func (p *procFuncMyServicePing) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespMyServicePing()
-    if err := p.handler.Ping(); err != nil {
+    err := p.handler.Ping()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Ping: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -3463,9 +3716,11 @@ func (p *procFuncMyServiceGetRandomData) Read(iprot thrift.Protocol) (thrift.Str
 func (p *procFuncMyServiceGetRandomData) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetRandomData", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3483,13 +3738,13 @@ func (p *procFuncMyServiceGetRandomData) Write(seqId int32, result thrift.Writab
 
 func (p *procFuncMyServiceGetRandomData) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespMyServiceGetRandomData()
-    if retval, err := p.handler.GetRandomData(); err != nil {
+    retval, err := p.handler.GetRandomData()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetRandomData: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -3512,9 +3767,11 @@ func (p *procFuncMyServiceSink) Read(iprot thrift.Protocol) (thrift.Struct, thri
 func (p *procFuncMyServiceSink) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Sink", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3533,10 +3790,12 @@ func (p *procFuncMyServiceSink) Write(seqId int32, result thrift.WritableStruct,
 func (p *procFuncMyServiceSink) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqMyServiceSink)
     result := newRespMyServiceSink()
-    if err := p.handler.Sink(args.Sink); err != nil {
+    err := p.handler.Sink(args.Sink)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Sink: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -3559,9 +3818,11 @@ func (p *procFuncMyServicePutDataById) Read(iprot thrift.Protocol) (thrift.Struc
 func (p *procFuncMyServicePutDataById) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("PutDataById", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3580,10 +3841,12 @@ func (p *procFuncMyServicePutDataById) Write(seqId int32, result thrift.Writable
 func (p *procFuncMyServicePutDataById) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqMyServicePutDataById)
     result := newRespMyServicePutDataById()
-    if err := p.handler.PutDataById(args.Id, args.Data); err != nil {
+    err := p.handler.PutDataById(args.Id, args.Data)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing PutDataById: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -3606,9 +3869,11 @@ func (p *procFuncMyServiceHasDataById) Read(iprot thrift.Protocol) (thrift.Struc
 func (p *procFuncMyServiceHasDataById) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("HasDataById", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3627,13 +3892,13 @@ func (p *procFuncMyServiceHasDataById) Write(seqId int32, result thrift.Writable
 func (p *procFuncMyServiceHasDataById) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqMyServiceHasDataById)
     result := newRespMyServiceHasDataById()
-    if retval, err := p.handler.HasDataById(args.Id); err != nil {
+    retval, err := p.handler.HasDataById(args.Id)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing HasDataById: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -3656,9 +3921,11 @@ func (p *procFuncMyServiceGetDataById) Read(iprot thrift.Protocol) (thrift.Struc
 func (p *procFuncMyServiceGetDataById) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetDataById", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3677,13 +3944,13 @@ func (p *procFuncMyServiceGetDataById) Write(seqId int32, result thrift.Writable
 func (p *procFuncMyServiceGetDataById) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqMyServiceGetDataById)
     result := newRespMyServiceGetDataById()
-    if retval, err := p.handler.GetDataById(args.Id); err != nil {
+    retval, err := p.handler.GetDataById(args.Id)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetDataById: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -3706,9 +3973,11 @@ func (p *procFuncMyServiceDeleteDataById) Read(iprot thrift.Protocol) (thrift.St
 func (p *procFuncMyServiceDeleteDataById) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("DeleteDataById", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3727,10 +3996,12 @@ func (p *procFuncMyServiceDeleteDataById) Write(seqId int32, result thrift.Writa
 func (p *procFuncMyServiceDeleteDataById) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqMyServiceDeleteDataById)
     result := newRespMyServiceDeleteDataById()
-    if err := p.handler.DeleteDataById(args.Id); err != nil {
+    err := p.handler.DeleteDataById(args.Id)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing DeleteDataById: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -3753,9 +4024,11 @@ func (p *procFuncMyServiceLobDataById) Read(iprot thrift.Protocol) (thrift.Struc
 func (p *procFuncMyServiceLobDataById) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("LobDataById", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3773,12 +4046,13 @@ func (p *procFuncMyServiceLobDataById) Write(seqId int32, result thrift.Writable
 
 func (p *procFuncMyServiceLobDataById) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqMyServiceLobDataById)
-    result := newRespMyServiceLobDataById()
-    if err := p.handler.LobDataById(args.Id, args.Data); err != nil {
+    err := p.handler.LobDataById(args.Id, args.Data)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing LobDataById: " + err.Error(), err)
         return x, x
     }
-    return result, nil
+
+    return nil, nil
 }
 
 
@@ -3800,9 +4074,11 @@ func (p *procFuncMyServiceInvalidReturnForHack) Read(iprot thrift.Protocol) (thr
 func (p *procFuncMyServiceInvalidReturnForHack) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("InvalidReturnForHack", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3820,13 +4096,13 @@ func (p *procFuncMyServiceInvalidReturnForHack) Write(seqId int32, result thrift
 
 func (p *procFuncMyServiceInvalidReturnForHack) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespMyServiceInvalidReturnForHack()
-    if retval, err := p.handler.InvalidReturnForHack(); err != nil {
+    retval, err := p.handler.InvalidReturnForHack()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing InvalidReturnForHack: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -3849,9 +4125,11 @@ func (p *procFuncMyServiceRpcSkippedCodegen) Read(iprot thrift.Protocol) (thrift
 func (p *procFuncMyServiceRpcSkippedCodegen) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("RpcSkippedCodegen", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3869,10 +4147,12 @@ func (p *procFuncMyServiceRpcSkippedCodegen) Write(seqId int32, result thrift.Wr
 
 func (p *procFuncMyServiceRpcSkippedCodegen) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespMyServiceRpcSkippedCodegen()
-    if err := p.handler.RpcSkippedCodegen(); err != nil {
+    err := p.handler.RpcSkippedCodegen()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing RpcSkippedCodegen: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -3980,7 +4260,10 @@ func (c *DbMixedStackArgumentsChannelClient) GetDataByKey0(ctx context.Context, 
     }
     out := newRespDbMixedStackArgumentsGetDataByKey0()
     err := c.ch.Call(ctx, "getDataByKey0", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *DbMixedStackArgumentsClient) GetDataByKey0(key string) ([]byte, error) {
@@ -3994,7 +4277,10 @@ func (c *DbMixedStackArgumentsChannelClient) GetDataByKey1(ctx context.Context, 
     }
     out := newRespDbMixedStackArgumentsGetDataByKey1()
     err := c.ch.Call(ctx, "getDataByKey1", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *DbMixedStackArgumentsClient) GetDataByKey1(key string) ([]byte, error) {
@@ -4008,8 +4294,11 @@ type reqDbMixedStackArgumentsGetDataByKey0 struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqDbMixedStackArgumentsGetDataByKey0{}
 
+type DbMixedStackArgumentsGetDataByKey0Args = reqDbMixedStackArgumentsGetDataByKey0
+
 func newReqDbMixedStackArgumentsGetDataByKey0() *reqDbMixedStackArgumentsGetDataByKey0 {
-    return (&reqDbMixedStackArgumentsGetDataByKey0{})
+    return (&reqDbMixedStackArgumentsGetDataByKey0{}).
+        SetKeyNonCompat("")
 }
 
 func (x *reqDbMixedStackArgumentsGetDataByKey0) GetKeyNonCompat() string {
@@ -4020,11 +4309,15 @@ func (x *reqDbMixedStackArgumentsGetDataByKey0) GetKey() string {
     return x.Key
 }
 
-func (x *reqDbMixedStackArgumentsGetDataByKey0) SetKey(value string) *reqDbMixedStackArgumentsGetDataByKey0 {
+func (x *reqDbMixedStackArgumentsGetDataByKey0) SetKeyNonCompat(value string) *reqDbMixedStackArgumentsGetDataByKey0 {
     x.Key = value
     return x
 }
 
+func (x *reqDbMixedStackArgumentsGetDataByKey0) SetKey(value string) *reqDbMixedStackArgumentsGetDataByKey0 {
+    x.Key = value
+    return x
+}
 
 func (x *reqDbMixedStackArgumentsGetDataByKey0) writeField1(p thrift.Protocol) error {  // Key
     if err := p.WriteFieldBegin("key", thrift.STRING, 1); err != nil {
@@ -4048,7 +4341,7 @@ if err != nil {
     return err
 }
 
-    x.SetKey(result)
+    x.SetKeyNonCompat(result)
     return nil
 }
 
@@ -4077,6 +4370,7 @@ func (x *reqDbMixedStackArgumentsGetDataByKey0Builder) Emit() *reqDbMixedStackAr
     var objCopy reqDbMixedStackArgumentsGetDataByKey0 = *x.obj
     return &objCopy
 }
+
 func (x *reqDbMixedStackArgumentsGetDataByKey0) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqDbMixedStackArgumentsGetDataByKey0"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -4133,14 +4427,17 @@ func (x *reqDbMixedStackArgumentsGetDataByKey0) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respDbMixedStackArgumentsGetDataByKey0 struct {
-    Value []byte `thrift:"value,0,required" json:"value" db:"value"`
+    Value []byte `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respDbMixedStackArgumentsGetDataByKey0{}
+var _ thrift.WritableResult = &respDbMixedStackArgumentsGetDataByKey0{}
 
 func newRespDbMixedStackArgumentsGetDataByKey0() *respDbMixedStackArgumentsGetDataByKey0 {
-    return (&respDbMixedStackArgumentsGetDataByKey0{})
+    return (&respDbMixedStackArgumentsGetDataByKey0{}).
+        SetValueNonCompat([]byte(""))
 }
 
 func (x *respDbMixedStackArgumentsGetDataByKey0) GetValueNonCompat() []byte {
@@ -4149,10 +4446,15 @@ func (x *respDbMixedStackArgumentsGetDataByKey0) GetValueNonCompat() []byte {
 
 func (x *respDbMixedStackArgumentsGetDataByKey0) GetValue() []byte {
     if !x.IsSetValue() {
-      return []byte("")
+        return []byte("")
     }
 
     return x.Value
+}
+
+func (x *respDbMixedStackArgumentsGetDataByKey0) SetValueNonCompat(value []byte) *respDbMixedStackArgumentsGetDataByKey0 {
+    x.Value = value
+    return x
 }
 
 func (x *respDbMixedStackArgumentsGetDataByKey0) SetValue(value []byte) *respDbMixedStackArgumentsGetDataByKey0 {
@@ -4190,7 +4492,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -4219,6 +4521,11 @@ func (x *respDbMixedStackArgumentsGetDataByKey0Builder) Emit() *respDbMixedStack
     var objCopy respDbMixedStackArgumentsGetDataByKey0 = *x.obj
     return &objCopy
 }
+
+func (x *respDbMixedStackArgumentsGetDataByKey0) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respDbMixedStackArgumentsGetDataByKey0) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respDbMixedStackArgumentsGetDataByKey0"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -4275,14 +4582,18 @@ func (x *respDbMixedStackArgumentsGetDataByKey0) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqDbMixedStackArgumentsGetDataByKey1 struct {
     Key string `thrift:"key,1" json:"key" db:"key"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqDbMixedStackArgumentsGetDataByKey1{}
 
+type DbMixedStackArgumentsGetDataByKey1Args = reqDbMixedStackArgumentsGetDataByKey1
+
 func newReqDbMixedStackArgumentsGetDataByKey1() *reqDbMixedStackArgumentsGetDataByKey1 {
-    return (&reqDbMixedStackArgumentsGetDataByKey1{})
+    return (&reqDbMixedStackArgumentsGetDataByKey1{}).
+        SetKeyNonCompat("")
 }
 
 func (x *reqDbMixedStackArgumentsGetDataByKey1) GetKeyNonCompat() string {
@@ -4293,11 +4604,15 @@ func (x *reqDbMixedStackArgumentsGetDataByKey1) GetKey() string {
     return x.Key
 }
 
-func (x *reqDbMixedStackArgumentsGetDataByKey1) SetKey(value string) *reqDbMixedStackArgumentsGetDataByKey1 {
+func (x *reqDbMixedStackArgumentsGetDataByKey1) SetKeyNonCompat(value string) *reqDbMixedStackArgumentsGetDataByKey1 {
     x.Key = value
     return x
 }
 
+func (x *reqDbMixedStackArgumentsGetDataByKey1) SetKey(value string) *reqDbMixedStackArgumentsGetDataByKey1 {
+    x.Key = value
+    return x
+}
 
 func (x *reqDbMixedStackArgumentsGetDataByKey1) writeField1(p thrift.Protocol) error {  // Key
     if err := p.WriteFieldBegin("key", thrift.STRING, 1); err != nil {
@@ -4321,7 +4636,7 @@ if err != nil {
     return err
 }
 
-    x.SetKey(result)
+    x.SetKeyNonCompat(result)
     return nil
 }
 
@@ -4350,6 +4665,7 @@ func (x *reqDbMixedStackArgumentsGetDataByKey1Builder) Emit() *reqDbMixedStackAr
     var objCopy reqDbMixedStackArgumentsGetDataByKey1 = *x.obj
     return &objCopy
 }
+
 func (x *reqDbMixedStackArgumentsGetDataByKey1) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqDbMixedStackArgumentsGetDataByKey1"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -4406,14 +4722,17 @@ func (x *reqDbMixedStackArgumentsGetDataByKey1) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respDbMixedStackArgumentsGetDataByKey1 struct {
-    Value []byte `thrift:"value,0,required" json:"value" db:"value"`
+    Value []byte `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respDbMixedStackArgumentsGetDataByKey1{}
+var _ thrift.WritableResult = &respDbMixedStackArgumentsGetDataByKey1{}
 
 func newRespDbMixedStackArgumentsGetDataByKey1() *respDbMixedStackArgumentsGetDataByKey1 {
-    return (&respDbMixedStackArgumentsGetDataByKey1{})
+    return (&respDbMixedStackArgumentsGetDataByKey1{}).
+        SetValueNonCompat([]byte(""))
 }
 
 func (x *respDbMixedStackArgumentsGetDataByKey1) GetValueNonCompat() []byte {
@@ -4422,10 +4741,15 @@ func (x *respDbMixedStackArgumentsGetDataByKey1) GetValueNonCompat() []byte {
 
 func (x *respDbMixedStackArgumentsGetDataByKey1) GetValue() []byte {
     if !x.IsSetValue() {
-      return []byte("")
+        return []byte("")
     }
 
     return x.Value
+}
+
+func (x *respDbMixedStackArgumentsGetDataByKey1) SetValueNonCompat(value []byte) *respDbMixedStackArgumentsGetDataByKey1 {
+    x.Value = value
+    return x
 }
 
 func (x *respDbMixedStackArgumentsGetDataByKey1) SetValue(value []byte) *respDbMixedStackArgumentsGetDataByKey1 {
@@ -4463,7 +4787,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -4492,6 +4816,11 @@ func (x *respDbMixedStackArgumentsGetDataByKey1Builder) Emit() *respDbMixedStack
     var objCopy respDbMixedStackArgumentsGetDataByKey1 = *x.obj
     return &objCopy
 }
+
+func (x *respDbMixedStackArgumentsGetDataByKey1) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respDbMixedStackArgumentsGetDataByKey1) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respDbMixedStackArgumentsGetDataByKey1"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -4548,6 +4877,7 @@ func (x *respDbMixedStackArgumentsGetDataByKey1) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type DbMixedStackArgumentsProcessor struct {
@@ -4614,9 +4944,11 @@ func (p *procFuncDbMixedStackArgumentsGetDataByKey0) Read(iprot thrift.Protocol)
 func (p *procFuncDbMixedStackArgumentsGetDataByKey0) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetDataByKey0", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -4635,13 +4967,13 @@ func (p *procFuncDbMixedStackArgumentsGetDataByKey0) Write(seqId int32, result t
 func (p *procFuncDbMixedStackArgumentsGetDataByKey0) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqDbMixedStackArgumentsGetDataByKey0)
     result := newRespDbMixedStackArgumentsGetDataByKey0()
-    if retval, err := p.handler.GetDataByKey0(args.Key); err != nil {
+    retval, err := p.handler.GetDataByKey0(args.Key)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetDataByKey0: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -4664,9 +4996,11 @@ func (p *procFuncDbMixedStackArgumentsGetDataByKey1) Read(iprot thrift.Protocol)
 func (p *procFuncDbMixedStackArgumentsGetDataByKey1) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetDataByKey1", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -4685,13 +5019,13 @@ func (p *procFuncDbMixedStackArgumentsGetDataByKey1) Write(seqId int32, result t
 func (p *procFuncDbMixedStackArgumentsGetDataByKey1) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqDbMixedStackArgumentsGetDataByKey1)
     result := newRespDbMixedStackArgumentsGetDataByKey1()
-    if retval, err := p.handler.GetDataByKey1(args.Key); err != nil {
+    retval, err := p.handler.GetDataByKey1(args.Key)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetDataByKey1: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 

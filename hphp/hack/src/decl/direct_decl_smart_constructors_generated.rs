@@ -138,6 +138,14 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> SmartConstructors for DirectDec
         <Self as FlattenSmartConstructors>::make_context_alias_declaration(self, attribute_spec, keyword, name, generic_parameter, as_constraint, equal, context, semicolon)
     }
 
+    fn make_case_type_declaration(&mut self, attribute_spec: Self::Output, modifiers: Self::Output, case_keyword: Self::Output, type_keyword: Self::Output, name: Self::Output, generic_parameter: Self::Output, as_: Self::Output, bounds: Self::Output, equal: Self::Output, variants: Self::Output, semicolon: Self::Output) -> Self::Output {
+        <Self as FlattenSmartConstructors>::make_case_type_declaration(self, attribute_spec, modifiers, case_keyword, type_keyword, name, generic_parameter, as_, bounds, equal, variants, semicolon)
+    }
+
+    fn make_case_type_variant(&mut self, bar: Self::Output, type_: Self::Output) -> Self::Output {
+        <Self as FlattenSmartConstructors>::make_case_type_variant(self, bar, type_)
+    }
+
     fn make_property_declaration(&mut self, attribute_spec: Self::Output, modifiers: Self::Output, type_: Self::Output, declarators: Self::Output, semicolon: Self::Output) -> Self::Output {
         <Self as FlattenSmartConstructors>::make_property_declaration(self, attribute_spec, modifiers, type_, declarators, semicolon)
     }
@@ -756,6 +764,10 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> SmartConstructors for DirectDec
 
     fn make_module_membership_declaration(&mut self, module_keyword: Self::Output, name: Self::Output, semicolon: Self::Output) -> Self::Output {
         <Self as FlattenSmartConstructors>::make_module_membership_declaration(self, module_keyword, name, semicolon)
+    }
+
+    fn make_package_expression(&mut self, keyword: Self::Output, name: Self::Output) -> Self::Output {
+        <Self as FlattenSmartConstructors>::make_package_expression(self, keyword, name)
     }
 
 }

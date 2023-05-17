@@ -19,6 +19,9 @@ pub struct LocalConfig {
     /// Use the Rust implementation of naming elaboration and NAST checks.
     pub rust_elab: bool,
 
+    /// Used when fetching JustKnobs, but not in GlobalOptions
+    pub rollout_group: Option<String>,
+
     pub saved_state: SavedState,
 }
 
@@ -27,11 +30,13 @@ impl LocalConfig {
     pub fn from_config(
         current_version: Option<&str>,
         current_rolled_out_flag_idx: isize,
+        deactivate_saved_state_rollout: bool,
         config: ConfigFile,
     ) -> Result<Self> {
         let mut lc = Self::default();
         lc.saved_state.rollouts = SavedStateRollouts::make(
             current_rolled_out_flag_idx,
+            deactivate_saved_state_rollout,
             config.get_str("ss_force"),
             |flag_name| config.get_bool(flag_name).unwrap_or(Ok(false)),
         )?;
@@ -43,6 +48,9 @@ impl LocalConfig {
         }
         if let Some(b) = config.bool_if_min_version("rust_elab", current_version) {
             lc.rust_elab = b?;
+        }
+        if let Some(rollout_group) = config.get_str("rollout_group") {
+            lc.rollout_group = Some(rollout_group.into());
         }
         Ok(lc)
     }

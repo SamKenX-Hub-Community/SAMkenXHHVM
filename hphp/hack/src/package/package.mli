@@ -12,15 +12,33 @@ type package = {
   name: pos_id;
   uses: pos_id list;
   includes: pos_id list;
+  soft_includes: pos_id list;
 }
 [@@deriving eq, show]
+
+(* Represents how two packages are related *)
+type package_relationship =
+  | Unrelated
+  | Includes
+  | Soft_includes
+  | Equal
 
 val get_package_name : package -> string
 
 val get_package_pos : package -> Pos.t
 
-val get_package_for_module : string -> package option
+val relationship : package -> package -> package_relationship
 
-val includes : package -> package -> bool
+module Info : sig
+  type t
 
-val initialize_packages_info : string -> Errors.t
+  val empty : t
+
+  val initialize : string -> Errors.t * t
+
+  val get_package_for_module : t -> string -> package option
+
+  val get_package : t -> string -> package option
+
+  val package_exists : t -> string -> bool
+end

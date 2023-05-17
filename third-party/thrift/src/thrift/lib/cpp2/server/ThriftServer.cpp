@@ -14,10 +14,12 @@
  * limitations under the License.
  */
 
-#include <thrift/lib/cpp2/server/ThriftServer.h>
-
 #include <fcntl.h>
 #include <signal.h>
+
+#include <thrift/lib/cpp2/server/IOUringUtil.h>
+
+#include <thrift/lib/cpp2/server/ThriftServer.h>
 
 #include <iostream>
 #include <random>
@@ -50,10 +52,11 @@
 #include <thrift/lib/cpp2/server/Cpp2Worker.h>
 #include <thrift/lib/cpp2/server/ExecutorToThreadManagerAdaptor.h>
 #include <thrift/lib/cpp2/server/LoggingEvent.h>
-#include <thrift/lib/cpp2/server/ParallelConcurrencyController.h>
 #include <thrift/lib/cpp2/server/RoundRobinRequestPile.h>
 #include <thrift/lib/cpp2/server/ServerFlags.h>
 #include <thrift/lib/cpp2/server/ServerInstrumentation.h>
+#include <thrift/lib/cpp2/server/StandardConcurrencyController.h>
+#include <thrift/lib/cpp2/server/TMConcurrencyController.h>
 #include <thrift/lib/cpp2/server/ThriftProcessor.h>
 #include <thrift/lib/cpp2/transport/core/ManagedConnectionIf.h>
 #include <thrift/lib/cpp2/transport/rocket/server/RocketRoutingHandler.h>
@@ -425,6 +428,30 @@ void ThriftServer::touchRequestTimestamp() noexcept {
   }
 }
 
+void ThriftServer::configureIOUring() {
+#ifdef HAS_IO_URING
+  if (preferIoUring_) {
+    VLOG(1) << "Preferring io_uring";
+    auto b = io_uring_util::validateExecutorSupportsIOUring(ioThreadPool_);
+
+    if (!b) {
+      if (!useDefaultIoUringExecutor_) {
+        VLOG(1)
+            << "Configured IOThreadPoolExecutor does not support io_uring, but default not selected. epoll will be used";
+        return;
+      }
+
+      VLOG(1) << "Configured IOThreadPoolExecutor does not support io_uring, "
+                 "configuring default io_uring IOThreadPoolExecutor pool";
+      ioThreadPool_ = io_uring_util::getDefaultIOUringExecutor(
+          THRIFT_FLAG(enable_io_queue_lag_detection));
+    } else {
+      VLOG(1) << "Configured IOThreadPoolExecutor supports io_uring";
+    }
+  }
+#endif
+}
+
 void ThriftServer::setup() {
   ensureDecoratedProcessorFactoryInitialized();
 
@@ -464,6 +491,8 @@ void ThriftServer::setup() {
     sigemptyset(&sa.sa_mask);
     sigaction(SIGPIPE, &sa, nullptr);
 #endif
+
+    configureIOUring();
 
     if (!getObserver() && server::observerFactory_) {
       setObserver(server::observerFactory_->getObserver());
@@ -754,7 +783,11 @@ void ThriftServer::setupThreadManager() {
                 << THRIFT_FLAG(experimental_use_resource_pools)
                 << " enable gflag:"
                 << FLAGS_thrift_experimental_use_resource_pools;
-      DCHECK(!threadManager_);
+
+      LOG(INFO) << "QPS limit will be enforced by "
+                << (FLAGS_thrift_server_enforces_qps_limit
+                        ? "the thrift server"
+                        : "the concurrency controller");
 
       ensureResourcePools();
 
@@ -784,7 +817,22 @@ void ThriftServer::setupThreadManager() {
                           ? maxRequests
                           : std::numeric_limits<decltype(maxRequests)>::max());
             });
-
+    setMaxQpsCallbackHandle =
+        detail::getThriftServerConfig(*this)
+            .getMaxQps()
+            .getObserver()
+            .addCallback([this](folly::observer::Snapshot<uint32_t> snapshot) {
+              auto maxQps = *snapshot;
+              resourcePoolSet()
+                  .resourcePool(ResourcePoolHandle::defaultAsync())
+                  .concurrencyController()
+                  .value()
+                  .get()
+                  .setQpsLimit(
+                      maxQps != 0
+                          ? maxQps
+                          : std::numeric_limits<decltype(maxQps)>::max());
+            });
     // Create an adapter so calls to getThreadManager_deprecated will work
     // when we are using resource pools
     if (!threadManager_ &&
@@ -834,6 +882,12 @@ constexpr std::array<PoolNames, concurrency::N_PRIORITIES> kPoolNames = {
      {"IMPORTANT", "I"},
      {"NORMAL", "N"},
      {"BEST_EFFORT", "BE"}}};
+
+std::string getThreadNameForPriority(
+    const std::string& cpuWorkerThreadName, concurrency::PRIORITY priority) {
+  return fmt::format(
+      "{}.{}", cpuWorkerThreadName, kPoolNames.at(priority).suffix);
+}
 } // namespace
 
 void ThriftServer::ensureResourcePoolsDefaultPrioritySetup(
@@ -849,8 +903,8 @@ void ThriftServer::ensureResourcePoolsDefaultPrioritySetup(
       // We expect that at least the normal priority has been set up.
       CHECK_NE(i, concurrency::NORMAL);
 
-      std::string name = fmt::format(
-          "{}.{}", getCPUWorkerThreadName(), kPoolNames.at(i).suffix);
+      auto name = getThreadNameForPriority(
+          getCPUWorkerThreadName(), concurrency::PRIORITY(i));
       std::shared_ptr<folly::ThreadFactory> factory =
           std::make_shared<folly::NamedThreadFactory>(name);
       // 2 is the default for the priorities other than NORMAL.
@@ -860,9 +914,8 @@ void ThriftServer::ensureResourcePoolsDefaultPrioritySetup(
       auto requestPile =
           std::make_unique<apache::thrift::RoundRobinRequestPile>(
               std::move(options));
-      auto concurrencyController =
-          std::make_unique<apache::thrift::ParallelConcurrencyController>(
-              *requestPile.get(), *executor.get());
+      auto concurrencyController = makeStandardConcurrencyController(
+          *requestPile.get(), *executor.get());
       resourcePoolSet().addResourcePool(
           kPoolNames.at(i).name,
           std::move(requestPile),
@@ -881,12 +934,18 @@ bool ThriftServer::runtimeResourcePoolsChecks() {
       FLAGS_thrift_disable_resource_pools;
   if (runtimeDisableResourcePoolsSet()) {
     // No need to check if we've already set this.
+    LOG(INFO)
+        << "runtimeResourcePoolsChecks() returns false because of runtimeDisableResourcePoolsSet()";
     return false;
   }
   // This can be called multiple times - only run it to completion once
   // but note below that it can exit early.
   if (runtimeServerActions_.checkComplete) {
-    return !runtimeDisableResourcePoolsSet();
+    auto result = !runtimeDisableResourcePoolsSet();
+    LOG(INFO)
+        << "runtimeResourcePoolsChecks() is aleady completed and result is "
+        << result;
+    return result;
   }
   // If this is called too early we can't run our other checks.
   if (!getProcessorFactory()) {
@@ -899,6 +958,8 @@ bool ThriftServer::runtimeResourcePoolsChecks() {
       // setup() and if it calls runtimeDisableResourcePoolsDeprecated() at that
       // time that will become a fatal error which is what we want (that can
       // only be triggered by a requireResourcePools() call in the server code).
+      LOG(INFO)
+          << "It's too early to call runtimeResourcePoolsChecks(), returning True for now";
       return true;
     }
     runtimeDisableResourcePoolsDeprecated();
@@ -967,6 +1028,8 @@ bool ThriftServer::runtimeResourcePoolsChecks() {
   runtimeServerActions_.checkComplete = true;
 
   if (runtimeDisableResourcePoolsSet()) {
+    LOG(INFO)
+        << "runtimeResourcePoolsChecks() returns false because of runtimeDisableResourcePoolsSet()";
     return false;
   }
   LOG(INFO) << "Resource pools check complete - allowed";
@@ -975,8 +1038,12 @@ bool ThriftServer::runtimeResourcePoolsChecks() {
 
 void ThriftServer::ensureResourcePools() {
   auto resourcePoolSupplied = !resourcePoolSet().empty();
+  if (resourcePoolSupplied) {
+    LOG(INFO) << "Resource pools supplied: " << resourcePoolSet().size();
+  }
 
   if (!resourcePoolSet().hasResourcePool(ResourcePoolHandle::defaultSync())) {
+    LOG(INFO) << "Creating a default sync pool";
     // Ensure there is a sync resource pool.
     resourcePoolSet().setResourcePool(
         ResourcePoolHandle::defaultSync(),
@@ -987,6 +1054,62 @@ void ThriftServer::ensureResourcePools() {
 
   // The user provided the resource pool. Use it as is.
   if (resourcePoolSupplied) {
+    if (!resourcePoolSet().hasResourcePool(
+            ResourcePoolHandle::defaultAsync())) {
+      LOG(INFO)
+          << "Default async pool is NOT supplied, creating a default async pool";
+      auto threadFactory = [this]() -> std::shared_ptr<folly::ThreadFactory> {
+        auto prefix = getThreadNameForPriority(
+            getCPUWorkerThreadName(), concurrency::PRIORITY::NORMAL);
+        auto factory = std::make_shared<folly::PriorityThreadFactory>(
+            std::make_shared<folly::NamedThreadFactory>(prefix),
+            concurrency::PosixThreadFactory::Impl::toPthreadPriority(
+                concurrency::PosixThreadFactory::kDefaultPolicy,
+                concurrency::PosixThreadFactory::NORMAL_PRI));
+        if (threadInitializer_ || threadFinalizer_) {
+          return std::make_shared<folly::InitThreadFactory>(
+              std::move(factory),
+              std::move(threadInitializer_),
+              std::move(threadFinalizer_));
+        }
+        return factory;
+      };
+
+      auto requestPile = std::make_unique<RoundRobinRequestPile>(
+          RoundRobinRequestPile::Options());
+
+      auto executor = std::make_shared<folly::CPUThreadPoolExecutor>(
+          getNumCPUWorkerThreads(),
+          ResourcePool::kPreferredExecutorNumPriorities,
+          threadFactory());
+
+      auto concurrencyController = makeStandardConcurrencyController(
+          *requestPile.get(), *executor.get());
+
+      resourcePoolSet().setResourcePool(
+          ResourcePoolHandle::defaultAsync(),
+          std::move(requestPile),
+          executor,
+          std::move(concurrencyController));
+    }
+
+    runtimeServerActions_.userSuppliedResourcePools = true;
+    return;
+  }
+
+  if (threadManager_) {
+    apache::thrift::RoundRobinRequestPile::Options options;
+    auto requestPile = std::make_unique<apache::thrift::RoundRobinRequestPile>(
+        std::move(options));
+    auto concurrencyController =
+        std::make_unique<apache::thrift::TMConcurrencyController>(
+            *requestPile, *threadManager_);
+    resourcePoolSet().setResourcePool(
+        ResourcePoolHandle::defaultAsync(),
+        std::move(requestPile),
+        threadManager_,
+        std::move(concurrencyController),
+        concurrency::PRIORITY::NORMAL);
     return;
   }
 
@@ -1006,9 +1129,8 @@ void ThriftServer::ensureResourcePools() {
       auto requestPile =
           std::make_unique<apache::thrift::RoundRobinRequestPile>(
               std::move(options));
-      auto concurrencyController =
-          std::make_unique<apache::thrift::ParallelConcurrencyController>(
-              *requestPile.get(), *executor.get());
+      auto concurrencyController = makeStandardConcurrencyController(
+          *requestPile.get(), *executor.get());
       if (i == concurrency::PRIORITY::NORMAL) {
         resourcePoolSet().setResourcePool(
             ResourcePoolHandle::defaultAsync(),
@@ -1104,10 +1226,8 @@ void ThriftServer::ensureResourcePools() {
       }
     }
     for (const auto& pool : pools) {
-      std::string name = fmt::format(
-          "{}.{}",
-          getCPUWorkerThreadName(),
-          kPoolNames.at(pool.thriftPriority).suffix);
+      auto name = getThreadNameForPriority(
+          getCPUWorkerThreadName(), pool.thriftPriority);
       std::shared_ptr<folly::ThreadFactory> factory =
           std::make_shared<folly::PriorityThreadFactory>(
               std::make_shared<folly::NamedThreadFactory>(name),
@@ -1132,9 +1252,8 @@ void ThriftServer::ensureResourcePools() {
       auto requestPile =
           std::make_unique<apache::thrift::RoundRobinRequestPile>(
               std::move(options));
-      auto concurrencyController =
-          std::make_unique<apache::thrift::ParallelConcurrencyController>(
-              *requestPile.get(), *executor.get());
+      auto concurrencyController = makeStandardConcurrencyController(
+          *requestPile.get(), *executor.get());
       if (pool.handle) {
         resourcePoolSet().setResourcePool(
             ResourcePoolHandle::defaultAsync(),
@@ -1652,6 +1771,7 @@ ThriftServer::checkOverload(
   }
 
   if (auto maxQps = getMaxQps(); maxQps > 0 &&
+      FLAGS_thrift_server_enforces_qps_limit &&
       (method == nullptr ||
        !getMethodsBypassMaxRequestsLimit().contains(*method)) &&
       !qpsTokenBucket_.consume(1.0, maxQps, maxQps)) {
@@ -1795,10 +1915,12 @@ folly::SemiFuture<ThriftServer::ServerSnapshot> ThriftServer::getServerSnapshot(
             size_t numConnections = 0;
             for (const auto& workerSnapshot : workerSnapshots) {
               for (uint64_t i = 0; i < ret.recentCounters.size(); ++i) {
-                ret.recentCounters[i].first +=
-                    workerSnapshot.recentCounters[i].first;
-                ret.recentCounters[i].second +=
-                    workerSnapshot.recentCounters[i].second;
+                ret.recentCounters[i].arrivalCount +=
+                    workerSnapshot.recentCounters[i].arrivalCount;
+                ret.recentCounters[i].activeCount +=
+                    workerSnapshot.recentCounters[i].activeCount;
+                ret.recentCounters[i].overloadCount +=
+                    workerSnapshot.recentCounters[i].overloadCount;
               }
               numRequests += workerSnapshot.requests.size();
               numConnections += workerSnapshot.connections.size();
@@ -1905,7 +2027,7 @@ folly::observer::CallbackHandle ThriftServer::getSSLCallbackHandle() {
   });
 }
 
-void ThriftServer::addIOThreadPoolObserver(
+void ThriftServer::addIOThreadPoolObserverFactory(
     ThriftServer::IOObserverFactory factory) {
   ioObserverFactories.wlock()->push_back(std::move(factory));
 }

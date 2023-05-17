@@ -50,6 +50,8 @@ struct FilesMatch;
 struct Hdf;
 struct IniSettingMap;
 
+constexpr const char* kPackagesToml = "PACKAGES.toml";
+
 constexpr int kDefaultInitialStaticStringTableSize = 500000;
 
 using StringToIntMap = std::unordered_map<std::string, int>;
@@ -95,7 +97,6 @@ struct RepoOptionsFlags {
   N(StringMap,      AliasedNamespaces,                {})             \
   P(bool,           UVS,                              s_PHP7_master)  \
   P(bool,           LTRAssign,                        s_PHP7_master)  \
-  H(bool,           Hacksperimental,                  false)          \
   H(bool,           DisableLvalAsAnExpression,        false)          \
   H(bool,           AllowNewAttributeSyntax,          false)          \
   H(bool,           ConstDefaultFuncArgs,             false)          \
@@ -105,7 +106,6 @@ struct RepoOptionsFlags {
   H(bool,           AllowUnstableFeatures,            false)          \
   H(bool,           EnableXHPClassModifier,           true)           \
   H(bool,           DisableXHPElementMangling,        true)           \
-  H(bool,           EnableEnumClasses,                true)           \
   H(bool,           StressShallowDeclDeps,            false)          \
   H(bool,           StressFoldedDeclDeps,             false)          \
   /* Allow omission of some `readonly` annotations based on           \
@@ -162,6 +162,7 @@ struct RepoOptionsFlags {
     #undef E
     sd(m_packageInfo);
     sd(m_sha1);
+    sd(m_factsCacheBreaker);
   }
 
   template <typename SerDe>
@@ -170,6 +171,8 @@ struct RepoOptionsFlags {
     sd(f);
     return f;
   }
+
+  const std::string& getFactsCacheBreaker() const { return m_factsCacheBreaker;}
 
 private:
   RepoOptionsFlags() = default;
@@ -188,6 +191,7 @@ private:
   PackageInfo m_packageInfo;
 
   SHA1 m_sha1;
+  std::string m_factsCacheBreaker;
 
   friend struct RepoOptions;
 };
@@ -216,7 +220,7 @@ struct RepoOptions {
 
   const RepoOptionsFlags& flags() const { return m_flags; }
   const PackageInfo& packageInfo() const { return flags().packageInfo(); }
-  const std::string& path() const { return m_path; }
+  const std::filesystem::path& path() const { return m_path; }
   const RepoOptionStats& stat() const { return m_stat; }
 
   const std::filesystem::path& dir() const { return m_repo; }
@@ -231,7 +235,7 @@ struct RepoOptions {
   static const RepoOptions& defaults();
   static void setDefaults(const Hdf& hdf, const IniSettingMap& ini);
 
-  static const RepoOptions& forFile(const char* path);
+  static const RepoOptions& forFile(const std::string& path);
 private:
   RepoOptions() = default;
   RepoOptions(const char* str, const char* file);
@@ -243,9 +247,11 @@ private:
 
   RepoOptionsFlags m_flags;
 
-  std::string m_path;
+  // Path to .hhvmconfg.hdf
+  std::filesystem::path m_path;
   RepoOptionStats m_stat;
 
+  // Canonical path of repo root directory that contains .hhvmconfig.hdf
   std::filesystem::path m_repo;
 
   static bool s_init;
@@ -479,6 +485,10 @@ struct RuntimeOption {
   // -1 for no limit.
   static int64_t RequestBodyReadLimit;
 
+  // Allow POST requests containing NonBlockingPost header to start execution
+  // without waiting for the entire POST body.
+  static bool AllowNonBlockingPosts;
+
   static bool EnableSSL;
   static int SSLPort;
   static int SSLPortFd;
@@ -547,7 +557,6 @@ struct RuntimeOption {
   static std::map<std::string, std::string> IncludeRoots;
 
   static bool AutoloadEnabled;
-  static bool AutoloadUserlandEnabled;
   static bool AutoloadEnableExternFactExtractor;
   static std::string AutoloadDBPath;
   static bool AutoloadDBCanCreate;
@@ -555,7 +564,6 @@ struct RuntimeOption {
   static std::string AutoloadDBPerms;
   static std::string AutoloadDBGroup;
   static std::string AutoloadLogging;
-  static std::vector<std::string> AutoloadExcludedRepos;
   static bool AutoloadLoggingAllowPropagation;
   static bool AutoloadRethrowExceptions;
 
@@ -776,7 +784,6 @@ struct RuntimeOption {
   F(bool, DisassemblerDocComments,     true)                            \
   F(bool, DisassemblerPropDocComments, true)                            \
   F(bool, LoadFilepathFromUnitCache,   false)                           \
-  F(bool, FatalOnParserOptionMismatch, true)                            \
   F(bool, WarnOnSkipFrameLookup,       true)                            \
   /*                                                                    \
    *  0 - Code coverage cannot be enabled through request param         \
@@ -864,7 +871,7 @@ struct RuntimeOption {
   F(bool, MoreAccurateMemStats,        true)                            \
   F(bool, MemInfoCheckCgroup2,         true)                            \
   F(bool, AllowScopeBinding,           false)                           \
-  F(bool, TranslateHackC,              false)                           \
+  F(bool, TranslateHackC,              true)                            \
   F(bool, VerifyTranslateHackC,        false)                           \
   F(bool, JitNoGdb,                    true)                            \
   F(bool, SpinOnCrash,                 false)                           \
@@ -958,8 +965,6 @@ struct RuntimeOption {
   F(bool, JitForceVMRegSync,           false)                           \
   /* Log the profile used to optimize array-like gets and sets. */      \
   F(bool, LogArrayAccessProfile,      false)                            \
-  /* Log the profile used to target iterator specialization. */         \
-  F(bool, LogArrayIterProfile,        false)                            \
   /* We use PGO to target specialization for "foreach" iterator loops.  \
    * We specialize if the chosen specialization covers this fraction    \
    * of profiled loops. If the value is > 1.0, we won't specialize. */  \
@@ -1384,6 +1389,7 @@ struct RuntimeOption {
                                             std::vector<std::string>()) \
   F(std::vector<std::string>, UnixServerAllowedGroups,                  \
                                             std::vector<std::string>()) \
+  F(bool, UnixServerRunPSPInBackground, true)                           \
   /* Options for testing */                                             \
   F(bool, TrashFillOnRequestExit, false)                                \
   /******************                                                   \
@@ -1477,6 +1483,10 @@ struct RuntimeOption {
   F(bool, RecordReplay, false)                                          \
   F(uint64_t, RecordSampleRate, 0)                                      \
   F(string, RecordDir, std::string(""))                                 \
+  F(bool, Replay, false)                                                \
+  F(bool, DumpStacktraceToErrorLogOnCrash, true)                        \
+  F(bool, IncludeReopOptionsInFactsCacheBreaker, false)                 \
+  F(bool, ModuleLevelTraits, false)                                     \
   /* */
 
 private:
@@ -1558,7 +1568,7 @@ public:
   static std::string MailForceExtraParameters;
 
   // preg stack depth and debug support options
-  static int64_t PregBacktraceLimit;
+  static int64_t PregBacktrackLimit;
   static int64_t PregRecursionLimit;
   static bool EnablePregErrorLog;
 

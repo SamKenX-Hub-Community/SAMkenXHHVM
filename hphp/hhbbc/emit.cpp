@@ -974,6 +974,8 @@ void emit_finish_func(EmitUnitState& state, FuncEmitter& fe,
   fe.originalFilename =
     func.originalFilename ? func.originalFilename :
     func.originalUnit ? func.originalUnit : nullptr;
+  fe.originalModuleName = func.originalModuleName;
+  fe.requiresFromOriginalModule = func.requiresFromOriginalModule;
   fe.isClosureBody = func.isClosureBody;
   fe.isAsync = func.isAsync;
   fe.isGenerator = func.isGenerator;
@@ -1216,6 +1218,7 @@ void emit_typealias(UnitEmitter& ue, const php::TypeAlias& alias) {
       alias.value,
       alias.type,
       alias.nullable,
+      alias.caseType,
       alias.typeStructure,
       alias.resolvedTypeStructure
   );
@@ -1263,7 +1266,8 @@ std::unique_ptr<UnitEmitter> emit_unit(Index& index, php::Unit& unit) {
 
   auto ue = std::make_unique<UnitEmitter>(SHA1 { unitSn },
                                           SHA1{},
-                                          Native::s_noNativeFuncs);
+                                          Native::s_noNativeFuncs,
+                                          unit.packageInfo);
   FTRACE(1, "  unit {}\n", unit.filename->data());
   ue->m_sn = unitSn;
   ue->m_filepath = unit.filename;

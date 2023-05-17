@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<adf4a5e7b5797301e0d0f5e65ac3a151>>
+// @generated SignedSource<<a0eba69ca0a41135203f35b09eeaf4f5>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -967,8 +967,8 @@ impl<Ex, En> Expr_<Ex, En> {
     pub fn mk_unop(p0: ast_defs::Uop, p1: Expr<Ex, En>) -> Self {
         Expr_::Unop(Box::new((p0, p1)))
     }
-    pub fn mk_binop(p0: ast_defs::Bop, p1: Expr<Ex, En>, p2: Expr<Ex, En>) -> Self {
-        Expr_::Binop(Box::new((p0, p1, p2)))
+    pub fn mk_binop(p0: Binop<Ex, En>) -> Self {
+        Expr_::Binop(Box::new(p0))
     }
     pub fn mk_pipe(p0: Lid, p1: Expr<Ex, En>, p2: Expr<Ex, En>) -> Self {
         Expr_::Pipe(Box::new((p0, p1, p2)))
@@ -997,7 +997,7 @@ impl<Ex, En> Expr_<Ex, En> {
     pub fn mk_efun(p0: Efun<Ex, En>) -> Self {
         Expr_::Efun(Box::new(p0))
     }
-    pub fn mk_lfun(p0: Fun_<Ex, En>, p1: Vec<Lid>) -> Self {
+    pub fn mk_lfun(p0: Fun_<Ex, En>, p1: Vec<CaptureLid<Ex>>) -> Self {
         Expr_::Lfun(Box::new((p0, p1)))
     }
     pub fn mk_xml(p0: ClassName, p1: Vec<XhpAttribute<Ex, En>>, p2: Vec<Expr<Ex, En>>) -> Self {
@@ -1033,6 +1033,9 @@ impl<Ex, En> Expr_<Ex, En> {
     }
     pub fn mk_hole(p0: Expr<Ex, En>, p1: Ex, p2: Ex, p3: HoleSource) -> Self {
         Expr_::Hole(Box::new((p0, p1, p2, p3)))
+    }
+    pub fn mk_package(p0: Sid) -> Self {
+        Expr_::Package(Box::new(p0))
     }
     pub fn is_darray(&self) -> bool {
         match self {
@@ -1346,6 +1349,12 @@ impl<Ex, En> Expr_<Ex, En> {
             _ => false,
         }
     }
+    pub fn is_package(&self) -> bool {
+        match self {
+            Expr_::Package(..) => true,
+            _ => false,
+        }
+    }
     pub fn as_darray(
         &self,
     ) -> Option<(
@@ -1536,9 +1545,9 @@ impl<Ex, En> Expr_<Ex, En> {
             _ => None,
         }
     }
-    pub fn as_binop(&self) -> Option<(&ast_defs::Bop, &Expr<Ex, En>, &Expr<Ex, En>)> {
+    pub fn as_binop(&self) -> Option<&Binop<Ex, En>> {
         match self {
-            Expr_::Binop(p0) => Some((&p0.0, &p0.1, &p0.2)),
+            Expr_::Binop(p0) => Some(&p0),
             _ => None,
         }
     }
@@ -1592,7 +1601,7 @@ impl<Ex, En> Expr_<Ex, En> {
             _ => None,
         }
     }
-    pub fn as_lfun(&self) -> Option<(&Fun_<Ex, En>, &Vec<Lid>)> {
+    pub fn as_lfun(&self) -> Option<(&Fun_<Ex, En>, &Vec<CaptureLid<Ex>>)> {
         match self {
             Expr_::Lfun(p0) => Some((&p0.0, &p0.1)),
             _ => None,
@@ -1661,6 +1670,12 @@ impl<Ex, En> Expr_<Ex, En> {
     pub fn as_hole(&self) -> Option<(&Expr<Ex, En>, &Ex, &Ex, &HoleSource)> {
         match self {
             Expr_::Hole(p0) => Some((&p0.0, &p0.1, &p0.2, &p0.3)),
+            _ => None,
+        }
+    }
+    pub fn as_package(&self) -> Option<&Sid> {
+        match self {
+            Expr_::Package(p0) => Some(&p0),
             _ => None,
         }
     }
@@ -1871,11 +1886,9 @@ impl<Ex, En> Expr_<Ex, En> {
             _ => None,
         }
     }
-    pub fn as_binop_mut(
-        &mut self,
-    ) -> Option<(&mut ast_defs::Bop, &mut Expr<Ex, En>, &mut Expr<Ex, En>)> {
+    pub fn as_binop_mut(&mut self) -> Option<&mut Binop<Ex, En>> {
         match self {
-            Expr_::Binop(p0) => Some((&mut p0.0, &mut p0.1, &mut p0.2)),
+            Expr_::Binop(p0) => Some(p0.as_mut()),
             _ => None,
         }
     }
@@ -1935,7 +1948,7 @@ impl<Ex, En> Expr_<Ex, En> {
             _ => None,
         }
     }
-    pub fn as_lfun_mut(&mut self) -> Option<(&mut Fun_<Ex, En>, &mut Vec<Lid>)> {
+    pub fn as_lfun_mut(&mut self) -> Option<(&mut Fun_<Ex, En>, &mut Vec<CaptureLid<Ex>>)> {
         match self {
             Expr_::Lfun(p0) => Some((&mut p0.0, &mut p0.1)),
             _ => None,
@@ -2018,6 +2031,12 @@ impl<Ex, En> Expr_<Ex, En> {
     ) -> Option<(&mut Expr<Ex, En>, &mut Ex, &mut Ex, &mut HoleSource)> {
         match self {
             Expr_::Hole(p0) => Some((&mut p0.0, &mut p0.1, &mut p0.2, &mut p0.3)),
+            _ => None,
+        }
+    }
+    pub fn as_package_mut(&mut self) -> Option<&mut Sid> {
+        match self {
+            Expr_::Package(p0) => Some(p0.as_mut()),
             _ => None,
         }
     }
@@ -2213,9 +2232,9 @@ impl<Ex, En> Expr_<Ex, En> {
             _ => None,
         }
     }
-    pub fn as_binop_into(self) -> Option<(ast_defs::Bop, Expr<Ex, En>, Expr<Ex, En>)> {
+    pub fn as_binop_into(self) -> Option<Binop<Ex, En>> {
         match self {
-            Expr_::Binop(p0) => Some(((*p0).0, (*p0).1, (*p0).2)),
+            Expr_::Binop(p0) => Some(*p0),
             _ => None,
         }
     }
@@ -2269,7 +2288,7 @@ impl<Ex, En> Expr_<Ex, En> {
             _ => None,
         }
     }
-    pub fn as_lfun_into(self) -> Option<(Fun_<Ex, En>, Vec<Lid>)> {
+    pub fn as_lfun_into(self) -> Option<(Fun_<Ex, En>, Vec<CaptureLid<Ex>>)> {
         match self {
             Expr_::Lfun(p0) => Some(((*p0).0, (*p0).1)),
             _ => None,
@@ -2336,6 +2355,12 @@ impl<Ex, En> Expr_<Ex, En> {
     pub fn as_hole_into(self) -> Option<(Expr<Ex, En>, Ex, Ex, HoleSource)> {
         match self {
             Expr_::Hole(p0) => Some(((*p0).0, (*p0).1, (*p0).2, (*p0).3)),
+            _ => None,
+        }
+    }
+    pub fn as_package_into(self) -> Option<Sid> {
+        match self {
+            Expr_::Package(p0) => Some(*p0),
             _ => None,
         }
     }

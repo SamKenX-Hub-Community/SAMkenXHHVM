@@ -83,9 +83,9 @@ let pos_of_error path source_text error =
 
 let process_scour_comments (env : env) (sc : Scoured_comments.t) =
   List.iter sc.sc_error_pos ~f:(fun pos ->
-      Errors.add_parsing_error @@ Parsing_error.Fixme_format pos);
+      Errors.add_error Parsing_error.(to_user_error @@ Fixme_format pos));
   List.iter sc.sc_bad_ignore_pos ~f:(fun pos ->
-      Errors.add_parsing_error @@ Parsing_error.Hh_ignore_comment pos);
+      Errors.add_error Parsing_error.(to_user_error @@ Hh_ignore_comment pos));
   if (not env.disable_global_state_mutation) && env.keep_errors then (
     Fixme_provider.provide_disallowed_fixmes env.file sc.sc_misuses;
     if env.quick_mode then
@@ -99,8 +99,9 @@ let process_lowerer_parsing_errors
   if should_surface_errors env then
     List.iter
       ~f:(fun (pos, msg) ->
-        Errors.add_parsing_error
-        @@ Parsing_error.Parsing_error { pos; msg; quickfixes = [] })
+        Errors.add_error
+          Parsing_error.(
+            to_user_error @@ Parsing_error { pos; msg; quickfixes = [] }))
       lowerer_parsing_errors
 
 let process_non_syntax_errors (_ : env) (errors : Errors.error list) =
@@ -142,9 +143,11 @@ let process_syntax_errors
           in
           Quickfix.make_with_edits ~title ~edits)
     in
-    Errors.add_parsing_error
-    @@ Parsing_error.Parsing_error
-         { pos = relative_pos e; msg = SyntaxError.message e; quickfixes }
+    Errors.add_error
+      Parsing_error.(
+        to_user_error
+        @@ Parsing_error
+             { pos = relative_pos e; msg = SyntaxError.message e; quickfixes })
   in
   List.iter ~f:report_error errors
 
@@ -159,6 +162,7 @@ let make_rust_env (env : env) : Rust_aast_parser_types.env =
       quick_mode = env.quick_mode;
       show_all_errors = env.show_all_errors;
       is_systemlib = env.is_systemlib;
+      for_debugger_eval = false;
       parser_options = env.parser_options;
       scour_comments = true;
     }

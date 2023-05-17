@@ -21,7 +21,7 @@
 #include <vector>
 
 #include <thrift/compiler/ast/diagnostic_context.h>
-#include <thrift/compiler/parse/parsing_driver.h>
+#include <thrift/compiler/parse/parse_ast.h> // parsing_params
 
 namespace apache {
 namespace thrift {
@@ -72,6 +72,8 @@ std::unique_ptr<t_program_bundle> parse_and_mutate_program(
 /**
  * Runs the Thrift parser with the specified (command-line) arguments and
  * returns the program bundle.
+ * This does not run mutators and allows missing includes, as it is intended for
+ * use by tooling like codemods and thrift2ast.
  */
 std::unique_ptr<t_program_bundle> parse_and_get_program(
     source_manager& sm, const std::vector<std::string>& arguments);

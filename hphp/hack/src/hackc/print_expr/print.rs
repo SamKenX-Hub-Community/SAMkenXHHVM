@@ -388,12 +388,12 @@ fn print_expr(
         }
         Expr_::Shape(fl) => print_expr_darray(ctx, w, env, print_shape_field_name, fl),
         Expr_::Binop(x) => {
-            let (bop, e1, e2) = &**x;
-            print_expr(ctx, w, env, e1)?;
+            let ast::Binop { bop, lhs, rhs } = &**x;
+            print_expr(ctx, w, env, lhs)?;
             w.write_all(b" ")?;
             print_bop(w, bop)?;
             w.write_all(b" ")?;
-            print_expr(ctx, w, env, e2)
+            print_expr(ctx, w, env, rhs)
         }
         Expr_::Call(c) => {
             let (e, _, es, unpacked_element) = &**c;
@@ -692,7 +692,8 @@ fn print_expr(
             Some(expr) => print_expr(ctx, w, env, expr),
             _ => Ok(()),
         },
-        Expr_::Dollardollar(_)
+        Expr_::Package(_)
+        | Expr_::Dollardollar(_)
         | Expr_::ExpressionTree(_)
         | Expr_::Hole(_)
         | Expr_::KeyValCollection(_)
@@ -782,9 +783,14 @@ fn print_efun(
     if !use_list.is_empty() {
         w.write_all(b"use ")?;
         write::paren(w, |w| {
-            write::concat_by(w, ", ", use_list, |w: &mut dyn Write, ast::Lid(_, id)| {
-                w.write_all(local_id::get_name(id).as_bytes())
-            })
+            write::concat_by(
+                w,
+                ", ",
+                use_list,
+                |w: &mut dyn Write, ast::CaptureLid(_, ast::Lid(_, id))| {
+                    w.write_all(local_id::get_name(id).as_bytes())
+                },
+            )
         })?;
         w.write_all(b" ")?;
     }

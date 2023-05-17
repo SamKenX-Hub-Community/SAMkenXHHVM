@@ -25,6 +25,7 @@ flags_pessimise_unsupported = [
     "--like-types-all",
     "--enable-higher-kinded-types",
     "--enable-class-level-where-clauses",
+    "--enable-global-access-check",
 ]
 max_workers = 48
 verbose = False
@@ -51,6 +52,7 @@ class VerifyPessimisationOptions(Enum):
     all = "all"
     added = "added"
     removed = "removed"
+    full = "full"
 
     def __str__(self) -> str:
         return self.value
@@ -155,6 +157,7 @@ def check_output(
         out_path = (
             case.file_path + out_extension
             if verify_pessimisation == VerifyPessimisationOptions.no
+            or verify_pessimisation == VerifyPessimisationOptions.full
             or out_extension == ".pess.out"
             else case.file_path + ".pess" + out_extension
         )
@@ -400,6 +403,7 @@ def compare_expected(
     if (
         verify_pessimisation == VerifyPessimisationOptions.no
         or verify_pessimisation == VerifyPessimisationOptions.all
+        or verify_pessimisation == VerifyPessimisationOptions.full
     ):
         if expected == "No errors" or out == "No errors":
             return expected == out
@@ -464,6 +468,7 @@ def check_expected_equal_actual(
             (
                 ignore_error_messages
                 or verify_pessimisation != VerifyPessimisationOptions.no
+                and verify_pessimisation != VerifyPessimisationOptions.full
             )
             and compare_expected(expected, normalized_out, verify_pessimisation)
         )

@@ -80,7 +80,7 @@ let type_does_not_require_init env ty_opt =
     let ((env, ty_err_opt), ty) =
       Typing_phase.localize_no_subst env ~ignore_errors:true ty
     in
-    Option.iter ~f:Errors.add_typing_error ty_err_opt;
+    Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
     let null = Typing_make_type.null Typing_reason.Rnone in
     Typing_subtype.is_sub_type env null ty
     ||
@@ -191,8 +191,10 @@ module Env = struct
       if not @@ SMap.is_empty uninit then
         let prop_names = SMap.bindings uninit |> List.map ~f:fst
         and (pos, class_name) = c.c_name in
-        Errors.add_nast_check_error
-        @@ Nast_check_error.Constructor_required { pos; class_name; prop_names });
+        Errors.add_error
+          Nast_check_error.(
+            to_user_error
+            @@ Constructor_required { pos; class_name; prop_names }));
 
     let ( add_init_not_required_props,
           add_trait_props,
@@ -274,17 +276,14 @@ let class_prop_pos class_name prop_name ctx : Pos_or_decl.t =
              *should* find the prop in the class. This is an invariant violation.
           *)
           HackEventLogger.invariant_violation_bug
-            ~desc:
-              ("nastInitCheck can't find expected class prop. class_name = "
-              ^ class_name
-              ^ "; member_origin = "
-              ^ member_origin
-              ^ "; prop_name = "
-              ^ prop_name)
-            ~path:Relative_path.default
-            ~pos:""
-            (Telemetry.create ());
-          Errors.add_typing_error
+            "nastInitCheck can't find expected class prop"
+            ~data:
+              (Printf.sprintf
+                 "class_name=%s; member_origin=%s; prop_name=%s"
+                 class_name
+                 member_origin
+                 prop_name);
+          Typing_error_utils.add_typing_error
             Typing_error.(
               primary
               @@ Primary.Internal_error
@@ -447,8 +446,9 @@ and check_all_init pos env acc =
     begin
       fun prop_name _ ->
         if not (S.mem prop_name acc) then
-          Errors.add_nast_check_error
-          @@ Nast_check_error.Call_before_init { pos; prop_name }
+          Errors.add_error
+            Nast_check_error.(
+              to_user_error @@ Call_before_init { pos; prop_name })
     end
     env.props
 
@@ -481,7 +481,7 @@ and expr_ env acc p e =
   | Obj_get ((_, _, This), (_, _, Id ((_, vx) as v)), _, Is_prop) ->
     if SMap.mem vx env.props && not (S.mem vx acc) then (
       let (pos, member_name) = v in
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(primary @@ Primary.Read_before_write { pos; member_name });
       acc
     ) else if
@@ -494,7 +494,7 @@ and expr_ env acc p e =
          constructor, but we haven't called the parent constructor
          yet. *)
       let (pos, member_name) = v in
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(primary @@ Primary.Read_before_write { pos; member_name });
       acc
     ) else
@@ -571,13 +571,13 @@ and expr_ env acc p e =
   | Cast (_, e)
   | Unop (_, e) ->
     expr acc e
-  | Binop (Ast_defs.Eq None, e1, e2) ->
+  | Binop Aast.{ bop = Ast_defs.Eq None; lhs = e1; rhs = e2 } ->
     let acc = expr acc e2 in
     assign_expr env acc e1
-  | Binop (Ast_defs.Ampamp, e, _)
-  | Binop (Ast_defs.Barbar, e, _) ->
+  | Binop Aast.{ bop = Ast_defs.Ampamp; lhs = e; _ }
+  | Binop Aast.{ bop = Ast_defs.Barbar; lhs = e; _ } ->
     expr acc e
-  | Binop (_, e1, e2) ->
+  | Binop Aast.{ lhs = e1; rhs = e2; _ } ->
     let acc = expr acc e1 in
     expr acc e2
   | Pipe (_, e1, e2) ->
@@ -620,6 +620,7 @@ and expr_ env acc p e =
   | Hole (e, _, _, _) -> expr acc e
   (* Don't analyze invalid expressions *)
   | Invalid _ -> acc
+  | Package _ -> acc
 
 and case env acc ((_, b) : (_, _) Aast.case) = block env acc b
 
@@ -654,7 +655,7 @@ let class_ tenv c =
     List.iter c.c_vars ~f:(fun cv ->
         match cv.cv_expr with
         | Some _ when is_lateinit cv ->
-          Errors.add_typing_error
+          Typing_error_utils.add_typing_error
             Typing_error.(
               primary @@ Primary.Lateinit_with_default (fst cv.cv_id))
         | None when cv.cv_is_static ->
@@ -670,7 +671,7 @@ let class_ tenv c =
           then
             ()
           else
-            Errors.add_typing_error
+            Typing_error_utils.add_typing_error
               Typing_error.(
                 wellformedness
                 @@ Primary.Wellformedness.Missing_assign (fst cv.cv_id))
@@ -699,7 +700,8 @@ let class_ tenv c =
       in
       if not (SMap.is_empty uninit_props) then
         if SMap.mem DICheck.parent_init_prop uninit_props then
-          Errors.add_nast_check_error @@ Nast_check_error.No_construct_parent p
+          Errors.add_error
+            Nast_check_error.(to_user_error @@ No_construct_parent p)
         else
           let class_uninit_props =
             SMap.filter
@@ -707,22 +709,24 @@ let class_ tenv c =
               uninit_props
           in
           if (not (SMap.is_empty class_uninit_props)) && not is_hhi then
-            Errors.add_nast_check_error
-            @@ Nast_check_error.Not_initialized
-                 {
-                   pos = p;
-                   class_name = snd c.c_name;
-                   props =
-                     SMap.bindings class_uninit_props
-                     |> List.map ~f:(fun (name, _) ->
-                            let pos =
-                              class_prop_pos
-                                (snd c.c_name)
-                                name
-                                (Typing_env.get_ctx tenv)
-                            in
-                            (pos, name));
-                 }
+            Errors.add_error
+              Nast_check_error.(
+                to_user_error
+                @@ Not_initialized
+                     {
+                       pos = p;
+                       class_name = snd c.c_name;
+                       props =
+                         SMap.bindings class_uninit_props
+                         |> List.map ~f:(fun (name, _) ->
+                                let pos =
+                                  class_prop_pos
+                                    (snd c.c_name)
+                                    name
+                                    (Typing_env.get_ctx tenv)
+                                in
+                                (pos, name));
+                     })
     in
     let check_throws_or_init_all inits =
       match inits with

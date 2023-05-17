@@ -19,6 +19,7 @@
 #include <proxygen/lib/http/session/test/HTTPSessionMocks.h>
 #include <proxygen/lib/http/session/test/HTTPTransactionMocks.h>
 #include <proxygen/lib/http/session/test/MockQuicSocketDriver.h>
+#include <proxygen/lib/http/session/test/MockSessionObserver.h>
 #include <proxygen/lib/http/session/test/TestUtils.h>
 #include <quic/api/test/MockQuicSocket.h>
 #include <quic/dsr/Types.h>
@@ -30,7 +31,6 @@
 using namespace proxygen;
 using namespace proxygen::hq;
 using namespace quic;
-using namespace folly;
 using namespace testing;
 using namespace std::chrono;
 
@@ -276,6 +276,15 @@ void HQDownstreamSessionTest::expectTransactionTimeout(
   handler.expectDetachTransaction();
 }
 
+std::unique_ptr<MockSessionObserver>
+HQDownstreamSessionTest::addMockSessionObserver(
+    MockSessionObserver::EventSet eventSet) {
+  auto observer = std::make_unique<NiceMock<MockSessionObserver>>(eventSet);
+  EXPECT_CALL(*observer, attached(_));
+  hqSession_->addObserver(observer.get());
+  return observer;
+}
+
 TEST_P(HQDownstreamSessionTest, GetMaxPushIdOK) {
   folly::Optional<hq::PushId> expectedId = hqSession_->getMaxAllowedPushId();
   EXPECT_EQ(expectedId, folly::none);
@@ -296,12 +305,14 @@ TEST_P(HQDownstreamSessionTest, PriorityUpdateIntoTransport) {
   auto request = getProgressiveGetRequest();
   sendRequest(request);
   auto handler = addSimpleStrictHandler();
-  EXPECT_CALL(*socketDriver_->getSocket(), setStreamPriority(_, 1, true));
+  EXPECT_CALL(*socketDriver_->getSocket(),
+              setStreamPriority(_, Priority(1, true)));
   handler->expectHeaders();
   handler->expectEOM([&]() {
     auto resp = makeResponse(200, 0);
     std::get<0>(resp)->getHeaders().add(HTTP_HEADER_PRIORITY, "u=2");
-    EXPECT_CALL(*socketDriver_->getSocket(), setStreamPriority(_, 2, false))
+    EXPECT_CALL(*socketDriver_->getSocket(),
+                setStreamPriority(_, Priority(2, false)))
         .Times(1);
     handler->sendRequest(*std::get<0>(resp));
   });
@@ -314,7 +325,8 @@ TEST_P(HQDownstreamSessionTest, ReplyResponsePriority) {
   auto request = getProgressiveGetRequest();
   sendRequest(request);
   auto handler = addSimpleStrictHandler();
-  EXPECT_CALL(*socketDriver_->getSocket(), setStreamPriority(_, 1, true))
+  EXPECT_CALL(*socketDriver_->getSocket(),
+              setStreamPriority(_, Priority(1, true)))
       .Times(1);
   handler->expectHeaders();
   handler->expectEOM([&]() {
@@ -336,14 +348,16 @@ TEST_P(HQDownstreamSessionTest, SetLocalPriorityOnHeadersComplete) {
   sendRequest(request);
   auto handler = addSimpleStrictHandler();
   // Check that the priority is set from the request headers
-  EXPECT_CALL(*socketDriver_->getSocket(), setStreamPriority(_, 1, true))
+  EXPECT_CALL(*socketDriver_->getSocket(),
+              setStreamPriority(_, Priority(1, true)))
       .Times(1);
   // Check that the priority is set from the local update
   EXPECT_CALL(*socketDriver_->getSocket(),
-              setStreamPriority(_, urgency, incremental))
+              setStreamPriority(_, Priority(urgency, incremental)))
       .Times(1);
-  handler->expectHeaders(
-      [&]() { handler->txn_->updateAndSendPriority(urgency, incremental); });
+  handler->expectHeaders([&]() {
+    handler->txn_->updateAndSendPriority(HTTPPriority(urgency, incremental));
+  });
   handler->expectEOM([&]() {
     auto resp = makeResponse(200, 0);
     EXPECT_CALL(*socketDriver_->getSocket(), getStreamPriority(_))
@@ -363,15 +377,16 @@ TEST_P(HQDownstreamSessionTest, SetLocalPriorityAfterClientEOM) {
   sendRequest(request);
   auto handler = addSimpleStrictHandler();
   // Check that the priority is set from the request headers
-  EXPECT_CALL(*socketDriver_->getSocket(), setStreamPriority(_, 1, true))
+  EXPECT_CALL(*socketDriver_->getSocket(),
+              setStreamPriority(_, Priority(1, true)))
       .Times(1);
   // Check that the priority is set from the local update
   EXPECT_CALL(*socketDriver_->getSocket(),
-              setStreamPriority(_, urgency, incremental))
+              setStreamPriority(_, Priority(urgency, incremental)))
       .Times(1);
   handler->expectHeaders();
   handler->expectEOM([&]() {
-    handler->txn_->updateAndSendPriority(urgency, incremental);
+    handler->txn_->updateAndSendPriority(HTTPPriority(urgency, incremental));
     auto resp = makeResponse(200, 0);
     EXPECT_CALL(*socketDriver_->getSocket(), getStreamPriority(_))
         .Times(1)
@@ -402,7 +417,7 @@ TEST_P(HQDownstreamSessionTestPush, PushPriority) {
   HTTPCodec::StreamID pushStreamId = 0;
   handler->expectEOM([&] {
     EXPECT_CALL(*socketDriver_->getSocket(),
-                setStreamPriority(handler->txn_->getID(), _, _))
+                setStreamPriority(handler->txn_->getID(), _))
         .Times(0);
     handler->txn_->sendHeaders(parentResp);
     handler->txn_->sendBody(makeBuf(100));
@@ -414,15 +429,15 @@ TEST_P(HQDownstreamSessionTestPush, PushPriority) {
     // PushPromise doesn't update parent streram's priority. It does update push
     // stream priority
     EXPECT_CALL(*socketDriver_->getSocket(),
-                setStreamPriority(handler->txn_->getID(), _, _))
+                setStreamPriority(handler->txn_->getID(), _))
         .Times(0);
     EXPECT_CALL(*socketDriver_->getSocket(),
-                setStreamPriority(pushTxn->getID(), 0, false))
+                setStreamPriority(pushTxn->getID(), Priority(0, false)))
         .Times(1);
     pushTxn->sendHeaders(promiseReq);
     pushStreamId = pushTxn->getID();
     EXPECT_CALL(*socketDriver_->getSocket(),
-                setStreamPriority(pushStreamId, 1, false))
+                setStreamPriority(pushStreamId, Priority(1, false)))
         .Times(1);
     pushTxn->sendHeaders(pushResp);
     pushTxn->sendBody(makeBuf(200));
@@ -443,14 +458,16 @@ TEST_P(HQDownstreamSessionTest, OnPriorityCallback) {
   // Simulate priority arriving too early, connection still valid
   // this is going to be stored and applied when receiving headers
   hqSession_->onPriority(0, HTTPPriority(3, false));
-  EXPECT_CALL(*socketDriver_->getSocket(), setStreamPriority(0, 3, false));
+  EXPECT_CALL(*socketDriver_->getSocket(),
+              setStreamPriority(0, Priority(3, false)));
   auto id = sendRequest(getProgressiveGetRequest());
   CHECK_EQ(id, 0);
   auto handler = addSimpleStrictHandler();
   handler->expectHeaders([&]() {
     handler->sendHeaders(200, 1000);
     // Priority update on the stream
-    EXPECT_CALL(*socketDriver_->getSocket(), setStreamPriority(0, 2, true));
+    EXPECT_CALL(*socketDriver_->getSocket(),
+                setStreamPriority(0, Priority(2, true)));
     hqSession_->onPriority(id, HTTPPriority(2, true));
     handler->sendBody(1000);
     handler->sendEOM();
@@ -1533,6 +1550,67 @@ TEST_P(HQDownstreamSessionTest, ByteEvents) {
   hqSession_->closeWhenIdle();
 }
 
+TEST_P(HQDownstreamSessionTest, Observer_Attach_Detach_Destroyed) {
+  MockSessionObserver::EventSet eventSet;
+
+  // Test attached/detached callbacks when adding/removing observers
+  {
+    auto observer = addMockSessionObserver(eventSet);
+    EXPECT_CALL(*observer, detached(_));
+    hqSession_->removeObserver(observer.get());
+  }
+
+  {
+    auto observer = addMockSessionObserver(eventSet);
+    EXPECT_CALL(*observer, destroyed(_, _));
+    hqSession_->dropConnection();
+  }
+}
+
+TEST_P(HQDownstreamSessionTest, Observer_RequestStarted) {
+
+  // Add an observer NOT subscribed to the RequestStarted event
+  auto observerUnsubscribed =
+      addMockSessionObserver(MockSessionObserver::EventSetBuilder().build());
+  hqSession_->addObserver(observerUnsubscribed.get());
+
+  // Add an observer subscribed to this event
+  auto observerSubscribed = addMockSessionObserver(
+      MockSessionObserver::EventSetBuilder()
+          .enable(HTTPSessionObserverInterface::Events::requestStarted)
+          .build());
+  hqSession_->addObserver(observerSubscribed.get());
+
+  EXPECT_CALL(*observerUnsubscribed, requestStarted(_, _)).Times(0);
+
+  // Add a request started event to the observer
+  EXPECT_CALL(*observerSubscribed, requestStarted(_, _))
+      .WillOnce(Invoke(
+          [](HTTPSessionObserverAccessor*,
+             const proxygen::HTTPSessionObserverInterface::RequestStartedEvent&
+                 event) {
+            auto hdrs = event.requestHeaders;
+            EXPECT_EQ(hdrs.getSingleOrEmpty("x-meta-test-header"), "abc123");
+          }));
+  auto handler = addSimpleStrictHandler();
+  handler->expectHeaders();
+  handler->expectEOM([&handler]() {
+    handler->sendReplyWithBody(200 /* status code */,
+                               100 /* content size */,
+                               true /* keepalive */,
+                               true /* sendEOM */,
+                               false /*trailers*/);
+  });
+  handler->expectDetachTransaction();
+  HTTPSession::DestructorGuard g(hqSession_);
+  HTTPMessage req = getGetRequest();
+  req.getHeaders().add("x-meta-test-header", "abc123");
+  sendRequest(req);
+
+  flushRequestsAndLoop(true, milliseconds(0));
+  hqSession_->closeWhenIdle();
+}
+
 TEST_P(HQDownstreamSessionTest, AppRateLimited) {
   sendRequest();
   auto handler = addSimpleStrictHandler();
@@ -1723,7 +1801,7 @@ TEST_P(HQDownstreamSessionTest, GetAddressesAfterDropConnection) {
 
 TEST_P(HQDownstreamSessionTest, RstCancelled) {
   auto id = nextStreamId();
-  auto buf = IOBuf::create(3);
+  auto buf = folly::IOBuf::create(3);
   memcpy(buf->writableData(), "GET", 3);
   buf->append(3);
   socketDriver_->addReadEvent(id, std::move(buf), milliseconds(0));
@@ -1800,12 +1878,12 @@ TEST_P(HQDownstreamSessionTest, Connect) {
   auto id = sendRequest(req, /* eom */ false);
   auto& request = getStream(id);
 
-  auto buf1 = IOBuf::copyBuffer("12345");
+  auto buf1 = folly::IOBuf::copyBuffer("12345");
   request.codec->generateBody(
       request.buf, request.id, std::move(buf1), HTTPCodec::NoPadding, true);
   flushRequestsAndLoopN(1);
 
-  auto buf2 = IOBuf::copyBuffer("abcdefg");
+  auto buf2 = folly::IOBuf::copyBuffer("abcdefg");
   request.codec->generateBody(
       request.buf, request.id, std::move(buf2), HTTPCodec::NoPadding, true);
   flushRequestsAndLoopN(1);
@@ -1834,12 +1912,12 @@ TEST_P(HQDownstreamSessionTest, ConnectUDP) {
   auto id = sendRequest(req, /* eom */ false);
   auto& request = getStream(id);
 
-  auto buf1 = IOBuf::copyBuffer("12345");
+  auto buf1 = folly::IOBuf::copyBuffer("12345");
   request.codec->generateBody(
       request.buf, request.id, std::move(buf1), HTTPCodec::NoPadding, true);
   flushRequestsAndLoopN(1);
 
-  auto buf2 = IOBuf::copyBuffer("abcdefg");
+  auto buf2 = folly::IOBuf::copyBuffer("abcdefg");
   request.codec->generateBody(
       request.buf, request.id, std::move(buf2), HTTPCodec::NoPadding, true);
   flushRequestsAndLoopN(1);
@@ -2309,7 +2387,7 @@ TEST_P(HQDownstreamSessionFilterTestHQ, ControlStreamFilters) {
 }
 
 TEST_P(HQDownstreamSessionTest, onErrorEmptyEnqueued) {
-  IOBufQueue rst{IOBufQueue::cacheChainLength()};
+  folly::IOBufQueue rst{folly::IOBufQueue::cacheChainLength()};
   auto id1 = sendRequest();
 
   InSequence handlerSequence;
@@ -2336,7 +2414,7 @@ TEST_P(HQDownstreamSessionTest, onErrorEmptyEnqueued) {
 }
 
 TEST_P(HQDownstreamSessionTest, dropWhilePaused) {
-  IOBufQueue rst{IOBufQueue::cacheChainLength()};
+  folly::IOBufQueue rst{folly::IOBufQueue::cacheChainLength()};
   sendRequest();
 
   InSequence handlerSequence;
@@ -2838,10 +2916,10 @@ TEST_P(HQDownstreamSessionTestPush, PushPriorityCallback) {
   // Push stream's priority can be updated either with stream id or push id:
   auto pushId = pushes_.find(pushStreamId)->second;
   EXPECT_CALL(*socketDriver_->getSocket(),
-              setStreamPriority(pushStreamId, 6, true));
+              setStreamPriority(pushStreamId, Priority(6, true)));
   hqSession_->onPushPriority(pushId, HTTPPriority(6, true));
   EXPECT_CALL(*socketDriver_->getSocket(),
-              setStreamPriority(pushStreamId, 5, true));
+              setStreamPriority(pushStreamId, Priority(5, true)));
   hqSession_->onPriority(pushStreamId, HTTPPriority(5, true));
 
   handler->txn_->sendEOM();

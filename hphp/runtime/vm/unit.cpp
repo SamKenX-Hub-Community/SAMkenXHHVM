@@ -44,6 +44,7 @@
 #include "hphp/util/struct-log.h"
 
 #include "hphp/runtime/base/attr.h"
+#include "hphp/runtime/base/array-init.h"
 #include "hphp/runtime/base/array-iterator.h"
 #include "hphp/runtime/base/autoload-handler.h"
 #include "hphp/runtime/base/execution-context.h"
@@ -429,7 +430,7 @@ void Unit::logTearing(int64_t nsecs) {
   assertx(RO::EvalSampleRequestTearing);
 
   auto const repoOptions = g_context->getRepoOptionsForRequest();
-  auto repoRoot = std::filesystem::path(repoOptions->path()).parent_path();
+  auto repoRoot = repoOptions->dir();
 
   assertx(!isSystemLib());
   StructuredLogEntry ent;

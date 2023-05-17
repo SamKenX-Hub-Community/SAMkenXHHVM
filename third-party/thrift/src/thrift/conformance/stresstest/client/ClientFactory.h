@@ -20,27 +20,14 @@
 #include <fizz/protocol/CertificateVerifier.h>
 #include <folly/io/async/EventBase.h>
 #include <folly/io/async/SSLContext.h>
+#include <thrift/conformance/stresstest/client/ClientConfig.h>
+#include <thrift/conformance/stresstest/client/StressTestClient.h>
 #include <thrift/conformance/stresstest/if/gen-cpp2/StressTest.h>
 #include <thrift/lib/cpp2/PluggableFunction.h>
 
 namespace apache {
 namespace thrift {
 namespace stress {
-
-enum class ClientSecurity {
-  None = 0,
-  TLS,
-  FIZZ,
-};
-
-struct ClientConnectionConfig {
-  folly::SocketAddress serverHost;
-  ClientSecurity security;
-  std::string certPath;
-  std::string keyPath;
-  std::string trustedCertsPath;
-  bool ioUring{false};
-};
 
 class ClientFactory {
  public:
@@ -56,10 +43,11 @@ class ClientFactory {
 };
 
 THRIFT_PLUGGABLE_FUNC_DECLARE(
-    std::unique_ptr<Client<StressTest>>,
-    createClient,
+    std::vector<std::unique_ptr<StressTestClient>>,
+    createClients,
     folly::EventBase* /* the EVB running the test */,
-    const ClientConnectionConfig&);
+    const ClientConfig&,
+    ClientRpcStats&);
 
 } // namespace stress
 } // namespace thrift

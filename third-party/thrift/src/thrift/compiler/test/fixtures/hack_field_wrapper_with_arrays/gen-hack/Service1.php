@@ -33,7 +33,7 @@ interface Service1AsyncIf extends \IThriftAsyncIf {
    *   func2(1: StructWithWrapper arg1,
    *         2: i64WithWrapper arg2);
    */
-  public function func2(?StructWithWrapper $arg1, ?i64WithWrapper $arg2): Awaitable<i64WithWrapper>;
+  public function func2(?StructWithWrapper $arg1, i64WithWrapper $arg2): Awaitable<i64WithWrapper>;
 }
 
 /**
@@ -63,7 +63,7 @@ interface Service1If extends \IThriftSyncIf {
    *   func2(1: StructWithWrapper arg1,
    *         2: i64WithWrapper arg2);
    */
-  public function func2(?StructWithWrapper $arg1, ?i64WithWrapper $arg2): i64WithWrapper;
+  public function func2(?StructWithWrapper $arg1, i64WithWrapper $arg2): i64WithWrapper;
 }
 
 /**
@@ -100,7 +100,7 @@ interface Service1ClientIf extends \IThriftSyncIf {
    *   func2(1: StructWithWrapper arg1,
    *         2: i64WithWrapper arg2);
    */
-  public function func2(?StructWithWrapper $arg1, ?i64WithWrapper $arg2): Awaitable<i64WithWrapper>;
+  public function func2(?StructWithWrapper $arg1, i64WithWrapper $arg2): Awaitable<i64WithWrapper>;
 }
 
 /**
@@ -163,7 +163,7 @@ class Service1AsyncClient extends \ThriftClientBase implements Service1AsyncClie
    *   func2(1: StructWithWrapper arg1,
    *         2: i64WithWrapper arg2);
    */
-  public async function func2(?StructWithWrapper $arg1, ?i64WithWrapper $arg2): Awaitable<i64WithWrapper> {
+  public async function func2(?StructWithWrapper $arg1, i64WithWrapper $arg2): Awaitable<i64WithWrapper> {
     $hh_frame_metadata = $this->getHHFrameMetadata();
     if ($hh_frame_metadata !== null) {
       \HH\set_frame_metadata($hh_frame_metadata);
@@ -234,7 +234,7 @@ class Service1Client extends \ThriftClientBase implements Service1ClientIf {
    *   func2(1: StructWithWrapper arg1,
    *         2: i64WithWrapper arg2);
    */
-  public async function func2(?StructWithWrapper $arg1, ?i64WithWrapper $arg2): Awaitable<i64WithWrapper> {
+  public async function func2(?StructWithWrapper $arg1, i64WithWrapper $arg2): Awaitable<i64WithWrapper> {
     $hh_frame_metadata = $this->getHHFrameMetadata();
     if ($hh_frame_metadata !== null) {
       \HH\set_frame_metadata($hh_frame_metadata);
@@ -273,7 +273,7 @@ class Service1Client extends \ThriftClientBase implements Service1ClientIf {
   public function recv_func1(?int $expectedsequenceid = null): MyStruct {
     return $this->recvImplHelper(Service1_func1_result::class, "func1", false, $expectedsequenceid);
   }
-  public function send_func2(?StructWithWrapper $arg1, ?i64WithWrapper $arg2): int {
+  public function send_func2(?StructWithWrapper $arg1, i64WithWrapper $arg2): int {
     $args = Service1_func2_args::withDefaultValues();
     if ($arg1 !== null) {
       $args->arg1 = $arg1;
@@ -291,6 +291,7 @@ class Service1Client extends \ThriftClientBase implements Service1ClientIf {
 abstract class Service1AsyncProcessorBase extends \ThriftAsyncProcessor {
   abstract const type TThriftIf as Service1AsyncIf;
   const classname<\IThriftServiceStaticMetadata> SERVICE_METADATA_CLASS = Service1StaticMetadata::class;
+  const string THRIFT_SVC_NAME = 'Service1';
 
   protected async function process_func(int $seqid, \TProtocol $input, \TProtocol $output): Awaitable<void> {
     $handler_ctx = $this->eventHandler_->getHandlerContext('func');
@@ -467,6 +468,7 @@ class Service1AsyncProcessor extends Service1AsyncProcessorBase {
 abstract class Service1SyncProcessorBase extends \ThriftSyncProcessor {
   abstract const type TThriftIf as Service1If;
   const classname<\IThriftServiceStaticMetadata> SERVICE_METADATA_CLASS = Service1StaticMetadata::class;
+  const string THRIFT_SVC_NAME = 'Service1';
 
   protected function process_func(int $seqid, \TProtocol $input, \TProtocol $output): void {
     $handler_ctx = $this->eventHandler_->getHandlerContext('func');
@@ -1313,9 +1315,9 @@ class Service1_func2_args implements \IThriftAsyncStruct, \IThriftStructMetadata
         'arg1' => shape(
           'field' => dict[],
           'type' => dict[
-            '\thrift\annotation\hack\Wrapper' => \thrift\annotation\hack\Wrapper::fromShape(
+            '\facebook\thrift\annotation\hack\Wrapper' => \facebook\thrift\annotation\hack\Wrapper::fromShape(
               shape(
-                "name" => "\MyStructWrapper",
+                "name" => "\\MyStructWrapper",
               )
             ),
           ],
@@ -1323,9 +1325,9 @@ class Service1_func2_args implements \IThriftAsyncStruct, \IThriftStructMetadata
         'arg2' => shape(
           'field' => dict[],
           'type' => dict[
-            '\thrift\annotation\hack\Wrapper' => \thrift\annotation\hack\Wrapper::fromShape(
+            '\facebook\thrift\annotation\hack\Wrapper' => \facebook\thrift\annotation\hack\Wrapper::fromShape(
               shape(
-                "name" => "\MyTypeIntWrapper",
+                "name" => "\\MyTypeIntWrapper",
                 "extraNamespace" => "detail",
               )
             ),
@@ -1484,9 +1486,9 @@ class Service1_func2_result extends \ThriftAsyncStructWithResult implements \ITh
         'success' => shape(
           'field' => dict[],
           'type' => dict[
-            '\thrift\annotation\hack\Wrapper' => \thrift\annotation\hack\Wrapper::fromShape(
+            '\facebook\thrift\annotation\hack\Wrapper' => \facebook\thrift\annotation\hack\Wrapper::fromShape(
               shape(
-                "name" => "\MyTypeIntWrapper",
+                "name" => "\\MyTypeIntWrapper",
                 "extraNamespace" => "detail",
               )
             ),

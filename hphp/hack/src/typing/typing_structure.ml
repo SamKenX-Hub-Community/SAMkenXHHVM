@@ -50,7 +50,7 @@ let make_ts : Typing_env_types.env -> locl_ty -> Typing_env_types.env * locl_ty
     in
     let ((env, ty_err), ty) = Phase.localize ~ety_env env ts in
     let ty = with_reason ty r in
-    Option.iter ~f:Errors.add_typing_error ty_err;
+    Option.iter ~f:Typing_error_utils.add_typing_error ty_err;
     (env, ty)
   | _ ->
     (* Should not hit this because TypeStructure should always be defined *)
@@ -64,7 +64,7 @@ let rec transform_shapemap ?(nullable = false) env pos ty shape =
       pos
       ty
   in
-  Option.iter ~f:Errors.add_typing_error ty_err_opt;
+  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
   (* If there are Tanys, be conservative and don't try to represent the
    * type more precisely
    *)
@@ -150,9 +150,9 @@ let rec transform_shapemap ?(nullable = false) env pos ty shape =
         | (TSFlit_str (_, "return_type"), _, (r, Tfun funty)) ->
           let (env, ty) = make_ts env funty.ft_ret.et_type in
           (env, acc_field_with_type (mk (r, Ttuple [ty])))
-        | (TSFlit_str (_, "fields"), _, (r, Tshape (shape_kind, fields))) ->
+        | (TSFlit_str (_, "fields"), _, (r, Tshape (_, shape_kind, fields))) ->
           let (env, fields) = ShapeFieldMap.map_env make_ts env fields in
-          let ty = mk (r, Tshape (shape_kind, fields)) in
+          let ty = mk (r, Tshape (Missing_origin, shape_kind, fields)) in
           let ty =
             if supportdyn then
               MakeType.supportdyn r ty

@@ -229,9 +229,6 @@ pub mod members {
 }
 
 pub mod user_attributes {
-    use hash::HashSet;
-    use lazy_static::lazy_static;
-
     pub const OVERRIDE: &str = "__Override";
 
     pub const CONSISTENT_CONSTRUCT: &str = "__ConsistentConstruct";
@@ -269,6 +266,8 @@ pub mod user_attributes {
     pub const NON_DISJOINT: &str = "__NonDisjoint";
 
     pub const SOFT: &str = "__Soft";
+
+    pub const SOFT_INTERNAL: &str = "__SoftInternal";
 
     pub const WARN: &str = "__Warn";
 
@@ -320,49 +319,9 @@ pub mod user_attributes {
 
     pub const IGNORE_COEFFECT_LOCAL_ERRORS: &str = "__IgnoreCoeffectLocalErrors";
 
-    lazy_static! {
-        pub static ref AS_SET: HashSet<&'static str> = vec![
-            OVERRIDE,
-            CONSISTENT_CONSTRUCT,
-            CONST,
-            DEPRECATED,
-            DOCS,
-            ENTRY_POINT,
-            MEMOIZE,
-            MEMOIZE_LSB,
-            PHP_STD_LIB,
-            ACCEPT_DISPOSABLE,
-            RETURN_DISPOSABLE,
-            LSB,
-            SEALED,
-            LATE_INIT,
-            NEWABLE,
-            ENFORCEABLE,
-            EXPLICIT,
-            NON_DISJOINT,
-            SOFT,
-            WARN,
-            MOCK_CLASS,
-            PROVENANCE_SKIP_FRAME,
-            DYNAMICALLY_CALLABLE,
-            DYNAMICALLY_CONSTRUCTIBLE,
-            REIFIABLE,
-            NEVER_INLINE,
-            DISABLE_TYPECHECKER_INTERNAL,
-            ENABLE_UNSTABLE_FEATURES,
-            ENUM_CLASS,
-            POLICIED,
-            INFERFLOWS,
-            EXTERNAL,
-            CAN_CALL,
-            SUPPORT_DYNAMIC_TYPE,
-            NO_AUTO_DYNAMIC,
-            REQUIRE_DYNAMIC,
-            ENABLE_METHOD_TRAIT_DIAMOND,
-        ]
-        .into_iter()
-        .collect();
-    }
+    pub const CROSS_PACKAGE: &str = "__CrossPackage";
+
+    pub const MODULE_LEVEL_TRAIT: &str = "__ModuleLevelTrait";
 
     pub fn is_memoized(name: &str) -> bool {
         name == MEMOIZE || name == MEMOIZE_LSB
@@ -397,6 +356,14 @@ pub mod user_attributes {
 
     pub fn is_soft(name: &str) -> bool {
         name == SOFT
+    }
+
+    pub fn is_ifc(name: &str) -> bool {
+        name == POLICIED || name == INFERFLOWS || name == EXTERNAL
+    }
+
+    pub fn is_cross_package(name: &str) -> bool {
+        name == CROSS_PACKAGE
     }
 }
 
@@ -562,6 +529,8 @@ pub mod pseudo_functions {
 
     pub const ENFORCED_CAST: &str = "\\HH\\FIXME\\ENFORCED_CAST";
 
+    pub const PACKAGE_EXISTS: &str = "\\HH\\package_exists";
+
     pub static ALL_PSEUDO_FUNCTIONS: &[&str] = &[
         ISSET,
         UNSET,
@@ -578,6 +547,7 @@ pub mod pseudo_functions {
         DIE,
         UNSAFE_CAST,
         UNSAFE_NONNULL_CAST,
+        PACKAGE_EXISTS,
     ];
 
     lazy_static! {
@@ -859,6 +829,9 @@ pub mod fb {
 }
 
 pub mod hh {
+
+    pub const MEMOIZE_OPTION: &str = "\\HH\\MemoizeOption";
+
     pub const CONTAINS: &str = "\\HH\\Lib\\C\\contains";
 
     pub const CONTAINS_KEY: &str = "\\HH\\Lib\\C\\contains_key";
@@ -1166,6 +1139,7 @@ pub mod unstable_features {
     pub const EXPRESSION_TREES: &str = "expression_trees";
     pub const MODULES: &str = "modules";
     pub const MODULE_REFERENCES: &str = "module_references";
+    pub const PACKAGE: &str = "package";
 }
 
 pub mod regex {

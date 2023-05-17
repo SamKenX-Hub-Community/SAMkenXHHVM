@@ -106,11 +106,13 @@ const StaticString
   s_parent("parent"),
   s_callable("callable"),
   s_alias("alias"),
+  s_case_type("case_type"),
   s_typevars("typevars"),
   s_typevar_types("typevar_types"),
   s_id("id"),
   s_soft("soft"),
-  s_opaque("opaque")
+  s_opaque("opaque"),
+  s_union_types("union_types")
 ;
 
 const std::string
@@ -232,6 +234,20 @@ void genericTypeName(const Array& arr, std::string& name,
   name += ">";
 }
 
+void unionTypeName(const Array& arr, std::string& name,
+                   TypeStructure::TSDisplayType type) {
+  auto union_tv = arr.lookup(s_union_types);
+  if (!union_tv.is_init()) return;
+  auto const unions = tvAsVariant(union_tv).asCArrRef();
+  auto const sz = unions.size();
+  auto sep = "";
+  for (auto i = 0; i < sz; i++) {
+    auto const ty = unions[i].asCArrRef();
+    folly::toAppend(sep, fullName(ty, type), &name);
+    sep = " | ";
+  }
+}
+
 bool forDisplay(TypeStructure::TSDisplayType type) {
   return type != TypeStructure::TSDisplayType::TSDisplayTypeReflection;
 }
@@ -303,6 +319,7 @@ std::string fullName(const Array& arr, TypeStructure::TSDisplayType type) {
       name += "opaque:";
     }
     auto tv = arr.lookup(s_alias);
+    if (!tv.is_init()) tv = arr.lookup(s_case_type);
     if (tv.is_init()) {
       auto const alias = tvAsVariant(tv).asCStrRef();
       name += alias.toCppString() + ':';
@@ -413,6 +430,10 @@ std::string fullName(const Array& arr, TypeStructure::TSDisplayType type) {
       name += "reified ";
       name += arr[s_id].asCStrRef().data();
       break;
+    case TypeStructure::Kind::T_union:
+      assertx(arr.exists(s_union_types));
+      unionTypeName(arr, name, type);
+      break;
     case TypeStructure::Kind::T_class:
     case TypeStructure::Kind::T_interface:
     case TypeStructure::Kind::T_trait:
@@ -428,7 +449,7 @@ std::string fullName(const Array& arr, TypeStructure::TSDisplayType type) {
 }
 
 Array resolveTS(TSEnv& env, const TSCtx& ctx, const Array& arr,
-  StringData* alias = nullptr, ArrayData* typevarTypes = nullptr);
+                ArrayData* typevarTypes);
 
 Array resolveTSImpl(TSEnv& env, const TSCtx& ctx, const Array& arr);
 
@@ -447,7 +468,7 @@ Array resolveList(TSEnv& env, const TSCtx& ctx, const Array& arr) {
 
   VecInit newarr(sz);
   for (auto i = 0; i < sz; i++) {
-    newarr.append(Variant(resolveTS(env, ctx, arr[i].toArray())));
+    newarr.append(Variant(resolveTS(env, ctx, arr[i].toArray(), nullptr)));
   }
 
   return newarr.toArray();
@@ -649,6 +670,10 @@ Array resolveGenerics(TSEnv& env, const TSCtx& ctx, const Array& arr) {
   return resolveList(env, ctx, arr[s_generic_types].toArray());
 }
 
+Array resolveUnion(TSEnv& env, const TSCtx& ctx, const Array& arr) {
+  return resolveList(env, ctx, arr[s_union_types].toArray());
+}
+
 /**
  * Copy modifiers, i.e. whether the type is nullable, soft, or a like-type.
  */
@@ -682,7 +707,7 @@ Array resolveTSImpl(TSEnv& env, const TSCtx& ctx, const Array& arr) {
       env.invalidType = true;
       assertx(arr.exists(s_return_type));
       auto const returnArr = arr[s_return_type].asCArrRef();
-      newarr.set(s_return_type, Variant(resolveTS(env, ctx, returnArr)));
+      newarr.set(s_return_type, Variant(resolveTS(env, ctx, returnArr, nullptr)));
 
       assertx(arr.exists(s_param_types));
       auto const paramsArr = arr[s_param_types].asCArrRef();
@@ -690,7 +715,7 @@ Array resolveTSImpl(TSEnv& env, const TSCtx& ctx, const Array& arr) {
 
       auto tv = arr.lookup(s_variadic_type);
       if (tv.is_init()) {
-        newarr.set(s_variadic_type, Variant(resolveTS(env, ctx, tvAsVariant(tv).asCArrRef())));
+        newarr.set(s_variadic_type, Variant(resolveTS(env, ctx, tvAsVariant(tv).asCArrRef(), nullptr)));
       }
 
       break;
@@ -731,13 +756,13 @@ Array resolveTSImpl(TSEnv& env, const TSCtx& ctx, const Array& arr) {
         TSCtx newCtx;
         newCtx.name = clsName.get();
         newCtx.generics = generics;
-        return resolveTS(env, newCtx, ts, clsName.get(), generics);
+        return resolveTS(env, newCtx, ts, generics);
       };
 
       if (!ts.empty()) {
         if (ts.exists(s_typevars) && arr.exists(s_generic_types)) {
           std::vector<std::string> typevars;
-          folly::split(",", ts[s_typevars].asCStrRef().data(), typevars);
+          folly::split(',', ts[s_typevars].asCStrRef().data(), typevars);
           ts.remove(s_typevars);
 
           auto generic_types = resolveGenerics(env, ctx, arr);
@@ -754,7 +779,8 @@ Array resolveTSImpl(TSEnv& env, const TSCtx& ctx, const Array& arr) {
           ts = resolve();
         }
         copyTypeModifiers(arr, ts);
-        return ts;
+        newarr = ts;
+        break;
       }
 
       /* Special cases for 'callable': Hack typechecker throws a naming error
@@ -835,7 +861,8 @@ Array resolveTSImpl(TSEnv& env, const TSCtx& ctx, const Array& arr) {
         clsName = typeCnsVal[s_classname].asCStrRef();
       }
       copyTypeModifiers(arr, typeCnsVal);
-      return typeCnsVal;
+      newarr = typeCnsVal;
+      break;
     }
     case TypeStructure::Kind::T_typevar: {
       env.invalidType = true;
@@ -843,7 +870,8 @@ Array resolveTSImpl(TSEnv& env, const TSCtx& ctx, const Array& arr) {
       assertx(arr.exists(s_name));
       auto const generic = ctx.generics->get(arr[s_name].asCStrRef().get());
       if (!generic.is_init()) return arr.toDict();
-      return Variant::wrap(generic).toDict();
+      newarr = Variant::wrap(generic).toDict();
+      break;
     }
     case TypeStructure::Kind::T_reifiedtype: {
       assertx(env.tsList != nullptr);
@@ -856,6 +884,11 @@ Array resolveTSImpl(TSEnv& env, const TSCtx& ctx, const Array& arr) {
       });
       break;
     }
+    case TypeStructure::Kind::T_union:
+      assertx(arr.exists(s_union_types));
+      newarr.set(s_union_types, Variant(resolveUnion(env, ctx, arr)));
+      break;
+
     case TypeStructure::Kind::T_xhp:
     case TypeStructure::Kind::T_void:
     case TypeStructure::Kind::T_int:
@@ -875,18 +908,24 @@ Array resolveTSImpl(TSEnv& env, const TSCtx& ctx, const Array& arr) {
     case TypeStructure::Kind::T_null:
     case TypeStructure::Kind::T_nothing:
     case TypeStructure::Kind::T_dynamic:
+      // Return the original type structure, no resolution needed
       return arr.toDict();
   }
 
   if (arr.exists(s_typevars)) newarr.set(s_typevars, arr[s_typevars]);
+  if (arr.exists(s_alias)) {
+    newarr.set(s_alias, Variant{arr[s_alias].asCStrRef()});
+  }
+  if (arr.exists(s_case_type)) {
+    newarr.set(s_case_type, Variant{arr[s_case_type].asCStrRef()});
+  }
 
   return newarr;
 }
 
 Array resolveTS(TSEnv& env, const TSCtx& ctx, const Array& arr,
-    StringData* alias, ArrayData* typevarTypes) {
+                ArrayData* typevarTypes) {
   auto ts = resolveTSImpl(env, ctx, arr);
-  if (alias) ts.set(s_alias, Variant(alias));
   if (typevarTypes) ts.set(s_typevar_types, Variant(typevarTypes));
 
   return maybeMakeBespoke(ts);
@@ -919,7 +958,7 @@ Array TypeStructure::resolve(const ArrayData* ts,
   ctx.name = clsName;
   ctx.declCls = declCls;
   ctx.typeCnsCls = typeCnsCls;
-  auto resolved = resolveTS(env, ctx, ArrNR(ts));
+  auto resolved = resolveTS(env, ctx, ArrNR(ts), nullptr);
   persistent = env.persistent;
   return resolved;
 }
@@ -935,7 +974,7 @@ Array TypeStructure::resolve(const String& aliasName,
   TSCtx ctx;
   ctx.name = aliasName.get();
   ctx.generics = generics.get();
-  auto resolved = resolveTS(env, ctx, arr, aliasName.get());
+  auto resolved = resolveTS(env, ctx, arr, nullptr);
   persistent = env.persistent;
   return resolved;
 }
@@ -953,7 +992,7 @@ Array TypeStructure::resolve(const Array& ts,
   TSCtx ctx;
   ctx.declCls = declCls;
   ctx.typeCnsCls = typeCnsCls;
-  auto resolved = resolveTS(env, ctx, ts);
+  auto resolved = resolveTS(env, ctx, ts, nullptr);
   persistent = env.persistent;
   return resolved;
 }
@@ -973,7 +1012,7 @@ Array TypeStructure::resolvePartial(const Array& ts,
   TSCtx ctx;
   ctx.declCls = declCls;
   ctx.typeCnsCls = typeCnsCls;
-  auto resolved = resolveTS(env, ctx, ts);
+  auto resolved = resolveTS(env, ctx, ts, nullptr);
   persistent = env.persistent;
   partial = env.partial;
   invalidType = env.invalidType;
@@ -1119,6 +1158,9 @@ bool coerceToTypeStructure(Array& arr) {
     case TypeStructure::Kind::T_enum: {
       return tvIsString(arr.lookup(s_classname)) &&
              coerceOptTSListField(arr, s_generic_types);
+    }
+    case TypeStructure::Kind::T_union: {
+      return coerceTSListField(arr, s_union_types, /*shape=*/false);
     }
     case TypeStructure::Kind::T_unresolved:
     case TypeStructure::Kind::T_typeaccess:

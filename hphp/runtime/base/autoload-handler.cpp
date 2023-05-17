@@ -79,8 +79,7 @@ FactsStore* getFactsForRequest() {
     map->ensureUpdated();
     return map;
   } catch (const std::exception& e) {
-    auto repoRoot =
-      std::filesystem::canonical(repoOptions->path()).parent_path();
+    auto repoRoot = repoOptions->dir();
     Logger::FInfo(
         "Failed to update native autoloader, not natively autoloading {}. {}\n",
         repoRoot.native(),
@@ -94,7 +93,6 @@ FactsStore* getFactsForRequest() {
 void AutoloadHandler::requestInit() {
   assertx(!m_map);
   assertx(!m_facts);
-  assertx(!m_req_map);
   assertx(m_onPostAutoloadFunc.isNull());
   m_facts = getFactsForRequest();
   if (RuntimeOption::RepoAuthoritative) {
@@ -108,17 +106,7 @@ void AutoloadHandler::requestInit() {
 void AutoloadHandler::requestShutdown() {
   m_map = nullptr;
   m_facts = nullptr;
-  m_req_map = nullptr;
   m_onPostAutoloadFunc.setNull();
-}
-
-bool AutoloadHandler::setMap(const Array& map, String root) {
-  assertx(!RuntimeOption::RepoAuthoritative);
-
-  m_req_map = req::make_unique<UserAutoloadMap>(
-      UserAutoloadMap::fromFullMap(map, std::move(root)));
-  m_map = m_req_map.get();
-  return true;
 }
 
 namespace {
@@ -298,28 +286,16 @@ AutoloadHandler::loadFromMap(const String& clsName,
                              AutoloadMap::KindOf kind,
                              const T &checkExists) {
   assertx(m_map);
-  while (true) {
-    Variant err{Variant::NullInit()};
-    AutoloadMap::Result res = loadFromMapImpl(clsName, kind, checkExists, err);
-    if (res == AutoloadMap::Result::Success) {
-      return AutoloadMap::Result::Success;
-    }
-    if (!m_map->canHandleFailure()) {
-      return AutoloadMap::Result::Failure;
-    }
-    res = m_map->handleFailure(kind, clsName, err);
-    if (checkExists()) return AutoloadMap::Result::Success;
-    if (res == AutoloadMap::Result::RetryAutoloading) {
-      continue;
-    }
-    return res;
+  Variant err{Variant::NullInit()};
+  AutoloadMap::Result res = loadFromMapImpl(clsName, kind, checkExists, err);
+  if (res == AutoloadMap::Result::Success) {
+    return AutoloadMap::Result::Success;
   }
+  return AutoloadMap::Result::Failure;
 }
 
 bool AutoloadHandler::autoloadFunc(StringData* name) {
-  tracing::BlockNoTrace _{
-    (m_map && m_map->isNative()) ? "autoload-native" : "autoload"
-  };
+  tracing::BlockNoTrace _{(m_map) ? "autoload-native" : "autoload"};
   return m_map &&
     loadFromMap(String{name},
                 AutoloadMap::KindOf::Function,
@@ -327,9 +303,7 @@ bool AutoloadHandler::autoloadFunc(StringData* name) {
 }
 
 bool AutoloadHandler::autoloadConstant(StringData* name) {
-  tracing::BlockNoTrace _{
-    (m_map && m_map->isNative()) ? "autoload-native" : "autoload"
-  };
+  tracing::BlockNoTrace _{(m_map) ? "autoload-native" : "autoload"};
   return m_map &&
     loadFromMap(String{name},
                 AutoloadMap::KindOf::Constant,
@@ -337,18 +311,14 @@ bool AutoloadHandler::autoloadConstant(StringData* name) {
 }
 
 bool AutoloadHandler::autoloadTypeAlias(const String& name) {
-  tracing::BlockNoTrace _{
-    (m_map && m_map->isNative()) ? "autoload-native" : "autoload"
-  };
+  tracing::BlockNoTrace _{(m_map) ? "autoload-native" : "autoload"};
   return m_map &&
     loadFromMap(name, AutoloadMap::KindOf::TypeAlias,
                 TypeAliasExistsChecker(name)) != AutoloadMap::Result::Failure;
 }
 
 bool AutoloadHandler::autoloadModule(StringData* name) {
-  tracing::BlockNoTrace _{
-    (m_map && m_map->isNative()) ? "autoload-native" : "autoload"
-  };
+  tracing::BlockNoTrace _{(m_map) ? "autoload-native" : "autoload"};
   return m_map &&
     loadFromMap(String{name},
                 AutoloadMap::KindOf::Module,
@@ -375,9 +345,7 @@ bool is_valid_class_name(folly::StringPiece className) {
 }
 
 bool AutoloadHandler::autoloadType(const String& clsName) {
-  tracing::BlockNoTrace _{
-    (m_map && m_map->isNative()) ? "autoload-native" : "autoload"
-  };
+  tracing::BlockNoTrace _{(m_map) ? "autoload-native" : "autoload"};
   if (clsName.empty()) return false;
   const String& className = normalizeNS(clsName);
   // Verify class name before trying to load it
@@ -390,9 +358,7 @@ bool AutoloadHandler::autoloadType(const String& clsName) {
 }
 
 bool AutoloadHandler::autoloadTypeOrTypeAlias(const String& clsName) {
-  tracing::BlockNoTrace _{
-    (m_map && m_map->isNative()) ? "autoload-native" : "autoload"
-  };
+  tracing::BlockNoTrace _{(m_map) ? "autoload-native" : "autoload"};
 
   if (clsName.empty()) return false;
   const String& className = normalizeNS(clsName);

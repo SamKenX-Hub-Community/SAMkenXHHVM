@@ -91,7 +91,8 @@ std::unique_ptr<UnitEmitter> parse(LazyUnitContentsLoader& loader,
       contents.size(),
       filename,
       loader.sha1(),
-      nativeFuncs
+      nativeFuncs,
+      RepoOptions::forFile(filename).packageInfo()
     );
   }
 
@@ -118,7 +119,7 @@ std::unique_ptr<UnitEmitter> parse(LazyUnitContentsLoader& loader,
       ue = uc->compile(cache_hit);
     } catch (const CompilerAbort& exn) {
       fprintf(stderr, "%s", exn.what());
-      _Exit(1);
+      _Exit(HPHP_EXIT_FAILURE);
     }
   }
 

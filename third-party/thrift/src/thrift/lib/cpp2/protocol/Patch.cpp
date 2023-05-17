@@ -369,7 +369,7 @@ void ApplyPatch::operator()(const Object& patch, std::set<Value>& value) const {
 }
 
 void ApplyPatch::operator()(
-    const Object& patch, std::map<Value, Value>& value) const {
+    const Object& patch, folly::F14FastMap<Value, Value>& value) const {
   checkOps(
       patch,
       Value::Type::mapValue,
@@ -457,12 +457,11 @@ void ApplyPatch::operator()(const Object& patch, Object& value) const {
 
   if (auto* clear = findOp(patch, PatchOp::Clear)) {
     if (argAs<type::bool_t>(*clear)) {
-      value.members().ensure().clear();
+      value.members()->clear();
     }
   }
 
   auto applyFieldPatch = [&](auto patchFields) {
-    value.members().ensure();
     const auto* obj = patchFields->if_object();
     if (!obj) {
       throw std::runtime_error(
@@ -508,7 +507,7 @@ void ApplyPatch::operator()(const Object& patch, Object& value) const {
         value = *ensureUnion;
       } else if (value.size() != 1) {
         // Clear other values, without copying the current value
-        value.members() = {{itr->first, std::move(itr->second)}};
+        *value.members() = {{itr->first, std::move(itr->second)}};
       }
     }
   }
@@ -525,8 +524,10 @@ void ApplyPatch::operator()(const Object& patch, Object& value) const {
 template <typename Id, typename F>
 void insertMask(Mask& mask, Id id, const Mask& next, const F& getIncludesRef) {
   if (mask != allMask() && next != noneMask()) {
-    Mask& current =
-        getIncludesRef(mask).ensure().emplace(id, noneMask()).first->second;
+    Mask& current = getIncludesRef(mask)
+                        .ensure()
+                        .emplace(std::move(id), noneMask())
+                        .first->second;
     current = current | next;
   }
 }
@@ -538,27 +539,56 @@ void insertNextMask(
     Id readId,
     Id writeId,
     bool recursive,
+    bool view,
     const F& getIncludesRef) {
   if (recursive) {
-    auto nextMasks = extractMaskFromPatch(nextPatch.as_object());
-    insertMask(masks.read, readId, nextMasks.read, getIncludesRef);
-    insertMask(masks.write, writeId, nextMasks.write, getIncludesRef);
+    auto nextMasks = view ? extractMaskViewFromPatch(nextPatch.as_object())
+                          : extractMaskFromPatch(nextPatch.as_object());
+    insertMask(masks.read, std::move(readId), nextMasks.read, getIncludesRef);
+    insertMask(
+        masks.write, std::move(writeId), nextMasks.write, getIncludesRef);
   } else {
-    insertMask(masks.read, readId, allMask(), getIncludesRef);
-    insertMask(masks.write, writeId, allMask(), getIncludesRef);
+    insertMask(masks.read, std::move(readId), allMask(), getIncludesRef);
+    insertMask(masks.write, std::move(writeId), allMask(), getIncludesRef);
   }
 }
 
-// if recursive, it constructs the mask from the patch object for the field.
+// If recursive, it constructs the mask from the patch object for the field.
+// If view, it uses address of Value to populate map mask. If not view, it uses
+// the appropriate integer map mask and string map mask after parsing from
+// Value.
 void insertFieldsToMask(
-    ExtractedMasks& masks, const Value& patchFields, bool recursive) {
+    ExtractedMasks& masks,
+    const Value& patchFields,
+    bool recursive,
+    bool view) {
   auto getIncludesMapRef = [&](Mask& mask) { return mask.includes_map_ref(); };
+  auto getIncludesStringMapRef = [&](Mask& mask) {
+    return mask.includes_string_map_ref();
+  };
+
   auto removeHandler = [&](const auto* container) {
-    for (const auto& key : *container) {
-      auto readId = static_cast<int64_t>(findMapIdByValue(masks.read, key));
-      auto writeId = static_cast<int64_t>(findMapIdByValue(masks.write, key));
-      insertMask(masks.read, readId, allMask(), getIncludesMapRef);
-      insertMask(masks.write, writeId, allMask(), getIncludesMapRef);
+    if (view) {
+      for (const auto& key : *container) {
+        auto readId =
+            static_cast<int64_t>(findMapIdByValueAddress(masks.read, key));
+        auto writeId =
+            static_cast<int64_t>(findMapIdByValueAddress(masks.write, key));
+        insertMask(masks.read, readId, allMask(), getIncludesMapRef);
+        insertMask(masks.write, writeId, allMask(), getIncludesMapRef);
+      }
+    } else {
+      for (const auto& key : *container) {
+        if (getArrayKeyFromValue(key) == ArrayKey::Integer) {
+          auto id = static_cast<int64_t>(getMapIdFromValue(key));
+          insertMask(masks.read, id, allMask(), getIncludesMapRef);
+          insertMask(masks.write, id, allMask(), getIncludesMapRef);
+        } else {
+          auto id = getStringFromValue(key);
+          insertMask(masks.read, id, allMask(), getIncludesStringMapRef);
+          insertMask(masks.write, id, allMask(), getIncludesStringMapRef);
+        }
+      }
     }
   };
 
@@ -570,14 +600,28 @@ void insertFieldsToMask(
       // can/should be applied. Hence always generate allMask() read mask for
       // them.
       insertMask(masks.read, id, allMask(), getIncludesObjRef);
-      insertNextMask(masks, value, id, id, recursive, getIncludesObjRef);
+      insertNextMask(masks, value, id, id, recursive, view, getIncludesObjRef);
     }
   } else if (const auto* map = patchFields.if_map()) {
     for (const auto& [key, value] : *map) {
-      auto readId = static_cast<int64_t>(findMapIdByValue(masks.read, key));
-      auto writeId = static_cast<int64_t>(findMapIdByValue(masks.write, key));
-      insertNextMask(
-          masks, value, readId, writeId, recursive, getIncludesMapRef);
+      if (view) {
+        auto readId =
+            static_cast<int64_t>(findMapIdByValueAddress(masks.read, key));
+        auto writeId =
+            static_cast<int64_t>(findMapIdByValueAddress(masks.write, key));
+        insertNextMask(
+            masks, value, readId, writeId, recursive, view, getIncludesMapRef);
+      } else {
+        if (getArrayKeyFromValue(key) == ArrayKey::Integer) {
+          auto id = static_cast<int64_t>(getMapIdFromValue(key));
+          insertNextMask(
+              masks, value, id, id, recursive, view, getIncludesMapRef);
+        } else {
+          auto id = getStringFromValue(key);
+          insertNextMask(
+              masks, value, id, id, recursive, view, getIncludesStringMapRef);
+        }
+      }
     }
   } else if (const auto* set = patchFields.if_set()) {
     // set of map keys (Remove)
@@ -589,7 +633,7 @@ void insertFieldsToMask(
 }
 
 // TODO: Handle EnsureUnion
-ExtractedMasks extractMaskFromPatch(const protocol::Object& patch) {
+ExtractedMasks extractMaskFromPatch(const protocol::Object& patch, bool view) {
   ExtractedMasks masks = {noneMask(), noneMask()};
   // If Assign, it is a write operation
   if (findOp(patch, PatchOp::Assign)) {
@@ -612,7 +656,7 @@ ExtractedMasks extractMaskFromPatch(const protocol::Object& patch) {
   // mask.
   if (auto* value = findOp(patch, PatchOp::Put)) {
     if (value->mapValue_ref()) {
-      insertFieldsToMask(masks, *value, false);
+      insertFieldsToMask(masks, *value, false, view);
     } else if (!isIntrinsicDefault(*value)) {
       return {allMask(), allMask()};
     }
@@ -620,12 +664,12 @@ ExtractedMasks extractMaskFromPatch(const protocol::Object& patch) {
   // Remove always adds keys to map mask. All types (list, set, and map) use
   // a set for Remove, so they are indistinguishable.
   if (auto* value = findOp(patch, PatchOp::Remove)) {
-    insertFieldsToMask(masks, *value, false);
+    insertFieldsToMask(masks, *value, false, view);
   }
 
   // If EnsureStruct, add the fields/ keys to mask
   if (auto* ensureStruct = findOp(patch, PatchOp::EnsureStruct)) {
-    insertFieldsToMask(masks, *ensureStruct, false);
+    insertFieldsToMask(masks, *ensureStruct, false, view);
   }
 
   // If PatchPrior or PatchAfter, recursively constructs the mask for the
@@ -634,7 +678,7 @@ ExtractedMasks extractMaskFromPatch(const protocol::Object& patch) {
   // patch.
   for (auto op : {PatchOp::PatchPrior, PatchOp::PatchAfter}) {
     if (auto* patchFields = findOp(patch, op)) {
-      insertFieldsToMask(masks, *patchFields, true);
+      insertFieldsToMask(masks, *patchFields, true, view);
     }
   }
 
@@ -643,8 +687,12 @@ ExtractedMasks extractMaskFromPatch(const protocol::Object& patch) {
 
 } // namespace detail
 
+ExtractedMasks extractMaskViewFromPatch(const protocol::Object& patch) {
+  return detail::extractMaskFromPatch(patch, true);
+}
+
 ExtractedMasks extractMaskFromPatch(const protocol::Object& patch) {
-  return detail::extractMaskFromPatch(patch);
+  return detail::extractMaskFromPatch(patch, false);
 }
 
 template <type::StandardProtocol Protocol>
@@ -662,7 +710,7 @@ std::unique_ptr<folly::IOBuf> applyPatchToSerializedData(
       Protocol == type::StandardProtocol::Binary,
       BinaryProtocolWriter,
       CompactProtocolWriter>;
-  auto masks = protocol::extractMaskFromPatch(patch);
+  auto masks = protocol::extractMaskViewFromPatch(patch);
   MaskedDecodeResult result =
       parseObject<ProtocolReader>(buf, masks.read, masks.write);
   applyPatch(patch, result.included);

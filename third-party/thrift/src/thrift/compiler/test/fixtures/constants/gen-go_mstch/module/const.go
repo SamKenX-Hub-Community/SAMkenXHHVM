@@ -4,7 +4,7 @@
 package module // [[[ program thrift source path ]]]
 
 import (
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 // (needed to ensure safety because of naive import list construction)
@@ -17,14 +17,14 @@ const Name string = "Mark Zuckerberg"
 const MultiLineString string = "This\nis a\nmulti line string.\n"
 var States []map[string]int32 = []map[string]int32{
     map[string]int32{
-      "San Diego": 3211000,
-      "Sacramento": 479600,
-      "SF": 837400,
-  },
+    "San Diego": 3211000,
+    "Sacramento": 479600,
+    "SF": 837400,
+},
     map[string]int32{
-      "New York": 8406000,
-      "Albany": 98400,
-  },
+    "New York": 8406000,
+    "Albany": 98400,
+},
 }
 const X float64 = 1
 const Y float64 = 1000000.0
@@ -35,102 +35,97 @@ const MyCompany MyCompany = Company_FACEBOOK
 const Foo MyStringIdentifier = "foo"
 const Bar MyIntIdentifier = 42
 var Mymap MyMapIdentifier = map[string]string{
-      "keys": "values",
-  }
-var Instagram Internship = *NewInternship().
-    SetWeeks(12).
-    SetTitle("Software Engineer").
-    SetEmployer(Company_INSTAGRAM).
-    SetCompensation(1200).
-    SetSchool("Monters University")
-var PartialConst Internship = *NewInternship().
-    SetWeeks(8).
-    SetTitle("Some Job")
+    "keys": "values",
+}
+var Instagram *Internship = NewInternship().
+    SetWeeksNonCompat(12).
+    SetTitleNonCompat("Software Engineer").
+    SetEmployerNonCompat(Company_INSTAGRAM).
+    SetCompensationNonCompat(1200).
+    SetSchoolNonCompat("Monters University")
+var PartialConst *Internship = NewInternship().
+    SetWeeksNonCompat(8).
+    SetTitleNonCompat("Some Job")
 var KRanges []*Range = []*Range{
     NewRange().
-    SetMin(1).
-    SetMax(2),
+    SetMinNonCompat(1).
+    SetMaxNonCompat(2),
     NewRange().
-    SetMin(5).
-    SetMax(6),
+    SetMinNonCompat(5).
+    SetMaxNonCompat(6),
 }
 var InternList []*Internship = []*Internship{
+    Instagram,
     NewInternship().
-    SetWeeks(12).
-    SetTitle("Software Engineer").
-    SetEmployer(Company_INSTAGRAM).
-    SetCompensation(1200).
-    SetSchool("Monters University"),
-    NewInternship().
-    SetWeeks(10).
-    SetTitle("Sales Intern").
-    SetEmployer(Company_FACEBOOK).
-    SetCompensation(1000),
+    SetWeeksNonCompat(10).
+    SetTitleNonCompat("Sales Intern").
+    SetEmployerNonCompat(Company_FACEBOOK).
+    SetCompensationNonCompat(1000),
 }
-var Pod_0 Struct1 = *NewStruct1()
-var PodS_0 Struct1 = *NewStruct1()
-var Pod_1 Struct1 = *NewStruct1().
-    SetA(10).
-    SetB("foo")
-var PodS_1 Struct1 = *NewStruct1().
-    SetA(10).
-    SetB("foo")
-var Pod_2 Struct2 = *NewStruct2().
-    SetA(98).
-    SetB("gaz").
-    SetC(
+var Pod_0 *Struct1 = NewStruct1()
+var PodS_0 *Struct1 = NewStruct1()
+var Pod_1 *Struct1 = NewStruct1().
+    SetANonCompat(10).
+    SetBNonCompat("foo")
+var PodS_1 *Struct1 = NewStruct1().
+    SetANonCompat(10).
+    SetBNonCompat("foo")
+var Pod_2 *Struct2 = NewStruct2().
+    SetANonCompat(98).
+    SetBNonCompat("gaz").
+    SetCNonCompat(
         *NewStruct1().
-    SetA(12).
-    SetB("bar"),
+    SetANonCompat(12).
+    SetBNonCompat("bar"),
     ).
-    SetD(
+    SetDNonCompat(
         []int32{
     11,
     22,
     33,
 },
     )
-var PodTrailingCommas Struct2 = *NewStruct2().
-    SetA(98).
-    SetB("gaz").
-    SetC(
+var PodTrailingCommas *Struct2 = NewStruct2().
+    SetANonCompat(98).
+    SetBNonCompat("gaz").
+    SetCNonCompat(
         *NewStruct1().
-    SetA(12).
-    SetB("bar"),
+    SetANonCompat(12).
+    SetBNonCompat("bar"),
     ).
-    SetD(
+    SetDNonCompat(
         []int32{
     11,
     22,
     33,
 },
     )
-var PodS_2 Struct2 = *NewStruct2().
-    SetA(98).
-    SetB("gaz").
-    SetC(
+var PodS_2 *Struct2 = NewStruct2().
+    SetANonCompat(98).
+    SetBNonCompat("gaz").
+    SetCNonCompat(
         *NewStruct1().
-    SetA(12).
-    SetB("bar"),
+    SetANonCompat(12).
+    SetBNonCompat("bar"),
     ).
-    SetD(
+    SetDNonCompat(
         []int32{
     11,
     22,
     33,
 },
     )
-var Pod_3 Struct3 = *NewStruct3().
-    SetA("abc").
-    SetB(456).
-    SetC(
+var Pod_3 *Struct3 = NewStruct3().
+    SetANonCompat("abc").
+    SetBNonCompat(456).
+    SetCNonCompat(
         *NewStruct2().
-    SetA(888).
-    SetC(
+    SetANonCompat(888).
+    SetCNonCompat(
         *NewStruct1().
-    SetB("gaz"),
+    SetBNonCompat("gaz"),
     ).
-    SetD(
+    SetDNonCompat(
         []int32{
     1,
     2,
@@ -138,17 +133,17 @@ var Pod_3 Struct3 = *NewStruct3().
 },
     ),
     )
-var PodS_3 Struct3 = *NewStruct3().
-    SetA("abc").
-    SetB(456).
-    SetC(
+var PodS_3 *Struct3 = NewStruct3().
+    SetANonCompat("abc").
+    SetBNonCompat(456).
+    SetCNonCompat(
         *NewStruct2().
-    SetA(888).
-    SetC(
+    SetANonCompat(888).
+    SetCNonCompat(
         *NewStruct1().
-    SetB("gaz"),
+    SetBNonCompat("gaz"),
     ).
-    SetD(
+    SetDNonCompat(
         []int32{
     1,
     2,
@@ -156,71 +151,79 @@ var PodS_3 Struct3 = *NewStruct3().
 },
     ),
     )
-var Pod_4 Struct4 = *NewStruct4().
-    SetA(1234).
-    SetB(0.333).
-    SetC(25)
-var U_1_1 Union1 = *NewUnion1().
-    SetI(97)
-var U_1_2 Union1 = *NewUnion1().
-    SetD(5.6)
-var U_1_3 Union1 = *NewUnion1()
-var U_2_1 Union2 = *NewUnion2().
-    SetI(51)
-var U_2_2 Union2 = *NewUnion2().
-    SetD(6.7)
-var U_2_3 Union2 = *NewUnion2().
-    SetS(
+var Pod_4 *Struct4 = NewStruct4().
+    SetANonCompat(1234).
+    SetBNonCompat(0.333).
+    SetCNonCompat(25)
+var U_1_1 *Union1 = NewUnion1().
+    SetINonCompat(97)
+var U_1_2 *Union1 = NewUnion1().
+    SetDNonCompat(5.6)
+var U_1_3 *Union1 = NewUnion1()
+var U_2_1 *Union2 = NewUnion2().
+    SetINonCompat(51)
+var U_2_2 *Union2 = NewUnion2().
+    SetDNonCompat(6.7)
+var U_2_3 *Union2 = NewUnion2().
+    SetSNonCompat(
         *NewStruct1().
-    SetA(8).
-    SetB("abacabb"),
+    SetANonCompat(8).
+    SetBNonCompat("abacabb"),
     )
-var U_2_4 Union2 = *NewUnion2().
-    SetU(
+var U_2_4 *Union2 = NewUnion2().
+    SetUNonCompat(
         *NewUnion1().
-    SetI(43),
+    SetINonCompat(43),
     )
-var U_2_5 Union2 = *NewUnion2().
-    SetU(
+var U_2_5 *Union2 = NewUnion2().
+    SetUNonCompat(
         *NewUnion1().
-    SetD(9.8),
+    SetDNonCompat(9.8),
     )
-var U_2_6 Union2 = *NewUnion2().
-    SetU(
+var U_2_6 *Union2 = NewUnion2().
+    SetUNonCompat(
         *NewUnion1(),
     )
 const Apostrophe string = "'"
 const TripleApostrophe string = "'''"
 const QuotationMark string = "\""
-const Backslash string = "\\\\"
-const EscapedA string = "\\x61"
+const Backslash string = "\\"
+const EscapedA string = "a"
 var Char2ascii map[string]int32 = map[string]int32{
-      "'": 39,
-      "\"": 34,
-      "\\\\": 92,
-      "\\x61": 97,
-  }
+    "'": 39,
+    "\"": 34,
+    "\\": 92,
+    "a": 97,
+}
 var EscapedStrings []string = []string{
-    "\\x61",
-    "\\xab",
-    "\\x6a",
-    "\\xa6",
-    "\\x61yyy",
-    "\\xabyyy",
-    "\\x6ayyy",
-    "\\xa6yyy",
-    "zzz\\x61",
-    "zzz\\xab",
-    "zzz\\x6a",
-    "zzz\\xa6",
-    "zzz\\x61yyy",
-    "zzz\\xabyyy",
-    "zzz\\x6ayyy",
-    "zzz\\xa6yyy",
+    "",
+    "",
+    " ",
+    "'",
+    "\"",
+    "\n",
+    "\r",
+    "\t",
+    "a",
+    "«",
+    "j",
+    "¦",
+    "ayyy",
+    "«yyy",
+    "jyyy",
+    "¦yyy",
+    "zzza",
+    "zzz«",
+    "zzzj",
+    "zzz¦",
+    "zzzayyy",
+    "zzz«yyy",
+    "zzzjyyy",
+    "zzz¦yyy",
 }
 const FalseC bool = false
 const TrueC bool = true
-const ZeroByte byte = 0
+const ZeroByte int8 = 0
 const Zero16 int16 = 0
 const Zero32 int32 = 0
 const Zero64 int64 = 0
@@ -235,13 +238,13 @@ var EmptyIntSet []int32 = []int32{
 var EmptyStringSet []string = []string{
 }
 var EmptyIntIntMap map[int32]int32 = map[int32]int32{
-  }
+}
 var EmptyIntStringMap map[int32]string = map[int32]string{
-  }
+}
 var EmptyStringIntMap map[string]int32 = map[string]int32{
-  }
+}
 var EmptyStringStringMap map[string]string = map[string]string{
-  }
+}
 const MaxIntDec int64 = 9223372036854775807
 const MaxIntOct int64 = 9223372036854775807
 const MaxIntHex int64 = 9223372036854775807

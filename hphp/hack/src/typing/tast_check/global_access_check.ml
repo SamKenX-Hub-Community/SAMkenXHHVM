@@ -44,7 +44,7 @@ type global_access_pattern =
   | SuperGlobalWrite (* Global write via super global functions *)
   | SuperGlobalRead (* Global read via super global functions *)
   | NoPattern (* No pattern above is recognized *)
-[@@deriving eq, ord, show { with_path = false }]
+[@@deriving ord, show { with_path = false }]
 
 module GlobalAccessPatternSet = Caml.Set.Make (struct
   type t = global_access_pattern
@@ -64,7 +64,7 @@ let raise_global_access_error
       "possibly written via function call."
     | GlobalAccessCheck.DefiniteGlobalRead -> "definitely read."
   in
-  let global_vars_str = String.concat ~sep:"," (SSet.elements global_set) in
+  let global_vars_str = String.concat ~sep:";" (SSet.elements global_set) in
   let print_pattern p =
     match p with
     | NoPattern -> None
@@ -102,7 +102,7 @@ type data_source =
   | Literal (* Boolean, integer, floating-point, or string literals *)
   | NonSensitive (* E.g. timer, site var *)
   | Unknown (* Other sources that have not been identified yet *)
-[@@deriving eq, ord, show]
+[@@deriving ord, show]
 
 module DataSourceSet = Caml.Set.Make (struct
   type t = data_source
@@ -389,9 +389,6 @@ let replace_var_data_srcs_in_tbl tbl var srcs = Hashtbl.replace tbl var srcs
 let merge_var_data_srcs_tbls tbl1 tbl2 =
   Hashtbl.iter (add_var_data_srcs_to_tbl tbl1) tbl2
 
-(* Remove a set of variables from the var_refs_tbl table. *)
-let remove_vars_from_tbl tbl vars = SSet.iter (Hashtbl.remove tbl) vars
-
 (* For a hash table whose value is DataSourceSet, get its total cardinal. *)
 let get_tbl_total_cardinal tbl =
   Hashtbl.fold
@@ -530,12 +527,7 @@ let is_value_collection_ty env ty =
   let env = Tast_env.tast_env_as_typing_env env in
   let hackarray = MakeType.any_array Reason.none mixed mixed in
   (* Subtype against an empty open shape (shape(...)) *)
-  let shape =
-    MakeType.shape
-      Reason.none
-      Typing_defs.Open_shape
-      Typing_defs.TShapeMap.empty
-  in
+  let shape = MakeType.open_shape Reason.none Typing_defs.TShapeMap.empty in
   Typing_utils.is_sub_type env ty hackarray
   || Typing_utils.is_sub_type env ty shape
 
@@ -551,7 +543,7 @@ let rec has_no_object_ref_ty env (seen : SSet.t) ty =
   | Tprim _ -> true
   (* Open shapes can technically have objects in them, but as long as the current fields don't have objects in them
      we will allow you to call the function. Note that the function fails at runtime if any shape fields are objects. *)
-  | Tshape (_, fields) ->
+  | Tshape (_, _, fields) ->
     TShapeMap.for_all
       (fun _k v -> has_no_object_ref_ty env seen v.sft_ty)
       fields
@@ -713,10 +705,10 @@ let rec get_data_srcs_from_expr env ctx (tp, _, te) =
     get_data_srcs_of_expr_list el
   | Cast (_, e) -> get_data_srcs_from_expr env ctx e
   | Unop (_, e) -> get_data_srcs_from_expr env ctx e
-  | Binop (_, e1, e2) ->
+  | Binop { lhs; rhs; _ } ->
     DataSourceSet.union
-      (get_data_srcs_from_expr env ctx e1)
-      (get_data_srcs_from_expr env ctx e2)
+      (get_data_srcs_from_expr env ctx lhs)
+      (get_data_srcs_from_expr env ctx rhs)
   | Pipe (_, _, e) -> get_data_srcs_from_expr env ctx e
   | Eif (_, e1, e2) ->
     DataSourceSet.union
@@ -759,7 +751,8 @@ let rec get_data_srcs_from_expr env ctx (tp, _, te) =
   | ET_Splice _
   | EnumClassLabel _
   | Hole _
-  | Invalid _ ->
+  | Invalid _
+  | Package _ ->
     DataSourceSet.singleton Unknown
 
 (* Get the global variable names from the given expression's data sources.
@@ -855,8 +848,12 @@ let visitor =
           (* For the condition of format "expr is null", "expr === null" or "expr == null",
              return expr and true (i.e. if branch). *)
           | Is (cond_expr, (_, Hprim Tnull))
-          | Binop (Ast_defs.Eqeqeq, cond_expr, (_, _, Null))
-          | Binop (Ast_defs.Eqeq, cond_expr, (_, _, Null)) ->
+          | Binop
+              {
+                bop = Ast_defs.(Eqeqeq | Eqeq);
+                lhs = cond_expr;
+                rhs = (_, _, Null);
+              } ->
             Some (cond_expr, true)
           (* For the condition of format "!C\contains_key(expr, $key)" where expr shall be a
              dictionary, return expr and true (i.e. if branch). *)
@@ -870,8 +867,12 @@ let visitor =
           (* For the condition of format "expr is nonnull", "expr !== null" or "expr != null",
              return expr and false (i.e. else branch). *)
           | Is (cond_expr, (_, Hnonnull))
-          | Binop (Ast_defs.Diff2, cond_expr, (_, _, Null))
-          | Binop (Ast_defs.Diff, cond_expr, (_, _, Null)) ->
+          | Binop
+              {
+                bop = Ast_defs.(Diff | Diff2);
+                lhs = cond_expr;
+                rhs = (_, _, Null);
+              } ->
             Some (cond_expr, false)
           (* For the condition of format "C\contains_key(expr, $key)" where expr shall be a
              dictionary, return expr and false (i.e. else branch). *)
@@ -1017,15 +1018,15 @@ let visitor =
                 (GlobalAccessPatternSet.singleton NoPattern)
                 GlobalAccessCheck.PossibleGlobalWriteViaFunctionCall);
         super#on_expr (env, (ctx, fun_name)) te
-      | Binop (Ast_defs.Eq bop_opt, le, re) ->
-        let () = self#on_expr (env, (ctx, fun_name)) re in
-        let re_ty = Tast_env.print_ty env (Tast.get_type re) in
-        let le_global_opt = get_global_vars_from_expr env ctx le in
+      | Binop { bop = Ast_defs.Eq bop_opt; lhs; rhs } ->
+        let () = self#on_expr (env, (ctx, fun_name)) rhs in
+        let re_ty = Tast_env.print_ty env (Tast.get_type rhs) in
+        let le_global_opt = get_global_vars_from_expr env ctx lhs in
         (* When write to a global variable whose value is null or does not exist:
            if the written variable is in a collection (e.g. $global[$key] = $val),
            then it's asumed to be caching; otherwise, it's a singleton. *)
         let singleton_or_caching =
-          match le with
+          match lhs with
           | (_, _, Array_get _) -> Caching
           | _ -> Singleton
         in
@@ -1043,11 +1044,11 @@ let visitor =
             else
               NoPattern
         in
-        let re_data_srcs = get_data_srcs_from_expr env ctx re in
+        let re_data_srcs = get_data_srcs_from_expr env ctx rhs in
         let re_patterns = get_patterns_from_written_data_srcs re_data_srcs in
         (* Distinguish directly writing to static variables from writing to a variable
            that has references to static variables. *)
-        (if is_expr_static env le && Option.is_some le_global_opt then
+        (if is_expr_static env lhs && Option.is_some le_global_opt then
           raise_global_access_error
             p
             fun_name
@@ -1057,8 +1058,8 @@ let visitor =
             GlobalAccessCheck.DefiniteGlobalWrite
         else
           let vars_in_le = ref SSet.empty in
-          let () = get_vars_in_expr vars_in_le le in
-          if has_global_write_access le then (
+          let () = get_vars_in_expr vars_in_le lhs in
+          if has_global_write_access lhs then (
             if Option.is_some le_global_opt then
               raise_global_access_error
                 p
@@ -1079,7 +1080,7 @@ let visitor =
                   v
                   re_data_srcs)
               !vars_in_le);
-        super#on_expr (env, (ctx, fun_name)) re
+        super#on_expr (env, (ctx, fun_name)) rhs
         (* add_var_refs_to_tbl !(ctx.global_var_refs_tbl) !vars_in_le *)
       | Unop (op, e) ->
         let e_global_opt = get_global_vars_from_expr env ctx e in

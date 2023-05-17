@@ -87,6 +87,7 @@ QueryResult::QueryResult(QueryResult&& other) noexcept
     : row_fields_info_(other.row_fields_info_),
       query_num_(other.query_num_),
       partial_(other.partial_),
+      was_slow_(other.was_slow_),
       num_rows_(other.num_rows_),
       num_rows_affected_(other.num_rows_affected_),
       last_insert_id_(other.last_insert_id_),
@@ -113,6 +114,7 @@ QueryResult& QueryResult::operator=(QueryResult&& other) {
     row_blocks_ = std::move(other.row_blocks_);
     other.row_blocks_.clear();
     other.num_rows_ = 0;
+    was_slow_ = other.was_slow_;
   }
   return *this;
 }
@@ -204,7 +206,7 @@ void StreamedQueryResult::setResult(
 }
 
 void StreamedQueryResult::setException(folly::exception_wrapper ex) {
-  exception_wrapper_ = ex;
+  exception_wrapper_ = std::move(ex);
 }
 
 void StreamedQueryResult::freeHandler() {
@@ -213,7 +215,7 @@ void StreamedQueryResult::freeHandler() {
 
 MultiQueryStreamHandler::MultiQueryStreamHandler(
     std::shared_ptr<MultiQueryStreamOperation> op)
-    : operation_(op) {}
+    : operation_(std::move(op)) {}
 
 folly::Optional<StreamedQueryResult> MultiQueryStreamHandler::nextQuery() {
   if (state_ == State::RunQuery) {

@@ -23,7 +23,7 @@
 namespace HPHP {
 
 struct AsioExtension final : Extension {
-  AsioExtension() : Extension("asio", "0.1") {}
+  AsioExtension() : Extension("asio", "0.1", NO_ONCALL_YET) {}
   void moduleInit() override;
   void requestInit() override;
   void loadDecls() override;
@@ -47,6 +47,7 @@ private:
 };
 
 Object HHVM_FUNCTION(asio_get_running);
+Variant HHVM_FUNCTION(join, const Object& obj);
 size_t asio_object_size(const ObjectData* obj);
 
 }

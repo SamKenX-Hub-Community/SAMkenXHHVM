@@ -3143,7 +3143,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.returnstream";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.returnstream";
             }
             let args = self::Args_PubSubStreamingService_returnstream {
                 i32_from: arg_i32_from,
@@ -3160,7 +3160,7 @@ pub mod client {
             };
 
             let call_stream = transport
-                .call_stream(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .call_stream(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
                 .instrument(::tracing::trace_span!("call_stream", method = "PubSubStreamingService.returnstream"));
 
             async move {
@@ -3195,7 +3195,7 @@ pub mod client {
                 let res = initial.map(move |_| new_stream);
                 res
             }
-            .instrument(::tracing::info_span!("PubSubStreamingService.returnstream"))
+            .instrument(::tracing::info_span!("stream", method = "PubSubStreamingService.returnstream"))
             .boxed()
         }
 
@@ -3212,7 +3212,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.streamthrows";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.streamthrows";
             }
             let args = self::Args_PubSubStreamingService_streamthrows {
                 foo: arg_foo,
@@ -3228,7 +3228,7 @@ pub mod client {
             };
 
             let call_stream = transport
-                .call_stream(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .call_stream(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
                 .instrument(::tracing::trace_span!("call_stream", method = "PubSubStreamingService.streamthrows"));
 
             async move {
@@ -3263,7 +3263,7 @@ pub mod client {
                 let res = initial.map(move |_| new_stream);
                 res
             }
-            .instrument(::tracing::info_span!("PubSubStreamingService.streamthrows"))
+            .instrument(::tracing::info_span!("stream", method = "PubSubStreamingService.streamthrows"))
             .boxed()
         }
 
@@ -3280,7 +3280,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.servicethrows";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.servicethrows";
             }
             let args = self::Args_PubSubStreamingService_servicethrows {
                 foo: arg_foo,
@@ -3296,7 +3296,7 @@ pub mod client {
             };
 
             let call_stream = transport
-                .call_stream(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .call_stream(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
                 .instrument(::tracing::trace_span!("call_stream", method = "PubSubStreamingService.servicethrows"));
 
             async move {
@@ -3331,7 +3331,7 @@ pub mod client {
                 let res = initial.map(move |_| new_stream);
                 res
             }
-            .instrument(::tracing::info_span!("PubSubStreamingService.servicethrows"))
+            .instrument(::tracing::info_span!("stream", method = "PubSubStreamingService.servicethrows"))
             .boxed()
         }
 
@@ -3348,7 +3348,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.servicethrows2";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.servicethrows2";
             }
             let args = self::Args_PubSubStreamingService_servicethrows2 {
                 foo: arg_foo,
@@ -3364,7 +3364,7 @@ pub mod client {
             };
 
             let call_stream = transport
-                .call_stream(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .call_stream(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
                 .instrument(::tracing::trace_span!("call_stream", method = "PubSubStreamingService.servicethrows2"));
 
             async move {
@@ -3399,7 +3399,7 @@ pub mod client {
                 let res = initial.map(move |_| new_stream);
                 res
             }
-            .instrument(::tracing::info_span!("PubSubStreamingService.servicethrows2"))
+            .instrument(::tracing::info_span!("stream", method = "PubSubStreamingService.servicethrows2"))
             .boxed()
         }
 
@@ -3416,7 +3416,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.boththrows";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.boththrows";
             }
             let args = self::Args_PubSubStreamingService_boththrows {
                 foo: arg_foo,
@@ -3432,7 +3432,7 @@ pub mod client {
             };
 
             let call_stream = transport
-                .call_stream(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .call_stream(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
                 .instrument(::tracing::trace_span!("call_stream", method = "PubSubStreamingService.boththrows"));
 
             async move {
@@ -3467,7 +3467,7 @@ pub mod client {
                 let res = initial.map(move |_| new_stream);
                 res
             }
-            .instrument(::tracing::info_span!("PubSubStreamingService.boththrows"))
+            .instrument(::tracing::info_span!("stream", method = "PubSubStreamingService.boththrows"))
             .boxed()
         }
 
@@ -3484,7 +3484,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.responseandstreamstreamthrows";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.responseandstreamstreamthrows";
             }
             let args = self::Args_PubSubStreamingService_responseandstreamstreamthrows {
                 foo: arg_foo,
@@ -3500,7 +3500,7 @@ pub mod client {
             };
 
             let call_stream = transport
-                .call_stream(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .call_stream(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
                 .instrument(::tracing::trace_span!("call_stream", method = "PubSubStreamingService.responseandstreamstreamthrows"));
 
             async move {
@@ -3535,7 +3535,7 @@ pub mod client {
                 let res = initial.map(move |initial| (initial, new_stream));
                 res
             }
-            .instrument(::tracing::info_span!("PubSubStreamingService.responseandstreamstreamthrows"))
+            .instrument(::tracing::info_span!("stream", method = "PubSubStreamingService.responseandstreamstreamthrows"))
             .boxed()
         }
 
@@ -3552,7 +3552,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.responseandstreamservicethrows";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.responseandstreamservicethrows";
             }
             let args = self::Args_PubSubStreamingService_responseandstreamservicethrows {
                 foo: arg_foo,
@@ -3568,7 +3568,7 @@ pub mod client {
             };
 
             let call_stream = transport
-                .call_stream(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .call_stream(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
                 .instrument(::tracing::trace_span!("call_stream", method = "PubSubStreamingService.responseandstreamservicethrows"));
 
             async move {
@@ -3603,7 +3603,7 @@ pub mod client {
                 let res = initial.map(move |initial| (initial, new_stream));
                 res
             }
-            .instrument(::tracing::info_span!("PubSubStreamingService.responseandstreamservicethrows"))
+            .instrument(::tracing::info_span!("stream", method = "PubSubStreamingService.responseandstreamservicethrows"))
             .boxed()
         }
 
@@ -3620,7 +3620,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.responseandstreamboththrows";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.responseandstreamboththrows";
             }
             let args = self::Args_PubSubStreamingService_responseandstreamboththrows {
                 foo: arg_foo,
@@ -3636,7 +3636,7 @@ pub mod client {
             };
 
             let call_stream = transport
-                .call_stream(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .call_stream(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
                 .instrument(::tracing::trace_span!("call_stream", method = "PubSubStreamingService.responseandstreamboththrows"));
 
             async move {
@@ -3671,7 +3671,7 @@ pub mod client {
                 let res = initial.map(move |initial| (initial, new_stream));
                 res
             }
-            .instrument(::tracing::info_span!("PubSubStreamingService.responseandstreamboththrows"))
+            .instrument(::tracing::info_span!("stream", method = "PubSubStreamingService.responseandstreamboththrows"))
             .boxed()
         }
 
@@ -3689,7 +3689,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.returnstreamFast";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.returnstreamFast";
             }
             let args = self::Args_PubSubStreamingService_returnstreamFast {
                 i32_from: arg_i32_from,
@@ -3706,7 +3706,7 @@ pub mod client {
             };
 
             let call_stream = transport
-                .call_stream(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .call_stream(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
                 .instrument(::tracing::trace_span!("call_stream", method = "PubSubStreamingService.returnstreamFast"));
 
             async move {
@@ -3741,7 +3741,7 @@ pub mod client {
                 let res = initial.map(move |_| new_stream);
                 res
             }
-            .instrument(::tracing::info_span!("PubSubStreamingService.returnstreamFast"))
+            .instrument(::tracing::info_span!("stream", method = "PubSubStreamingService.returnstreamFast"))
             .boxed()
         }
     }
@@ -5029,8 +5029,10 @@ pub mod server {
         H: PubSubStreamingService,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
         RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         pub fn new(service: H) -> Self {
             Self {
@@ -5048,6 +5050,7 @@ pub mod server {
         async fn handle_returnstream<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5057,20 +5060,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.returnstream";
+                METHOD_NAME = "returnstream";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.returnstream";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_PubSubStreamingService_returnstream = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.returnstream(
@@ -5084,7 +5089,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "PubSubStreamingService.returnstream", "success");
                     crate::services::pub_sub_streaming_service::ReturnstreamExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::pub_sub_streaming_service::ReturnstreamExn::Success(_))) => {
@@ -5098,6 +5103,7 @@ pub mod server {
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("PubSubStreamingService.returnstream", exn);
+                    ::tracing::error!(method = "PubSubStreamingService.returnstream", panic = ?aexn);
                     crate::services::pub_sub_streaming_service::ReturnstreamExn::ApplicationException(aexn)
                 }
             };
@@ -5158,6 +5164,7 @@ pub mod server {
         async fn handle_streamthrows<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5167,20 +5174,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.streamthrows";
+                METHOD_NAME = "streamthrows";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.streamthrows";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_PubSubStreamingService_streamthrows = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.streamthrows(
@@ -5193,7 +5202,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "PubSubStreamingService.streamthrows", "success");
                     crate::services::pub_sub_streaming_service::StreamthrowsExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::pub_sub_streaming_service::StreamthrowsExn::Success(_))) => {
@@ -5207,6 +5216,7 @@ pub mod server {
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("PubSubStreamingService.streamthrows", exn);
+                    ::tracing::error!(method = "PubSubStreamingService.streamthrows", panic = ?aexn);
                     crate::services::pub_sub_streaming_service::StreamthrowsExn::ApplicationException(aexn)
                 }
             };
@@ -5273,6 +5283,7 @@ pub mod server {
         async fn handle_servicethrows<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5282,20 +5293,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.servicethrows";
+                METHOD_NAME = "servicethrows";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.servicethrows";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_PubSubStreamingService_servicethrows = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.servicethrows(
@@ -5308,7 +5321,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "PubSubStreamingService.servicethrows", "success");
                     crate::services::pub_sub_streaming_service::ServicethrowsExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::pub_sub_streaming_service::ServicethrowsExn::Success(_))) => {
@@ -5322,6 +5335,7 @@ pub mod server {
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("PubSubStreamingService.servicethrows", exn);
+                    ::tracing::error!(method = "PubSubStreamingService.servicethrows", panic = ?aexn);
                     crate::services::pub_sub_streaming_service::ServicethrowsExn::ApplicationException(aexn)
                 }
             };
@@ -5386,6 +5400,7 @@ pub mod server {
         async fn handle_servicethrows2<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5395,20 +5410,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.servicethrows2";
+                METHOD_NAME = "servicethrows2";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.servicethrows2";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_PubSubStreamingService_servicethrows2 = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.servicethrows2(
@@ -5421,7 +5438,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "PubSubStreamingService.servicethrows2", "success");
                     crate::services::pub_sub_streaming_service::Servicethrows2Exn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::pub_sub_streaming_service::Servicethrows2Exn::Success(_))) => {
@@ -5435,6 +5452,7 @@ pub mod server {
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("PubSubStreamingService.servicethrows2", exn);
+                    ::tracing::error!(method = "PubSubStreamingService.servicethrows2", panic = ?aexn);
                     crate::services::pub_sub_streaming_service::Servicethrows2Exn::ApplicationException(aexn)
                 }
             };
@@ -5503,6 +5521,7 @@ pub mod server {
         async fn handle_boththrows<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5512,20 +5531,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.boththrows";
+                METHOD_NAME = "boththrows";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.boththrows";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_PubSubStreamingService_boththrows = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.boththrows(
@@ -5538,7 +5559,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "PubSubStreamingService.boththrows", "success");
                     crate::services::pub_sub_streaming_service::BoththrowsExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::pub_sub_streaming_service::BoththrowsExn::Success(_))) => {
@@ -5552,6 +5573,7 @@ pub mod server {
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("PubSubStreamingService.boththrows", exn);
+                    ::tracing::error!(method = "PubSubStreamingService.boththrows", panic = ?aexn);
                     crate::services::pub_sub_streaming_service::BoththrowsExn::ApplicationException(aexn)
                 }
             };
@@ -5622,6 +5644,7 @@ pub mod server {
         async fn handle_responseandstreamstreamthrows<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5631,20 +5654,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.responseandstreamstreamthrows";
+                METHOD_NAME = "responseandstreamstreamthrows";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.responseandstreamstreamthrows";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_PubSubStreamingService_responseandstreamstreamthrows = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.responseandstreamstreamthrows(
@@ -5657,7 +5682,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "PubSubStreamingService.responseandstreamstreamthrows", "success");
                     crate::services::pub_sub_streaming_service::ResponseandstreamstreamthrowsExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::pub_sub_streaming_service::ResponseandstreamstreamthrowsExn::Success(_))) => {
@@ -5671,6 +5696,7 @@ pub mod server {
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("PubSubStreamingService.responseandstreamstreamthrows", exn);
+                    ::tracing::error!(method = "PubSubStreamingService.responseandstreamstreamthrows", panic = ?aexn);
                     crate::services::pub_sub_streaming_service::ResponseandstreamstreamthrowsExn::ApplicationException(aexn)
                 }
             };
@@ -5737,6 +5763,7 @@ pub mod server {
         async fn handle_responseandstreamservicethrows<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5746,20 +5773,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.responseandstreamservicethrows";
+                METHOD_NAME = "responseandstreamservicethrows";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.responseandstreamservicethrows";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_PubSubStreamingService_responseandstreamservicethrows = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.responseandstreamservicethrows(
@@ -5772,7 +5801,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "PubSubStreamingService.responseandstreamservicethrows", "success");
                     crate::services::pub_sub_streaming_service::ResponseandstreamservicethrowsExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::pub_sub_streaming_service::ResponseandstreamservicethrowsExn::Success(_))) => {
@@ -5786,6 +5815,7 @@ pub mod server {
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("PubSubStreamingService.responseandstreamservicethrows", exn);
+                    ::tracing::error!(method = "PubSubStreamingService.responseandstreamservicethrows", panic = ?aexn);
                     crate::services::pub_sub_streaming_service::ResponseandstreamservicethrowsExn::ApplicationException(aexn)
                 }
             };
@@ -5850,6 +5880,7 @@ pub mod server {
         async fn handle_responseandstreamboththrows<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5859,20 +5890,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.responseandstreamboththrows";
+                METHOD_NAME = "responseandstreamboththrows";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.responseandstreamboththrows";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_PubSubStreamingService_responseandstreamboththrows = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.responseandstreamboththrows(
@@ -5885,7 +5918,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "PubSubStreamingService.responseandstreamboththrows", "success");
                     crate::services::pub_sub_streaming_service::ResponseandstreamboththrowsExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::pub_sub_streaming_service::ResponseandstreamboththrowsExn::Success(_))) => {
@@ -5899,6 +5932,7 @@ pub mod server {
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("PubSubStreamingService.responseandstreamboththrows", exn);
+                    ::tracing::error!(method = "PubSubStreamingService.responseandstreamboththrows", panic = ?aexn);
                     crate::services::pub_sub_streaming_service::ResponseandstreamboththrowsExn::ApplicationException(aexn)
                 }
             };
@@ -5969,6 +6003,7 @@ pub mod server {
         async fn handle_returnstreamFast<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5978,20 +6013,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "PubSubStreamingService";
-                METHOD_NAME = "PubSubStreamingService.returnstreamFast";
+                METHOD_NAME = "returnstreamFast";
+                SERVICE_METHOD_NAME = "PubSubStreamingService.returnstreamFast";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_PubSubStreamingService_returnstreamFast = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.returnstreamFast(
@@ -6005,7 +6042,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "PubSubStreamingService.returnstreamFast", "success");
                     crate::services::pub_sub_streaming_service::ReturnstreamFastExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::pub_sub_streaming_service::ReturnstreamFastExn::Success(_))) => {
@@ -6019,6 +6056,7 @@ pub mod server {
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("PubSubStreamingService.returnstreamFast", exn);
+                    ::tracing::error!(method = "PubSubStreamingService.returnstreamFast", panic = ?aexn);
                     crate::services::pub_sub_streaming_service::ReturnstreamFastExn::ApplicationException(aexn)
                 }
             };
@@ -6084,9 +6122,11 @@ pub mod server {
         H: PubSubStreamingService,
         P::Frame: ::std::marker::Send + 'static,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         type RequestContext = R;
         type ReplyState = RS;
@@ -6112,37 +6152,38 @@ pub mod server {
             &self,
             idx: ::std::primitive::usize,
             _p: &mut P::Deserializer,
-            _r: &R,
+            _req: ::fbthrift::ProtocolDecoded<P>,
+            _req_ctxt: &R,
             _reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
         ) -> ::anyhow::Result<()> {
             match idx {
                 0usize => {
-                    self.handle_returnstream(_p, _r, _reply_state, _seqid).await
+                    self.handle_returnstream(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 1usize => {
-                    self.handle_streamthrows(_p, _r, _reply_state, _seqid).await
+                    self.handle_streamthrows(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 2usize => {
-                    self.handle_servicethrows(_p, _r, _reply_state, _seqid).await
+                    self.handle_servicethrows(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 3usize => {
-                    self.handle_servicethrows2(_p, _r, _reply_state, _seqid).await
+                    self.handle_servicethrows2(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 4usize => {
-                    self.handle_boththrows(_p, _r, _reply_state, _seqid).await
+                    self.handle_boththrows(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 5usize => {
-                    self.handle_responseandstreamstreamthrows(_p, _r, _reply_state, _seqid).await
+                    self.handle_responseandstreamstreamthrows(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 6usize => {
-                    self.handle_responseandstreamservicethrows(_p, _r, _reply_state, _seqid).await
+                    self.handle_responseandstreamservicethrows(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 7usize => {
-                    self.handle_responseandstreamboththrows(_p, _r, _reply_state, _seqid).await
+                    self.handle_responseandstreamboththrows(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 8usize => {
-                    self.handle_returnstreamFast(_p, _r, _reply_state, _seqid).await
+                    self.handle_returnstreamFast(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 bad => panic!(
                     "{}: unexpected method idx {}",
@@ -6188,9 +6229,11 @@ pub mod server {
         P::Frame: ::std::marker::Send + 'static,
         H: PubSubStreamingService,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         type Handler = H;
         type RequestContext = R;
@@ -6203,8 +6246,8 @@ pub mod server {
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
         ) -> ::anyhow::Result<()> {
-            use ::fbthrift::{BufExt as _, ProtocolReader as _, ServiceProcessor as _};
-            let mut p = P::deserializer(req);
+            use ::fbthrift::{ProtocolReader as _, ServiceProcessor as _};
+            let mut p = P::deserializer(req.clone());
             let (idx, mty, seqid) = p.read_message_begin(|name| self.method_idx(name))?;
             if mty != ::fbthrift::MessageType::Call {
                 return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ApplicationException::new(
@@ -6215,11 +6258,10 @@ pub mod server {
             let idx = match idx {
                 ::std::result::Result::Ok(idx) => idx,
                 ::std::result::Result::Err(_) => {
-                    let cur = P::into_buffer(p).reset();
-                    return self.supa.call(cur, req_ctxt, reply_state).await;
+                    return self.supa.call(req, req_ctxt, reply_state).await;
                 }
             };
-            self.handle_method(idx, &mut p, req_ctxt, reply_state, seqid).await?;
+            self.handle_method(idx, &mut p, req, req_ctxt, reply_state, seqid).await?;
             p.read_message_end()?;
 
             Ok(())
@@ -6276,8 +6318,10 @@ pub mod server {
         F: ::fbthrift::Framing + ::std::marker::Send + ::std::marker::Sync + 'static,
         H: PubSubStreamingService,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = F::DecBuf> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<F, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = F> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        RS: ::fbthrift::ReplyState<F, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::FramingDecoded<F>: ::std::clone::Clone,
+        ::fbthrift::FramingEncodedFinal<F>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         match proto {
             ::fbthrift::ProtocolID::BinaryProtocol => {
@@ -6495,7 +6539,7 @@ pub mod mock {
         }
     }
 
-    mod r#impl {
+    pub mod r#impl {
         pub mod pub_sub_streaming_service {
 
             pub struct returnstream<'mock> {
@@ -6509,7 +6553,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> returnstream<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i32, _: ::std::primitive::i32| panic!(
                             "{}::{} is not mocked",
@@ -6554,7 +6598,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> streamthrows<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i32| panic!(
                             "{}::{} is not mocked",
@@ -6599,7 +6643,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> servicethrows<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i32| panic!(
                             "{}::{} is not mocked",
@@ -6644,7 +6688,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> servicethrows2<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i32| panic!(
                             "{}::{} is not mocked",
@@ -6689,7 +6733,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> boththrows<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i32| panic!(
                             "{}::{} is not mocked",
@@ -6734,7 +6778,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> responseandstreamstreamthrows<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i32| panic!(
                             "{}::{} is not mocked",
@@ -6779,7 +6823,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> responseandstreamservicethrows<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i32| panic!(
                             "{}::{} is not mocked",
@@ -6824,7 +6868,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> responseandstreamboththrows<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i32| panic!(
                             "{}::{} is not mocked",
@@ -6869,7 +6913,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> returnstreamFast<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i32, _: ::std::primitive::i32| panic!(
                             "{}::{} is not mocked",
@@ -7036,14 +7080,62 @@ pub mod errors {
             }
         }
 
-        #[derive(Debug, ::thiserror::Error)]
+        #[derive(Debug)]
         pub enum StreamthrowsStreamError {
-            #[error("PubSubStreamingService::streamthrows stream failed with {0:?}")]
             e(crate::types::FooStreamEx),
-            #[error("Application exception: {0:?}")]
             ApplicationException(::fbthrift::types::ApplicationException),
-            #[error("{0}")]
             ThriftError(::anyhow::Error),
+        }
+
+        /// Human-readable string representation of the Thrift client error.
+        ///
+        /// By default, this will not print the full cause chain. If you would like to print the underlying error
+        /// cause, either use `format!("{:?}", anyhow::Error::from(client_err))` or print this using the
+        /// alternate formatter `{:#}` instead of just `{}`.
+        impl ::std::fmt::Display for StreamthrowsStreamError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
+                match self {
+                    Self::e(inner) => {
+                        if f.alternate() {
+                            write!(f, "PubSubStreamingService::streamthrows failed with variant `e`: {:#}", inner)?;
+                        } else {
+                            write!(f, "PubSubStreamingService::streamthrows failed with e(FooStreamEx)")?;
+                        }
+                    }
+                    Self::ApplicationException(inner) => {
+                        write!(f, "PubSubStreamingService::streamthrows failed with ApplicationException")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                    Self::ThriftError(inner) => {
+                        write!(f, "PubSubStreamingService::streamthrows failed with ThriftError")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+        }
+
+        impl ::std::error::Error for StreamthrowsStreamError {
+            fn source(&self) -> ::std::option::Option<&(dyn ::std::error::Error + 'static)> {
+                match self {
+                    Self::e(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ApplicationException(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ThriftError(ref inner) => {
+                        Some(inner.as_ref())
+                    }
+                }
+            }
         }
 
         impl ::std::convert::From<crate::types::FooStreamEx> for StreamthrowsStreamError {
@@ -7080,14 +7172,62 @@ pub mod errors {
         }
 
         /// Errors for servicethrows (client side).
-        #[derive(Debug, ::thiserror::Error)]
+        #[derive(Debug)]
         pub enum ServicethrowsError {
-            #[error("PubSubStreamingService::servicethrows failed with {0:?}")]
             e(crate::types::FooEx),
-            #[error("Application exception: {0:?}")]
             ApplicationException(::fbthrift::types::ApplicationException),
-            #[error("{0}")]
             ThriftError(::anyhow::Error),
+        }
+
+        /// Human-readable string representation of the Thrift client error.
+        ///
+        /// By default, this will not print the full cause chain. If you would like to print the underlying error
+        /// cause, either use `format!("{:?}", anyhow::Error::from(client_err))` or print this using the
+        /// alternate formatter `{:#}` instead of just `{}`.
+        impl ::std::fmt::Display for ServicethrowsError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
+                match self {
+                    Self::e(inner) => {
+                        if f.alternate() {
+                            write!(f, "PubSubStreamingService::servicethrows failed with variant `e`: {:#}", inner)?;
+                        } else {
+                            write!(f, "PubSubStreamingService::servicethrows failed with e(FooEx)")?;
+                        }
+                    }
+                    Self::ApplicationException(inner) => {
+                        write!(f, "PubSubStreamingService::servicethrows failed with ApplicationException")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                    Self::ThriftError(inner) => {
+                        write!(f, "PubSubStreamingService::servicethrows failed with ThriftError")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+        }
+
+        impl ::std::error::Error for ServicethrowsError {
+            fn source(&self) -> ::std::option::Option<&(dyn ::std::error::Error + 'static)> {
+                match self {
+                    Self::e(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ApplicationException(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ThriftError(ref inner) => {
+                        Some(inner.as_ref())
+                    }
+                }
+            }
         }
 
         impl ::std::convert::From<crate::types::FooEx> for ServicethrowsError {
@@ -7168,16 +7308,73 @@ pub mod errors {
         }
 
         /// Errors for servicethrows2 (client side).
-        #[derive(Debug, ::thiserror::Error)]
+        #[derive(Debug)]
         pub enum Servicethrows2Error {
-            #[error("PubSubStreamingService::servicethrows2 failed with {0:?}")]
             e1(crate::types::FooEx),
-            #[error("PubSubStreamingService::servicethrows2 failed with {0:?}")]
             e2(crate::types::FooEx2),
-            #[error("Application exception: {0:?}")]
             ApplicationException(::fbthrift::types::ApplicationException),
-            #[error("{0}")]
             ThriftError(::anyhow::Error),
+        }
+
+        /// Human-readable string representation of the Thrift client error.
+        ///
+        /// By default, this will not print the full cause chain. If you would like to print the underlying error
+        /// cause, either use `format!("{:?}", anyhow::Error::from(client_err))` or print this using the
+        /// alternate formatter `{:#}` instead of just `{}`.
+        impl ::std::fmt::Display for Servicethrows2Error {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
+                match self {
+                    Self::e1(inner) => {
+                        if f.alternate() {
+                            write!(f, "PubSubStreamingService::servicethrows2 failed with variant `e1`: {:#}", inner)?;
+                        } else {
+                            write!(f, "PubSubStreamingService::servicethrows2 failed with e1(FooEx)")?;
+                        }
+                    }
+                    Self::e2(inner) => {
+                        if f.alternate() {
+                            write!(f, "PubSubStreamingService::servicethrows2 failed with variant `e2`: {:#}", inner)?;
+                        } else {
+                            write!(f, "PubSubStreamingService::servicethrows2 failed with e2(FooEx2)")?;
+                        }
+                    }
+                    Self::ApplicationException(inner) => {
+                        write!(f, "PubSubStreamingService::servicethrows2 failed with ApplicationException")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                    Self::ThriftError(inner) => {
+                        write!(f, "PubSubStreamingService::servicethrows2 failed with ThriftError")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+        }
+
+        impl ::std::error::Error for Servicethrows2Error {
+            fn source(&self) -> ::std::option::Option<&(dyn ::std::error::Error + 'static)> {
+                match self {
+                    Self::e1(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::e2(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ApplicationException(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ThriftError(ref inner) => {
+                        Some(inner.as_ref())
+                    }
+                }
+            }
         }
 
         impl ::std::convert::From<crate::types::FooEx> for Servicethrows2Error {
@@ -7277,14 +7474,62 @@ pub mod errors {
         }
 
         /// Errors for boththrows (client side).
-        #[derive(Debug, ::thiserror::Error)]
+        #[derive(Debug)]
         pub enum BoththrowsError {
-            #[error("PubSubStreamingService::boththrows failed with {0:?}")]
             e(crate::types::FooEx),
-            #[error("Application exception: {0:?}")]
             ApplicationException(::fbthrift::types::ApplicationException),
-            #[error("{0}")]
             ThriftError(::anyhow::Error),
+        }
+
+        /// Human-readable string representation of the Thrift client error.
+        ///
+        /// By default, this will not print the full cause chain. If you would like to print the underlying error
+        /// cause, either use `format!("{:?}", anyhow::Error::from(client_err))` or print this using the
+        /// alternate formatter `{:#}` instead of just `{}`.
+        impl ::std::fmt::Display for BoththrowsError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
+                match self {
+                    Self::e(inner) => {
+                        if f.alternate() {
+                            write!(f, "PubSubStreamingService::boththrows failed with variant `e`: {:#}", inner)?;
+                        } else {
+                            write!(f, "PubSubStreamingService::boththrows failed with e(FooEx)")?;
+                        }
+                    }
+                    Self::ApplicationException(inner) => {
+                        write!(f, "PubSubStreamingService::boththrows failed with ApplicationException")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                    Self::ThriftError(inner) => {
+                        write!(f, "PubSubStreamingService::boththrows failed with ThriftError")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+        }
+
+        impl ::std::error::Error for BoththrowsError {
+            fn source(&self) -> ::std::option::Option<&(dyn ::std::error::Error + 'static)> {
+                match self {
+                    Self::e(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ApplicationException(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ThriftError(ref inner) => {
+                        Some(inner.as_ref())
+                    }
+                }
+            }
         }
 
         impl ::std::convert::From<crate::types::FooEx> for BoththrowsError {
@@ -7349,14 +7594,62 @@ pub mod errors {
             }
         }
 
-        #[derive(Debug, ::thiserror::Error)]
+        #[derive(Debug)]
         pub enum BoththrowsStreamError {
-            #[error("PubSubStreamingService::boththrows stream failed with {0:?}")]
             e(crate::types::FooStreamEx),
-            #[error("Application exception: {0:?}")]
             ApplicationException(::fbthrift::types::ApplicationException),
-            #[error("{0}")]
             ThriftError(::anyhow::Error),
+        }
+
+        /// Human-readable string representation of the Thrift client error.
+        ///
+        /// By default, this will not print the full cause chain. If you would like to print the underlying error
+        /// cause, either use `format!("{:?}", anyhow::Error::from(client_err))` or print this using the
+        /// alternate formatter `{:#}` instead of just `{}`.
+        impl ::std::fmt::Display for BoththrowsStreamError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
+                match self {
+                    Self::e(inner) => {
+                        if f.alternate() {
+                            write!(f, "PubSubStreamingService::boththrows failed with variant `e`: {:#}", inner)?;
+                        } else {
+                            write!(f, "PubSubStreamingService::boththrows failed with e(FooStreamEx)")?;
+                        }
+                    }
+                    Self::ApplicationException(inner) => {
+                        write!(f, "PubSubStreamingService::boththrows failed with ApplicationException")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                    Self::ThriftError(inner) => {
+                        write!(f, "PubSubStreamingService::boththrows failed with ThriftError")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+        }
+
+        impl ::std::error::Error for BoththrowsStreamError {
+            fn source(&self) -> ::std::option::Option<&(dyn ::std::error::Error + 'static)> {
+                match self {
+                    Self::e(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ApplicationException(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ThriftError(ref inner) => {
+                        Some(inner.as_ref())
+                    }
+                }
+            }
         }
 
         impl ::std::convert::From<crate::types::FooStreamEx> for BoththrowsStreamError {
@@ -7426,14 +7719,62 @@ pub mod errors {
             }
         }
 
-        #[derive(Debug, ::thiserror::Error)]
+        #[derive(Debug)]
         pub enum ResponseandstreamstreamthrowsStreamError {
-            #[error("PubSubStreamingService::responseandstreamstreamthrows stream failed with {0:?}")]
             e(crate::types::FooStreamEx),
-            #[error("Application exception: {0:?}")]
             ApplicationException(::fbthrift::types::ApplicationException),
-            #[error("{0}")]
             ThriftError(::anyhow::Error),
+        }
+
+        /// Human-readable string representation of the Thrift client error.
+        ///
+        /// By default, this will not print the full cause chain. If you would like to print the underlying error
+        /// cause, either use `format!("{:?}", anyhow::Error::from(client_err))` or print this using the
+        /// alternate formatter `{:#}` instead of just `{}`.
+        impl ::std::fmt::Display for ResponseandstreamstreamthrowsStreamError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
+                match self {
+                    Self::e(inner) => {
+                        if f.alternate() {
+                            write!(f, "PubSubStreamingService::responseandstreamstreamthrows failed with variant `e`: {:#}", inner)?;
+                        } else {
+                            write!(f, "PubSubStreamingService::responseandstreamstreamthrows failed with e(FooStreamEx)")?;
+                        }
+                    }
+                    Self::ApplicationException(inner) => {
+                        write!(f, "PubSubStreamingService::responseandstreamstreamthrows failed with ApplicationException")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                    Self::ThriftError(inner) => {
+                        write!(f, "PubSubStreamingService::responseandstreamstreamthrows failed with ThriftError")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+        }
+
+        impl ::std::error::Error for ResponseandstreamstreamthrowsStreamError {
+            fn source(&self) -> ::std::option::Option<&(dyn ::std::error::Error + 'static)> {
+                match self {
+                    Self::e(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ApplicationException(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ThriftError(ref inner) => {
+                        Some(inner.as_ref())
+                    }
+                }
+            }
         }
 
         impl ::std::convert::From<crate::types::FooStreamEx> for ResponseandstreamstreamthrowsStreamError {
@@ -7470,14 +7811,62 @@ pub mod errors {
         }
 
         /// Errors for responseandstreamservicethrows (client side).
-        #[derive(Debug, ::thiserror::Error)]
+        #[derive(Debug)]
         pub enum ResponseandstreamservicethrowsError {
-            #[error("PubSubStreamingService::responseandstreamservicethrows failed with {0:?}")]
             e(crate::types::FooEx),
-            #[error("Application exception: {0:?}")]
             ApplicationException(::fbthrift::types::ApplicationException),
-            #[error("{0}")]
             ThriftError(::anyhow::Error),
+        }
+
+        /// Human-readable string representation of the Thrift client error.
+        ///
+        /// By default, this will not print the full cause chain. If you would like to print the underlying error
+        /// cause, either use `format!("{:?}", anyhow::Error::from(client_err))` or print this using the
+        /// alternate formatter `{:#}` instead of just `{}`.
+        impl ::std::fmt::Display for ResponseandstreamservicethrowsError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
+                match self {
+                    Self::e(inner) => {
+                        if f.alternate() {
+                            write!(f, "PubSubStreamingService::responseandstreamservicethrows failed with variant `e`: {:#}", inner)?;
+                        } else {
+                            write!(f, "PubSubStreamingService::responseandstreamservicethrows failed with e(FooEx)")?;
+                        }
+                    }
+                    Self::ApplicationException(inner) => {
+                        write!(f, "PubSubStreamingService::responseandstreamservicethrows failed with ApplicationException")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                    Self::ThriftError(inner) => {
+                        write!(f, "PubSubStreamingService::responseandstreamservicethrows failed with ThriftError")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+        }
+
+        impl ::std::error::Error for ResponseandstreamservicethrowsError {
+            fn source(&self) -> ::std::option::Option<&(dyn ::std::error::Error + 'static)> {
+                match self {
+                    Self::e(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ApplicationException(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ThriftError(ref inner) => {
+                        Some(inner.as_ref())
+                    }
+                }
+            }
         }
 
         impl ::std::convert::From<crate::types::FooEx> for ResponseandstreamservicethrowsError {
@@ -7558,14 +7947,62 @@ pub mod errors {
         }
 
         /// Errors for responseandstreamboththrows (client side).
-        #[derive(Debug, ::thiserror::Error)]
+        #[derive(Debug)]
         pub enum ResponseandstreamboththrowsError {
-            #[error("PubSubStreamingService::responseandstreamboththrows failed with {0:?}")]
             e(crate::types::FooEx),
-            #[error("Application exception: {0:?}")]
             ApplicationException(::fbthrift::types::ApplicationException),
-            #[error("{0}")]
             ThriftError(::anyhow::Error),
+        }
+
+        /// Human-readable string representation of the Thrift client error.
+        ///
+        /// By default, this will not print the full cause chain. If you would like to print the underlying error
+        /// cause, either use `format!("{:?}", anyhow::Error::from(client_err))` or print this using the
+        /// alternate formatter `{:#}` instead of just `{}`.
+        impl ::std::fmt::Display for ResponseandstreamboththrowsError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
+                match self {
+                    Self::e(inner) => {
+                        if f.alternate() {
+                            write!(f, "PubSubStreamingService::responseandstreamboththrows failed with variant `e`: {:#}", inner)?;
+                        } else {
+                            write!(f, "PubSubStreamingService::responseandstreamboththrows failed with e(FooEx)")?;
+                        }
+                    }
+                    Self::ApplicationException(inner) => {
+                        write!(f, "PubSubStreamingService::responseandstreamboththrows failed with ApplicationException")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                    Self::ThriftError(inner) => {
+                        write!(f, "PubSubStreamingService::responseandstreamboththrows failed with ThriftError")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+        }
+
+        impl ::std::error::Error for ResponseandstreamboththrowsError {
+            fn source(&self) -> ::std::option::Option<&(dyn ::std::error::Error + 'static)> {
+                match self {
+                    Self::e(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ApplicationException(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ThriftError(ref inner) => {
+                        Some(inner.as_ref())
+                    }
+                }
+            }
         }
 
         impl ::std::convert::From<crate::types::FooEx> for ResponseandstreamboththrowsError {
@@ -7630,14 +8067,62 @@ pub mod errors {
             }
         }
 
-        #[derive(Debug, ::thiserror::Error)]
+        #[derive(Debug)]
         pub enum ResponseandstreamboththrowsStreamError {
-            #[error("PubSubStreamingService::responseandstreamboththrows stream failed with {0:?}")]
             e(crate::types::FooStreamEx),
-            #[error("Application exception: {0:?}")]
             ApplicationException(::fbthrift::types::ApplicationException),
-            #[error("{0}")]
             ThriftError(::anyhow::Error),
+        }
+
+        /// Human-readable string representation of the Thrift client error.
+        ///
+        /// By default, this will not print the full cause chain. If you would like to print the underlying error
+        /// cause, either use `format!("{:?}", anyhow::Error::from(client_err))` or print this using the
+        /// alternate formatter `{:#}` instead of just `{}`.
+        impl ::std::fmt::Display for ResponseandstreamboththrowsStreamError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::result::Result<(), ::std::fmt::Error> {
+                match self {
+                    Self::e(inner) => {
+                        if f.alternate() {
+                            write!(f, "PubSubStreamingService::responseandstreamboththrows failed with variant `e`: {:#}", inner)?;
+                        } else {
+                            write!(f, "PubSubStreamingService::responseandstreamboththrows failed with e(FooStreamEx)")?;
+                        }
+                    }
+                    Self::ApplicationException(inner) => {
+                        write!(f, "PubSubStreamingService::responseandstreamboththrows failed with ApplicationException")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                    Self::ThriftError(inner) => {
+                        write!(f, "PubSubStreamingService::responseandstreamboththrows failed with ThriftError")?;
+
+                        if f.alternate() {
+                          write!(f, ": {:#}", inner)?;
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+        }
+
+        impl ::std::error::Error for ResponseandstreamboththrowsStreamError {
+            fn source(&self) -> ::std::option::Option<&(dyn ::std::error::Error + 'static)> {
+                match self {
+                    Self::e(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ApplicationException(ref inner) => {
+                        Some(inner)
+                    }
+                    Self::ThriftError(ref inner) => {
+                        Some(inner.as_ref())
+                    }
+                }
+            }
         }
 
         impl ::std::convert::From<crate::types::FooStreamEx> for ResponseandstreamboththrowsStreamError {

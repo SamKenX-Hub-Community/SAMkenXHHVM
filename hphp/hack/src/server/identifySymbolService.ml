@@ -86,6 +86,11 @@ let process_member ?(is_declaration = false) recv_class id ~is_method ~is_const
 
 (* If there's an exact class name can find for this type, return its name. *)
 let concrete_cls_name_from_ty enclosing_class_name ty : string option =
+  let ty =
+    match Typing_defs_core.get_node ty with
+    | Tnewtype (n, _, ty) when String.equal n SN.Classes.cSupportDyn -> ty
+    | _ -> ty
+  in
   match Typing_defs_core.get_node ty with
   | Tclass ((_, cls_name), _, _) -> Some cls_name
   | Tgeneric ("this", _) -> enclosing_class_name
@@ -405,7 +410,7 @@ let visitor =
 
       (* We're overriding super#on_expression_tree, so we need to
          update the environment. *)
-      let env = Tast_env.set_in_expr_tree env true in
+      let env = Tast_env.inside_expr_tree env et_hint in
       let acc = self#plus acc (self#on_Block env et_function_pointers) in
 
       let (_, _, virtualized_expr_) = et_virtualized_expr in
@@ -455,6 +460,11 @@ let visitor =
         typed_class_id ~class_id_type:Other env ty p
       | Aast.CI _ -> typed_class_id env ty p
 
+    method! on_If env cond then_block else_block : Result_set.t =
+      match ServerUtils.resugar_invariant_call env cond then_block with
+      | Some e -> self#on_expr env e
+      | None -> super#on_If env cond then_block else_block
+
     method! on_Call env ((_, _, expr_) as e) tal el unpacked_element =
       (* For Id, Obj_get (with an Id member), and Class_const, we don't want to
        * use the result of `self#on_expr env e`, since it would record a
@@ -481,6 +491,11 @@ let visitor =
             self#on_expr env arg
           | _ -> self#zero
         else
+          let expr_ =
+            match expr_ with
+            | Aast.ReadonlyExpr (_, _, e) -> e
+            | _ -> expr_
+          in
           match expr_ with
           | Aast.Id id ->
             (* E.g. foo() *)
@@ -555,6 +570,9 @@ let visitor =
           Result_set.empty
       in
       self#plus acc (super#on_Lvar env (pos, id))
+
+    method! on_capture_lid _env (_, (pos, id)) =
+      process_lvar_id (pos, Local_id.get_name id)
 
     method! on_hint env h =
       let acc =
@@ -639,8 +657,12 @@ let visitor =
       self#plus acc (super#on_fun_param env param)
 
     method! on_Happly env sid hl =
-      let acc = process_class_id sid in
-      self#plus acc (super#on_Happly env sid hl)
+      match hl with
+      | [h] when String.equal (snd sid) SN.Classes.cSupportDyn ->
+        self#on_hint env h
+      | _ ->
+        let acc = process_class_id sid in
+        self#plus acc (super#on_Happly env sid hl)
 
     method! on_catch env (sid, lid, block) =
       let acc = process_class_id sid in
@@ -800,8 +822,19 @@ let visitor =
       acc
 
     method! on_user_attribute env ua =
-      let acc = process_attribute ua.Aast.ua_name !class_name !method_name in
-      self#plus acc (super#on_user_attribute env ua)
+      let tcopt = Tast_env.get_tcopt env in
+      (* Don't show __SupportDynamicType if it's implicit everywhere *)
+      if
+        String.equal
+          (snd ua.Aast.ua_name)
+          SN.UserAttributes.uaSupportDynamicType
+        && TypecheckerOptions.everything_sdt tcopt
+        && not (TypecheckerOptions.enable_no_auto_dynamic tcopt)
+      then
+        Result_set.empty
+      else
+        let acc = process_attribute ua.Aast.ua_name !class_name !method_name in
+        self#plus acc (super#on_user_attribute env ua)
 
     method! on_SetModule env sm =
       let (pos, id) = sm in

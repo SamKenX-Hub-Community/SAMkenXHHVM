@@ -289,6 +289,37 @@ let schema : schema_node list =
         ];
     };
     {
+      kind_name = "CaseTypeDeclaration";
+      type_name = "case_type_declaration";
+      func_name = "case_type_declaration";
+      description = "case_type_declaration";
+      prefix = "case_type";
+      aggregates = [TopLevelDeclaration];
+      fields =
+        [
+          ("attribute_spec", ZeroOrOne (Aggregate AttributeSpecification));
+          ("modifiers", ZeroOrOne Token);
+          ("case_keyword", Token);
+          ("type_keyword", Token);
+          ("name", Token);
+          ("generic_parameter", ZeroOrOne (Just "TypeParameters"));
+          ("as", ZeroOrOne Token);
+          ("bounds", ZeroOrMore (Aggregate Specifier));
+          ("equal", Token);
+          ("variants", ZeroOrMore (Aggregate Specifier));
+          ("semicolon", Token);
+        ];
+    };
+    {
+      kind_name = "CaseTypeVariant";
+      type_name = "case_type_variant";
+      func_name = "case_type_variant";
+      description = "case_type_variant";
+      prefix = "case_type_variant";
+      aggregates = [];
+      fields = [("bar", ZeroOrOne Token); ("type", Aggregate Specifier)];
+    };
+    {
       kind_name = "PropertyDeclaration";
       type_name = "property_declaration";
       func_name = "property_declaration";
@@ -2439,6 +2470,15 @@ let schema : schema_node list =
           ("name", Aggregate Name);
           ("semicolon", Token);
         ];
+    };
+    {
+      kind_name = "PackageExpression";
+      type_name = "package_expression";
+      func_name = "package_expression";
+      description = "package_expression";
+      prefix = "package_expression";
+      aggregates = [];
+      fields = [("keyword", Token); ("name", Aggregate Name)];
     };
   ]
 

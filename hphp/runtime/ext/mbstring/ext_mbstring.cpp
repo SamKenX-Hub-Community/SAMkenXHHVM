@@ -4534,7 +4534,7 @@ bool HHVM_FUNCTION(mb_send_mail,
 }
 
 static struct mbstringExtension final : Extension {
-  mbstringExtension() : Extension("mbstring", NO_EXTENSION_VERSION_YET) {}
+  mbstringExtension() : Extension("mbstring", NO_EXTENSION_VERSION_YET, NO_ONCALL_YET) {}
 
   void moduleInit() override {
     // TODO make these PHP_INI_ALL and thread local once we use them
@@ -4545,10 +4545,6 @@ static struct mbstringExtension final : Extension {
     IniSetting::Bind(this, IniSetting::PHP_INI_ALL,
                      "mbstring.substitute_character",
                      &MBSTRG(current_filter_illegal_mode));
-
-    HHVM_RC_INT(MB_OVERLOAD_MAIL, 1);
-    HHVM_RC_INT(MB_OVERLOAD_STRING, 2);
-    HHVM_RC_INT(MB_OVERLOAD_REGEX, 4);
 
     HHVM_RC_INT(MB_CASE_UPPER, PHP_UNICODE_CASE_UPPER);
     HHVM_RC_INT(MB_CASE_LOWER, PHP_UNICODE_CASE_LOWER);

@@ -15,8 +15,11 @@ use config_file::ConfigFile;
 pub use local_config::LocalConfig;
 use oxidized::decl_parser_options::DeclParserOptions;
 use oxidized::global_options::GlobalOptions;
+use sha1::Digest;
+use sha1::Sha1;
 
 pub const FILE_PATH_RELATIVE_TO_ROOT: &str = ".hhconfig";
+pub const PACKAGE_FILE_PATH_RELATIVE_TO_ROOT: &str = "PACKAGES.toml";
 
 /// For now, this struct only contains the parts of .hhconfig which
 /// have been needed in Rust tools.
@@ -45,6 +48,8 @@ pub struct HhConfig {
     pub sharedmem_global_size: usize,
     pub sharedmem_hash_table_pow: usize,
     pub sharedmem_heap_size: usize,
+    pub ide_fall_back_to_full_index: bool,
+    pub hh_distc_should_disable_trace_store: bool,
 }
 
 impl HhConfig {
@@ -54,14 +59,32 @@ impl HhConfig {
         Self::from_files(hhconfig_path, hh_conf_path, overrides)
     }
 
+    pub fn create_packages_path(hhconfig_path: &Path) -> PathBuf {
+        // Unwrap is safe because hhconfig_path is always at least one nonempty string
+        let mut packages_path = hhconfig_path.parent().unwrap().to_path_buf();
+        packages_path.push("PACKAGES.toml");
+        packages_path
+    }
+
     pub fn from_files(
         hhconfig_path: impl AsRef<Path>,
         hh_conf_path: impl AsRef<Path>,
         overrides: &ConfigFile,
     ) -> Result<Self> {
         let hhconfig_path = hhconfig_path.as_ref();
-        let (hash, mut hhconfig) = ConfigFile::from_file_with_sha1(hhconfig_path)
+        let package_config_pathbuf = Self::create_packages_path(hhconfig_path);
+        let package_config_path = package_config_pathbuf.as_path();
+        let (contents, mut hhconfig) = ConfigFile::from_file_with_contents(hhconfig_path)
             .with_context(|| hhconfig_path.display().to_string())?;
+        // Grab extra config and use it to process the hash
+        let extra_contents: String = if package_config_path.exists() {
+            let bytes = std::fs::read(package_config_path).unwrap_or(vec![]);
+            String::from_utf8(bytes).unwrap()
+        } else {
+            String::new()
+        };
+        let full_contents = contents + &extra_contents;
+        let hash = format!("{:x}", Sha1::digest(full_contents.as_bytes()));
         hhconfig.apply_overrides(overrides);
         let hh_conf_path = hh_conf_path.as_ref();
         let mut hh_conf = ConfigFile::from_file(hh_conf_path)
@@ -71,6 +94,16 @@ impl HhConfig {
             hash,
             ..Self::from_configs(hhconfig, hh_conf)?
         })
+    }
+
+    pub fn into_config_files(root: impl AsRef<Path>) -> Result<(ConfigFile, ConfigFile)> {
+        let hhconfig_path = root.as_ref().join(FILE_PATH_RELATIVE_TO_ROOT);
+        let hh_conf_path = system_config_path();
+        let hh_config_file = ConfigFile::from_file(&hhconfig_path)
+            .with_context(|| hhconfig_path.display().to_string())?;
+        let hh_conf_file = ConfigFile::from_file(&hh_conf_path)
+            .with_context(|| hh_conf_path.display().to_string())?;
+        Ok((hh_conf_file, hh_config_file))
     }
 
     pub fn from_slice(bytes: &[u8]) -> Result<Self> {
@@ -86,10 +119,18 @@ impl HhConfig {
         let current_rolled_out_flag_idx = hhconfig
             .get_int("current_saved_state_rollout_flag_index")
             .unwrap_or(Ok(isize::MIN))?;
+        let deactivate_saved_state_rollout = hhconfig
+            .get_bool("deactivate_saved_state_rollout")
+            .unwrap_or(Ok(false))?;
 
         let version = hhconfig.get_str("version");
         let mut c = Self {
-            local_config: LocalConfig::from_config(version, current_rolled_out_flag_idx, hh_conf)?,
+            local_config: LocalConfig::from_config(
+                version,
+                current_rolled_out_flag_idx,
+                deactivate_saved_state_rollout,
+                hh_conf,
+            )?,
             ..Self::default()
         };
 
@@ -101,6 +142,10 @@ impl HhConfig {
 
         for (key, mut value) in hhconfig {
             match key.as_str() {
+                "current_saved_state_rollout_flag_index" | "deactivate_saved_state_rollout" => {
+                    // These were already queried for LocalConfig above.
+                    // Ignore them so they aren't added to c.unknown.
+                }
                 "auto_namespace_map" => {
                     let map: BTreeMap<String, String> = parse_json(&value)?;
                     go.po_auto_namespace_map = map.into_iter().collect();
@@ -152,6 +197,12 @@ impl HhConfig {
                 }
                 "allowed_expression_tree_visitors" => {
                     go.tco_allowed_expression_tree_visitors = parse_svec(&value);
+                }
+                "locl_cache_capacity" => {
+                    go.tco_locl_cache_capacity = parse_json(&value)?;
+                }
+                "locl_cache_node_threshold" => {
+                    go.tco_locl_cache_node_threshold = parse_json(&value)?;
                 }
                 "math_new_code" => {
                     go.tco_math_new_code = parse_json(&value)?;
@@ -207,11 +258,11 @@ impl HhConfig {
                 "enable_sound_dynamic_type" => {
                     go.tco_enable_sound_dynamic = parse_json(&value)?;
                 }
+                "enable_no_auto_dynamic" => {
+                    go.tco_enable_no_auto_dynamic = parse_json(&value)?;
+                }
                 "like_type_hints" => {
                     go.tco_like_type_hints = parse_json(&value)?;
-                }
-                "pessimise_builtins" => {
-                    go.tco_pessimise_builtins = parse_json(&value)?;
                 }
                 "union_intersection_type_hints" => {
                     go.tco_union_intersection_type_hints = parse_json(&value)?;
@@ -251,6 +302,12 @@ impl HhConfig {
                 "sharedmem_heap_size" => {
                     value.retain(|c| c != '_');
                     c.sharedmem_heap_size = parse_json(&value)?;
+                }
+                "ide_fall_back_to_full_index" => {
+                    c.ide_fall_back_to_full_index = parse_json(&value)?;
+                }
+                "hh_distc_should_disable_trace_store" => {
+                    c.hh_distc_should_disable_trace_store = parse_json(&value)?;
                 }
                 _ => c.unknown.push((key, value)),
             }
@@ -299,8 +356,6 @@ pub fn system_config_path() -> PathBuf {
 
 #[cfg(test)]
 mod test {
-    use oxidized::saved_state_rollouts::SavedStateRollouts;
-
     use super::*;
 
     #[test]
@@ -309,91 +364,6 @@ mod test {
         assert_eq!(
             hhconf.opts.log_levels.get("pessimise").copied(),
             Some(1isize)
-        );
-    }
-
-    #[test]
-    fn dummy_one() {
-        let hhconfig =
-            ConfigFile::from_args(["current_saved_state_rollout_flag_index=0".as_bytes()]);
-        let hhconf = ConfigFile::from_args(["ss_force=candidate".as_bytes()]);
-        let c = HhConfig::from_configs(hhconfig, hhconf).unwrap();
-        assert_eq!(
-            c.opts.tco_saved_state.rollouts,
-            SavedStateRollouts {
-                one: true,
-                two: false,
-                three: false,
-            }
-        );
-    }
-
-    #[test]
-    fn dummy_two() {
-        let hhconfig =
-            ConfigFile::from_args(["current_saved_state_rollout_flag_index=0".as_bytes()]);
-        let hhconf = ConfigFile::from_args(["ss_force=prod_with_flag_on:dummy_two".as_bytes()]);
-        let c = HhConfig::from_configs(hhconfig, hhconf).unwrap();
-        assert_eq!(
-            c.opts.tco_saved_state.rollouts,
-            SavedStateRollouts {
-                one: false,
-                two: true,
-                three: false,
-            }
-        );
-    }
-
-    #[test]
-    fn dummy_three() {
-        let hhconfig =
-            ConfigFile::from_args(["current_saved_state_rollout_flag_index=0".as_bytes()]);
-        let hhconf = ConfigFile::from_args([
-            "dummy_one=true".as_bytes(),
-            "dummy_two=true".as_bytes(),
-            "dummy_three=true".as_bytes(),
-            "ss_force=prod_with_flag_on:dummy_three".as_bytes(),
-        ]);
-        let c = HhConfig::from_configs(hhconfig, hhconf).unwrap();
-        assert_eq!(
-            c.opts.tco_saved_state.rollouts,
-            SavedStateRollouts {
-                one: false,
-                two: false,
-                three: true,
-            }
-        );
-    }
-
-    #[test]
-    fn dummy_three_err() {
-        let hhconfig =
-            ConfigFile::from_args(["current_saved_state_rollout_flag_index=0".as_bytes()]);
-        let hhconf = ConfigFile::from_args([
-            "ss_force=prod_with_myflag".as_bytes(), // bad ss_force syntax
-        ]);
-        let c = HhConfig::from_configs(hhconfig, hhconf);
-        assert!(c.is_err())
-    }
-
-    #[test]
-    fn dummy_one_prod() {
-        let hhconfig =
-            ConfigFile::from_args(["current_saved_state_rollout_flag_index=1".as_bytes()]);
-        let hhconf = ConfigFile::from_args([
-            "dummy_one=true".as_bytes(),
-            "dummy_two=true".as_bytes(),
-            "dummy_three=true".as_bytes(),
-            "ss_force=prod".as_bytes(),
-        ]);
-        let c = HhConfig::from_configs(hhconfig, hhconf).unwrap();
-        assert_eq!(
-            c.opts.tco_saved_state.rollouts,
-            SavedStateRollouts {
-                one: true,
-                two: false,
-                three: false,
-            }
         );
     }
 }

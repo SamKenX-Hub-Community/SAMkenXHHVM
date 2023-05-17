@@ -33,6 +33,10 @@ macro_rules! vec_wrapper {
                 self.0.push(stmt)
             }
             #[inline]
+            pub fn insert(&mut self, index: usize, stmt: $elem) {
+                self.0.insert(index, stmt)
+            }
+            #[inline]
             pub fn drain<R>(&mut self, range: R) -> std::vec::Drain<'_, $elem>
             where
                 R: std::ops::RangeBounds<usize>,
@@ -245,8 +249,8 @@ impl<Ex, En> Stmt<Ex, En> {
     }
 
     pub fn is_assign_expr(&self) -> bool {
-        if let Some(Expr(_, _, Expr_::Binop(bop))) = &self.1.as_expr() {
-            if let (ast_defs::Bop::Eq(_), _, _) = bop.as_ref() {
+        if let Some(Expr(_, _, Expr_::Binop(binop))) = &self.1.as_expr() {
+            if let ast_defs::Bop::Eq(_) = binop.as_ref().bop {
                 return true;
             }
         }

@@ -12,8 +12,8 @@ cimport thrift.py3.builder
 
 cimport facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
 cimport facebook.thrift.annotation.cpp.builders as _facebook_thrift_annotation_cpp_builders
-cimport facebook.thrift.annotation.deprecated.meta.types as _facebook_thrift_annotation_deprecated_meta_types
-cimport facebook.thrift.annotation.deprecated.meta.builders as _facebook_thrift_annotation_deprecated_meta_builders
+cimport facebook.thrift.annotation.python.types as _facebook_thrift_annotation_python_types
+cimport facebook.thrift.annotation.python.builders as _facebook_thrift_annotation_python_builders
 
 cimport module.types as _module_types
 

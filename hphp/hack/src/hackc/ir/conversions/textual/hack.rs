@@ -37,14 +37,20 @@ type Result<T = (), E = Error> = std::result::Result<T, E>;
 /// in hphp/doc/bytecode.specification.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 #[derive(TextualDecl, EnumIter)]
+#[derive(Default)]
 pub(crate) enum Hhbc {
     #[decl(fn hhbc_add(*HackMixed, *HackMixed) -> *HackMixed)]
+    #[default]
     Add,
     #[decl(fn hhbc_add_elem_c(*HackMixed, *HackMixed, *HackMixed) -> *HackMixed)]
     AddElemC,
     #[decl(fn hhbc_add_new_elem_c(*HackMixed, *HackMixed) -> *HackMixed)]
     AddNewElemC,
-    #[decl(fn hhbc_cast_vec(*HackMixed) -> void)]
+    #[decl(fn hhbc_await_all(...) -> *HackMixed)]
+    AwaitAll,
+    #[decl(fn hhbc_cast_keyset(*HackMixed) -> *HackMixed)]
+    CastKeyset,
+    #[decl(fn hhbc_cast_vec(*HackMixed) -> *HackMixed)]
     CastVec,
     #[decl(fn hhbc_class_get_c(*HackMixed) -> void)]
     CheckClsRGSoft,
@@ -192,13 +198,8 @@ pub(crate) enum Hhbc {
     ThrowNonExhaustiveSwitch,
     #[decl(fn hhbc_verify_param_type_ts(obj: *HackMixed, ts: *HackMixed) -> void)]
     VerifyParamTypeTS,
-}
-
-// Needed for EnumIter
-impl Default for Hhbc {
-    fn default() -> Self {
-        Hhbc::Add
-    }
+    #[decl(fn hhbc_wh_result(obj: *HackMixed) -> *HackMixed)]
+    WHResult,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Debug)]
@@ -229,6 +230,9 @@ pub(crate) enum Builtin {
     /// Gets a named field from a struct.
     #[decl(fn hack_dim_field_get_or_null(base: **HackMixed, name: *HackMixed) -> **HackMixed)]
     DimFieldGetOrNull,
+    /// Get the value of a named field from a struct.
+    #[decl(fn hack_field_get(base: *HackMixed, name: *HackMixed) -> *HackMixed)]
+    FieldGet,
     /// Turns a raw float into a Mixed.
     #[decl(fn hack_float(float) -> *HackFloat)]
     Float,
@@ -263,9 +267,11 @@ pub(crate) enum Builtin {
     /// Build a dict based on key/value pairs.
     #[decl(fn hack_new_dict(...) -> *HackMixed)]
     NewDict,
-    /// Lazily initializes a static singleton.
-    #[decl(fn lazy_initialize(*HackMixed) -> void)]
-    SilLazyInitialize,
+    #[decl(fn hack_set_static_prop(classname: string, propname: string, value: *HackArray) -> void)]
+    SetStaticProp,
+    /// Note that this argument is a 'splat' (unwrapped array args for a function).
+    #[decl(fn __sil_splat(*HackArray) -> *HackArray)]
+    SilSplat,
     /// Turns a raw string into a HackMixed.
     #[decl(fn hack_string(string) -> *HackString)]
     String,

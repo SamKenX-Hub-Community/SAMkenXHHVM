@@ -4,10 +4,10 @@
 package matching_names // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  includesAlso "IncludesAlso"
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    includesAlso "IncludesAlso"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = includesAlso.GoUnusedProtection__
@@ -24,11 +24,9 @@ type IncludesAlso struct {
 var _ thrift.Struct = &IncludesAlso{}
 
 func NewIncludesAlso() *IncludesAlso {
-    return (&IncludesAlso{})
+    return (&IncludesAlso{}).
+        SetAlsoNonCompat(*includesAlso.NewAlso())
 }
-
-// Deprecated: Use NewIncludesAlso().Also instead.
-var IncludesAlso_Also_DEFAULT = NewIncludesAlso().Also
 
 func (x *IncludesAlso) GetAlsoNonCompat() *includesAlso.Also {
     return x.Also
@@ -36,14 +34,19 @@ func (x *IncludesAlso) GetAlsoNonCompat() *includesAlso.Also {
 
 func (x *IncludesAlso) GetAlso() *includesAlso.Also {
     if !x.IsSetAlso() {
-      return includesAlso.NewAlso()
+        return includesAlso.NewAlso()
     }
 
     return x.Also
 }
 
-func (x *IncludesAlso) SetAlso(value includesAlso.Also) *IncludesAlso {
+func (x *IncludesAlso) SetAlsoNonCompat(value includesAlso.Also) *IncludesAlso {
     x.Also = &value
+    return x
+}
+
+func (x *IncludesAlso) SetAlso(value *includesAlso.Also) *IncludesAlso {
+    x.Also = value
     return x
 }
 
@@ -78,8 +81,19 @@ if err != nil {
     return err
 }
 
-    x.SetAlso(result)
+    x.SetAlsoNonCompat(result)
     return nil
+}
+
+// Deprecated: Use NewIncludesAlso().GetAlso() instead.
+var IncludesAlso_Also_DEFAULT = NewIncludesAlso().GetAlso()
+
+// Deprecated: Use NewIncludesAlso().GetAlso() instead.
+func (x *IncludesAlso) DefaultGetAlso() *includesAlso.Also {
+    if !x.IsSetAlso() {
+        return includesAlso.NewAlso()
+    }
+    return x.Also
 }
 
 func (x *IncludesAlso) String() string {
@@ -107,6 +121,7 @@ func (x *IncludesAlsoBuilder) Emit() *IncludesAlso {
     var objCopy IncludesAlso = *x.obj
     return &objCopy
 }
+
 func (x *IncludesAlso) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("IncludesAlso"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -163,3 +178,4 @@ func (x *IncludesAlso) Read(p thrift.Protocol) error {
 
     return nil
 }
+

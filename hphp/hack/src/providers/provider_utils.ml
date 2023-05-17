@@ -7,11 +7,10 @@
  *)
 open Hh_prelude
 
-let invalidate_tast_cache_of_entries (entries : Provider_context.entries) : unit
-    =
-  Relative_path.Map.iter entries ~f:(fun _path entry ->
-      entry.Provider_context.tast <- None;
-      entry.Provider_context.naming_and_typing_errors <- None)
+let invalidate_tast_cache_of_entry (entry : Provider_context.entry) : unit =
+  entry.Provider_context.tast <- Provider_context.Entry_tast_missing;
+  entry.Provider_context.all_errors <- None;
+  ()
 
 let invalidate_local_decl_caches_for_file
     (local_memory : Provider_backend.local_memory) (file_info : FileInfo.t) :
@@ -91,16 +90,12 @@ let invalidate_local_decl_caches_for_entries
 
 let ctx_from_server_env (env : ServerEnv.env) : Provider_context.t =
   (* TODO: backend should be stored in [env]. *)
-  let ctx =
-    Provider_context.empty_for_tool
-      ~popt:env.ServerEnv.popt
-      ~tcopt:env.ServerEnv.tcopt
-      ~backend:(Provider_backend.get ())
-      ~deps_mode:env.ServerEnv.deps_mode
-  in
-  Provider_context.ctx_with_get_package_for_module
-    ctx
-    env.ServerEnv.get_package_for_module
+  Provider_context.empty_for_tool
+    ~popt:env.ServerEnv.popt
+    ~tcopt:env.ServerEnv.tcopt
+    ~backend:(Provider_backend.get ())
+    ~deps_mode:env.ServerEnv.deps_mode
+    ~package_info:env.ServerEnv.package_info
 
 let respect_but_quarantine_unsaved_changes
     ~(ctx : Provider_context.t) ~(f : unit -> 'a) : 'a =

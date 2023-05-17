@@ -24,10 +24,10 @@
 
 #include <folly/io/IOBufQueue.h>
 #include <thrift/conformance/cpp2/AnyRegistry.h>
-#include <thrift/conformance/cpp2/Object.h>
 #include <thrift/conformance/cpp2/Protocol.h>
 #include <thrift/conformance/if/gen-cpp2/test_suite_types.h>
 #include <thrift/lib/cpp/util/EnumUtils.h>
+#include <thrift/lib/cpp2/protocol/Object.h>
 #include <thrift/lib/cpp2/protocol/Serializer.h>
 
 namespace apache::thrift::conformance::data::detail {
@@ -43,6 +43,8 @@ using PrimaryTypeTags = boost::mp11::mp_list<
     type::string_t,
     type::binary_t>;
 
+using KeyTypeTags = boost::mp11::mp_list<type::i64_t, type::string_t>;
+
 template <typename C>
 std::set<Protocol> toProtocols(const C& protocolCtorArgs) {
   std::set<Protocol> result;
@@ -56,7 +58,7 @@ constexpr std::initializer_list<StandardProtocol> kDefaultProtocols = {
     StandardProtocol::Binary, StandardProtocol::Compact};
 
 [[nodiscard]] std::unique_ptr<folly::IOBuf> serializeThriftStruct(
-    const Object& a, const Protocol& protocol);
+    const apache::thrift::protocol::Object& a, const Protocol& protocol);
 
 template <class ThriftStruct>
 [[nodiscard]] std::

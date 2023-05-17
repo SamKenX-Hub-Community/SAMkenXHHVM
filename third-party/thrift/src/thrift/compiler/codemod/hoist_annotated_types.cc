@@ -19,6 +19,7 @@
 #include <string>
 
 #include <fmt/core.h>
+#include <re2/re2.h>
 
 #include <thrift/compiler/ast/ast_visitor.h>
 #include <thrift/compiler/ast/t_program_bundle.h>
@@ -51,7 +52,7 @@ class hoist_annotated_types {
     auto len = sm_.get_file(prog_.path()).text.size() - 1;
     std::vector<std::string> typedefs;
     for (const auto& [k, v] : typedefs_) {
-      typedefs.push_back(fmt::format("typedef {} {}", v, k));
+      typedefs.push_back(fmt::format("typedef {} {}", v.name, k));
     }
     fm_.add(
         {len,
@@ -72,8 +73,13 @@ class hoist_annotated_types {
         if (!needs_replacement(t.elem_type())) {
           return;
         }
-        replacement =
-            fmt::format("list<{}>", maybe_create_typedef(t.elem_type()));
+        auto name = maybe_create_typedef(t.elem_type());
+        replacement = fmt::format("list<{}>", name);
+        // We modify the AST in case we're visiting a nested type, so that the
+        // outer type will render correctly without us needing to propagate this
+        // state.
+        const_cast<t_type_ref&>(t.elem_type()) =
+            t_type_ref::from_ptr(typedefs_.at(name).ptr);
         break;
       }
       case t_type::type::t_set: {
@@ -81,8 +87,10 @@ class hoist_annotated_types {
         if (!needs_replacement(t.elem_type())) {
           return;
         }
-        replacement =
-            fmt::format("set<{}>", maybe_create_typedef(t.elem_type()));
+        auto name = maybe_create_typedef(t.elem_type());
+        replacement = fmt::format("set<{}>", name);
+        const_cast<t_type_ref&>(t.elem_type()) =
+            t_type_ref::from_ptr(typedefs_.at(name).ptr);
         break;
       }
       case t_type::type::t_map: {
@@ -90,6 +98,16 @@ class hoist_annotated_types {
         if (!needs_replacement(t.key_type()) &&
             !needs_replacement(t.val_type())) {
           return;
+        }
+        auto name = maybe_create_typedef(t.key_type());
+        if (auto it = typedefs_.find(name); it != typedefs_.end()) {
+          const_cast<t_type_ref&>(t.key_type()) =
+              t_type_ref::from_ptr(it->second.ptr);
+        }
+        name = maybe_create_typedef(t.val_type());
+        if (auto it = typedefs_.find(name); it != typedefs_.end()) {
+          const_cast<t_type_ref&>(t.val_type()) =
+              t_type_ref::from_ptr(it->second.ptr);
         }
         replacement = fmt::format(
             "map<{}, {}>",
@@ -127,21 +145,23 @@ class hoist_annotated_types {
   }
 
   void visit_function(const t_function& f) {
-    if (auto type = f.return_type(); needs_replacement(type)) {
-      auto range = f.src_range();
-      auto annotations_end_offset = range.begin.offset();
-      for (const auto& [k, v] : type.get_type()->annotations()) {
-        annotations_end_offset =
-            std::max(annotations_end_offset, v.src_range.end.offset());
+    for (const auto& type : f.return_types()) {
+      if (needs_replacement(type)) {
+        auto range = f.src_range();
+        auto annotations_end_offset = range.begin.offset();
+        for (const auto& [k, v] : type.get_type()->annotations()) {
+          annotations_end_offset =
+              std::max(annotations_end_offset, v.src_range.end.offset());
+        }
+        auto old_content = fm_.old_content();
+        while (annotations_end_offset < old_content.size() &&
+               old_content[annotations_end_offset++] != ')') {
+        }
+        fm_.add(
+            {range.begin.offset(),
+             annotations_end_offset,
+             maybe_create_typedef(type)});
       }
-      auto old_content = fm_.old_content();
-      while (annotations_end_offset < old_content.size() &&
-             old_content[annotations_end_offset++] != ')') {
-      }
-      fm_.add(
-          {range.begin.offset(),
-           annotations_end_offset,
-           maybe_create_typedef(type)});
     }
 
     for (auto& field : f.params().fields()) {
@@ -210,9 +230,11 @@ class hoist_annotated_types {
     }
     auto name = name_typedef(type);
     if (typedefs_.count(name)) {
-      assert(typedefs_[name] == render_type(type));
+      assert(typedefs_[name].name == render_type(type));
     } else {
-      typedefs_[name] = render_type(type);
+      auto typedf = std::make_unique<t_typedef>(&prog_, name, type);
+      typedefs_[name] = {render_type(type), typedf.get()};
+      prog_.add_def(std::move(typedf));
     }
     return name;
   }
@@ -223,44 +245,45 @@ class hoist_annotated_types {
     for (const auto& [k, v] : type->annotations()) {
       annotations.push_back(fmt::format("{}_{}", k, v.value));
     }
-    auto name = fmt::format(
-        "{}_{}_{}",
-        type->get_full_name(),
-        fmt::join(annotations, "_"),
-        std::hash<std::string>()(prog_.path()) % 1000);
-    auto prefix = prog_.scope_name("");
-    if (name.starts_with(prefix)) {
-      name.erase(0, prefix.length());
-    }
-    name.erase(
-        std::remove_if(
-            name.begin(),
-            name.end(),
-            [](auto c) { return !std::isalnum(c) && c != '_'; }),
-        name.end());
-    return name;
+    auto id = std::hash<std::string>()(fmt::format(
+                  "{}_{}_{}",
+                  type->get_full_name(),
+                  fmt::join(annotations, "_"),
+                  prog_.path())) %
+        10000;
+    auto name = type->get_full_name();
+    // Removes scope prefix | ids of inner types.
+    static const re2::RE2 stripNoise("(\\b\\w+?\\.|_\\d+\\b)");
+    static const re2::RE2 addUnderscores("[<,]");
+    static const re2::RE2 stripNonAlnum("\\W+");
+    re2::RE2::GlobalReplace(&name, stripNoise, "");
+    re2::RE2::GlobalReplace(&name, addUnderscores, "_");
+    re2::RE2::GlobalReplace(&name, stripNonAlnum, "");
+    return fmt::format("{}_{}", name, id);
   }
 
   std::string render_type(t_type_ref ref) {
     auto type = ref.get_type();
     auto name = type->get_full_name();
-    auto prefix = prog_.scope_name("");
-    if (name.starts_with(prefix)) {
-      name.erase(0, prefix.length());
-    }
+    re2::RE2 prefix(fmt::format("\\b{}", prog_.scope_name("")));
+    re2::RE2::GlobalReplace(&name, prefix, "");
     if (!needs_replacement(ref)) {
       return name;
     }
     std::vector<std::string> annotations;
     for (const auto& [k, v] : type->annotations()) {
-      annotations.push_back(fmt::format("{} = '{}'", k, v.value));
+      annotations.push_back(fmt::format("{} = \"{}\"", k, v.value));
     }
     assert(!annotations.empty());
     return fmt::format("{} ({})", name, fmt::join(annotations, ", "));
   }
 
  private:
-  std::map<std::string, std::string> typedefs_;
+  struct Typedef {
+    std::string name;
+    t_typedef* ptr;
+  };
+  std::map<std::string, Typedef> typedefs_;
   codemod::file_manager fm_;
   source_manager sm_;
   t_program& prog_;
@@ -275,7 +298,6 @@ int main(int argc, char** argv) {
     return 1;
   }
   auto program = program_bundle->root_program();
-
   hoist_annotated_types(source_mgr, *program).run();
 
   return 0;

@@ -98,7 +98,7 @@ let lookup_magic_type (env : env) use_pos (class_ : locl_ty) (fname : string) :
       | Some
           ( (env, ty_err_opt),
             { ft_params = pars; ft_ret = { et_type = ty; _ }; _ } ) ->
-        Option.iter ty_err_opt ~f:Errors.add_typing_error;
+        Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
         let (env, ty) = Env.expand_type env ty in
         let ty_opt =
           match get_node ty with
@@ -144,7 +144,7 @@ let parse_printf_string env s pos (class_ : locl_ty) : env * locl_fun_params =
       let (env, xs) = read_modifier env (i + 1) next i0 in
       (env, add_reason good_args @ xs)
     | (env, None) ->
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(
           primary
           @@ Primary.Format_string
@@ -193,9 +193,9 @@ let rec const_string_of (env : env) (e : Nast.expr) :
   | (_, p, String2 xs) ->
     let (env, xs) = mapM const_string_of env (List.rev xs) in
     (env, List.fold_right ~f:glue xs ~init:(Left p))
-  | (_, _, Binop (Ast_defs.Dot, a, b)) ->
-    let (env, stra) = const_string_of env a in
-    let (env, strb) = const_string_of env b in
+  | (_, _, Binop Aast.{ bop = Ast_defs.Dot; lhs; rhs }) ->
+    let (env, stra) = const_string_of env lhs in
+    let (env, strb) = const_string_of env rhs in
     (env, glue stra strb)
   | (_, p, _) -> (env, Left p)
 
@@ -241,7 +241,7 @@ let retype_magic_func
                }
               :: argl) )
         | (env, Left pos) ->
-          Errors.add_typing_error
+          Typing_error_utils.add_typing_error
             Typing_error.(primary @@ Primary.Expected_literal_format_string pos);
           (env, None))
       | None -> (env, None)

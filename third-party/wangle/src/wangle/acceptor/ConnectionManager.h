@@ -155,6 +155,17 @@ class ConnectionManager : public folly::DelayedDestruction,
    */
   void dropConnections(double pct);
 
+  /**
+   * Similar to dropConnections(double pct)  difference is that here
+   * we have a callback which will be called for every connection managed
+   * and connection will be dropped only if callback returns true
+   * Also dropConnection(double pct) is supposed to be used during shutdown
+   * while dropEstablishedConnections is used during runtime
+   */
+  void dropEstablishedConnections(
+      double pct,
+      const std::function<bool(ManagedConnection*)>& filter);
+
   size_t getNumConnections() const {
     return conns_.size();
   }
@@ -185,18 +196,6 @@ class ConnectionManager : public folly::DelayedDestruction,
    * actual number of dropped idle connections
    */
   size_t dropIdleConnections(size_t num);
-
-  /**
-   * dropActiveConnections is meant to be used when the host is under memory
-   * constraints. It drops active connections based on their last activity
-   * time. The idea is to prefer connections which are less active. A good
-   * example scenario of when this is useful is slowloris attack or in general
-   * connections which read/write at a very slow pace.
-   * Return the actual number of dropped idle connections.
-   */
-  virtual size_t dropActiveConnections(
-      size_t num,
-      std::chrono::milliseconds inActivityThresholdTimeMs);
 
   /**
    * reportActivity is meant to be called when significant activity occurred on

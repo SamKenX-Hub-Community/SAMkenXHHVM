@@ -39,6 +39,8 @@ type t =
   | EnumClassEnumerator
   | AliasDeclaration
   | ContextAliasDeclaration
+  | CaseTypeDeclaration
+  | CaseTypeVariant
   | PropertyDeclaration
   | PropertyDeclarator
   | NamespaceDeclaration
@@ -194,6 +196,7 @@ type t =
   | ModuleExports
   | ModuleImports
   | ModuleMembershipDeclaration
+  | PackageExpression
 [@@deriving show, eq]
 
 let to_string kind =
@@ -219,6 +222,8 @@ let to_string kind =
   | EnumClassEnumerator -> "enum_class_enumerator"
   | AliasDeclaration -> "alias_declaration"
   | ContextAliasDeclaration -> "context_alias_declaration"
+  | CaseTypeDeclaration -> "case_type_declaration"
+  | CaseTypeVariant -> "case_type_variant"
   | PropertyDeclaration -> "property_declaration"
   | PropertyDeclarator -> "property_declarator"
   | NamespaceDeclaration -> "namespace_declaration"
@@ -374,3 +379,4 @@ let to_string kind =
   | ModuleExports -> "module_exports"
   | ModuleImports -> "module_imports"
   | ModuleMembershipDeclaration -> "module_membership_declaration"
+  | PackageExpression -> "package_expression"

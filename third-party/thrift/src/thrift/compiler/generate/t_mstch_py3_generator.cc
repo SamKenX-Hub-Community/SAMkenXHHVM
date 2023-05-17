@@ -28,6 +28,7 @@
 #include <thrift/compiler/generate/t_mstch_generator.h>
 #include <thrift/compiler/lib/cpp2/util.h>
 #include <thrift/compiler/lib/py3/util.h>
+#include <thrift/compiler/lib/uri.h>
 
 namespace apache {
 namespace thrift {
@@ -122,7 +123,8 @@ const t_type* get_stream_elem_type(const t_type& type) {
 }
 
 bool is_hidden(const t_named& node) {
-  return node.has_annotation("py3.hidden");
+  return node.has_annotation("py3.hidden") ||
+      node.find_structured_annotation_or_null(kPythonHiddenUri);
 }
 
 bool is_func_supported(bool no_stream, const t_function* func) {
@@ -133,7 +135,8 @@ bool is_func_supported(bool no_stream, const t_function* func) {
 bool is_hidden(const t_type& node) {
   return node.generated() ||
       gen::cpp::type_resolver::is_directly_adapted(node) ||
-      node.has_annotation("py3.hidden");
+      node.has_annotation("py3.hidden") ||
+      node.find_structured_annotation_or_null(kPythonHiddenUri);
 }
 
 class py3_mstch_program : public mstch_program {
@@ -786,14 +789,18 @@ class py3_mstch_struct : public mstch_struct {
              &py3_mstch_struct::fields_and_mixin_fields},
             {"struct:py3_fields", &py3_mstch_struct::py3_fields},
             {"struct:py3_fields?", &py3_mstch_struct::has_py3_fields},
+            {"struct:has_hidden_fields?", &py3_mstch_struct::has_hidden_fields},
         });
     py3_fields_ = struct_->fields().copy();
     py3_fields_.erase(
         std::remove_if(
             py3_fields_.begin(),
             py3_fields_.end(),
-            [](const t_field* field) {
-              return field->has_annotation("py3.hidden");
+            [this](const t_field* field) {
+              bool hidden = field->has_annotation("py3.hidden") ||
+                  field->find_structured_annotation_or_null(kPythonHiddenUri);
+              this->hidden_fields |= hidden;
+              return hidden;
             }),
         py3_fields_.end());
   }
@@ -823,6 +830,8 @@ class py3_mstch_struct : public mstch_struct {
 
   mstch::node has_py3_fields() { return !py3_fields_.empty(); }
 
+  mstch::node has_hidden_fields() { return hidden_fields; }
+
   mstch::node fields_and_mixin_fields() {
     std::vector<const t_field*> fields = py3_fields_;
     for (const auto& m : cpp2::get_mixins_and_members(*struct_)) {
@@ -834,6 +843,7 @@ class py3_mstch_struct : public mstch_struct {
 
  private:
   std::vector<const t_field*> py3_fields_;
+  bool hidden_fields = false;
 };
 
 class py3_mstch_field : public mstch_field {
@@ -981,7 +991,10 @@ class py3_mstch_enum : public mstch_enum {
         });
   }
 
-  mstch::node hasFlags() { return enum_->has_annotation("py3.flags"); }
+  mstch::node hasFlags() {
+    return enum_->has_annotation("py3.flags") ||
+        enum_->find_structured_annotation_or_null(kPythonFlagsUri);
+  }
   mstch::node cpp_name() { return cpp2::get_name(enum_); }
 };
 
@@ -1176,7 +1189,14 @@ class enum_member_union_field_names_validator : virtual public validator {
 
  private:
   void validate(const t_named* node, const std::string& name) {
-    const auto& pyname = node->get_annotation("py3.name", &name);
+    auto pyname = node->get_annotation("py3.name", &name);
+    if (const t_const* annot =
+            node->find_structured_annotation_or_null(kPythonNameUri)) {
+      if (auto annotation_name =
+              annot->get_value_from_structured_annotation_or_null("name")) {
+        pyname = annotation_name->get_string();
+      }
+    }
     if (pyname == "name" || pyname == "value") {
       report_error(
           *node,

@@ -14,15 +14,22 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 
-}}/// These are here to ensure the `from_thrift_default` methods on adapters don't panic.
+}}
+
+/// These are here to ensure the `from_thrift_default` methods on adapters don't panic.
 #[cfg(test)]
 mod tests {
-    {{#program:structs_with_adapters}}
+    {{#program:structs_for_default_test}}
     #[test]
-    fn test_struct_{{.}}_default_does_not_panic() {
-        let _ = super::{{.}}::default();
+    fn test_struct_{{struct:rust_name}}_default_does_not_panic() {
+        {{#struct:has_adapter?}}
+        let _ = super::unadapted::{{struct:rust_name}}::default();
+        {{/struct:has_adapter?}}
+        {{^struct:has_adapter?}}
+        let _ = super::{{struct:rust_name}}::default();
+        {{/struct:has_adapter?}}
     }
-    {{/program:structs_with_adapters}}
+    {{/program:structs_for_default_test}}
 }
 
 // This is here to ensure you enable unittests on your Thrift library.

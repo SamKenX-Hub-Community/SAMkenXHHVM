@@ -53,6 +53,7 @@
 #include "hphp/util/match.h"
 #include "hphp/util/process.h"
 #include "hphp/util/timer.h"
+#include "hphp/util/virtual-file-system.h"
 #include "hphp/zend/zend-string.h"
 
 using namespace HPHP;
@@ -66,15 +67,15 @@ const StaticString s_EntryPoint("__EntryPoint");
 
 Package::Package(const std::string& root,
                  coro::TicketExecutor& executor,
-                 extern_worker::Client& client)
+                 extern_worker::Client& client,
+                 bool coredump)
   : m_root{root}
   , m_failed{false}
   , m_total{0}
-  , m_fileCache{std::make_shared<FileCache>()}
   , m_executor{executor}
   , m_client{client}
   , m_config{
-      [this] { return m_client.store(Config::make()); },
+      [this, coredump] { return m_client.store(Config::make(coredump)); },
       m_executor.sticky()
     }
   , m_repoOptions{client}
@@ -124,7 +125,8 @@ void Package::addSourceFile(const std::string& fileName) {
   m_filesToParse.emplace(std::move(canonFileName), true);
 }
 
-std::shared_ptr<FileCache> Package::getFileCache() {
+void Package::writeVirtualFileSystem(const std::string& path) {
+  auto writer = VirtualFileSystemWriter(path);
   for (auto const& dir : m_directories) {
     std::vector<std::string> files;
     FileUtil::find(files, m_root, dir, /* php */ false,
@@ -133,9 +135,8 @@ std::shared_ptr<FileCache> Package::getFileCache() {
     Option::FilterFiles(files, Option::PackageExcludeStaticPatterns);
     for (auto& file : files) {
       auto const rpath = file.substr(m_root.size());
-      if (!m_fileCache->fileExists(rpath.c_str())) {
+      if (writer.addFile(rpath.c_str(), file.c_str())) {
         Logger::Verbose("saving %s", file.c_str());
-        m_fileCache->write(rpath.c_str(), file.c_str());
       }
     }
   }
@@ -144,34 +145,32 @@ std::shared_ptr<FileCache> Package::getFileCache() {
     FileUtil::find(files, m_root, dir, /* php */ false);
     for (auto& file : files) {
       auto const rpath = file.substr(m_root.size());
-      if (!m_fileCache->fileExists(rpath.c_str())) {
+      if (writer.addFile(rpath.c_str(), file.c_str())) {
         Logger::Verbose("saving %s", file.c_str());
-        m_fileCache->write(rpath.c_str(), file.c_str());
       }
     }
   }
   for (auto const& file : m_extraStaticFiles) {
-    if (!m_fileCache->fileExists(file.c_str())) {
-      auto const fullpath = m_root + file;
+    auto const fullpath = m_root + file;
+    if (writer.addFile(file.c_str(), fullpath.c_str())) {
       Logger::Verbose("saving %s", fullpath.c_str());
-      m_fileCache->write(file.c_str(), fullpath.c_str());
     }
   }
 
   for (auto const& pair : m_discoveredStaticFiles) {
     auto const file = pair.first.c_str();
-    if (!m_fileCache->fileExists(file)) {
-      const char *fullpath = pair.second.c_str();
-      Logger::Verbose("saving %s", fullpath[0] ? fullpath : file);
-      if (fullpath[0]) {
-        m_fileCache->write(file, fullpath);
-      } else {
-        m_fileCache->write(file);
+    const char *fullpath = pair.second.c_str();
+    if (fullpath[0]) {
+      if (writer.addFile(file, fullpath)) {
+        Logger::Verbose("saving %s", fullpath);
+      }
+    } else {
+      if (writer.addFileWithoutContent(file)) {
+        Logger::Verbose("saving %s", file);
       }
     }
   }
-
-  return m_fileCache;
+  writer.finish();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -218,6 +217,7 @@ createSymlinkWrapper(const std::string& fileName,
     fileName.c_str(),
     SHA1{string_sha1(content)},
     Native::s_noNativeFuncs,
+    origUE->m_packageInfo,
     false
   );
 }
@@ -246,6 +246,7 @@ UnitEmitterSerdeWrapper output(
 
   meta.m_symbol_refs = std::move(ue->m_symbol_refs);
   meta.m_filepath = ue->m_filepath;
+  meta.m_module_use = ue->m_moduleName;
 
   for (auto const pce : ue->preclasses()) {
     if (pce->attrs() & AttrEnum) {
@@ -288,6 +289,13 @@ void finishJob() {
 ///////////////////////////////////////////////////////////////////////////////
 
 void Package::parseInit(const Config& config, FileMetaVec meta) {
+  if (!config.CoreDump) {
+    struct rlimit rl{};
+    rl.rlim_cur = 0;
+    rl.rlim_max = 0;
+    setrlimit(RLIMIT_CORE, &rl);
+  }
+
   rds::local::init();
 
   Hdf hdf;
@@ -341,7 +349,8 @@ Package::parseRun(const std::string& content,
         content.size(),
         fileName.c_str(),
         SHA1{string_sha1(content)},
-        Native::s_noNativeFuncs
+        Native::s_noNativeFuncs,
+        repoOptions.packageInfo()
       );
       if (meta.m_targetPath) {
         ue = createSymlinkWrapper(
@@ -1572,24 +1581,46 @@ coro::Task<Package::OndemandInfo> Package::emitGroup(
       }
     }
 
-    auto parseMetas = HPHP_CORO_AWAIT(callback(group.m_files));
-    always_assert(parseMetas.size() == workItems);
-
-    m_total += workItems;
+    // The callback takes a group of files and returns the parse metas
+    // associated with these files. During the emit process, the units that
+    // do not belong to the active deployment will not produce parse metas
+    // as they do not need to be part of the final repo product.
+    // This will mean that the size of the parse metas does not need to be
+    // equal to number of files sent to the callback.
+    // One problem this creates is that we need to be able to associate
+    // parse metas with original group order. In order to do this,
+    // we also return a fixup list consisting of original indicies of the
+    // omitted units. We later use this fixup list to compute the original
+    // indicies of each unit.
+    auto parseMetasAndItemsToSkip = HPHP_CORO_AWAIT(callback(group.m_files));
+    auto& [parseMetas, itemsToSkip] = parseMetasAndItemsToSkip;
+    if (RO::EvalActiveDeployment.empty()) {
+      // If a deployment is not set, then we should have gotten results for
+      // all files
+      always_assert(parseMetas.size() == workItems);
+    }
+    m_total += parseMetas.size();
 
     // Process the outputs
     OndemandInfo ondemand;
+    size_t numSkipped = 0;
     for (size_t i = 0; i < workItems; i++) {
-      auto const filename = makeStaticString(group.m_files[i].native());
-      auto const& meta = parseMetas[i];
+      if (itemsToSkip.contains(i)) {
+        numSkipped++;
+        continue;
+      }
+      auto const& meta = parseMetas[i - numSkipped];
       if (!meta.m_abort.empty()) {
         // The unit had an ICE and we're configured to treat that as a
         // fatal error. Here is where we die on it.
         fprintf(stderr, "%s", meta.m_abort.c_str());
-        _Exit(1);
+        _Exit(HPHP_EXIT_FAILURE);
       }
-      // Resolve any symbol refs into files to parse ondemand
-      resolveOnDemand(ondemand, filename, meta.m_symbol_refs, index);
+      if (Option::ForceEnableSymbolRefs || RO::EvalActiveDeployment.empty()) {
+        auto const filename = makeStaticString(group.m_files[i].native());
+        // Resolve any symbol refs into files to parse ondemand
+        resolveOnDemand(ondemand, filename, meta.m_symbol_refs, index);
+      }
     }
     HPHP_CORO_MOVE_RETURN(ondemand);
   } catch (const Exception& e) {

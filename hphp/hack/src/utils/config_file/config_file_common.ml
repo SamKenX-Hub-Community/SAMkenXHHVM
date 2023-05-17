@@ -14,6 +14,8 @@ type t = Config_file_ffi_externs.config
 
 let file_path_relative_to_repo_root = ".hhconfig"
 
+let pkgs_config_path_relative_to_repo_root = "PACKAGES.toml"
+
 let empty = Config_file_ffi_externs.empty
 
 let is_empty = Config_file_ffi_externs.is_empty
@@ -21,16 +23,24 @@ let is_empty = Config_file_ffi_externs.is_empty
 let print_to_stderr (config : t) : unit =
   Config_file_ffi_externs.print_to_stderr config
 
-let apply_overrides ~(from : string option) ~(config : t) ~(overrides : t) : t =
+let apply_overrides ~(config : t) ~(overrides : t) ~(log_reason : string option)
+    : t =
   if is_empty overrides then
     config
   else
     let config = Config_file_ffi_externs.apply_overrides config overrides in
-    Option.iter from ~f:(fun from ->
+    Option.iter log_reason ~f:(fun from ->
         Printf.eprintf "*** Overrides from %s:\n%!" from;
         print_to_stderr overrides;
         Printf.eprintf "\n%!");
     config
+
+(* Given an hhconfig_path, get the path to the PACKAGES.toml file in the same directory *)
+let get_packages_absolute_path ~(hhconfig_path : string) =
+  Path.make hhconfig_path
+  |> Path.dirname
+  |> (fun p -> Path.concat p pkgs_config_path_relative_to_repo_root)
+  |> Path.to_string
 
 (*
  * Config file format:
@@ -40,6 +50,7 @@ let apply_overrides ~(from : string option) ~(config : t) ~(overrides : t) : t =
 let parse_contents (contents : string) : t =
   Config_file_ffi_externs.parse_contents contents
 
+(* Non-lwt implementation of parse *)
 let parse (fn : string) : string * t =
   let contents = Sys_utils.cat fn in
   let parsed = parse_contents contents in

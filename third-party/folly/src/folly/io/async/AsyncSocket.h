@@ -127,21 +127,119 @@ class AsyncSocket : public AsyncSocketTransport {
     virtual ~ReadAncillaryDataCallback() = default;
 
     /**
-     * ancillaryData() will be invoked when we read a buffer
-     * from the socket together with the ancillary data.
+     * `ancillaryData()` is invoked immediately before the corresponding
+     * `ReadCallback::readDataAvailable()`, as a pair.
      *
-     * @param msgh      Reference to msghdr structure describing
-     *                  a message read together with the data buffer associated
-     *                  with the socket.
+     * You must check for `msg_flags | MSG_CTRUNC`, indicating that some
+     * ancillary data was discarded due to lack of space.  This is normally
+     * not recoverable, so you can `close` or `failRead` the socket -- see
+     * below.
+     *
+     * ## Allowed socket mutations ###
+     *
+     * This callback is allowed to `close`, `failRead` (for child classes),
+     * or destruct the underlying socket.  It is **NOT** allowed to perform
+     * any other mutations, such as `setReadCallback` or `attachEventBase`.
+     *
+     * If `ancillaryData()` closes or fails the socket, then any data
+     * received in the same read as the ancillary data will NOT be delivered
+     * to the `ReadCallback`.
+     *
+     * # Detailed contract
+     *
+     * This will only be invoked when a `ReadCallback` is installed -- i.e.
+     * the socket is connected, neither closed nor in an error state.
+     *
+     * The supplied buffer will have originated from the most recent call to
+     * `getAncillaryDataCtrlBuffer()`.
+     *
+     * Per POSIX, ancillary data are sent / received with the first byte of
+     * the `sendmsg` data buffer, so we guarantee that the subsequent
+     * `readDataAvailable()` (if it happens) will include that data byte.
+     *
+     * @param  Can be used with macros from `man cmsg` to access ancillary
+     *         data. It is permissible to check `msg_flags & MSG_EOR`.
+     *         There is NO CONTRACT about any other `msghdr` fields -- that
+     *         is, choosing to read `msg_name*` or `msg_iov*` leads to
+     *         undefined behavior.
      */
-    virtual void ancillaryData(struct msghdr& msgh) noexcept = 0;
+    virtual void ancillaryData(struct ::msghdr&) noexcept = 0;
 
     /**
-     * getAncillaryDataCtrlBuffer() will be invoked in order to fill the
-     * ancillary data buffer when it is received.
-     * getAncillaryDataCtrlBuffer will never return nullptr.
+     * Must return a buffer large enough to contain the incoming ancillary
+     * data, see `man cmsg` and `CMSG_SPACE`.
+     *
+     * DANGER: This call must not mutate the socket state.  e.g., you
+     * cannot call setReadCB(), setReadAncillaryDataCB() or close()
+     * from inside this call.
+     *
+     * If the supplied buffer is too small, your `ancillaryData()` will see
+     * `MSG_CTRUNC`, and the kernel will have discarded some ancillary data.
+     *
+     * It is possible that `getAncillaryDataCtrlBuffer()` will be called
+     * without a corresponding `ancillaryData()` call.  It is the callback's
+     * responsibility not to leak the buffers it returns.  Any call to
+     * `ancillaryData()` will use the most recently returned buffer.
+     *
+     * The returned buffer must remain valid until the point where
+     * `ancillaryData()` could be called with it.  That is, previously
+     * returned buffers may be freed if:
+     *  - the socket is closed / fails, or its `ReadCallback` is removed
+     *  - the `ReadAncillaryDataCallback` is uninstalled
+     *  - `ancillaryData()` completes
      */
     virtual folly::MutableByteRange getAncillaryDataCtrlBuffer() = 0;
+  };
+
+  /**
+   * Sometimes `SendMsgParamsCallback` needs to send different ancillary
+   * data for different writes, for example when sending FDs over Unix
+   * sockets.
+   *
+   * This opaque type acts as the key to match `writeChain` calls with
+   * `getAncillaryData()` and corresponding `wroteBytes()` calls.  It wraps
+   * `IOBuf*`, and implements equality, hashing, and ostream writes for
+   * debugging.
+   *
+   * Important usage notes:
+   *   - Even though `WriteRequestTag` never dereferences the pointer, it is
+   *     still INCORRECT to use it after the write is over, whether or not
+   *     the `IOBuf` had been destructed, because the same pointer could now
+   *     refer to new, different data that is being written (see
+   *     `getReleaseIOBufCallback` for the mechanism).
+   *   - Therefore, if you store a `WriteRequestTag`, you must remove it
+   *     whenever a write is complete.  This can be done either in
+   *     `WriteCallback::{writeErr,writeSuccess}`, or by inheriting from
+   *     `AsyncSocket::releaseIOBuf`, or by adding a new method
+   *     `SendMsgParamsCallback::onReleaseIOBuf`.
+   *   - Not all child classes support write tagging.  Notably, we removed
+   *     the `AsyncSSLSocket` implementation since it added complexity and
+   *     was not used.  Breadcrumbs are in `bioWrite`, or rev hash
+   *     95df2ce7c98a.
+   *   - The `EmptyDummy` constructor is for tests, or marking empty tags.
+   *     `SendMsgParamsCallback` methods can also be called with an empty
+   *     tag if the write is not submitted via `writeChain`.
+   */
+  struct WriteRequestTag {
+    struct EmptyDummy {};
+
+    explicit WriteRequestTag(EmptyDummy) : buf_(nullptr) {}
+    explicit WriteRequestTag(folly::IOBuf* buf) : buf_(buf) {}
+
+    bool operator==(const WriteRequestTag& other) const {
+      // Remember to also update std::hash<folly::AsyncSocket::WriteRequestTag>
+      // and ostream operator<<
+      return buf_ == other.buf_;
+    }
+
+    [[nodiscard]] bool empty() const noexcept { return buf_ == nullptr; }
+
+   private:
+    friend struct std::hash<WriteRequestTag>;
+    friend std::ostream& operator<<(std::ostream&, const WriteRequestTag&);
+
+    // The `IOBuf` submitted through `writeChain`
+    const folly::IOBuf* buf_;
   };
 
   class SendMsgParamsCallback {
@@ -180,6 +278,7 @@ class AsyncSocket : public AsyncSocketTransport {
      *
      * @param flags     Write flags requested for the given write operation
      * @param data      Pointer to ancillary data buffer to initialize.
+     * @param writeTag  Documented on `WriteRequestTag`.
      * @param byteEventsEnabled      If byte events are enabled for this socket.
      *                               When enabled, flags relevant to socket
      *                               timestamps (e.g., TIMESTAMP_TX) should be
@@ -188,21 +287,45 @@ class AsyncSocket : public AsyncSocketTransport {
     virtual void getAncillaryData(
         folly::WriteFlags flags,
         void* data,
+        const WriteRequestTag& writeTag,
         const bool byteEventsEnabled = false) noexcept;
 
     /**
      * getAncillaryDataSize() will be invoked to retrieve the size of
      * ancillary data buffer which should be passed to ::sendmsg() system call
+     * The result must not exceed `maxAncillaryDataSize`.
      *
      * @param flags     Write flags requested for the given write operation
+     * @param writeTag  Documented on `WriteRequestTag`.
      * @param byteEventsEnabled      If byte events are enabled for this socket.
      *                               When enabled, flags relevant to socket
      *                               timestamps (e.g., TIMESTAMP_TX) should be
      *                               included in ancillary (msg_control) data.
      */
     virtual uint32_t getAncillaryDataSize(
-        folly::WriteFlags flags, const bool byteEventsEnabled = false) noexcept;
+        folly::WriteFlags flags,
+        const WriteRequestTag& writeTag,
+        const bool byteEventsEnabled = false) noexcept;
 
+    /**
+     * Called immediately after a `sendmsg` corresponding to the preceding
+     * `getAncillaryData()` successfully sends at least 1 byte.
+     *
+     * This is required to enable "exactly once" transmission of ancillary
+     * data corresponding to `writeTag`.  For example, `AsyncFdSocket` ought
+     * not transmit tag-associated FDs twice.  Per POSIX, ancillary data are
+     * transmitted together with the first data byte.
+     */
+    virtual void wroteBytes(const WriteRequestTag&) noexcept {}
+
+    // This is not an OS limitation (see `/proc/sys/net/core/optmem_max` on
+    // Linux) but is done only because today's `AsyncSocket` implementation
+    // uses `alloca` to allocate the ancillary data buffer on the stack in
+    // order to support a cheap default `SendMsgParamsCallback` on every
+    // socket.  If the buffer management could be handed to the socket (e.g.
+    // each socket contains a few bytes of buffer for the default callback),
+    // then we could delete this maximum, and `getAncillaryDataSize`, in
+    // favor of `folly::ByteRange getAncillaryData()`.
     static const size_t maxAncillaryDataSize{0x5000};
 
    private:
@@ -1032,15 +1155,45 @@ class AsyncSocket : public AsyncSocketTransport {
   };
 
   /**
+   * Wrapper class for WriteCallback that includes a boolean variable to track
+   * whether the write has already started or not
+   */
+  class WriteCallbackWithState {
+   public:
+    explicit WriteCallbackWithState(WriteCallback* callback)
+        : callback_(callback) {}
+    WriteCallback* getCallback() const { return callback_; }
+
+    void notifyOnWrite() noexcept {
+      if (callback_ && !writeInProgress_) {
+        callback_->writeStarting();
+      }
+      writeInProgress_ = true;
+    }
+
+   private:
+    WriteCallback* callback_{nullptr};
+    bool writeInProgress_{false};
+  };
+
+  /**
    * A WriteRequest object tracks information about a pending write operation.
    */
   class WriteRequest {
    public:
     WriteRequest(AsyncSocket* socket, WriteCallback* callback)
         : socket_(socket),
-          callback_(callback),
+          callbackWithState_(WriteCallbackWithState(callback)),
           releaseIOBufCallback_(
               callback ? callback->getReleaseIOBufCallback() : nullptr) {}
+
+    WriteRequest(AsyncSocket* socket, WriteCallbackWithState callbackWithState)
+        : socket_(socket),
+          callbackWithState_(callbackWithState),
+          releaseIOBufCallback_(
+              callbackWithState.getCallback()
+                  ? callbackWithState.getCallback()->getReleaseIOBufCallback()
+                  : nullptr) {}
 
     virtual void start() {}
 
@@ -1054,7 +1207,13 @@ class AsyncSocket : public AsyncSocketTransport {
 
     WriteRequest* getNext() const { return next_; }
 
-    WriteCallback* getCallback() const { return callback_; }
+    WriteCallback* getCallback() const {
+      return callbackWithState_.getCallback();
+    }
+
+    WriteCallbackWithState& getCallbackWithState() {
+      return callbackWithState_;
+    }
 
     uint32_t getTotalBytesWritten() const { return totalBytesWritten_; }
 
@@ -1078,7 +1237,7 @@ class AsyncSocket : public AsyncSocketTransport {
 
     AsyncSocket* socket_; ///< parent socket
     WriteRequest* next_{nullptr}; ///< pointer to next WriteRequest
-    WriteCallback* callback_; ///< completion callback
+    WriteCallbackWithState callbackWithState_; ///< completion callback
     ReleaseIOBufCallback* releaseIOBufCallback_; ///< release IOBuf callback
     uint32_t totalBytesWritten_{0}; ///< total bytes written
   };
@@ -1321,26 +1480,6 @@ class AsyncSocket : public AsyncSocketTransport {
   virtual void handleNetworkSocketAttached();
 
   /**
-   * Attempt to read from the socket into a single buffer
-   *
-   * @param buf      The buffer to read data into.
-   * @param buflen   The length of the buffer.
-   *
-   * @return Returns a read result. See read result for details.
-   */
-  virtual ReadResult performRead(void** buf, size_t* buflen, size_t* offset);
-
-  /**
-   * Attempt to read from the socket into an iovec array
-   *
-   * @param iovs     The iovec array to read data into.
-   * @param num      The number of elements in the iovec array
-   *
-   * @return Returns a read result. See read result for details.
-   */
-  virtual ReadResult performReadv(struct iovec* iovs, size_t num);
-
-  /**
    * Populate an iovec array from an IOBuf and attempt to write it.
    *
    * @param callback Write completion/error callback.
@@ -1402,7 +1541,8 @@ class AsyncSocket : public AsyncSocketTransport {
       uint32_t count,
       WriteFlags flags,
       uint32_t* countWritten,
-      uint32_t* partialWritten);
+      uint32_t* partialWritten,
+      WriteRequestTag writeTag);
 
   /**
    * Prepares a msghdr and sends the message over the socket using sendmsg
@@ -1412,7 +1552,10 @@ class AsyncSocket : public AsyncSocketTransport {
    * @param flags           Set of write flags.
    */
   virtual AsyncSocket::WriteResult sendSocketMessage(
-      const iovec* vec, size_t count, WriteFlags flags);
+      const iovec* vec,
+      size_t count,
+      WriteFlags flags,
+      WriteRequestTag writeTag);
 
   /**
    * Sends the message over the socket using sendmsg
@@ -1446,8 +1589,15 @@ class AsyncSocket : public AsyncSocketTransport {
    */
   bool updateEventRegistration(uint16_t enable, uint16_t disable);
 
-  // read methods
-  ReadResult performReadInternal(struct iovec* iovs, size_t num);
+  // Attempt to read into one or more `struct iovec`s.  The caller is
+  // responsible for setting `msg.msg_iov` and `msg.msg_iovlen` to the
+  // buffers that will receive the read, and for initializing
+  // `msg.msg_name*`.  In the case that `readAncillaryCallback_` is set, the
+  // caller may also want to populate `msg_control`, `msg_controllen`, and
+  // `msg_flags` -- if no ancillary data are being read, it's fine to leave
+  // them at their defaults of 0.
+  virtual ReadResult performReadMsg(
+      struct ::msghdr& msg, AsyncReader::ReadCallback::ReadMode);
 
   // Actually close the file descriptor and set it to -1 so we don't
   // accidentally close it again.
@@ -1507,7 +1657,7 @@ class AsyncSocket : public AsyncSocketTransport {
   bool containsZeroCopyBuf(folly::IOBuf* ptr);
   void releaseZeroCopyBuf(uint32_t id);
 
-  void releaseIOBuf(
+  virtual void releaseIOBuf(
       std::unique_ptr<folly::IOBuf> buf, ReleaseIOBufCallback* callback);
 
   ReadCode processZeroCopyRead();
@@ -1645,4 +1795,15 @@ class AsyncSocket : public AsyncSocketTransport {
   ConstructorCallbackList<AsyncSocket> constructorCallbackList_{this};
 };
 
+std::ostream& operator<<(
+    std::ostream& os, const folly::AsyncSocket::WriteRequestTag& tag);
+
 } // namespace folly
+
+template <>
+struct std::hash<folly::AsyncSocket::WriteRequestTag> {
+  std::size_t operator()(
+      const folly::AsyncSocket::WriteRequestTag& writeTag) const {
+    return std::hash<const folly::IOBuf*>{}(writeTag.buf_);
+  }
+};

@@ -62,7 +62,8 @@ Object create_new_IC() {
 }
 
 void set_implicit_context_blame(ImplicitContext* context,
-                                const StringData* memo_key) {
+                                const StringData* memo_key,
+                                const Func* func) {
   auto const state = context->m_state;
 
   // the memo_key is only provided for one of two situations:
@@ -70,13 +71,16 @@ void set_implicit_context_blame(ImplicitContext* context,
   // (2) when entering the SoftInaccessible state via
   //     the function run_with_soft_inaccessible_state
   assertx(IMPLIES(state == ImplicitContext::State::SoftSet, memo_key));
-  assertx(IMPLIES(state != ImplicitContext::State::SoftSet && state != ImplicitContext::State::SoftInaccessible, !memo_key));
+  assertx(IMPLIES(state != ImplicitContext::State::SoftSet &&
+                  state != ImplicitContext::State::SoftInaccessible, !memo_key));
 
   if (state == ImplicitContext::State::Value ||
       state == ImplicitContext::State::Inaccessible) {
     // We do not currently need blame here
     return;
   }
+
+  assertx(func);
   assertx(state == ImplicitContext::State::SoftInaccessible ||
           state == ImplicitContext::State::SoftSet);
 
@@ -91,10 +95,7 @@ void set_implicit_context_blame(ImplicitContext* context,
 
   auto const cur_blame = [&] {
     if (memo_key) return memo_key;
-    VMRegAnchor _;
-    return fromCaller(
-      [] (const BTFrame& frm) { return frm.func()->fullName(); }
-    );
+    return func->fullName();
   }();
 
   if (state == ImplicitContext::State::SoftInaccessible) {
@@ -181,7 +182,7 @@ Object HHVM_FUNCTION(create_implicit_context, StringArg keyarg,
   auto const context = Native::data<ImplicitContext>(obj.get());
 
   context->m_state = ImplicitContext::State::Value;
-  set_implicit_context_blame(context, nullptr);
+  set_implicit_context_blame(context, nullptr, nullptr);
   if (prev) context->m_map = Native::data<ImplicitContext>(prev)->m_map;
   // Leak `data`, `key` and `memokey` to the end of the request
   if (isRefcountedType(data.m_type)) tvIncRefCountable(data);
@@ -209,9 +210,11 @@ Object HHVM_FUNCTION(create_implicit_context, StringArg keyarg,
   return obj;
 }
 
-Object HHVM_FUNCTION(create_special_implicit_context,
-                     int64_t type_enum,
-                     const Variant& memo_key /* = null_string */) {
+namespace {
+
+Object create_special_implicit_context_impl(int64_t type_enum,
+                                            const StringData* memo_key,
+                                            const Func* func) {
   auto const prev_obj = *ImplicitContext::activeCtx;
   auto const prev_context =
     prev_obj ? Native::data<ImplicitContext>(prev_obj) : nullptr;
@@ -229,10 +232,7 @@ Object HHVM_FUNCTION(create_special_implicit_context,
 
   if (type == ImplicitContext::State::SoftInaccessible) {
     auto const sampleRate = [&] {
-      if (!memo_key.isNull()) return 1u;
-      VMRegAnchor _;
-      auto const func =
-        fromCaller([] (const BTFrame& frm) { return frm.func(); });
+      if (memo_key) return 1u;
       assertx(func->isMemoizeWrapper() || func->isMemoizeWrapperLSB());
       assertx(func->isSoftMakeICInaccessibleMemoize());
       return func->softMakeICInaccessibleSampleRate();
@@ -246,14 +246,13 @@ Object HHVM_FUNCTION(create_special_implicit_context,
   auto obj = create_new_IC();
   auto const context = Native::data<ImplicitContext>(obj.get());
   context->m_state = type;
-  auto const key = [&] () -> StringData* {
-    if (memo_key.isNull()) return nullptr;
-    auto const sd = memo_key.toString().get();
+  auto const key = [&] () -> const StringData* {
+    if (!memo_key) return nullptr;
     // Leak the memo_key until the end of the request
-    sd->incRefCount();
-    return sd;
+    memo_key->incRefCount();
+    return memo_key;
   }();
-  set_implicit_context_blame(context, key);
+  set_implicit_context_blame(context, key, func);
   if (type == ImplicitContext::State::SoftSet &&
       prev_context &&
       prev_context->m_state == ImplicitContext::State::SoftInaccessible) {
@@ -279,6 +278,16 @@ Object HHVM_FUNCTION(create_special_implicit_context,
     return sb.detach().detach();
   }();
   return obj;
+}
+
+} // namespace
+
+TypedValue create_special_implicit_context_explicit(int64_t type_enum,
+                                                    const StringData* memo_key,
+                                                    const Func* func) {
+  auto ret = create_special_implicit_context_impl(type_enum, memo_key, func);
+  if (ret.isNull()) return make_tv<KindOfNull>();
+  return make_tv<KindOfObject>(ret.detach());
 }
 
 namespace {
@@ -316,7 +325,7 @@ Variant HHVM_FUNCTION(enter_zoned_with, const Variant& function) {
 }
 
 static struct HHImplicitContext final : Extension {
-  HHImplicitContext(): Extension("implicit_context", NO_EXTENSION_VERSION_YET) { }
+  HHImplicitContext(): Extension("implicit_context", NO_EXTENSION_VERSION_YET, NO_ONCALL_YET) { }
   void moduleInit() override {
     Native::registerNativeDataInfo<ImplicitContext>(s_ImplicitContext.get());
 
@@ -328,8 +337,6 @@ static struct HHImplicitContext final : Extension {
                   HHVM_FN(get_whole_implicit_context));
     HHVM_NAMED_FE(HH\\ImplicitContext\\_Private\\create_implicit_context,
                   HHVM_FN(create_implicit_context));
-    HHVM_NAMED_FE(HH\\ImplicitContext\\_Private\\create_special_implicit_context,
-                  HHVM_FN(create_special_implicit_context));
     HHVM_NAMED_FE(HH\\ImplicitContext\\_Private\\get_implicit_context_memo_key,
                   HHVM_FN(get_implicit_context_memo_key));
 

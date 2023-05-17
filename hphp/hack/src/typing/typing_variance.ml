@@ -255,7 +255,7 @@ let check_final_this_pos_variance : variance -> Pos.t -> Nast.class_ -> unit =
     List.iter class_.Aast.c_tparams ~f:(fun t ->
         match (env_variance, t.Aast.tp_variance) with
         | (Vcontravariant _, (Ast_defs.Covariant | Ast_defs.Contravariant)) ->
-          Errors.add_typing_error
+          Typing_error_utils.add_typing_error
             Typing_error.(
               primary
               @@ Primary.Contravariant_this
@@ -364,7 +364,7 @@ and get_typarams ~tracked tenv (ty : decl_ty) =
   | Tintersection tyl
   | Ttuple tyl ->
     get_typarams_list tyl
-  | Tshape (_, m) ->
+  | Tshape (_, _, m) ->
     TShapeMap.fold
       (fun _ { sft_ty; _ } res -> get_typarams_union res sft_ty)
       m
@@ -563,7 +563,7 @@ let generic_ : Env.type_parameter_env -> variance -> string -> _ -> unit =
     let (pos1, _, _) = List.hd_exn stack1 in
     let (pos2, _, _) = List.hd_exn stack2 in
     let emsg = lazy (detailed_message "contravariant (-)" pos2 stack2) in
-    Errors.add_typing_error
+    Typing_error_utils.add_typing_error
       Typing_error.(
         primary
         @@ Primary.Declared_covariant
@@ -572,7 +572,7 @@ let generic_ : Env.type_parameter_env -> variance -> string -> _ -> unit =
     let (pos1, _, _) = List.hd_exn stack1 in
     let (pos2, _, _) = List.hd_exn stack2 in
     let emsg = lazy (detailed_message "covariant (+)" pos2 stack2) in
-    Errors.add_typing_error
+    Typing_error_utils.add_typing_error
       Typing_error.(
         primary
         @@ Primary.Declared_contravariant

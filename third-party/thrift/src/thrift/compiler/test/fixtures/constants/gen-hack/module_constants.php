@@ -23,10 +23,7 @@ class module_CONSTANTS implements \IThriftConstants {
    * Original thrift constant:-
    * string multi_line_string
    */
-  const string multi_line_string = "This
-is a
-multi line string.
-";
+  const string multi_line_string = "This\nis a\nmulti line string.\n";
 
   /**
    * Original thrift constant:-
@@ -546,7 +543,7 @@ multi line string.
    * Original thrift constant:-
    * string escaped_a
    */
-  const string escaped_a = "\x61";
+  const string escaped_a = "a";
 
   /**
    * Original thrift constant:-
@@ -558,7 +555,7 @@ multi line string.
       "'" => 39,
       "\"" => 34,
       "\\" => 92,
-      "\x61" => 97,
+      "a" => 97,
     };
   }
 
@@ -569,22 +566,30 @@ multi line string.
   <<__Memoize>>
   public static function escaped_strings()[write_props]: \ConstVector<string>{
     return ImmVector {
-      "\x61",
-      "\xab",
-      "\x6a",
-      "\xa6",
-      "\x61yyy",
-      "\xabyyy",
-      "\x6ayyy",
-      "\xa6yyy",
-      "zzz\x61",
-      "zzz\xab",
-      "zzz\x6a",
-      "zzz\xa6",
-      "zzz\x61yyy",
-      "zzz\xabyyy",
-      "zzz\x6ayyy",
-      "zzz\xa6yyy",
+      "\x01",
+      "\x1f",
+      " ",
+      "'",
+      "\"",
+      "\n",
+      "\x0d",
+      "\x09",
+      "a",
+      "«",
+      "j",
+      "¦",
+      "ayyy",
+      "«yyy",
+      "jyyy",
+      "¦yyy",
+      "zzza",
+      "zzz«",
+      "zzzj",
+      "zzz¦",
+      "zzzayyy",
+      "zzz«yyy",
+      "zzzjyyy",
+      "zzz¦yyy",
     };
   }
 

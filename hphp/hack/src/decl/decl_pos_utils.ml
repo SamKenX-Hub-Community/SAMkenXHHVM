@@ -85,6 +85,7 @@ struct
     | Rpredicated (p, f) -> Rpredicated (pos p, f)
     | Ris p -> Ris (pos p)
     | Ras p -> Ras (pos p)
+    | Requal p -> Requal (pos p)
     | Rvarray_or_darray_key p -> Rvarray_or_darray_key (pos_or_decl p)
     | Rvec_or_dict_key p -> Rvec_or_dict_key (pos_or_decl p)
     | Rusing p -> Rusing (pos p)
@@ -159,8 +160,11 @@ struct
     | Trefinement (root_ty, rs) ->
       let rs = Class_refinement.map ty rs in
       Trefinement (ty root_ty, rs)
-    | Tshape (shape_kind, fdm) ->
-      Tshape (shape_kind, ShapeFieldMap.map_and_rekey fdm shape_field_name ty)
+    | Tshape (_, shape_kind, fdm) ->
+      Tshape
+        ( Missing_origin,
+          shape_kind,
+          ShapeFieldMap.map_and_rekey fdm shape_field_name ty )
     | Tnewtype (name, tyl, bound) ->
       let tyl = List.map tyl ~f:ty in
       let bound = ty bound in
@@ -271,6 +275,7 @@ struct
       dc_sealed_whitelist = dc.dc_sealed_whitelist;
       dc_xhp_attr_deps = dc.dc_xhp_attr_deps;
       dc_xhp_enum_values = dc.dc_xhp_enum_values;
+      dc_xhp_marked_empty = dc.dc_xhp_marked_empty;
       dc_req_ancestors = List.map dc.dc_req_ancestors ~f:requirement;
       dc_req_ancestors_extends = dc.dc_req_ancestors_extends;
       dc_req_class_ancestors = List.map dc.dc_req_class_ancestors ~f:requirement;
@@ -340,6 +345,7 @@ struct
       sc_uses = List.map sc.sc_uses ~f:ty;
       sc_xhp_attr_uses = List.map sc.sc_xhp_attr_uses ~f:ty;
       sc_xhp_enum_values = sc.sc_xhp_enum_values;
+      sc_xhp_marked_empty = sc.sc_xhp_marked_empty;
       sc_req_extends = List.map sc.sc_req_extends ~f:ty;
       sc_req_implements = List.map sc.sc_req_implements ~f:ty;
       sc_req_class = List.map sc.sc_req_class ~f:ty;

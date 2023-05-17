@@ -11,7 +11,7 @@ path = "../../emit_unit.rs"
 [dependencies]
 ast_scope = { version = "0.0.0", path = "../ast_scope" }
 bitflags = "1.3"
-bstr = { version = "1.0", features = ["serde", "std", "unicode"] }
+bstr = { version = "1.4.0", features = ["serde", "std", "unicode"] }
 bumpalo = { version = "3.11.1", features = ["collections"] }
 constant_folder = { version = "0.0.0", path = "../constant_folder" }
 core_utils_rust = { version = "0.0.0", path = "../../../../utils/core" }
@@ -21,7 +21,7 @@ emit_type_hint = { version = "0.0.0", path = "../emit_type_hint" }
 env = { version = "0.0.0", path = "../env" }
 error = { version = "0.0.0", path = "../../../error/cargo/error" }
 ffi = { version = "0.0.0", path = "../../../../utils/ffi" }
-hack_macro = { version = "0.0.0", path = "../../../utils/cargo/hack_macro" }
+hack_macros = { version = "0.0.0", path = "../../../../utils/hack_macros/cargo/hack_macros" }
 hash = { version = "0.0.0", path = "../../../../utils/hash" }
 hhbc = { version = "0.0.0", path = "../../../hhbc/cargo/hhbc" }
 hhbc_string_utils = { version = "0.0.0", path = "../../../utils/cargo/hhbc_string_utils" }

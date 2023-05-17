@@ -103,22 +103,45 @@ hex_digit ::=  digit | "a"..."f" | "A"..."F"
 float_literal ::=  digit+ "." digit+ | (digit+ ["." digit+]) exponent
 exponent      ::=  ("e" | "E") ["+" | "-"] digit+
 
-string_literal ::=  '"' dstring_char* '"' | "'" sstring_char* "'"
-dstring_char   ::=  <any source character except '"'>
-sstring_char   ::=  <any source character except "'">
+string_literal ::=  '"' (dstring_char | escape_seq)* '"' |
+                    "'" (sstring_char | escape_seq)* "'"
+dstring_char   ::=  <any source character except "\\" or '"'>
+sstring_char   ::=  <any source character except "\\" or "'">
+escape_seq     ::=  simple_escape | hex_escape | unicode_escape
+simple_escape  ::=  "\\" ("\n" | "\\" | "'" | "\"" | "n" | "r" | "t")
+hex_escape     ::=  "\\x" hex_digit hex_digit
+unicode_escape ::=  "\\u" hex_digit hex_digit hex_digit hex_digit
 
 bool_literal ::=  "true" | "false"
 ```
 
+Both single quoted and double quoted string literals support the following
+escape sequences:
+
+| Escape Sequence | Meaning                       |
+| --------------- | ----------------------------- |
+| `\\`            | Backslash (U+005C)            |
+| `\'`            | Single quote (U+0027)         |
+| `\"`            | Double quote (U+0022)         |
+| `\n`            | Line feed (U+000A)            |
+| `\r`            | Carriage return (U+000D)      |
+| `\t`            | Horizontal tab (U+0009)       |
+| `\xhh`          | Code unit with hex value *hh* |
+| `\uhhhh`        | Unicode scalar value *hhhh*   |
+
+where `h` denotes a hexadecimal digit.
+
+A backslash (`\`) at the end of a line in a multiline string is removed from the string together with the newline character (U+000A).
+
 Here are some examples of literals in Thrift:
 
 ```thrift
-42               // decimal integer literal
-0xCAFE           // hexadecimal integer literal
-3.14159          // floating-point literal
-"Don't panic!"   // string literal using double quotes
-'Heart of Gold'  // string literal using single quotes
-true             // Boolean literal
+42                // decimal integer literal
+0xCAFE            // hexadecimal integer literal
+3.14159           // floating-point literal
+"Don't panic!"    // string literal using double quotes
+'\u2665 of Gold'  // string literal using single quotes
+true              // Boolean literal
 ```
 
 Literals in Thrift do not have exact types. Instead they are represented using maximum precision and the actual type is inferred from context. For example:
@@ -147,18 +170,12 @@ delimiter ::=  ["," | ";"]
 
 ## Thrift Files
 
-A Thrift file starts with an optional package declaration and a, possibly empty, sequence of include statements and namespace directives. It is followed by a sequence of definitions which can also be empty. There can be at most one package declaration and it is normally placed at the beginning of a source file.
+A Thrift file starts with an optional package declaration and a, possibly empty, sequence of include and namespace directives. It is followed by a sequence of definitions which can also be empty. There can be at most one package declaration and it is normally placed at the beginning of a source file.
 
 ```grammar
 thrift_file ::=
-  (include_statement | package_declaration | namespace_directive)*
+  (include_directive | package_declaration | namespace_directive)*
   definition*
-```
-
-Thrift supports three kinds of definitions: type definitions, constant definitions and service definitions.
-
-```grammar
-definition ::=  type_definition | constant_definition | service_definition
 ```
 
 Here is an example of a Thrift file:
@@ -202,13 +219,14 @@ service PeopleSearch {
 }
 ```
 
-### Include Statements
+### Include Directives
 
 ```grammar
-include_statement ::=  ("include" | "cpp_include" | "hs_include") string_literal
+include_directive ::=
+  ("include" | "cpp_include" | "hs_include") string_literal [";"]
 ```
 
-Include statements allow the use of constants, types, and services from other Thrift files by prefixing the name (without extension) of the included Thrift file followed by a period. `cpp_include` instructs the compiler to emit an include in generated C++ code and `hs_include` does the same for Haskell.
+Include directives allow the use of constants, types, and services from other Thrift files by prefixing the name (without extension) of the included Thrift file followed by a period. `cpp_include` instructs the compiler to emit an include in generated C++ code and `hs_include` does the same for Haskell.
 
 ```thrift
 include "common/if/search_types.thrift"
@@ -227,12 +245,12 @@ struct PeopleSearchResponse {
 
 If there is a circular dependency between files, a compile-time error is reported. So `a.thrift` cannot include itself, and cannot include `b.thrift` if `b.thrift` includes `a.thrift`. Including multiple files with a common ancestor is okay - so `a.thrift` can include `b.thrift` and `c.thrift` when both `b.thrift` and `c.thrift` include `d.thrift`.
 
-### Package Declaration {#package}
+### Package Declaration
 
 A package declaration determines the default namespaces for target languages, e.g. the namespace for the generated C++ code and the package for Java. It is also used for applying file-level annotations and as the default [universal name](../features/universal-name.md) prefix.
 
 ```grammar
-package_declaration ::=  [annotations] "package" package_name
+package_declaration ::=  [annotations] "package" package_name [";"]
 ```
 
 A package name is a string containing a domain name and a path separated with `/`, for example:
@@ -274,7 +292,7 @@ This gives the following default namespaces:
 | ----------- | --------------- | ----------------------- |
 | C++         | `cpp2`          | `meta.search.query`     |
 | Python      | `python`, `py3` | `meta.search`           |
-| Hack        | `hack`          | `search.query`          |
+| Hack        | `hack`          | `meta.search.query`          |
 | Java        | `java.swift`    | `com.meta.search.query` |
 
 Here is an example with the package name not containing the file name component:
@@ -287,12 +305,12 @@ package "meta.com/search"
 | ----------- | --------------- | ----------------- |
 | C++         | `cpp2`          | `meta.search`     |
 | Python      | `python`, `py3` | `meta.search`     |
-| Hack        | `hack`          | `search`          |
+| Hack        | `hack`          | `meta.search`          |
 | Java        | `java.swift`    | `com.meta.search` |
 
 In both cases the Python namespaces don't include the file name component.
 
-The default namespace can be overriden for individual target languages with the [namespace directive](#namespace).
+The default namespace can be overriden for individual target languages with the [namespace directive](#namespace-directives).
 
 Annotations on a package declaration apply to the whole file. For example:
 
@@ -317,14 +335,16 @@ package "facebook.com/peoplesearch"
 struct PeopleSearchRequest { /* ... */ }
 ```
 
-### Namespace Directives {#namespace}
+### Namespace Directives
 
 ```grammar
-namespace_directive ::=  "namespace" maybe_qualified_id namespace_name
+namespace_directive ::=  "namespace" maybe_qualified_id namespace_name [";"]
 namespace_name      ::=  maybe_qualified_id | string_literal
 ```
 
-Namespace directives instruct the compiler on top level structure of the generated code. The details are language-specific. Namespace directives do not affect the Thrift file semantics.
+Namespace directives override the default namespaces set by a [package declaration](#package-declaration).
+
+Namespaces control the top-level structure of the generated code in a language-specific way. They do not affect the Thrift file semantics.
 
 ```thrift
 // Directs the compiler to generate C++ code inside the namespace
@@ -336,88 +356,158 @@ namespace cpp2 facebook.peoplesearch
 namespace java.swift com.facebook.peoplesearch
 ```
 
-## Basic Thrift Types
+## Definitions
 
-### Primitive Types
+Thrift supports three kinds of definitions: type definitions, interface definitions and constant definitions.
 
-```
-PrimitiveType ::=
-  "bool" | "byte" | "i16" | "i32" | "i64" | "float" | "double" | "binary" | "string"
-```
-
-* `bool`: `true` and `false` values
-* `byte`: 8-bit signed integers
-* `i16`: 16-bit signed integers
-* `i32`: 32-bit signed integers
-* `i64`: 64-bit signed integers
-* `float`: 32-bit floating points
-* `double`: 64-bit floating points
-* `string`: UTF-8 strings
-* `binary`: byte arrays
-
-:::note
-Thrift does not support unsigned integers because they have no direct translation to native (primitive) types in many of Thrift’s target languages.
-:::
-
-:::note
-Some target languages enforce that `string` values are UTF-8 encoded and others do not. For example, Java and Python require valid UTF-8, while C++ does not. This can appear as cross-language incompatibility.
-:::
-
-:::note
-`binary` and `string` are encoded identically for RPC (Binary and Compact protocols) and are interchangeable. However, they are encoded differently in JSON protocols: `binary` is base64-encoded while `string` only has special characters escaped.
-:::
-
-### Container Types
-
-```
-ContainerType ::=
-  ListType
-| SetType
-| MapType
-
-ListType ::=
-  "list" "<" TypeSpecification ">"
-
-SetType ::=
-  "set" "<" TypeSpecification ">"
-
-MapType ::=
-  "map" "<" TypeSpecification "," TypeSpecification ">"
+```grammar
+definition ::=
+  type_definition | interface_definition | constant_definition
 ```
 
-Thrift has strongly-typed containers that map to commonly used containers in target programming languages. There are three container types available:
+Definitions appear at the top level of a Thrift file. A common property of all definitions is that they introduce a name (an identifier) that can be used to denote the entity such as type.
 
-* `list<T>`: A list of elements of type `T`. May contain duplicates.
-* `set<T>`: An unordered set of unique elements of type `T`.
-* `map<K,V>`: An unordered map of unique keys of type `K` to values of type `V`.
+The name introduced by definitions can be used anywhere in the Thrift file (either before or after the location of the definition), and in other Thrift files that include this Thrift file.
 
-:::note
-In some languages default mode is to use ordered sets and maps. This could be changed to use unordered and customized containers - see [Thrift Annotations](/spec/definition/annotation.md#unstructured-annotations-deprecated).
-:::
+```grammar
+type_definition ::=
+    struct
+  | union
+  | exception
+  | enumeration
+  | typedef
+```
+
+```grammar
+interface_definition ::=  service | interaction
+```
+
+### Structs
+
+A struct declaration introduces a named struct type into your program and has the following form:
+
+```grammar
+struct ::=
+  [annotations]
+  "struct" identifier "{"
+    (field delimiter)*
+  "}"
+
+field ::=
+  field_id ":" [field_qualifier] type identifier [default_value]
+
+field_id ::=  integer
+```
+
+*The struct type is the centerpiece of the Thrift language. It is the basic unit of serialization and versioning in the language.*
+
+This section defines the primary aspects of structs. Separate sections define [qualifiers](#field-qualifiers) and [default values](#default-values) for fields, constraints on serialization of structs, and compatibility between different versions of struct types.
+
+Structs in Thrift look similar to structs in C++ though fields in Thrift have a field id and optionally a qualifier. They are significantly different in that the order of appearance of fields is not important and there is no expectations on the memory layout of the objects in the corresponding programming language code.
+
+```thrift
+struct PersonMetadata {
+  1: string name;
+  2: i32 age;
+  3: list<i64> friendIds;
+}
+```
+
+Every field has a type and a name (an identifier) that can be used to denote the field. In addition every field also has an integer id that can be used to denote the field. Field ids and field names must be unique within a struct. While the Thrift language does not impose restrictions on how the id and name are used, the *primary usage* has the id denoting the field in the serialized data and the name denoting the field in the generated code. This primary usage is key to the value provided by Thrift in terms of versioning support and compact serialized data size.
+
+The *primary usage* described above can be assumed for the large majority of Thrift usage. The exception to this is that Thrift does offer a JSON serialization strategy where the name is used to denote the field in the serialized data and the id is not used. This strategy is used to define config schemas (e.g. in [Configerator](https://sigops.org/s/conferences/sosp/2015/current/2015-Monterey/printable/008-tang.pdf) and should not be mixed with other usage where the id is used instead.
+
+The field ids should be in the range of 1 through 32767, and they do not have to appear in order. They normally start with 1 although this is not required.
+
+Thrift does not support structure inheritance but it is possible to use composition to achieve a similar goal.
+
+As a consequence of the above rules, `PersonMetadata1` below defines a type equivalent to `PersonMetadata` above:
+
+```thrift
+// Just a different ordering of fields.
+struct PersonMetadata1 {
+  2: i32 age;
+  1: string name;
+  3: list<i64> friendIds;
+}
+```
+
+However, the following two types are both legal but different from `PersonMetadata`:
+
+```thrift
+// Some ids are different.
+struct PersonMetadata2 {
+  590: string name;
+  36: i32 age;
+  3: list<i64> friendIds;
+}
+
+// Some names are different.
+struct PersonMetadata3 {
+  1: string firstName;
+  2: i32 age;
+  3: list<i64> friends;
+}
+```
 
 :::caution
-Although not enforced, it is strongly encouraged to only use set and map when key is either a string or an integer type for the highest compatibility between languages.
+Do not reuse ids. If a field is removed, it's a good practice to comment it out as a reminder to not to reuse it.
 :::
 
-The element, key, and value types can be any Thrift type, including nested containers.
+### Unions
 
-### Type Specifications
+```grammar
+union ::=
+  [annotations]
+  "union" identifier "{"
+    (field delimiter)*
+  "}"
+```
+
+Union types are identical to struct types in all ways, except for the following differences:
+
+* Union types use the reserved word `union` instead of `struct`.
+* All fields must be unqualified, but they are equivalent to [optional struct fields](#optional-fields).
+* At most one field can be *present*.
+
+The concepts "optional" and "present" are described in [Optional Fields](#optional-fields).
+
+The serialized representation of union types are identical to that of struct types that have a single field present. When deserializing into an union type, the serialized data may not provide a value to more than one of the fields of the union type. In other words, it is possible to serialize from an union type and deserialize into a compatible struct type, and vice versa.
+
+The generated code for union types can be different from that of struct types - for example, implementations may choose to use programming language union types in generated code for better memory efficiency.
+
+:::note
+It is possible for none of the fields to be present in an union type.
+:::
+
+### Exceptions
+
+```grammar
+exception ::=
+  [annotations] [error_safety] [error_kind] [error_blame]
+  "exception" identifier "{"
+    (field delimiter)*
+  "}"
+
+error_safety ::=  "safe"
+error_kind   ::=  "transient" | "stateful" | "permanent"
+error_blame  ::=  "client" | "server"
+```
+
+Exception types are identical to struct types in all ways, except that these types can only be used as types within the `throws` clause of functions in service definitions. (This isn't enforced, but you still shouldn't do it).
+
+The serialized representation of exception types are identical to that of struct types.
+
+The generated code for exception types can be different from that of struct types - for example, programming language exception types can be used in generated code.
+
+:::note
+It is possible to serialize from an exception type and deserialize into a compatible struct type, and vice versa.
+:::
+
+### Enumerations
 
 ```
-TypeSpecification ::=
-  PrimitiveType
-| ContainerType
-| maybe_qualified_id
-```
-
-A type specification is used to refer to a type. It can be a primitive type, a container type, or a name that denotes a type defined elsewhere. The name can be an identifier that denotes a type defined in the same Thrift file, or a qualified name of the form `filename.typename` where `filename` and `typename` are identifiers, and `typename` denotes a type defined in the Thrift file denoted by `filename`.
-
-NOTE: All type definitions (see section below) define a type with a name - this name denotes that type.
-
-### Enumeration Types
-
-```
-EnumerationType ::=
+enumeration ::=
   "enum" identifier "{" ( Enumerator delimiter )* "}"
 
 Enumerator ::=
@@ -436,11 +526,11 @@ enum SearchKind {
 ```
 
 :::note
-Because the default value for every enum is 0 (even if you do not define an enumerator for 0), it is recommended to include an enum at 0 and use that value to indicate that the client or server didn't provide the value. The default constructor will initialize that value to `UNKNOWN` instead of some meaningful value.
+Because the default value for every enum is 0 (even if you do not define an enumerator for 0), it is recommended to include an `UNKNOWN` entry at 0 and use that value to indicate that the client or server didn't provide the value. The default constructor will initialize that value to `UNKNOWN` instead of some meaningful value.
 :::
 
 :::caution
-Enums are treated like integer by Thrift, if you send a value which is not in the valid range, the receiver will not check or convert the value to the default, it will just have an out of range value. This can happen when a new client is talking to an old server.
+Enums are treated like integer by Thrift, if you send a value which is not in the valid range, the receiver may not check or convert the value to the default (it will just have an out of range value) or it may throw an exception on access. This can happen when a new client is talking to an old server.
 :::
 
 :::caution
@@ -449,9 +539,8 @@ Removing and adding enum values can be dangerous - see [Schema Compatibility](/f
 
 ### Typedefs
 
-```
-TypeDef ::=
-  "typedef" TypeSpecification identifier
+```grammar
+typedef ::=  "typedef" type identifier [";"]
 ```
 
 Typedefs introduce a name that denotes the type specification. It can be used to provide a simpler way to access complex types.
@@ -460,148 +549,108 @@ Typedefs introduce a name that denotes the type specification. It can be used to
 typedef map<string, string> StringMap
 ```
 
-## Struct Types
-
-*The struct type is the centerpiece of the Thrift language. This is the basic unit of serialization and versioning in the language.*
-
-This section defines the primary aspects of the struct type. Separate sections below define qualifiers and default values for struct fields, constraints on serialization of structs, and compatibility between different versions of struct types.
+### Services
 
 ```
-StructType ::=
-  "struct" identifier "{"
-    ( FieldSpecification delimiter )*
+service ::=
+  [annotations]
+  "service" identifier ["extends" maybe_qualified_id] "{"
+    function*
   "}"
 
-FieldSpecification ::=
-  FieldId ":" [ Qualifier ] TypeSpecification identifier [ DefaultValue ]
+function ::=
+  ResultType identifier
+  "("
+  ( ParameterSpecification )*
+  ")"
+  [ "throws" "(" field+ ")" ]
 
-FieldId ::=
-  integer
+ResultType ::= "void" | "oneway void" | ["stream"] type
+
+ParameterSpecification ::= field_id ":" type identifier [default_value]
 ```
 
-Structs in Thrift look very similar to structs in C++ - though fields in Thrift structs have a field id, and optionally a qualifier and a default value. They are significantly different in that the order of appearance of fields is not important and there is no expectations on the memory layout of the objects in the corresponding programming language code.
+An interface for RPC is defined in a Thrift file as a service.
 
-```thrift
-enum Gender { MALE = 1, FEMALE = 2 }
+Each service has a set of functions. Each function has a unique name and takes a list of arguments. It can return normally with a result if the result type is not `void` or it can return by throwing one of the listed application exceptions. In addition, the function can return by throwing a Thrift system exception if there was some underlying problem with the RPC itself.
 
-struct PersonMetadata {
-  1: string name;
-  2: Gender gender;
-  3: i32 age;
-  4: list<i64> friendIds;
+The types of the field specifications after `throws` must be exception types. If a functions throws one of the exceptions given in the `throws` clause, then all of the members of this exception will be serialized and sent over the wire. For other undeclared exceptions only the message will be serialized and they will appear on the client side as `TApplicationException`.
+
+The list of arguments to the function follow similar rules as Thrift struct types with the exception of qualifiers, meaning that **arguments cannot be optional**. The proper way to achieve this is to use a struct type argument, which itself then may contain an `optional` field.
+
+Functions that use the `oneway` reserved word (oneway functions) are "fire and forget". I.e., the client sends the function parameters to the server, but does not wait or expect a result. Therefore oneway functions must use `void` as the return type and must not have a `throws` clause.
+
+Services may extend (inherit from) other services. The set of functions in the inherited service is included in the inheriting service. The name that refers to the inherited service after the reserved word `extends` can be an identifier that denotes another service defined earlier in the same Thrift file, or a qualified name of the form `filename.servicename` where `filename` and `servicename` are identifiers, and `servicename` denotes a service defined in the Thrift file denoted by `filename`.
+
+Service names are visible after the end of the service definition in which they have been introduced, and in other Thrift files that include this Thrift file.
+
+```
+struct Foo {
+  1: i64 field1 = 101;
+  2: string field2;
+}
+
+exception BarException {
+  1: string message,
+  2: i64 errorCode,
+}
+
+exception FooException {
+  1: string message,
+  2: i64 errorCode,
+}
+
+struct GetFoosRequest {
+  1: list<i64> ids;
+}
+
+service Bar {
+  void ping() throws (1: BarException e),
+  Foo getFoos(1: GetFoosRequest request) throws (1: BarException e),
+  oneway void fireAndForget(),
+  stream Foo getStream(1: GetFoosRequest request)
+      throws (1: BarException e1) stream throws (1: FooException e2),
+  i32, stream Foo getResponseAndStream(1: GetFoosRequest request)
+      throws (1: BarException e1) stream throws (1: FooException e2),
 }
 ```
 
-Every field has a type and a name (an identifier) that can be used to denote the field just as in C++. In addition every field also has an integer id that can be used to denote the field. Field ids and field names must be unique within a struct. While the Thrift language does not impose restrictions on how the id and name are used, the *primary usage* has the id denoting the field in the serialized data and the name denoting the field in the generated code. This primary usage is key to the value provided by Thrift in terms of versioning support and compact serialized data size.
+WARNING: New arguments could be added to a method, but it is better to define an input struct and add members to it instead. The server cannot distinguish between missing arguments and default values, so a request object is better.
 
-NOTE: The *primary usage* described above can be assumed for the large majority of Thrift usage at Facebook. The exception to this is that Thrift does offer a JSON serialization strategy where the name is used to denote the field in the serialized data and the id is not used. This strategy is used in Configerator and Tupperware specs and should not be mixed with other usage where the id is used instead.
+*TBD: Need to discuss versioning of services*
 
-The field ids should be in the range of 1 through 65535, and they do not have to appear in order.
+#### Exception and RPC Keywords
 
-Thrift does not support structure inheritance (though it is possible to use composition to achieve a similar goal).
+##### exception
 
-As a consequence of the above rules, `PersonMetadata1` below defines the same type as `PersonMetadata` above:
+* Fault attribution: *server* vs. *client*
+* Error classification: *transient*, *stateful* or *permanent*
+* Error safety: *safe* (vs. unspecified)
 
-```thrift
-// Just a different ordering of fields.
-struct PersonMetadata1 {
-  3: i32 age;
-  1: string name;
-  4: list<i64> friendIds;
-  2: Gender gender;
-}
-```
+##### RPC
 
-But the following two types are both legal, but different from `PersonMetadata`:
+* RPC idempotency keywords: `readonly`, `idempotent`.
 
-```thrift
-// Some ids are different.
-struct PersonMetadata2 {
-  590: string name;
-  2: Gender gender;
-  36: i32 age;
-  4: list<i64> friendIds;
-}
+Please refer [Automatic Retries, RPC idempotency and Error Classification](/features/exception.md) for more information on why you should use these keywords and how these combined can enable automatic retries in SR.
 
-// Some names are different.
-struct PersonMetadata3 {
-  1: string firstName;
-  2: Gender gender
-  3: i32 age;
-  4: list<i64> friends;
-}
-```
+#### Streaming
 
-NOTE: Field ids do not have to start at 1.
+Please refer [Thrift Streaming](/fb/features/streaming/index.md) for more information on Streaming.
 
-WARNING: Do not reuse ids. If a field is removed from a struct, it's a good practice to comment it out as a reminder to not to reuse it.
+### Interactions
 
-Qualifiers and default values are described in a later section.
-
-## Union Types
-
-```
-UnionType ::=
-  "union" identifier "{"
-    ( FieldSpecification delimiter )*
-  "}"
-```
-
-Union types are identical to struct types in all ways, except for the following differences:
-
-* Union types use the reserved word `union` instead of `struct`.
-* All fields must be unqualified, but they are equivalent to struct fields with the qualifier `optional`.
-* At most one field can be *present*.
-
-NOTE: The concepts "optional" and "present" are described in more detail below.
-
-The serialized representation of union types are identical to that of struct types that have a single field present. When deserializing into an union type, the serialized data may not provide a value to more than one of the fields of the union type.
-
-The generated code for union types can be different from that of struct types - for example, implementations may choose to use programming language union types in generated code for better space efficiency.
-
-NOTE: It is okay for none of the fields to be present in an union type.
-
-NOTE: It is possible to serialize from an union type and deserialize into a compatible struct type, and vice versa.
-
-## Exception Types
-
-```
-ExceptionType ::=
-  "exception" identifier "{"
-    ( FieldSpecification delimiter )*
+```grammar
+interaction ::=
+  [annotations]
+  "interaction" identifier ["extends" maybe_qualified_id] "{"
+    function*
   "}"
 ```
 
-Exception types are identical to struct types in all ways, except that these types can only be used as types within the `throws` clause of functions in service definitions. (This isn't enforced, but you still shouldn't do it).
+### Constants
 
-The serialized representation of exception types are identical to that of struct types.
-
-The generated code for exception types can be different from that of struct types - for example, programming language exception types can be used in generated code.
-
-:::note
-It is possible to serialize from an exception type and deserialize into a compatible struct type, and vice versa.
-:::
-
-## Type Definitions
-
-```
-TypeDefinition ::=
-  Typedef
-| EnumerationType
-| StructType
-| UnionType
-| ExceptionType
-```
-
-Type definitions appear at the top level of a Thrift file. The different kinds of type definitions have already been described. A common property of all type definitions is that they introduce a name (an identifier) that can be used to denote the type.
-
-The name introduced by type definitions can be used anywhere in the Thrift file (either before or after the location of the definition), and in other Thrift files that include this Thrift file.
-
-## Constant Definitions
-
-```
-constant_definition ::=
-  "const" TypeSpecification identifier "=" Constant
+```grammar
+constant_definition ::=  "const" type identifier "=" Constant [";"]
 ```
 
 A constant definition introduces a name for a value. This name can be used instead of the value after the completion of constant definition, and in other Thrift files that include this Thrift file.
@@ -626,7 +675,7 @@ The constant on the right hand side of `"="` can be:
 * A name
 * A list, set, or map constant
 
-### Literal Constants
+#### Literal Constants
 
 ```thrift
 const bool flag = true
@@ -640,7 +689,7 @@ const string error = 'unknown protocol'
 const string date = "June 28, 2017"
 ```
 
-### Name Constants
+#### Name Constants
 
 Name constants can be one of:
 
@@ -656,7 +705,7 @@ const Gender NAN = Gender.MALE
 const search_types.Gender NV = search_types.Gender.FEMALE
 ```
 
-### List, Set, and Map Constants
+#### List, Set, and Map Constants
 
 ```
 ListOrSetConstant ::=
@@ -681,11 +730,68 @@ map<string, list<i32>> AMap = {
 
 NOTE: We cannot write constants of struct, union, or exception types.
 
+## Types
+
+```grammar
+type ::=  primitive_type | container_type | maybe_qualified_id
+```
+
+Thrift supports primitive, container and named types. The name can be an identifier that denotes a type defined in the same Thrift file, or a qualified name of the form `filename.typename` where `filename` and `typename` are identifiers, and `typename` denotes a type defined in the Thrift file denoted by `filename`.
+
+### Primitive Types
+
+```grammar
+primitive_type ::=  "bool" | "byte" | "i16" | "i32" | "i64" |
+                    "float" | "double" | "string" | "binary"
+```
+
+* `bool`: `true` or `false`
+* `byte`: an 8-bit signed integer
+* `i16`: a 16-bit signed integer
+* `i32`: a 32-bit signed integer
+* `i64`: a 64-bit signed integer
+* `float`: a 32-bit floating-point number
+* `double`: a 64-bit floating-point number
+* `string`: a UTF-8 string
+* `binary`: a byte array
+
+Thrift does not support unsigned integers because they have no direct translation to native types in some of Thrift’s target languages such as Hack and Java.
+
+`binary` and `string` are encoded identically in the Binary and Compact protocols used for RPC and are interchangeable. However, they are encoded differently in JSON protocols: `binary` is Base64-encoded while `string` only has special characters escaped.
+
+:::caution
+Some target languages enforce that `string` values are UTF-8 encoded and others do not. For example, Java and Python require valid UTF-8, while C++ does not. This can manifest itself as a cross-language incompatibility.
+:::
+
+### Container Types
+
+```grammar
+container_type ::=  list_type | set_type | map_type
+list_type      ::=  "list" "<" type ">"
+set_type       ::=  "set" "<" type ">"
+map_type       ::=  "map" "<" type "," type ">"
+```
+
+Thrift has strongly-typed containers that map to commonly used containers in target programming languages. There are three container types available:
+
+* `list<T>`: A list of elements of type `T`. May contain duplicates.
+* `set<T>`: An unordered set of unique elements of type `T`.
+* `map<K,V>`: An unordered map of unique keys of type `K` to values of type `V`.
+
+:::note
+In some languages default mode is to use ordered sets and maps. This could be changed to use unordered and customized containers - see [Thrift Annotations](/idl/annotations.md#unstructured-annotations-deprecated).
+:::
+
+:::caution
+Although not enforced, it is strongly encouraged to only use set and map when key is either a string or an integer type for the highest compatibility between languages.
+:::
+
+The element, key, and value types can be any Thrift type, including nested containers.
+
 ## Default Values
 
 ```
-DefaultValue ::=
-  "=" Constant
+default_value ::=  "=" Constant
 ```
 
 All fields of struct types and exception types have a default value. This is either explicitly provided via the syntax shown above, or (if not explicitly provided) is the natural default value for that type. The natural default values for listed below:
@@ -730,11 +836,10 @@ Avoid using default values on optional fields. It is not possible to tell if the
 Do not change default values after setting them. It is hard to know what code may be relying on the previous default values.
 :::
 
-## Qualifiers
+## Field Qualifiers
 
-```
-Qualifier ::=
-  "required" | "optional"
+```grammar
+field_qualifier ::=  "required" | "optional"
 ```
 
 The fields of a Thrift object may assume any value of their types. In addition the field may also be "uninitialized" (formally "not present"). I.e., the *state* of a field is either *not present*, or *present* with a particular value of their type.
@@ -787,90 +892,3 @@ Regarding unqualified vs. optional field, we don't have a generalized strong rec
 ### Terse Fields
 
 Terse fields do not distinguish whether they are explicitly set. They are skipped during serialization if their values are equal to the [intrinsic default values](./#intrinsic-default-values).
-
-## **Services**
-
-```
-service_definition ::=
-  "service" identifier [ "extends" maybe_qualified_id ] "{"
-    ( FunctionSpecification )*
-  "}"
-
-FunctionSpecification ::=
-  ResultType identifier
-  "("
-  ( ParameterSpecification )*
-  ")"
-  [ "throws" "(" ( FieldSpecification )+ ")" ]
-
-ResultType ::= "void" | "oneway void" | [ "stream" ] TypeSpecification
-
-ParameterSpecification ::= FieldId ":" TypeSpecification identifier [ DefaultValue ]
-```
-
-An interface for RPC is defined in a Thrift file as a service.
-
-Each service has a set of functions. Each function has a unique name and takes a list of arguments. It can return normally with a result if the result type is not `void` or it can return by throwing one of the listed application exceptions. In addition, the function can return by throwing a Thrift system exception if there was some underlying problem with the RPC itself.
-
-The types of the field specifications after `throws` must be exception types. If a functions throws one of the exceptions given in the `throws` clause, then all of the members of this exception will be serialized and sent over the wire. For other undeclared exceptions only the message will be serialized and they will appear on the client side as `TApplicationException`.
-
-The list of arguments to the function follow similar rules as Thrift struct types with the exception of qualifiers, meaning that **arguments cannot be optional**. The proper way to achieve this is to use a struct type argument, which itself then may contain an `optional` field.
-
-Functions that use the `oneway` reserved word (oneway functions) are "fire and forget". I.e., the client sends the function parameters to the server, but does not wait or expect a result. Therefore oneway functions must use `void` as the return type and must not have a `throws` clause.
-
-Services may extend (inherit from) other services. The set of functions in the inherited service is included in the inheriting service. The name that refers to the inherited service after the reserved word `extends` can be an identifier that denotes another service defined earlier in the same Thrift file, or a qualified name of the form `filename.servicename` where `filename` and `servicename` are identifiers, and `servicename` denotes a service defined in the Thrift file denoted by `filename`.
-
-Service names are visible after the end of the service definition in which they have been introduced, and in other Thrift files that include this Thrift file.
-
-```
-struct Foo {
-  1: i64 field1 = 101;
-  2: string field2;
-}
-
-exception BarException {
-  1: string message,
-  2: i64 errorCode,
-}
-
-exception FooException {
-  1: string message,
-  2: i64 errorCode,
-}
-
-struct GetFoosRequest {
-  1: list<i64> ids;
-}
-
-service Bar {
-  void ping() throws (1: BarException e),
-  Foo getFoos(1: GetFoosRequest request) throws (1: BarException e),
-  oneway void fireAndForget(),
-  stream Foo getStream(1: GetFoosRequest request)
-      throws (1: BarException e1) stream throws (1: FooException e2),
-  i32, stream Foo getResponseAndStream(1: GetFoosRequest request)
-      throws (1: BarException e1) stream throws (1: FooException e2),
-}
-```
-
-WARNING: New arguments could be added to a method, but it is better to define an input struct and add members to it instead. The server cannot distinguish between missing arguments and default values, so a request object is better.
-
-*TBD: Need to discuss versioning of services*
-
-### Exception and RPC Keywords
-
-##### exception
-
-* Fault attribution: *server* vs. *client*
-* Error classification: *transient*, *stateful* or *permanent*
-* Error safety: *safe* (vs. unspecified)
-
-##### RPC
-
-* RPC idempotency keywords: `readonly`, `idempotent`.
-
-Please refer [Automatic Retries, RPC idempotency and Error Classification](/features/exception.md) for more information on why you should use these keywords and how these combined can enable automatic retries in SR.
-
-### Streaming
-
-Please refer [Thrift Streaming](/fb/features/streaming/index.md) for more information on Streaming.

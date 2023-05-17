@@ -99,33 +99,45 @@ let satisfies_export_rules env current target =
     else
       Some (target_module_name, target_module_symbol.mdt_pos)
 
-let satisfies_package_deps env current target =
-  let current_pkg = Env.get_package_for_module env current in
-  let target_pkg = Option.bind target ~f:(Env.get_package_for_module env) in
+let satisfies_package_deps env current_pkg target_pkg =
   match (current_pkg, target_pkg) with
-  | (None, None) -> None
-  | (None, Some _) -> Some Pos.none
-  | (Some current_pkg_info, None) ->
-    Some (Package.get_package_pos current_pkg_info)
-  | (Some current_pkg_info, Some target_pkg_info) ->
-    if
-      Package.equal_package current_pkg_info target_pkg_info
-      || Package.includes current_pkg_info target_pkg_info
-    then
+  | (_, None) -> None
+  | (None, Some target_pkg_info) ->
+    if Env.is_package_loaded env (Package.get_package_name target_pkg_info) then
       None
     else
-      Some (Package.get_package_pos current_pkg_info)
+      Some (Pos.none, Package.Unrelated)
+  (* Anyone can call code outside of a package *)
+  | (Some current_pkg_info, Some target_pkg_info) ->
+    Package.(
+      (match relationship current_pkg_info target_pkg_info with
+      | Equal
+      | Includes ->
+        None
+      | (Soft_includes | Unrelated) as r ->
+        if Env.is_package_loaded env (Package.get_package_name target_pkg_info)
+        then
+          None
+        else
+          Some (get_package_pos current_pkg_info, r)))
 
 let satisfies_pkg_rules env current target =
-  match find_module_symbol env current with
-  | None
-  | Some (_, None) ->
+  match target with
+  | None ->
+    (* elements from the global module should always be accessible *)
     None
-  | Some (current_module_name, Some current_module_symbol) ->
-    (match satisfies_package_deps env current_module_name target with
-    | None -> None
-    | Some current_package_pos ->
-      Some (current_package_pos, current_module_symbol.mdt_pos))
+  | Some target_module_name ->
+    (match find_module_symbol env current with
+    | None
+    | Some (_, None) ->
+      None
+    | Some (current_module_name, Some current_module_symbol) ->
+      let current_pkg = Env.get_package_for_module env current_module_name in
+      let target_pkg = Env.get_package_for_module env target_module_name in
+      (match satisfies_package_deps env current_pkg target_pkg with
+      | None -> None
+      | Some (current_package_pos, r) ->
+        Some ((current_package_pos, current_module_symbol.mdt_pos), r)))
 
 let can_access_public
     ~(env : Typing_env_types.env)
@@ -141,7 +153,13 @@ let can_access_public
       | Some target_module -> `ExportsNotSatisfied target_module
       | None ->
         (match satisfies_pkg_rules env current target with
-        | Some current_module -> `PackageNotSatisfied current_module
+        | Some (current_module, Package.Soft_includes) ->
+          `PackageSoftIncludes current_module
+        | Some (current_module, Package.Unrelated) ->
+          `PackageNotSatisfied current_module
+        | Some (_, Package.(Equal | Includes)) ->
+          Utils.assert_false_log_backtrace
+            (Some "Package constraints are satisfied with equal and includes")
         | None -> `Yes))
 
 let is_class_visible (env : Typing_env_types.env) (cls : Cls.t) =

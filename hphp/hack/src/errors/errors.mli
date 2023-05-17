@@ -14,10 +14,7 @@ type finalized_error = (Pos.absolute, Pos.absolute) User_error.t
 
 (* The analysis phase that the error is coming from. *)
 type phase =
-  | Init
-  | Parsing
   | Naming
-  | Decl
   | Typing
 [@@deriving eq]
 
@@ -41,9 +38,18 @@ type per_file_errors
 (** The type of collections of errors *)
 type t [@@deriving eq, show]
 
+val iter : t -> f:(error -> unit) -> unit
+
 module ErrorSet : Caml.Set.S with type elt := error
 
 module FinalizedErrorSet : Caml.Set.S with type elt := finalized_error
+
+(** [t] is an efficient for use inside hh_server or other places that compute errors,
+which also supports incremental updates based on file/phase.
+But it should not be transferred to other processes such as [hh_client] since they
+for instance won't know the Hhi path that was used, and hence can't print errors.
+They should use [finalized_error list] instead. *)
+val sort_and_finalize : t -> finalized_error list
 
 val phases_up_to_excl : phase -> phase list
 
@@ -61,24 +67,6 @@ val num_digits : int -> int
 
 val add_error : error -> unit
 
-val add_parsing_error : Parsing_error.t -> unit
-
-val add_naming_error : Naming_error.t -> unit
-
-val add_nast_check_error : Nast_check_error.t -> unit
-
-val apply_error_from_reasons_callback :
-  ?code:Typing.t ->
-  ?claim:Pos.t Message.t Lazy.t ->
-  ?reasons:Pos_or_decl.t Message.t list Lazy.t ->
-  ?quickfixes:Pos.t Quickfix.t list ->
-  Typing_error.Reasons_callback.t ->
-  unit
-
-val add_typing_error : Typing_error.t -> unit
-
-val apply_callback_to_errors : t -> Typing_error.Reasons_callback.t -> unit
-
 (* Error codes that can be suppressed in strict mode with a FIXME based on configuration. *)
 val allowed_fixme_codes_strict : ISet.t ref
 
@@ -94,6 +82,10 @@ val is_hh_fixme_disallowed : (Pos.t -> int -> bool) ref
 
 val get_hh_fixme_pos : (Pos.t -> int -> Pos.t option) ref
 
+val get_current_span : unit -> Pos.t
+
+val fixme_present : Pos.t -> int -> bool
+
 val code_agnostic_fixme : bool ref
 
 val phase_to_string : phase -> string
@@ -107,8 +99,14 @@ val combining_sort : 'a list -> f:('a -> string) -> 'a list
 
 val to_string : finalized_error -> string
 
+(** Prints a summary indicating things like how many errors were
+  found, how many are displayed and how many were dropped. *)
 val format_summary :
-  format -> ('pp, 'p) User_error.t list -> int -> int option -> string option
+  format ->
+  displayed_count:int ->
+  dropped_count:int option ->
+  max_errors:int option ->
+  string option
 
 val try_ : (unit -> 'a) -> (error -> 'a) -> 'a
 
@@ -117,6 +115,8 @@ val try_pred : fail:('a -> bool) -> (unit -> 'a) -> (unit -> 'a) -> 'a
 val try_with_error : (unit -> 'a) -> (unit -> 'a) -> 'a
 
 val try_with_result : (unit -> 'a) -> ('a -> error -> 'a) -> 'a
+
+val run_and_check_for_errors : (unit -> 'a) -> 'a * bool
 
 (** Return the list of errors caused by the function passed as parameter
     along with its result. *)
@@ -157,6 +157,9 @@ val merge : t -> t -> t
 
 val merge_into_current : t -> unit
 
+(** [incremental_update ~old ~new_ ~rechecked phase] is for updating errors.
+It starts with [old], removes every error in [rechecked]+[phase],
+then adds every error mentioned in [new_]. *)
 val incremental_update :
   old:t -> new_:t -> rechecked:Relative_path.Set.t -> phase -> t
 
@@ -194,7 +197,7 @@ val fold_errors :
   ?phase:phase ->
   t ->
   init:'a ->
-  f:(Relative_path.t -> error -> 'a -> 'a) ->
+  f:(Relative_path.t -> phase -> error -> 'a -> 'a) ->
   'a
 
 val fold_errors_in :
@@ -212,6 +215,10 @@ val as_telemetry : t -> Telemetry.t
 
 val choose_code_opt : t -> int option
 
+val compare : error -> error -> int
+
+val compare_finalized : finalized_error -> finalized_error -> int
+
 val sort : error list -> error list
 
 (***************************************
@@ -225,14 +232,6 @@ val internal_error : Pos.t -> string -> unit
 val unimplemented_feature : Pos.t -> string -> unit
 
 val experimental_feature : Pos.t -> string -> unit
-
-val ambiguous_inheritance :
-  Pos_or_decl.t ->
-  string ->
-  string ->
-  (Pos.t, Pos_or_decl.t) User_error.t ->
-  Typing_error.Reasons_callback.t ->
-  unit
 
 val method_is_not_dynamically_callable :
   Pos.t ->

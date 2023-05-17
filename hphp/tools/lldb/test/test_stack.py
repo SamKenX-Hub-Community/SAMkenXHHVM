@@ -2,10 +2,10 @@ import re
 
 from . import base
 
-class WalkStkCommandTestCase(base.LLDBTestBase):
+class WalkStkCommandTestCase(base.TestHHVMBinary):
 
     def setUp(self):
-        super().setUp(file = "slow/reified-generics/reified-parent.php")
+        super().setUp(test_file="slow/reified-generics/reified-parent.php")
 
     def test_walkstk_command(self):
         # Just check we have a stack of the correct form; the specific

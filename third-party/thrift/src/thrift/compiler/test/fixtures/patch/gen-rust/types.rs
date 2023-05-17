@@ -130,30 +130,6 @@ pub struct Loop {
     pub _dot_dot_Default_default: self::dot_dot::OtherFields,
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MyDataEnsureStruct {
-    pub data1: ::std::option::Option<::std::string::String>,
-    pub data2: ::std::option::Option<::std::primitive::i32>,
-    // This field forces `..Default::default()` when instantiating this
-    // struct, to make code future-proof against new fields added later to
-    // the definition in Thrift. If you don't want this, add the annotation
-    // `(rust.exhaustive)` to the Thrift struct to eliminate this field.
-    #[doc(hidden)]
-    pub _dot_dot_Default_default: self::dot_dot::OtherFields,
-}
-
-#[derive(Clone, PartialEq)]
-pub struct MyDataFieldPatch {
-    pub data1: patch::types::StringPatch,
-    pub data2: patch::types::I32Patch,
-    // This field forces `..Default::default()` when instantiating this
-    // struct, to make code future-proof against new fields added later to
-    // the definition in Thrift. If you don't want this, add the annotation
-    // `(rust.exhaustive)` to the Thrift struct to eliminate this field.
-    #[doc(hidden)]
-    pub _dot_dot_Default_default: self::dot_dot::OtherFields,
-}
-
 #[derive(Clone, PartialEq)]
 pub struct MyDataPatch {
     #[doc = "Assigns to a (set) value.\n\nIf set, all other operations are ignored.\n\nNote: Optional and union fields must be set before assigned."]
@@ -174,10 +150,10 @@ pub struct MyDataPatch {
     pub _dot_dot_Default_default: self::dot_dot::OtherFields,
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MyDataWithCustomDefaultEnsureStruct {
-    pub data1: ::std::option::Option<::std::string::String>,
-    pub data2: ::std::option::Option<::std::primitive::i32>,
+#[derive(Clone, PartialEq)]
+pub struct MyDataFieldPatch {
+    pub data1: patch::types::StringPatch,
+    pub data2: patch::types::I32Patch,
     // This field forces `..Default::default()` when instantiating this
     // struct, to make code future-proof against new fields added later to
     // the definition in Thrift. If you don't want this, add the annotation
@@ -186,10 +162,10 @@ pub struct MyDataWithCustomDefaultEnsureStruct {
     pub _dot_dot_Default_default: self::dot_dot::OtherFields,
 }
 
-#[derive(Clone, PartialEq)]
-pub struct MyDataWithCustomDefaultFieldPatch {
-    pub data1: patch::types::StringPatch,
-    pub data2: patch::types::I32Patch,
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MyDataEnsureStruct {
+    pub data1: ::std::option::Option<::std::string::String>,
+    pub data2: ::std::option::Option<::std::primitive::i32>,
     // This field forces `..Default::default()` when instantiating this
     // struct, to make code future-proof against new fields added later to
     // the definition in Thrift. If you don't want this, add the annotation
@@ -219,8 +195,21 @@ pub struct MyDataWithCustomDefaultPatch {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct InnerUnionFieldPatch {
-    pub innerOption: patch::types::BinaryPatch,
+pub struct MyDataWithCustomDefaultFieldPatch {
+    pub data1: patch::types::StringPatch,
+    pub data2: patch::types::I32Patch,
+    // This field forces `..Default::default()` when instantiating this
+    // struct, to make code future-proof against new fields added later to
+    // the definition in Thrift. If you don't want this, add the annotation
+    // `(rust.exhaustive)` to the Thrift struct to eliminate this field.
+    #[doc(hidden)]
+    pub _dot_dot_Default_default: self::dot_dot::OtherFields,
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MyDataWithCustomDefaultEnsureStruct {
+    pub data1: ::std::option::Option<::std::string::String>,
+    pub data2: ::std::option::Option<::std::primitive::i32>,
     // This field forces `..Default::default()` when instantiating this
     // struct, to make code future-proof against new fields added later to
     // the definition in Thrift. If you don't want this, add the annotation
@@ -250,10 +239,8 @@ pub struct InnerUnionPatch {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct MyUnionFieldPatch {
-    pub option1: patch::types::StringPatch,
-    pub option2: patch::types::I32Patch,
-    pub option3: crate::types::InnerUnionPatch,
+pub struct InnerUnionFieldPatch {
+    pub innerOption: patch::types::BinaryPatch,
     // This field forces `..Default::default()` when instantiating this
     // struct, to make code future-proof against new fields added later to
     // the definition in Thrift. If you don't want this, add the annotation
@@ -283,40 +270,30 @@ pub struct MyUnionPatch {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct MyStructEnsureStruct {
-    pub structWithCustomDefault: ::std::option::Option<::std::boxed::Box<crate::types::MyDataWithCustomDefault>>,
-    pub i32WithCustomDefault: ::std::option::Option<::std::primitive::i32>,
-    pub mapMap: ::std::option::Option<::std::collections::BTreeMap<::std::string::String, ::std::collections::BTreeMap<::std::string::String, ::std::primitive::i32>>>,
-    pub listMap: ::std::option::Option<::std::vec::Vec<::std::collections::BTreeMap<::std::string::String, ::std::primitive::i32>>>,
-    pub optMapVal: ::std::option::Option<::std::collections::BTreeMap<::std::string::String, ::std::string::String>>,
-    pub optSetVal: ::std::option::Option<::std::collections::BTreeSet<::std::string::String>>,
-    pub optListVal: ::std::option::Option<::std::vec::Vec<::std::primitive::i16>>,
-    pub optLateStructVal: ::std::option::Option<::std::boxed::Box<crate::types::LateDefStruct>>,
-    pub optStructVal: ::std::option::Option<::std::boxed::Box<crate::types::MyData>>,
-    pub optEnumVal: ::std::option::Option<crate::types::MyEnum>,
-    pub optBinaryVal: ::std::option::Option<::std::vec::Vec<::std::primitive::u8>>,
-    pub optStringVal: ::std::option::Option<::std::string::String>,
-    pub optDoubleVal: ::std::option::Option<::std::primitive::f64>,
-    pub optFloatVal: ::std::option::Option<::std::primitive::f32>,
-    pub optI64Val: ::std::option::Option<::std::primitive::i64>,
-    pub optI32Val: ::std::option::Option<::std::primitive::i32>,
-    pub optI16Val: ::std::option::Option<::std::primitive::i16>,
-    pub optByteVal: ::std::option::Option<::std::primitive::i8>,
-    pub optBoolVal: ::std::option::Option<::std::primitive::bool>,
-    pub lateStructVal: ::std::option::Option<::std::boxed::Box<crate::types::LateDefStruct>>,
-    pub unionVal: ::std::option::Option<::std::boxed::Box<crate::types::MyUnion>>,
-    pub structVal: ::std::option::Option<::std::boxed::Box<crate::types::MyData>>,
-    pub enumVal: ::std::option::Option<crate::types::MyEnum>,
-    pub binaryVal: ::std::option::Option<::std::vec::Vec<::std::primitive::u8>>,
-    pub stringVal: ::std::option::Option<::std::string::String>,
-    pub doubleVal: ::std::option::Option<::std::primitive::f64>,
-    pub floatVal: ::std::option::Option<::std::primitive::f32>,
-    pub i64Val: ::std::option::Option<::std::primitive::i64>,
-    pub i32Val: ::std::option::Option<::std::primitive::i32>,
-    pub i16Val: ::std::option::Option<::std::primitive::i16>,
-    pub byteVal: ::std::option::Option<::std::primitive::i8>,
-    pub boolVal: ::std::option::Option<::std::primitive::bool>,
-    pub structWithFieldCustomDefault: ::std::option::Option<::std::boxed::Box<crate::types::MyData>>,
+pub struct MyUnionFieldPatch {
+    pub option1: patch::types::StringPatch,
+    pub option2: patch::types::I32Patch,
+    pub option3: crate::types::InnerUnionPatch,
+    // This field forces `..Default::default()` when instantiating this
+    // struct, to make code future-proof against new fields added later to
+    // the definition in Thrift. If you don't want this, add the annotation
+    // `(rust.exhaustive)` to the Thrift struct to eliminate this field.
+    #[doc(hidden)]
+    pub _dot_dot_Default_default: self::dot_dot::OtherFields,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct MyStructPatch {
+    #[doc = "Assigns to a (set) value.\n\nIf set, all other operations are ignored.\n\nNote: Optional and union fields must be set before assigned."]
+    pub assign: ::std::option::Option<::std::boxed::Box<crate::types::MyStruct>>,
+    #[doc = "Clears a value. Applies first."]
+    pub clear: ::std::primitive::bool,
+    #[doc = "Patches any previously set values. Applies second."]
+    pub patchPrior: crate::types::MyStructFieldPatch,
+    #[doc = "Initialize fields, using the given defaults. Applies third."]
+    pub ensure: crate::types::MyStructEnsureStruct,
+    #[doc = "Patches any set value, including newly set values. Applies last."]
+    pub patch: crate::types::MyStructFieldPatch,
     // This field forces `..Default::default()` when instantiating this
     // struct, to make code future-proof against new fields added later to
     // the definition in Thrift. If you don't want this, add the annotation
@@ -360,7 +337,7 @@ pub struct MyStructField26Patch {
     #[doc = "Clears a value. Applies first."]
     pub clear: ::std::primitive::bool,
     #[doc = "Patches list values by index. Applies second."]
-    pub patch: ::fbthrift::builtin_types::HashMap<::std::primitive::i32, patch::types::I16Patch>,
+    pub patch: ::fbthrift::builtin_types::HashMap<patch::types::ListPatchIndex, patch::types::I16Patch>,
     #[doc = "Removes entries, if present. Applies third."]
     pub remove: ::std::vec::Vec<::std::primitive::i16>,
     #[doc = "Prepends to the front of a given list."]
@@ -424,7 +401,7 @@ pub struct MyStructField29Patch {
     #[doc = "Clears a value. Applies first."]
     pub clear: ::std::primitive::bool,
     #[doc = "Patches list values by index. Applies second."]
-    pub patch: ::fbthrift::builtin_types::HashMap<::std::primitive::i32, crate::types::MyStructField29Patch1>,
+    pub patch: ::fbthrift::builtin_types::HashMap<patch::types::ListPatchIndex, crate::types::MyStructField29Patch1>,
     #[doc = "Removes entries, if present. Applies third."]
     pub remove: ::std::vec::Vec<::std::collections::BTreeMap<::std::string::String, ::std::primitive::i32>>,
     #[doc = "Prepends to the front of a given list."]
@@ -555,37 +532,40 @@ pub struct MyStructFieldPatch {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct MyStructPatch {
-    #[doc = "Assigns to a (set) value.\n\nIf set, all other operations are ignored.\n\nNote: Optional and union fields must be set before assigned."]
-    pub assign: ::std::option::Option<::std::boxed::Box<crate::types::MyStruct>>,
-    #[doc = "Clears a value. Applies first."]
-    pub clear: ::std::primitive::bool,
-    #[doc = "Patches any previously set values. Applies second."]
-    pub patchPrior: crate::types::MyStructFieldPatch,
-    #[doc = "Initialize fields, using the given defaults. Applies third."]
-    pub ensure: crate::types::MyStructEnsureStruct,
-    #[doc = "Patches any set value, including newly set values. Applies last."]
-    pub patch: crate::types::MyStructFieldPatch,
-    // This field forces `..Default::default()` when instantiating this
-    // struct, to make code future-proof against new fields added later to
-    // the definition in Thrift. If you don't want this, add the annotation
-    // `(rust.exhaustive)` to the Thrift struct to eliminate this field.
-    #[doc(hidden)]
-    pub _dot_dot_Default_default: self::dot_dot::OtherFields,
-}
-
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct LateDefStructEnsureStruct {
-    // This field forces `..Default::default()` when instantiating this
-    // struct, to make code future-proof against new fields added later to
-    // the definition in Thrift. If you don't want this, add the annotation
-    // `(rust.exhaustive)` to the Thrift struct to eliminate this field.
-    #[doc(hidden)]
-    pub _dot_dot_Default_default: self::dot_dot::OtherFields,
-}
-
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct LateDefStructFieldPatch {
+pub struct MyStructEnsureStruct {
+    pub structWithCustomDefault: ::std::option::Option<::std::boxed::Box<crate::types::MyDataWithCustomDefault>>,
+    pub i32WithCustomDefault: ::std::option::Option<::std::primitive::i32>,
+    pub mapMap: ::std::option::Option<::std::collections::BTreeMap<::std::string::String, ::std::collections::BTreeMap<::std::string::String, ::std::primitive::i32>>>,
+    pub listMap: ::std::option::Option<::std::vec::Vec<::std::collections::BTreeMap<::std::string::String, ::std::primitive::i32>>>,
+    pub optMapVal: ::std::option::Option<::std::collections::BTreeMap<::std::string::String, ::std::string::String>>,
+    pub optSetVal: ::std::option::Option<::std::collections::BTreeSet<::std::string::String>>,
+    pub optListVal: ::std::option::Option<::std::vec::Vec<::std::primitive::i16>>,
+    pub optLateStructVal: ::std::option::Option<::std::boxed::Box<crate::types::LateDefStruct>>,
+    pub optStructVal: ::std::option::Option<::std::boxed::Box<crate::types::MyData>>,
+    pub optEnumVal: ::std::option::Option<crate::types::MyEnum>,
+    pub optBinaryVal: ::std::option::Option<::std::vec::Vec<::std::primitive::u8>>,
+    pub optStringVal: ::std::option::Option<::std::string::String>,
+    pub optDoubleVal: ::std::option::Option<::std::primitive::f64>,
+    pub optFloatVal: ::std::option::Option<::std::primitive::f32>,
+    pub optI64Val: ::std::option::Option<::std::primitive::i64>,
+    pub optI32Val: ::std::option::Option<::std::primitive::i32>,
+    pub optI16Val: ::std::option::Option<::std::primitive::i16>,
+    pub optByteVal: ::std::option::Option<::std::primitive::i8>,
+    pub optBoolVal: ::std::option::Option<::std::primitive::bool>,
+    pub lateStructVal: ::std::option::Option<::std::boxed::Box<crate::types::LateDefStruct>>,
+    pub unionVal: ::std::option::Option<::std::boxed::Box<crate::types::MyUnion>>,
+    pub structVal: ::std::option::Option<::std::boxed::Box<crate::types::MyData>>,
+    pub enumVal: ::std::option::Option<crate::types::MyEnum>,
+    pub binaryVal: ::std::option::Option<::std::vec::Vec<::std::primitive::u8>>,
+    pub stringVal: ::std::option::Option<::std::string::String>,
+    pub doubleVal: ::std::option::Option<::std::primitive::f64>,
+    pub floatVal: ::std::option::Option<::std::primitive::f32>,
+    pub i64Val: ::std::option::Option<::std::primitive::i64>,
+    pub i32Val: ::std::option::Option<::std::primitive::i32>,
+    pub i16Val: ::std::option::Option<::std::primitive::i16>,
+    pub byteVal: ::std::option::Option<::std::primitive::i8>,
+    pub boolVal: ::std::option::Option<::std::primitive::bool>,
+    pub structWithFieldCustomDefault: ::std::option::Option<::std::boxed::Box<crate::types::MyData>>,
     // This field forces `..Default::default()` when instantiating this
     // struct, to make code future-proof against new fields added later to
     // the definition in Thrift. If you don't want this, add the annotation
@@ -614,9 +594,38 @@ pub struct LateDefStructPatch {
     pub _dot_dot_Default_default: self::dot_dot::OtherFields,
 }
 
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct LateDefStructFieldPatch {
+    // This field forces `..Default::default()` when instantiating this
+    // struct, to make code future-proof against new fields added later to
+    // the definition in Thrift. If you don't want this, add the annotation
+    // `(rust.exhaustive)` to the Thrift struct to eliminate this field.
+    #[doc(hidden)]
+    pub _dot_dot_Default_default: self::dot_dot::OtherFields,
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct LateDefStructEnsureStruct {
+    // This field forces `..Default::default()` when instantiating this
+    // struct, to make code future-proof against new fields added later to
+    // the definition in Thrift. If you don't want this, add the annotation
+    // `(rust.exhaustive)` to the Thrift struct to eliminate this field.
+    #[doc(hidden)]
+    pub _dot_dot_Default_default: self::dot_dot::OtherFields,
+}
+
 #[derive(Clone, PartialEq)]
-pub struct RecursiveEnsureStruct {
-    pub nodes: ::std::option::Option<::std::collections::BTreeMap<::std::string::String, crate::types::Recursive>>,
+pub struct RecursivePatch {
+    #[doc = "Assigns to a (set) value.\n\nIf set, all other operations are ignored.\n\nNote: Optional and union fields must be set before assigned."]
+    pub assign: ::std::option::Option<::std::boxed::Box<crate::types::Recursive>>,
+    #[doc = "Clears a value. Applies first."]
+    pub clear: ::std::primitive::bool,
+    #[doc = "Patches any previously set values. Applies second."]
+    pub patchPrior: crate::types::RecursiveFieldPatch,
+    #[doc = "Initialize fields, using the given defaults. Applies third."]
+    pub ensure: crate::types::RecursiveEnsureStruct,
+    #[doc = "Patches any set value, including newly set values. Applies last."]
+    pub patch: crate::types::RecursiveFieldPatch,
     // This field forces `..Default::default()` when instantiating this
     // struct, to make code future-proof against new fields added later to
     // the definition in Thrift. If you don't want this, add the annotation
@@ -651,39 +660,8 @@ pub struct RecursiveFieldPatch {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct RecursivePatch {
-    #[doc = "Assigns to a (set) value.\n\nIf set, all other operations are ignored.\n\nNote: Optional and union fields must be set before assigned."]
-    pub assign: ::std::option::Option<::std::boxed::Box<crate::types::Recursive>>,
-    #[doc = "Clears a value. Applies first."]
-    pub clear: ::std::primitive::bool,
-    #[doc = "Patches any previously set values. Applies second."]
-    pub patchPrior: crate::types::RecursiveFieldPatch,
-    #[doc = "Initialize fields, using the given defaults. Applies third."]
-    pub ensure: crate::types::RecursiveEnsureStruct,
-    #[doc = "Patches any set value, including newly set values. Applies last."]
-    pub patch: crate::types::RecursiveFieldPatch,
-    // This field forces `..Default::default()` when instantiating this
-    // struct, to make code future-proof against new fields added later to
-    // the definition in Thrift. If you don't want this, add the annotation
-    // `(rust.exhaustive)` to the Thrift struct to eliminate this field.
-    #[doc(hidden)]
-    pub _dot_dot_Default_default: self::dot_dot::OtherFields,
-}
-
-#[derive(Clone, PartialEq)]
-pub struct BarEnsureStruct {
-    pub r#loop: ::std::option::Option<::std::boxed::Box<crate::types::Loop>>,
-    // This field forces `..Default::default()` when instantiating this
-    // struct, to make code future-proof against new fields added later to
-    // the definition in Thrift. If you don't want this, add the annotation
-    // `(rust.exhaustive)` to the Thrift struct to eliminate this field.
-    #[doc(hidden)]
-    pub _dot_dot_Default_default: self::dot_dot::OtherFields,
-}
-
-#[derive(Clone, PartialEq)]
-pub struct BarFieldPatch {
-    pub r#loop: crate::types::LoopPatch,
+pub struct RecursiveEnsureStruct {
+    pub nodes: ::std::option::Option<::std::collections::BTreeMap<::std::string::String, crate::types::Recursive>>,
     // This field forces `..Default::default()` when instantiating this
     // struct, to make code future-proof against new fields added later to
     // the definition in Thrift. If you don't want this, add the annotation
@@ -713,8 +691,8 @@ pub struct BarPatch {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct LoopEnsureStruct {
-    pub bar: ::std::option::Option<::std::boxed::Box<crate::types::Bar>>,
+pub struct BarFieldPatch {
+    pub r#loop: crate::types::LoopPatch,
     // This field forces `..Default::default()` when instantiating this
     // struct, to make code future-proof against new fields added later to
     // the definition in Thrift. If you don't want this, add the annotation
@@ -724,8 +702,8 @@ pub struct LoopEnsureStruct {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct LoopFieldPatch {
-    pub bar: crate::types::BarPatch,
+pub struct BarEnsureStruct {
+    pub r#loop: ::std::option::Option<::std::boxed::Box<crate::types::Loop>>,
     // This field forces `..Default::default()` when instantiating this
     // struct, to make code future-proof against new fields added later to
     // the definition in Thrift. If you don't want this, add the annotation
@@ -942,6 +920,31 @@ where
 }
 
 
+impl ::fbthrift::metadata::ThriftAnnotations for MyData {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            2 => {
+            },
+            _ => {}
+        }
+
+        None
+    }
+}
+
+
 #[allow(clippy::derivable_impls)]
 impl ::std::default::Default for self::MyDataWithCustomDefault {
     fn default() -> Self {
@@ -1026,6 +1029,31 @@ where
 }
 
 
+impl ::fbthrift::metadata::ThriftAnnotations for MyDataWithCustomDefault {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            2 => {
+            },
+            _ => {}
+        }
+
+        None
+    }
+}
+
+
 
 impl ::std::default::Default for InnerUnion {
     fn default() -> Self {
@@ -1082,20 +1110,39 @@ where
                     alt = ::std::option::Option::Some(Self::innerOption(::fbthrift::Deserialize::read(p)?));
                 }
                 (fty, _, false) => p.skip(fty)?,
-                (badty, badid, true) => return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ApplicationException::new(
-                    ::fbthrift::ApplicationExceptionErrorCode::ProtocolError,
-                    format!(
-                        "unwanted extra union {} field ty {:?} id {}",
-                        "InnerUnion",
-                        badty,
-                        badid,
-                    ),
+                (badty, badid, true) => return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ProtocolError::UnwantedExtraUnionField(
+                    "InnerUnion".to_string(),
+                    badty,
+                    badid,
                 ))),
             }
             p.read_field_end()?;
         }
         p.read_struct_end()?;
         ::std::result::Result::Ok(alt.unwrap_or_default())
+    }
+}
+
+
+impl ::fbthrift::metadata::ThriftAnnotations for InnerUnion {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            _ => {}
+        }
+
+        None
     }
 }
 
@@ -1175,20 +1222,43 @@ where
                     alt = ::std::option::Option::Some(Self::option3(::fbthrift::Deserialize::read(p)?));
                 }
                 (fty, _, false) => p.skip(fty)?,
-                (badty, badid, true) => return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ApplicationException::new(
-                    ::fbthrift::ApplicationExceptionErrorCode::ProtocolError,
-                    format!(
-                        "unwanted extra union {} field ty {:?} id {}",
-                        "MyUnion",
-                        badty,
-                        badid,
-                    ),
+                (badty, badid, true) => return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ProtocolError::UnwantedExtraUnionField(
+                    "MyUnion".to_string(),
+                    badty,
+                    badid,
                 ))),
             }
             p.read_field_end()?;
         }
         p.read_struct_end()?;
         ::std::result::Result::Ok(alt.unwrap_or_default())
+    }
+}
+
+
+impl ::fbthrift::metadata::ThriftAnnotations for MyUnion {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            2 => {
+            },
+            3 => {
+            },
+            _ => {}
+        }
+
+        None
     }
 }
 
@@ -1593,6 +1663,106 @@ where
 }
 
 
+impl ::fbthrift::metadata::ThriftAnnotations for MyStruct {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        if type_id == ::std::any::TypeId::of::<thrift::types::Testing>() {
+            let mut tmp = Some(thrift::types::Testing {
+                ..::std::default::Default::default()
+            });
+            let r: &mut dyn ::std::any::Any = &mut tmp;
+            let r: &mut Option<T> = r.downcast_mut().unwrap();
+            return r.take();
+        }
+
+        if let Some(r) = <thrift::types::Testing as ::fbthrift::metadata::ThriftAnnotations>::get_structured_annotation::<T>() {
+            return Some(r);
+        }
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            -1 => {
+            },
+            -2 => {
+            },
+            -3 => {
+            },
+            -4 => {
+            },
+            -5 => {
+            },
+            -6 => {
+            },
+            -7 => {
+            },
+            -8 => {
+            },
+            -9 => {
+            },
+            -10 => {
+            },
+            -11 => {
+            },
+            -12 => {
+            },
+            -13 => {
+            },
+            -14 => {
+            },
+            -15 => {
+            },
+            -16 => {
+            },
+            -17 => {
+            },
+            -18 => {
+            },
+            -19 => {
+            },
+            -20 => {
+            },
+            -21 => {
+            },
+            -22 => {
+            },
+            -23 => {
+            },
+            -24 => {
+            },
+            -25 => {
+            },
+            -26 => {
+            },
+            -27 => {
+            },
+            -28 => {
+            },
+            -29 => {
+            },
+            -30 => {
+            },
+            -31 => {
+            },
+            -32 => {
+            },
+            1 => {
+            },
+            _ => {}
+        }
+
+        None
+    }
+}
+
+
 #[allow(clippy::derivable_impls)]
 impl ::std::default::Default for self::LateDefStruct {
     fn default() -> Self {
@@ -1655,6 +1825,27 @@ where
         ::std::result::Result::Ok(Self {
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         })
+    }
+}
+
+
+impl ::fbthrift::metadata::ThriftAnnotations for LateDefStruct {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            _ => {}
+        }
+
+        None
     }
 }
 
@@ -1734,6 +1925,42 @@ where
 }
 
 
+impl ::fbthrift::metadata::ThriftAnnotations for Recursive {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            -1 => {
+
+                if type_id == ::std::any::TypeId::of::<patch::types::AssignOnlyPatch>() {
+                    let mut tmp = Some(patch::types::AssignOnlyPatch {
+                        ..::std::default::Default::default()
+                    });
+                    let r: &mut dyn ::std::any::Any = &mut tmp;
+                    let r: &mut Option<T> = r.downcast_mut().unwrap();
+                    return r.take();
+                }
+
+                if let Some(r) = <patch::types::AssignOnlyPatch as ::fbthrift::metadata::ThriftAnnotations>::get_structured_annotation::<T>() {
+                    return Some(r);
+                }
+            },
+            _ => {}
+        }
+
+        None
+    }
+}
+
+
 #[allow(clippy::derivable_impls)]
 impl ::std::default::Default for self::Bar {
     fn default() -> Self {
@@ -1805,6 +2032,29 @@ where
             r#loop: field_loop.unwrap_or_default(),
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         })
+    }
+}
+
+
+impl ::fbthrift::metadata::ThriftAnnotations for Bar {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            -1 => {
+            },
+            _ => {}
+        }
+
+        None
     }
 }
 
@@ -1884,174 +2134,51 @@ where
 }
 
 
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyDataEnsureStruct {
-    fn default() -> Self {
-        Self {
-            data1: ::std::option::Option::None,
-            data2: ::std::option::Option::None,
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+impl ::fbthrift::metadata::ThriftAnnotations for Loop {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        if type_id == ::std::any::TypeId::of::<patch::types::AssignOnlyPatch>() {
+            let mut tmp = Some(patch::types::AssignOnlyPatch {
+                ..::std::default::Default::default()
+            });
+            let r: &mut dyn ::std::any::Any = &mut tmp;
+            let r: &mut Option<T> = r.downcast_mut().unwrap();
+            return r.take();
         }
-    }
-}
 
-impl ::std::fmt::Debug for self::MyDataEnsureStruct {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("MyDataEnsureStruct")
-            .field("data1", &self.data1)
-            .field("data2", &self.data2)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::MyDataEnsureStruct {}
-unsafe impl ::std::marker::Sync for self::MyDataEnsureStruct {}
-impl ::std::marker::Unpin for self::MyDataEnsureStruct {}
-
-impl ::fbthrift::GetTType for self::MyDataEnsureStruct {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::MyDataEnsureStruct {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyDataEnsureStruct"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::MyDataEnsureStruct
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyDataEnsureStruct");
-        if let ::std::option::Option::Some(some) = &self.data1 {
-            p.write_field_begin("data1", ::fbthrift::TType::String, 1);
-            ::fbthrift::Serialize::write(some, p);
-            p.write_field_end();
+        if let Some(r) = <patch::types::AssignOnlyPatch as ::fbthrift::metadata::ThriftAnnotations>::get_structured_annotation::<T>() {
+            return Some(r);
         }
-        if let ::std::option::Option::Some(some) = &self.data2 {
-            p.write_field_begin("data2", ::fbthrift::TType::I32, 2);
-            ::fbthrift::Serialize::write(some, p);
-            p.write_field_end();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            -1 => {
+
+                if type_id == ::std::any::TypeId::of::<patch::types::AssignOnlyPatch>() {
+                    let mut tmp = Some(patch::types::AssignOnlyPatch {
+                        ..::std::default::Default::default()
+                    });
+                    let r: &mut dyn ::std::any::Any = &mut tmp;
+                    let r: &mut Option<T> = r.downcast_mut().unwrap();
+                    return r.take();
+                }
+
+                if let Some(r) = <patch::types::AssignOnlyPatch as ::fbthrift::metadata::ThriftAnnotations>::get_structured_annotation::<T>() {
+                    return Some(r);
+                }
+            },
+            _ => {}
         }
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
 
-impl<P> ::fbthrift::Deserialize<P> for self::MyDataEnsureStruct
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("data1", ::fbthrift::TType::String, 1),
-            ::fbthrift::Field::new("data2", ::fbthrift::TType::I32, 2),
-        ];
-        let mut field_data1 = ::std::option::Option::None;
-        let mut field_data2 = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::String, 1) => field_data1 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::I32, 2) => field_data2 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            data1: field_data1,
-            data2: field_data2,
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
-
-
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyDataFieldPatch {
-    fn default() -> Self {
-        Self {
-            data1: ::std::default::Default::default(),
-            data2: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::MyDataFieldPatch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("MyDataFieldPatch")
-            .field("data1", &self.data1)
-            .field("data2", &self.data2)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::MyDataFieldPatch {}
-unsafe impl ::std::marker::Sync for self::MyDataFieldPatch {}
-impl ::std::marker::Unpin for self::MyDataFieldPatch {}
-
-impl ::fbthrift::GetTType for self::MyDataFieldPatch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::MyDataFieldPatch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyDataFieldPatch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::MyDataFieldPatch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyDataFieldPatch");
-        p.write_field_begin("data1", ::fbthrift::TType::Struct, 1);
-        ::fbthrift::Serialize::write(&self.data1, p);
-        p.write_field_end();
-        p.write_field_begin("data2", ::fbthrift::TType::Struct, 2);
-        ::fbthrift::Serialize::write(&self.data2, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::MyDataFieldPatch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("data1", ::fbthrift::TType::Struct, 1),
-            ::fbthrift::Field::new("data2", ::fbthrift::TType::Struct, 2),
-        ];
-        let mut field_data1 = ::std::option::Option::None;
-        let mut field_data2 = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Struct, 1) => field_data1 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, 2) => field_data2 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            data1: field_data1.unwrap_or_default(),
-            data2: field_data2.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
+        None
     }
 }
 
@@ -2169,8 +2296,96 @@ where
 }
 
 
+
+
 #[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyDataWithCustomDefaultEnsureStruct {
+impl ::std::default::Default for self::MyDataFieldPatch {
+    fn default() -> Self {
+        Self {
+            data1: ::std::default::Default::default(),
+            data2: ::std::default::Default::default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::MyDataFieldPatch {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("MyDataFieldPatch")
+            .field("data1", &self.data1)
+            .field("data2", &self.data2)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::MyDataFieldPatch {}
+unsafe impl ::std::marker::Sync for self::MyDataFieldPatch {}
+impl ::std::marker::Unpin for self::MyDataFieldPatch {}
+
+impl ::fbthrift::GetTType for self::MyDataFieldPatch {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::MyDataFieldPatch {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/MyDataFieldPatch"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::MyDataFieldPatch
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("MyDataFieldPatch");
+        p.write_field_begin("data1", ::fbthrift::TType::Struct, 1);
+        ::fbthrift::Serialize::write(&self.data1, p);
+        p.write_field_end();
+        p.write_field_begin("data2", ::fbthrift::TType::Struct, 2);
+        ::fbthrift::Serialize::write(&self.data2, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::MyDataFieldPatch
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("data1", ::fbthrift::TType::Struct, 1),
+            ::fbthrift::Field::new("data2", ::fbthrift::TType::Struct, 2),
+        ];
+        let mut field_data1 = ::std::option::Option::None;
+        let mut field_data2 = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::Struct, 1) => field_data1 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, 2) => field_data2 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            data1: field_data1.unwrap_or_default(),
+            data2: field_data2.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::MyDataEnsureStruct {
     fn default() -> Self {
         Self {
             data1: ::std::option::Option::None,
@@ -2180,36 +2395,36 @@ impl ::std::default::Default for self::MyDataWithCustomDefaultEnsureStruct {
     }
 }
 
-impl ::std::fmt::Debug for self::MyDataWithCustomDefaultEnsureStruct {
+impl ::std::fmt::Debug for self::MyDataEnsureStruct {
     fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         formatter
-            .debug_struct("MyDataWithCustomDefaultEnsureStruct")
+            .debug_struct("MyDataEnsureStruct")
             .field("data1", &self.data1)
             .field("data2", &self.data2)
             .finish()
     }
 }
 
-unsafe impl ::std::marker::Send for self::MyDataWithCustomDefaultEnsureStruct {}
-unsafe impl ::std::marker::Sync for self::MyDataWithCustomDefaultEnsureStruct {}
-impl ::std::marker::Unpin for self::MyDataWithCustomDefaultEnsureStruct {}
+unsafe impl ::std::marker::Send for self::MyDataEnsureStruct {}
+unsafe impl ::std::marker::Sync for self::MyDataEnsureStruct {}
+impl ::std::marker::Unpin for self::MyDataEnsureStruct {}
 
-impl ::fbthrift::GetTType for self::MyDataWithCustomDefaultEnsureStruct {
+impl ::fbthrift::GetTType for self::MyDataEnsureStruct {
     const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
 }
 
-impl ::fbthrift::GetUri for self::MyDataWithCustomDefaultEnsureStruct {
+impl ::fbthrift::GetUri for self::MyDataEnsureStruct {
     fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyDataWithCustomDefaultEnsureStruct"
+        "test.dev/fixtures/patch/MyDataEnsureStruct"
     }
 }
 
-impl<P> ::fbthrift::Serialize<P> for self::MyDataWithCustomDefaultEnsureStruct
+impl<P> ::fbthrift::Serialize<P> for self::MyDataEnsureStruct
 where
     P: ::fbthrift::ProtocolWriter,
 {
     fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyDataWithCustomDefaultEnsureStruct");
+        p.write_struct_begin("MyDataEnsureStruct");
         if let ::std::option::Option::Some(some) = &self.data1 {
             p.write_field_begin("data1", ::fbthrift::TType::String, 1);
             ::fbthrift::Serialize::write(some, p);
@@ -2225,7 +2440,7 @@ where
     }
 }
 
-impl<P> ::fbthrift::Deserialize<P> for self::MyDataWithCustomDefaultEnsureStruct
+impl<P> ::fbthrift::Deserialize<P> for self::MyDataEnsureStruct
 where
     P: ::fbthrift::ProtocolReader,
 {
@@ -2257,88 +2472,6 @@ where
 }
 
 
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyDataWithCustomDefaultFieldPatch {
-    fn default() -> Self {
-        Self {
-            data1: ::std::default::Default::default(),
-            data2: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::MyDataWithCustomDefaultFieldPatch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("MyDataWithCustomDefaultFieldPatch")
-            .field("data1", &self.data1)
-            .field("data2", &self.data2)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::MyDataWithCustomDefaultFieldPatch {}
-unsafe impl ::std::marker::Sync for self::MyDataWithCustomDefaultFieldPatch {}
-impl ::std::marker::Unpin for self::MyDataWithCustomDefaultFieldPatch {}
-
-impl ::fbthrift::GetTType for self::MyDataWithCustomDefaultFieldPatch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::MyDataWithCustomDefaultFieldPatch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyDataWithCustomDefaultFieldPatch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::MyDataWithCustomDefaultFieldPatch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyDataWithCustomDefaultFieldPatch");
-        p.write_field_begin("data1", ::fbthrift::TType::Struct, 1);
-        ::fbthrift::Serialize::write(&self.data1, p);
-        p.write_field_end();
-        p.write_field_begin("data2", ::fbthrift::TType::Struct, 2);
-        ::fbthrift::Serialize::write(&self.data2, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::MyDataWithCustomDefaultFieldPatch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("data1", ::fbthrift::TType::Struct, 1),
-            ::fbthrift::Field::new("data2", ::fbthrift::TType::Struct, 2),
-        ];
-        let mut field_data1 = ::std::option::Option::None;
-        let mut field_data2 = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Struct, 1) => field_data1 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, 2) => field_data2 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            data1: field_data1.unwrap_or_default(),
-            data2: field_data2.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
 
 
 #[allow(clippy::derivable_impls)]
@@ -2454,79 +2587,182 @@ where
 }
 
 
+
+
 #[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::InnerUnionFieldPatch {
+impl ::std::default::Default for self::MyDataWithCustomDefaultFieldPatch {
     fn default() -> Self {
         Self {
-            innerOption: ::std::default::Default::default(),
+            data1: ::std::default::Default::default(),
+            data2: ::std::default::Default::default(),
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         }
     }
 }
 
-impl ::std::fmt::Debug for self::InnerUnionFieldPatch {
+impl ::std::fmt::Debug for self::MyDataWithCustomDefaultFieldPatch {
     fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         formatter
-            .debug_struct("InnerUnionFieldPatch")
-            .field("innerOption", &self.innerOption)
+            .debug_struct("MyDataWithCustomDefaultFieldPatch")
+            .field("data1", &self.data1)
+            .field("data2", &self.data2)
             .finish()
     }
 }
 
-unsafe impl ::std::marker::Send for self::InnerUnionFieldPatch {}
-unsafe impl ::std::marker::Sync for self::InnerUnionFieldPatch {}
-impl ::std::marker::Unpin for self::InnerUnionFieldPatch {}
+unsafe impl ::std::marker::Send for self::MyDataWithCustomDefaultFieldPatch {}
+unsafe impl ::std::marker::Sync for self::MyDataWithCustomDefaultFieldPatch {}
+impl ::std::marker::Unpin for self::MyDataWithCustomDefaultFieldPatch {}
 
-impl ::fbthrift::GetTType for self::InnerUnionFieldPatch {
+impl ::fbthrift::GetTType for self::MyDataWithCustomDefaultFieldPatch {
     const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
 }
 
-impl ::fbthrift::GetUri for self::InnerUnionFieldPatch {
+impl ::fbthrift::GetUri for self::MyDataWithCustomDefaultFieldPatch {
     fn uri() -> &'static str {
-        "test.dev/fixtures/patch/InnerUnionFieldPatch"
+        "test.dev/fixtures/patch/MyDataWithCustomDefaultFieldPatch"
     }
 }
 
-impl<P> ::fbthrift::Serialize<P> for self::InnerUnionFieldPatch
+impl<P> ::fbthrift::Serialize<P> for self::MyDataWithCustomDefaultFieldPatch
 where
     P: ::fbthrift::ProtocolWriter,
 {
     fn write(&self, p: &mut P) {
-        p.write_struct_begin("InnerUnionFieldPatch");
-        p.write_field_begin("innerOption", ::fbthrift::TType::Struct, 1);
-        ::fbthrift::Serialize::write(&self.innerOption, p);
+        p.write_struct_begin("MyDataWithCustomDefaultFieldPatch");
+        p.write_field_begin("data1", ::fbthrift::TType::Struct, 1);
+        ::fbthrift::Serialize::write(&self.data1, p);
+        p.write_field_end();
+        p.write_field_begin("data2", ::fbthrift::TType::Struct, 2);
+        ::fbthrift::Serialize::write(&self.data2, p);
         p.write_field_end();
         p.write_field_stop();
         p.write_struct_end();
     }
 }
 
-impl<P> ::fbthrift::Deserialize<P> for self::InnerUnionFieldPatch
+impl<P> ::fbthrift::Deserialize<P> for self::MyDataWithCustomDefaultFieldPatch
 where
     P: ::fbthrift::ProtocolReader,
 {
     fn read(p: &mut P) -> ::anyhow::Result<Self> {
         static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("innerOption", ::fbthrift::TType::Struct, 1),
+            ::fbthrift::Field::new("data1", ::fbthrift::TType::Struct, 1),
+            ::fbthrift::Field::new("data2", ::fbthrift::TType::Struct, 2),
         ];
-        let mut field_innerOption = ::std::option::Option::None;
+        let mut field_data1 = ::std::option::Option::None;
+        let mut field_data2 = ::std::option::Option::None;
         let _ = p.read_struct_begin(|_| ())?;
         loop {
             let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
             match (fty, fid as ::std::primitive::i32) {
                 (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Struct, 1) => field_innerOption = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, 1) => field_data1 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, 2) => field_data2 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
                 (fty, _) => p.skip(fty)?,
             }
             p.read_field_end()?;
         }
         p.read_struct_end()?;
         ::std::result::Result::Ok(Self {
-            innerOption: field_innerOption.unwrap_or_default(),
+            data1: field_data1.unwrap_or_default(),
+            data2: field_data2.unwrap_or_default(),
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         })
     }
 }
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::MyDataWithCustomDefaultEnsureStruct {
+    fn default() -> Self {
+        Self {
+            data1: ::std::option::Option::None,
+            data2: ::std::option::Option::None,
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::MyDataWithCustomDefaultEnsureStruct {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("MyDataWithCustomDefaultEnsureStruct")
+            .field("data1", &self.data1)
+            .field("data2", &self.data2)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::MyDataWithCustomDefaultEnsureStruct {}
+unsafe impl ::std::marker::Sync for self::MyDataWithCustomDefaultEnsureStruct {}
+impl ::std::marker::Unpin for self::MyDataWithCustomDefaultEnsureStruct {}
+
+impl ::fbthrift::GetTType for self::MyDataWithCustomDefaultEnsureStruct {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::MyDataWithCustomDefaultEnsureStruct {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/MyDataWithCustomDefaultEnsureStruct"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::MyDataWithCustomDefaultEnsureStruct
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("MyDataWithCustomDefaultEnsureStruct");
+        if let ::std::option::Option::Some(some) = &self.data1 {
+            p.write_field_begin("data1", ::fbthrift::TType::String, 1);
+            ::fbthrift::Serialize::write(some, p);
+            p.write_field_end();
+        }
+        if let ::std::option::Option::Some(some) = &self.data2 {
+            p.write_field_begin("data2", ::fbthrift::TType::I32, 2);
+            ::fbthrift::Serialize::write(some, p);
+            p.write_field_end();
+        }
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::MyDataWithCustomDefaultEnsureStruct
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("data1", ::fbthrift::TType::String, 1),
+            ::fbthrift::Field::new("data2", ::fbthrift::TType::I32, 2),
+        ];
+        let mut field_data1 = ::std::option::Option::None;
+        let mut field_data2 = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::String, 1) => field_data1 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::I32, 2) => field_data2 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            data1: field_data1,
+            data2: field_data2,
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
 
 
 #[allow(clippy::derivable_impls)]
@@ -2642,97 +2878,83 @@ where
 }
 
 
+
+
 #[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyUnionFieldPatch {
+impl ::std::default::Default for self::InnerUnionFieldPatch {
     fn default() -> Self {
         Self {
-            option1: ::std::default::Default::default(),
-            option2: ::std::default::Default::default(),
-            option3: ::std::default::Default::default(),
+            innerOption: ::std::default::Default::default(),
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         }
     }
 }
 
-impl ::std::fmt::Debug for self::MyUnionFieldPatch {
+impl ::std::fmt::Debug for self::InnerUnionFieldPatch {
     fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         formatter
-            .debug_struct("MyUnionFieldPatch")
-            .field("option1", &self.option1)
-            .field("option2", &self.option2)
-            .field("option3", &self.option3)
+            .debug_struct("InnerUnionFieldPatch")
+            .field("innerOption", &self.innerOption)
             .finish()
     }
 }
 
-unsafe impl ::std::marker::Send for self::MyUnionFieldPatch {}
-unsafe impl ::std::marker::Sync for self::MyUnionFieldPatch {}
-impl ::std::marker::Unpin for self::MyUnionFieldPatch {}
+unsafe impl ::std::marker::Send for self::InnerUnionFieldPatch {}
+unsafe impl ::std::marker::Sync for self::InnerUnionFieldPatch {}
+impl ::std::marker::Unpin for self::InnerUnionFieldPatch {}
 
-impl ::fbthrift::GetTType for self::MyUnionFieldPatch {
+impl ::fbthrift::GetTType for self::InnerUnionFieldPatch {
     const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
 }
 
-impl ::fbthrift::GetUri for self::MyUnionFieldPatch {
+impl ::fbthrift::GetUri for self::InnerUnionFieldPatch {
     fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyUnionFieldPatch"
+        "test.dev/fixtures/patch/InnerUnionFieldPatch"
     }
 }
 
-impl<P> ::fbthrift::Serialize<P> for self::MyUnionFieldPatch
+impl<P> ::fbthrift::Serialize<P> for self::InnerUnionFieldPatch
 where
     P: ::fbthrift::ProtocolWriter,
 {
     fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyUnionFieldPatch");
-        p.write_field_begin("option1", ::fbthrift::TType::Struct, 1);
-        ::fbthrift::Serialize::write(&self.option1, p);
-        p.write_field_end();
-        p.write_field_begin("option2", ::fbthrift::TType::Struct, 2);
-        ::fbthrift::Serialize::write(&self.option2, p);
-        p.write_field_end();
-        p.write_field_begin("option3", ::fbthrift::TType::Struct, 3);
-        ::fbthrift::Serialize::write(&self.option3, p);
+        p.write_struct_begin("InnerUnionFieldPatch");
+        p.write_field_begin("innerOption", ::fbthrift::TType::Struct, 1);
+        ::fbthrift::Serialize::write(&self.innerOption, p);
         p.write_field_end();
         p.write_field_stop();
         p.write_struct_end();
     }
 }
 
-impl<P> ::fbthrift::Deserialize<P> for self::MyUnionFieldPatch
+impl<P> ::fbthrift::Deserialize<P> for self::InnerUnionFieldPatch
 where
     P: ::fbthrift::ProtocolReader,
 {
     fn read(p: &mut P) -> ::anyhow::Result<Self> {
         static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("option1", ::fbthrift::TType::Struct, 1),
-            ::fbthrift::Field::new("option2", ::fbthrift::TType::Struct, 2),
-            ::fbthrift::Field::new("option3", ::fbthrift::TType::Struct, 3),
+            ::fbthrift::Field::new("innerOption", ::fbthrift::TType::Struct, 1),
         ];
-        let mut field_option1 = ::std::option::Option::None;
-        let mut field_option2 = ::std::option::Option::None;
-        let mut field_option3 = ::std::option::Option::None;
+        let mut field_innerOption = ::std::option::Option::None;
         let _ = p.read_struct_begin(|_| ())?;
         loop {
             let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
             match (fty, fid as ::std::primitive::i32) {
                 (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Struct, 1) => field_option1 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, 2) => field_option2 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, 3) => field_option3 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, 1) => field_innerOption = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
                 (fty, _) => p.skip(fty)?,
             }
             p.read_field_end()?;
         }
         p.read_struct_end()?;
         ::std::result::Result::Ok(Self {
-            option1: field_option1.unwrap_or_default(),
-            option2: field_option2.unwrap_or_default(),
-            option3: field_option3.unwrap_or_default(),
+            innerOption: field_innerOption.unwrap_or_default(),
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         })
     }
 }
+
+
 
 
 #[allow(clippy::derivable_impls)]
@@ -2846,6 +3068,1645 @@ where
         })
     }
 }
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::MyUnionFieldPatch {
+    fn default() -> Self {
+        Self {
+            option1: ::std::default::Default::default(),
+            option2: ::std::default::Default::default(),
+            option3: ::std::default::Default::default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::MyUnionFieldPatch {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("MyUnionFieldPatch")
+            .field("option1", &self.option1)
+            .field("option2", &self.option2)
+            .field("option3", &self.option3)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::MyUnionFieldPatch {}
+unsafe impl ::std::marker::Sync for self::MyUnionFieldPatch {}
+impl ::std::marker::Unpin for self::MyUnionFieldPatch {}
+
+impl ::fbthrift::GetTType for self::MyUnionFieldPatch {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::MyUnionFieldPatch {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/MyUnionFieldPatch"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::MyUnionFieldPatch
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("MyUnionFieldPatch");
+        p.write_field_begin("option1", ::fbthrift::TType::Struct, 1);
+        ::fbthrift::Serialize::write(&self.option1, p);
+        p.write_field_end();
+        p.write_field_begin("option2", ::fbthrift::TType::Struct, 2);
+        ::fbthrift::Serialize::write(&self.option2, p);
+        p.write_field_end();
+        p.write_field_begin("option3", ::fbthrift::TType::Struct, 3);
+        ::fbthrift::Serialize::write(&self.option3, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::MyUnionFieldPatch
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("option1", ::fbthrift::TType::Struct, 1),
+            ::fbthrift::Field::new("option2", ::fbthrift::TType::Struct, 2),
+            ::fbthrift::Field::new("option3", ::fbthrift::TType::Struct, 3),
+        ];
+        let mut field_option1 = ::std::option::Option::None;
+        let mut field_option2 = ::std::option::Option::None;
+        let mut field_option3 = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::Struct, 1) => field_option1 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, 2) => field_option2 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, 3) => field_option3 = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            option1: field_option1.unwrap_or_default(),
+            option2: field_option2.unwrap_or_default(),
+            option3: field_option3.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::MyStructPatch {
+    fn default() -> Self {
+        Self {
+            assign: ::std::option::Option::None,
+            clear: ::std::default::Default::default(),
+            patchPrior: ::std::default::Default::default(),
+            ensure: ::std::default::Default::default(),
+            patch: ::std::default::Default::default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::MyStructPatch {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("MyStructPatch")
+            .field("assign", &self.assign)
+            .field("clear", &self.clear)
+            .field("patchPrior", &self.patchPrior)
+            .field("ensure", &self.ensure)
+            .field("patch", &self.patch)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::MyStructPatch {}
+unsafe impl ::std::marker::Sync for self::MyStructPatch {}
+impl ::std::marker::Unpin for self::MyStructPatch {}
+
+impl ::fbthrift::GetTType for self::MyStructPatch {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::MyStructPatch {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/MyStructPatch"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::MyStructPatch
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("MyStructPatch");
+        if let ::std::option::Option::Some(some) = &self.assign {
+            p.write_field_begin("assign", ::fbthrift::TType::Struct, 1);
+            ::fbthrift::Serialize::write(some, p);
+            p.write_field_end();
+        }
+        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
+        ::fbthrift::Serialize::write(&self.clear, p);
+        p.write_field_end();
+        p.write_field_begin("patchPrior", ::fbthrift::TType::Struct, 3);
+        ::fbthrift::Serialize::write(&self.patchPrior, p);
+        p.write_field_end();
+        p.write_field_begin("ensure", ::fbthrift::TType::Struct, 5);
+        ::fbthrift::Serialize::write(&self.ensure, p);
+        p.write_field_end();
+        p.write_field_begin("patch", ::fbthrift::TType::Struct, 6);
+        ::fbthrift::Serialize::write(&self.patch, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::MyStructPatch
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("assign", ::fbthrift::TType::Struct, 1),
+            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
+            ::fbthrift::Field::new("ensure", ::fbthrift::TType::Struct, 5),
+            ::fbthrift::Field::new("patch", ::fbthrift::TType::Struct, 6),
+            ::fbthrift::Field::new("patchPrior", ::fbthrift::TType::Struct, 3),
+        ];
+        let mut field_assign = ::std::option::Option::None;
+        let mut field_clear = ::std::option::Option::None;
+        let mut field_patchPrior = ::std::option::Option::None;
+        let mut field_ensure = ::std::option::Option::None;
+        let mut field_patch = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::Struct, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, 3) => field_patchPrior = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, 5) => field_ensure = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, 6) => field_patch = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            assign: field_assign,
+            clear: field_clear.unwrap_or_default(),
+            patchPrior: field_patchPrior.unwrap_or_default(),
+            ensure: field_ensure.unwrap_or_default(),
+            patch: field_patch.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::MyStructField10Patch {
+    fn default() -> Self {
+        Self {
+            assign: ::std::option::Option::None,
+            clear: ::std::default::Default::default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::MyStructField10Patch {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("MyStructField10Patch")
+            .field("assign", &self.assign)
+            .field("clear", &self.clear)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::MyStructField10Patch {}
+unsafe impl ::std::marker::Sync for self::MyStructField10Patch {}
+impl ::std::marker::Unpin for self::MyStructField10Patch {}
+
+impl ::fbthrift::GetTType for self::MyStructField10Patch {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::MyStructField10Patch {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/MyStructField10Patch"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::MyStructField10Patch
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("MyStructField10Patch");
+        if let ::std::option::Option::Some(some) = &self.assign {
+            p.write_field_begin("assign", ::fbthrift::TType::I32, 1);
+            ::fbthrift::Serialize::write(some, p);
+            p.write_field_end();
+        }
+        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
+        ::fbthrift::Serialize::write(&self.clear, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::MyStructField10Patch
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("assign", ::fbthrift::TType::I32, 1),
+            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
+        ];
+        let mut field_assign = ::std::option::Option::None;
+        let mut field_clear = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::I32, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            assign: field_assign,
+            clear: field_clear.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::MyStructField23Patch {
+    fn default() -> Self {
+        Self {
+            assign: ::std::option::Option::None,
+            clear: ::std::default::Default::default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::MyStructField23Patch {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("MyStructField23Patch")
+            .field("assign", &self.assign)
+            .field("clear", &self.clear)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::MyStructField23Patch {}
+unsafe impl ::std::marker::Sync for self::MyStructField23Patch {}
+impl ::std::marker::Unpin for self::MyStructField23Patch {}
+
+impl ::fbthrift::GetTType for self::MyStructField23Patch {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::MyStructField23Patch {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/MyStructField23Patch"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::MyStructField23Patch
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("MyStructField23Patch");
+        if let ::std::option::Option::Some(some) = &self.assign {
+            p.write_field_begin("assign", ::fbthrift::TType::I32, 1);
+            ::fbthrift::Serialize::write(some, p);
+            p.write_field_end();
+        }
+        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
+        ::fbthrift::Serialize::write(&self.clear, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::MyStructField23Patch
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("assign", ::fbthrift::TType::I32, 1),
+            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
+        ];
+        let mut field_assign = ::std::option::Option::None;
+        let mut field_clear = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::I32, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            assign: field_assign,
+            clear: field_clear.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::MyStructField26Patch {
+    fn default() -> Self {
+        Self {
+            assign: ::std::option::Option::None,
+            clear: ::std::default::Default::default(),
+            patch: ::std::default::Default::default(),
+            remove: ::std::default::Default::default(),
+            prepend: ::std::default::Default::default(),
+            append: ::std::default::Default::default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::MyStructField26Patch {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("MyStructField26Patch")
+            .field("assign", &self.assign)
+            .field("clear", &self.clear)
+            .field("patch", &self.patch)
+            .field("remove", &self.remove)
+            .field("prepend", &self.prepend)
+            .field("append", &self.append)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::MyStructField26Patch {}
+unsafe impl ::std::marker::Sync for self::MyStructField26Patch {}
+impl ::std::marker::Unpin for self::MyStructField26Patch {}
+
+impl ::fbthrift::GetTType for self::MyStructField26Patch {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::MyStructField26Patch {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/MyStructField26Patch"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::MyStructField26Patch
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("MyStructField26Patch");
+        if let ::std::option::Option::Some(some) = &self.assign {
+            p.write_field_begin("assign", ::fbthrift::TType::List, 1);
+            ::fbthrift::Serialize::write(some, p);
+            p.write_field_end();
+        }
+        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
+        ::fbthrift::Serialize::write(&self.clear, p);
+        p.write_field_end();
+        p.write_field_begin("patch", ::fbthrift::TType::Map, 3);
+        ::fbthrift::Serialize::write(&self.patch, p);
+        p.write_field_end();
+        p.write_field_begin("remove", ::fbthrift::TType::List, 7);
+        ::fbthrift::Serialize::write(&self.remove, p);
+        p.write_field_end();
+        p.write_field_begin("prepend", ::fbthrift::TType::List, 8);
+        ::fbthrift::Serialize::write(&self.prepend, p);
+        p.write_field_end();
+        p.write_field_begin("append", ::fbthrift::TType::List, 9);
+        ::fbthrift::Serialize::write(&self.append, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::MyStructField26Patch
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("append", ::fbthrift::TType::List, 9),
+            ::fbthrift::Field::new("assign", ::fbthrift::TType::List, 1),
+            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
+            ::fbthrift::Field::new("patch", ::fbthrift::TType::Map, 3),
+            ::fbthrift::Field::new("prepend", ::fbthrift::TType::List, 8),
+            ::fbthrift::Field::new("remove", ::fbthrift::TType::List, 7),
+        ];
+        let mut field_assign = ::std::option::Option::None;
+        let mut field_clear = ::std::option::Option::None;
+        let mut field_patch = ::std::option::Option::None;
+        let mut field_remove = ::std::option::Option::None;
+        let mut field_prepend = ::std::option::Option::None;
+        let mut field_append = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::List, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 3) => field_patch = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::List, 7) => field_remove = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::List, 8) => field_prepend = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::List, 9) => field_append = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            assign: field_assign,
+            clear: field_clear.unwrap_or_default(),
+            patch: field_patch.unwrap_or_default(),
+            remove: field_remove.unwrap_or_default(),
+            prepend: field_prepend.unwrap_or_default(),
+            append: field_append.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::MyStructField27Patch {
+    fn default() -> Self {
+        Self {
+            assign: ::std::option::Option::None,
+            clear: ::std::default::Default::default(),
+            remove: ::std::default::Default::default(),
+            add: ::std::default::Default::default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::MyStructField27Patch {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("MyStructField27Patch")
+            .field("assign", &self.assign)
+            .field("clear", &self.clear)
+            .field("remove", &self.remove)
+            .field("add", &self.add)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::MyStructField27Patch {}
+unsafe impl ::std::marker::Sync for self::MyStructField27Patch {}
+impl ::std::marker::Unpin for self::MyStructField27Patch {}
+
+impl ::fbthrift::GetTType for self::MyStructField27Patch {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::MyStructField27Patch {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/MyStructField27Patch"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::MyStructField27Patch
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("MyStructField27Patch");
+        if let ::std::option::Option::Some(some) = &self.assign {
+            p.write_field_begin("assign", ::fbthrift::TType::Set, 1);
+            ::fbthrift::Serialize::write(some, p);
+            p.write_field_end();
+        }
+        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
+        ::fbthrift::Serialize::write(&self.clear, p);
+        p.write_field_end();
+        p.write_field_begin("remove", ::fbthrift::TType::Set, 7);
+        ::fbthrift::Serialize::write(&self.remove, p);
+        p.write_field_end();
+        p.write_field_begin("add", ::fbthrift::TType::Set, 8);
+        ::fbthrift::Serialize::write(&self.add, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::MyStructField27Patch
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("add", ::fbthrift::TType::Set, 8),
+            ::fbthrift::Field::new("assign", ::fbthrift::TType::Set, 1),
+            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
+            ::fbthrift::Field::new("remove", ::fbthrift::TType::Set, 7),
+        ];
+        let mut field_assign = ::std::option::Option::None;
+        let mut field_clear = ::std::option::Option::None;
+        let mut field_remove = ::std::option::Option::None;
+        let mut field_add = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::Set, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Set, 7) => field_remove = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Set, 8) => field_add = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            assign: field_assign,
+            clear: field_clear.unwrap_or_default(),
+            remove: field_remove.unwrap_or_default(),
+            add: field_add.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::MyStructField28Patch {
+    fn default() -> Self {
+        Self {
+            assign: ::std::option::Option::None,
+            clear: ::std::default::Default::default(),
+            patchPrior: ::std::default::Default::default(),
+            add: ::std::default::Default::default(),
+            patch: ::std::default::Default::default(),
+            remove: ::std::default::Default::default(),
+            put: ::std::default::Default::default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::MyStructField28Patch {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("MyStructField28Patch")
+            .field("assign", &self.assign)
+            .field("clear", &self.clear)
+            .field("patchPrior", &self.patchPrior)
+            .field("add", &self.add)
+            .field("patch", &self.patch)
+            .field("remove", &self.remove)
+            .field("put", &self.put)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::MyStructField28Patch {}
+unsafe impl ::std::marker::Sync for self::MyStructField28Patch {}
+impl ::std::marker::Unpin for self::MyStructField28Patch {}
+
+impl ::fbthrift::GetTType for self::MyStructField28Patch {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::MyStructField28Patch {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/MyStructField28Patch"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::MyStructField28Patch
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("MyStructField28Patch");
+        if let ::std::option::Option::Some(some) = &self.assign {
+            p.write_field_begin("assign", ::fbthrift::TType::Map, 1);
+            ::fbthrift::Serialize::write(some, p);
+            p.write_field_end();
+        }
+        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
+        ::fbthrift::Serialize::write(&self.clear, p);
+        p.write_field_end();
+        p.write_field_begin("patchPrior", ::fbthrift::TType::Map, 3);
+        ::fbthrift::Serialize::write(&self.patchPrior, p);
+        p.write_field_end();
+        p.write_field_begin("add", ::fbthrift::TType::Map, 5);
+        ::fbthrift::Serialize::write(&self.add, p);
+        p.write_field_end();
+        p.write_field_begin("patch", ::fbthrift::TType::Map, 6);
+        ::fbthrift::Serialize::write(&self.patch, p);
+        p.write_field_end();
+        p.write_field_begin("remove", ::fbthrift::TType::Set, 7);
+        ::fbthrift::Serialize::write(&self.remove, p);
+        p.write_field_end();
+        p.write_field_begin("put", ::fbthrift::TType::Map, 9);
+        ::fbthrift::Serialize::write(&self.put, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::MyStructField28Patch
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("add", ::fbthrift::TType::Map, 5),
+            ::fbthrift::Field::new("assign", ::fbthrift::TType::Map, 1),
+            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
+            ::fbthrift::Field::new("patch", ::fbthrift::TType::Map, 6),
+            ::fbthrift::Field::new("patchPrior", ::fbthrift::TType::Map, 3),
+            ::fbthrift::Field::new("put", ::fbthrift::TType::Map, 9),
+            ::fbthrift::Field::new("remove", ::fbthrift::TType::Set, 7),
+        ];
+        let mut field_assign = ::std::option::Option::None;
+        let mut field_clear = ::std::option::Option::None;
+        let mut field_patchPrior = ::std::option::Option::None;
+        let mut field_add = ::std::option::Option::None;
+        let mut field_patch = ::std::option::Option::None;
+        let mut field_remove = ::std::option::Option::None;
+        let mut field_put = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::Map, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 3) => field_patchPrior = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 5) => field_add = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 6) => field_patch = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Set, 7) => field_remove = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 9) => field_put = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            assign: field_assign,
+            clear: field_clear.unwrap_or_default(),
+            patchPrior: field_patchPrior.unwrap_or_default(),
+            add: field_add.unwrap_or_default(),
+            patch: field_patch.unwrap_or_default(),
+            remove: field_remove.unwrap_or_default(),
+            put: field_put.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::MyStructField29Patch {
+    fn default() -> Self {
+        Self {
+            assign: ::std::option::Option::None,
+            clear: ::std::default::Default::default(),
+            patch: ::std::default::Default::default(),
+            remove: ::std::default::Default::default(),
+            prepend: ::std::default::Default::default(),
+            append: ::std::default::Default::default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::MyStructField29Patch {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("MyStructField29Patch")
+            .field("assign", &self.assign)
+            .field("clear", &self.clear)
+            .field("patch", &self.patch)
+            .field("remove", &self.remove)
+            .field("prepend", &self.prepend)
+            .field("append", &self.append)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::MyStructField29Patch {}
+unsafe impl ::std::marker::Sync for self::MyStructField29Patch {}
+impl ::std::marker::Unpin for self::MyStructField29Patch {}
+
+impl ::fbthrift::GetTType for self::MyStructField29Patch {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::MyStructField29Patch {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/MyStructField29Patch"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::MyStructField29Patch
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("MyStructField29Patch");
+        if let ::std::option::Option::Some(some) = &self.assign {
+            p.write_field_begin("assign", ::fbthrift::TType::List, 1);
+            ::fbthrift::Serialize::write(some, p);
+            p.write_field_end();
+        }
+        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
+        ::fbthrift::Serialize::write(&self.clear, p);
+        p.write_field_end();
+        p.write_field_begin("patch", ::fbthrift::TType::Map, 3);
+        ::fbthrift::Serialize::write(&self.patch, p);
+        p.write_field_end();
+        p.write_field_begin("remove", ::fbthrift::TType::List, 7);
+        ::fbthrift::Serialize::write(&self.remove, p);
+        p.write_field_end();
+        p.write_field_begin("prepend", ::fbthrift::TType::List, 8);
+        ::fbthrift::Serialize::write(&self.prepend, p);
+        p.write_field_end();
+        p.write_field_begin("append", ::fbthrift::TType::List, 9);
+        ::fbthrift::Serialize::write(&self.append, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::MyStructField29Patch
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("append", ::fbthrift::TType::List, 9),
+            ::fbthrift::Field::new("assign", ::fbthrift::TType::List, 1),
+            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
+            ::fbthrift::Field::new("patch", ::fbthrift::TType::Map, 3),
+            ::fbthrift::Field::new("prepend", ::fbthrift::TType::List, 8),
+            ::fbthrift::Field::new("remove", ::fbthrift::TType::List, 7),
+        ];
+        let mut field_assign = ::std::option::Option::None;
+        let mut field_clear = ::std::option::Option::None;
+        let mut field_patch = ::std::option::Option::None;
+        let mut field_remove = ::std::option::Option::None;
+        let mut field_prepend = ::std::option::Option::None;
+        let mut field_append = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::List, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 3) => field_patch = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::List, 7) => field_remove = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::List, 8) => field_prepend = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::List, 9) => field_append = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            assign: field_assign,
+            clear: field_clear.unwrap_or_default(),
+            patch: field_patch.unwrap_or_default(),
+            remove: field_remove.unwrap_or_default(),
+            prepend: field_prepend.unwrap_or_default(),
+            append: field_append.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::MyStructField29Patch1 {
+    fn default() -> Self {
+        Self {
+            assign: ::std::option::Option::None,
+            clear: ::std::default::Default::default(),
+            patchPrior: ::std::default::Default::default(),
+            add: ::std::default::Default::default(),
+            patch: ::std::default::Default::default(),
+            remove: ::std::default::Default::default(),
+            put: ::std::default::Default::default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::MyStructField29Patch1 {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("MyStructField29Patch1")
+            .field("assign", &self.assign)
+            .field("clear", &self.clear)
+            .field("patchPrior", &self.patchPrior)
+            .field("add", &self.add)
+            .field("patch", &self.patch)
+            .field("remove", &self.remove)
+            .field("put", &self.put)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::MyStructField29Patch1 {}
+unsafe impl ::std::marker::Sync for self::MyStructField29Patch1 {}
+impl ::std::marker::Unpin for self::MyStructField29Patch1 {}
+
+impl ::fbthrift::GetTType for self::MyStructField29Patch1 {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::MyStructField29Patch1 {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/MyStructField29Patch1"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::MyStructField29Patch1
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("MyStructField29Patch1");
+        if let ::std::option::Option::Some(some) = &self.assign {
+            p.write_field_begin("assign", ::fbthrift::TType::Map, 1);
+            ::fbthrift::Serialize::write(some, p);
+            p.write_field_end();
+        }
+        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
+        ::fbthrift::Serialize::write(&self.clear, p);
+        p.write_field_end();
+        p.write_field_begin("patchPrior", ::fbthrift::TType::Map, 3);
+        ::fbthrift::Serialize::write(&self.patchPrior, p);
+        p.write_field_end();
+        p.write_field_begin("add", ::fbthrift::TType::Map, 5);
+        ::fbthrift::Serialize::write(&self.add, p);
+        p.write_field_end();
+        p.write_field_begin("patch", ::fbthrift::TType::Map, 6);
+        ::fbthrift::Serialize::write(&self.patch, p);
+        p.write_field_end();
+        p.write_field_begin("remove", ::fbthrift::TType::Set, 7);
+        ::fbthrift::Serialize::write(&self.remove, p);
+        p.write_field_end();
+        p.write_field_begin("put", ::fbthrift::TType::Map, 9);
+        ::fbthrift::Serialize::write(&self.put, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::MyStructField29Patch1
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("add", ::fbthrift::TType::Map, 5),
+            ::fbthrift::Field::new("assign", ::fbthrift::TType::Map, 1),
+            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
+            ::fbthrift::Field::new("patch", ::fbthrift::TType::Map, 6),
+            ::fbthrift::Field::new("patchPrior", ::fbthrift::TType::Map, 3),
+            ::fbthrift::Field::new("put", ::fbthrift::TType::Map, 9),
+            ::fbthrift::Field::new("remove", ::fbthrift::TType::Set, 7),
+        ];
+        let mut field_assign = ::std::option::Option::None;
+        let mut field_clear = ::std::option::Option::None;
+        let mut field_patchPrior = ::std::option::Option::None;
+        let mut field_add = ::std::option::Option::None;
+        let mut field_patch = ::std::option::Option::None;
+        let mut field_remove = ::std::option::Option::None;
+        let mut field_put = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::Map, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 3) => field_patchPrior = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 5) => field_add = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 6) => field_patch = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Set, 7) => field_remove = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 9) => field_put = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            assign: field_assign,
+            clear: field_clear.unwrap_or_default(),
+            patchPrior: field_patchPrior.unwrap_or_default(),
+            add: field_add.unwrap_or_default(),
+            patch: field_patch.unwrap_or_default(),
+            remove: field_remove.unwrap_or_default(),
+            put: field_put.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::MyStructField30Patch {
+    fn default() -> Self {
+        Self {
+            assign: ::std::option::Option::None,
+            clear: ::std::default::Default::default(),
+            patchPrior: ::std::default::Default::default(),
+            add: ::std::default::Default::default(),
+            patch: ::std::default::Default::default(),
+            remove: ::std::default::Default::default(),
+            put: ::std::default::Default::default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::MyStructField30Patch {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("MyStructField30Patch")
+            .field("assign", &self.assign)
+            .field("clear", &self.clear)
+            .field("patchPrior", &self.patchPrior)
+            .field("add", &self.add)
+            .field("patch", &self.patch)
+            .field("remove", &self.remove)
+            .field("put", &self.put)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::MyStructField30Patch {}
+unsafe impl ::std::marker::Sync for self::MyStructField30Patch {}
+impl ::std::marker::Unpin for self::MyStructField30Patch {}
+
+impl ::fbthrift::GetTType for self::MyStructField30Patch {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::MyStructField30Patch {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/MyStructField30Patch"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::MyStructField30Patch
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("MyStructField30Patch");
+        if let ::std::option::Option::Some(some) = &self.assign {
+            p.write_field_begin("assign", ::fbthrift::TType::Map, 1);
+            ::fbthrift::Serialize::write(some, p);
+            p.write_field_end();
+        }
+        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
+        ::fbthrift::Serialize::write(&self.clear, p);
+        p.write_field_end();
+        p.write_field_begin("patchPrior", ::fbthrift::TType::Map, 3);
+        ::fbthrift::Serialize::write(&self.patchPrior, p);
+        p.write_field_end();
+        p.write_field_begin("add", ::fbthrift::TType::Map, 5);
+        ::fbthrift::Serialize::write(&self.add, p);
+        p.write_field_end();
+        p.write_field_begin("patch", ::fbthrift::TType::Map, 6);
+        ::fbthrift::Serialize::write(&self.patch, p);
+        p.write_field_end();
+        p.write_field_begin("remove", ::fbthrift::TType::Set, 7);
+        ::fbthrift::Serialize::write(&self.remove, p);
+        p.write_field_end();
+        p.write_field_begin("put", ::fbthrift::TType::Map, 9);
+        ::fbthrift::Serialize::write(&self.put, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::MyStructField30Patch
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("add", ::fbthrift::TType::Map, 5),
+            ::fbthrift::Field::new("assign", ::fbthrift::TType::Map, 1),
+            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
+            ::fbthrift::Field::new("patch", ::fbthrift::TType::Map, 6),
+            ::fbthrift::Field::new("patchPrior", ::fbthrift::TType::Map, 3),
+            ::fbthrift::Field::new("put", ::fbthrift::TType::Map, 9),
+            ::fbthrift::Field::new("remove", ::fbthrift::TType::Set, 7),
+        ];
+        let mut field_assign = ::std::option::Option::None;
+        let mut field_clear = ::std::option::Option::None;
+        let mut field_patchPrior = ::std::option::Option::None;
+        let mut field_add = ::std::option::Option::None;
+        let mut field_patch = ::std::option::Option::None;
+        let mut field_remove = ::std::option::Option::None;
+        let mut field_put = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::Map, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 3) => field_patchPrior = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 5) => field_add = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 6) => field_patch = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Set, 7) => field_remove = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 9) => field_put = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            assign: field_assign,
+            clear: field_clear.unwrap_or_default(),
+            patchPrior: field_patchPrior.unwrap_or_default(),
+            add: field_add.unwrap_or_default(),
+            patch: field_patch.unwrap_or_default(),
+            remove: field_remove.unwrap_or_default(),
+            put: field_put.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::MyStructField30Patch1 {
+    fn default() -> Self {
+        Self {
+            assign: ::std::option::Option::None,
+            clear: ::std::default::Default::default(),
+            patchPrior: ::std::default::Default::default(),
+            add: ::std::default::Default::default(),
+            patch: ::std::default::Default::default(),
+            remove: ::std::default::Default::default(),
+            put: ::std::default::Default::default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::MyStructField30Patch1 {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("MyStructField30Patch1")
+            .field("assign", &self.assign)
+            .field("clear", &self.clear)
+            .field("patchPrior", &self.patchPrior)
+            .field("add", &self.add)
+            .field("patch", &self.patch)
+            .field("remove", &self.remove)
+            .field("put", &self.put)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::MyStructField30Patch1 {}
+unsafe impl ::std::marker::Sync for self::MyStructField30Patch1 {}
+impl ::std::marker::Unpin for self::MyStructField30Patch1 {}
+
+impl ::fbthrift::GetTType for self::MyStructField30Patch1 {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::MyStructField30Patch1 {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/MyStructField30Patch1"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::MyStructField30Patch1
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("MyStructField30Patch1");
+        if let ::std::option::Option::Some(some) = &self.assign {
+            p.write_field_begin("assign", ::fbthrift::TType::Map, 1);
+            ::fbthrift::Serialize::write(some, p);
+            p.write_field_end();
+        }
+        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
+        ::fbthrift::Serialize::write(&self.clear, p);
+        p.write_field_end();
+        p.write_field_begin("patchPrior", ::fbthrift::TType::Map, 3);
+        ::fbthrift::Serialize::write(&self.patchPrior, p);
+        p.write_field_end();
+        p.write_field_begin("add", ::fbthrift::TType::Map, 5);
+        ::fbthrift::Serialize::write(&self.add, p);
+        p.write_field_end();
+        p.write_field_begin("patch", ::fbthrift::TType::Map, 6);
+        ::fbthrift::Serialize::write(&self.patch, p);
+        p.write_field_end();
+        p.write_field_begin("remove", ::fbthrift::TType::Set, 7);
+        ::fbthrift::Serialize::write(&self.remove, p);
+        p.write_field_end();
+        p.write_field_begin("put", ::fbthrift::TType::Map, 9);
+        ::fbthrift::Serialize::write(&self.put, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::MyStructField30Patch1
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("add", ::fbthrift::TType::Map, 5),
+            ::fbthrift::Field::new("assign", ::fbthrift::TType::Map, 1),
+            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
+            ::fbthrift::Field::new("patch", ::fbthrift::TType::Map, 6),
+            ::fbthrift::Field::new("patchPrior", ::fbthrift::TType::Map, 3),
+            ::fbthrift::Field::new("put", ::fbthrift::TType::Map, 9),
+            ::fbthrift::Field::new("remove", ::fbthrift::TType::Set, 7),
+        ];
+        let mut field_assign = ::std::option::Option::None;
+        let mut field_clear = ::std::option::Option::None;
+        let mut field_patchPrior = ::std::option::Option::None;
+        let mut field_add = ::std::option::Option::None;
+        let mut field_patch = ::std::option::Option::None;
+        let mut field_remove = ::std::option::Option::None;
+        let mut field_put = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::Map, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 3) => field_patchPrior = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 5) => field_add = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 6) => field_patch = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Set, 7) => field_remove = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, 9) => field_put = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            assign: field_assign,
+            clear: field_clear.unwrap_or_default(),
+            patchPrior: field_patchPrior.unwrap_or_default(),
+            add: field_add.unwrap_or_default(),
+            patch: field_patch.unwrap_or_default(),
+            remove: field_remove.unwrap_or_default(),
+            put: field_put.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::MyStructFieldPatch {
+    fn default() -> Self {
+        Self {
+            structWithCustomDefault: ::std::default::Default::default(),
+            i32WithCustomDefault: ::std::default::Default::default(),
+            mapMap: ::std::default::Default::default(),
+            listMap: ::std::default::Default::default(),
+            optMapVal: ::std::default::Default::default(),
+            optSetVal: ::std::default::Default::default(),
+            optListVal: ::std::default::Default::default(),
+            optLateStructVal: ::std::default::Default::default(),
+            optStructVal: ::std::default::Default::default(),
+            optEnumVal: ::std::default::Default::default(),
+            optBinaryVal: ::std::default::Default::default(),
+            optStringVal: ::std::default::Default::default(),
+            optDoubleVal: ::std::default::Default::default(),
+            optFloatVal: ::std::default::Default::default(),
+            optI64Val: ::std::default::Default::default(),
+            optI32Val: ::std::default::Default::default(),
+            optI16Val: ::std::default::Default::default(),
+            optByteVal: ::std::default::Default::default(),
+            optBoolVal: ::std::default::Default::default(),
+            lateStructVal: ::std::default::Default::default(),
+            unionVal: ::std::default::Default::default(),
+            structVal: ::std::default::Default::default(),
+            enumVal: ::std::default::Default::default(),
+            binaryVal: ::std::default::Default::default(),
+            stringVal: ::std::default::Default::default(),
+            doubleVal: ::std::default::Default::default(),
+            floatVal: ::std::default::Default::default(),
+            i64Val: ::std::default::Default::default(),
+            i32Val: ::std::default::Default::default(),
+            i16Val: ::std::default::Default::default(),
+            byteVal: ::std::default::Default::default(),
+            boolVal: ::std::default::Default::default(),
+            structWithFieldCustomDefault: ::std::default::Default::default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::MyStructFieldPatch {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("MyStructFieldPatch")
+            .field("structWithCustomDefault", &self.structWithCustomDefault)
+            .field("i32WithCustomDefault", &self.i32WithCustomDefault)
+            .field("mapMap", &self.mapMap)
+            .field("listMap", &self.listMap)
+            .field("optMapVal", &self.optMapVal)
+            .field("optSetVal", &self.optSetVal)
+            .field("optListVal", &self.optListVal)
+            .field("optLateStructVal", &self.optLateStructVal)
+            .field("optStructVal", &self.optStructVal)
+            .field("optEnumVal", &self.optEnumVal)
+            .field("optBinaryVal", &self.optBinaryVal)
+            .field("optStringVal", &self.optStringVal)
+            .field("optDoubleVal", &self.optDoubleVal)
+            .field("optFloatVal", &self.optFloatVal)
+            .field("optI64Val", &self.optI64Val)
+            .field("optI32Val", &self.optI32Val)
+            .field("optI16Val", &self.optI16Val)
+            .field("optByteVal", &self.optByteVal)
+            .field("optBoolVal", &self.optBoolVal)
+            .field("lateStructVal", &self.lateStructVal)
+            .field("unionVal", &self.unionVal)
+            .field("structVal", &self.structVal)
+            .field("enumVal", &self.enumVal)
+            .field("binaryVal", &self.binaryVal)
+            .field("stringVal", &self.stringVal)
+            .field("doubleVal", &self.doubleVal)
+            .field("floatVal", &self.floatVal)
+            .field("i64Val", &self.i64Val)
+            .field("i32Val", &self.i32Val)
+            .field("i16Val", &self.i16Val)
+            .field("byteVal", &self.byteVal)
+            .field("boolVal", &self.boolVal)
+            .field("structWithFieldCustomDefault", &self.structWithFieldCustomDefault)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::MyStructFieldPatch {}
+unsafe impl ::std::marker::Sync for self::MyStructFieldPatch {}
+impl ::std::marker::Unpin for self::MyStructFieldPatch {}
+
+impl ::fbthrift::GetTType for self::MyStructFieldPatch {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::MyStructFieldPatch {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/MyStructFieldPatch"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::MyStructFieldPatch
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("MyStructFieldPatch");
+        p.write_field_begin("structWithCustomDefault", ::fbthrift::TType::Struct, -32);
+        ::fbthrift::Serialize::write(&self.structWithCustomDefault, p);
+        p.write_field_end();
+        p.write_field_begin("i32WithCustomDefault", ::fbthrift::TType::Struct, -31);
+        ::fbthrift::Serialize::write(&self.i32WithCustomDefault, p);
+        p.write_field_end();
+        p.write_field_begin("mapMap", ::fbthrift::TType::Struct, -30);
+        ::fbthrift::Serialize::write(&self.mapMap, p);
+        p.write_field_end();
+        p.write_field_begin("listMap", ::fbthrift::TType::Struct, -29);
+        ::fbthrift::Serialize::write(&self.listMap, p);
+        p.write_field_end();
+        p.write_field_begin("optMapVal", ::fbthrift::TType::Struct, -28);
+        ::fbthrift::Serialize::write(&self.optMapVal, p);
+        p.write_field_end();
+        p.write_field_begin("optSetVal", ::fbthrift::TType::Struct, -27);
+        ::fbthrift::Serialize::write(&self.optSetVal, p);
+        p.write_field_end();
+        p.write_field_begin("optListVal", ::fbthrift::TType::Struct, -26);
+        ::fbthrift::Serialize::write(&self.optListVal, p);
+        p.write_field_end();
+        p.write_field_begin("optLateStructVal", ::fbthrift::TType::Struct, -25);
+        ::fbthrift::Serialize::write(&self.optLateStructVal, p);
+        p.write_field_end();
+        p.write_field_begin("optStructVal", ::fbthrift::TType::Struct, -24);
+        ::fbthrift::Serialize::write(&self.optStructVal, p);
+        p.write_field_end();
+        p.write_field_begin("optEnumVal", ::fbthrift::TType::Struct, -23);
+        ::fbthrift::Serialize::write(&self.optEnumVal, p);
+        p.write_field_end();
+        p.write_field_begin("optBinaryVal", ::fbthrift::TType::Struct, -22);
+        ::fbthrift::Serialize::write(&self.optBinaryVal, p);
+        p.write_field_end();
+        p.write_field_begin("optStringVal", ::fbthrift::TType::Struct, -21);
+        ::fbthrift::Serialize::write(&self.optStringVal, p);
+        p.write_field_end();
+        p.write_field_begin("optDoubleVal", ::fbthrift::TType::Struct, -20);
+        ::fbthrift::Serialize::write(&self.optDoubleVal, p);
+        p.write_field_end();
+        p.write_field_begin("optFloatVal", ::fbthrift::TType::Struct, -19);
+        ::fbthrift::Serialize::write(&self.optFloatVal, p);
+        p.write_field_end();
+        p.write_field_begin("optI64Val", ::fbthrift::TType::Struct, -18);
+        ::fbthrift::Serialize::write(&self.optI64Val, p);
+        p.write_field_end();
+        p.write_field_begin("optI32Val", ::fbthrift::TType::Struct, -17);
+        ::fbthrift::Serialize::write(&self.optI32Val, p);
+        p.write_field_end();
+        p.write_field_begin("optI16Val", ::fbthrift::TType::Struct, -16);
+        ::fbthrift::Serialize::write(&self.optI16Val, p);
+        p.write_field_end();
+        p.write_field_begin("optByteVal", ::fbthrift::TType::Struct, -15);
+        ::fbthrift::Serialize::write(&self.optByteVal, p);
+        p.write_field_end();
+        p.write_field_begin("optBoolVal", ::fbthrift::TType::Struct, -14);
+        ::fbthrift::Serialize::write(&self.optBoolVal, p);
+        p.write_field_end();
+        p.write_field_begin("lateStructVal", ::fbthrift::TType::Struct, -13);
+        ::fbthrift::Serialize::write(&self.lateStructVal, p);
+        p.write_field_end();
+        p.write_field_begin("unionVal", ::fbthrift::TType::Struct, -12);
+        ::fbthrift::Serialize::write(&self.unionVal, p);
+        p.write_field_end();
+        p.write_field_begin("structVal", ::fbthrift::TType::Struct, -11);
+        ::fbthrift::Serialize::write(&self.structVal, p);
+        p.write_field_end();
+        p.write_field_begin("enumVal", ::fbthrift::TType::Struct, -10);
+        ::fbthrift::Serialize::write(&self.enumVal, p);
+        p.write_field_end();
+        p.write_field_begin("binaryVal", ::fbthrift::TType::Struct, -9);
+        ::fbthrift::Serialize::write(&self.binaryVal, p);
+        p.write_field_end();
+        p.write_field_begin("stringVal", ::fbthrift::TType::Struct, -8);
+        ::fbthrift::Serialize::write(&self.stringVal, p);
+        p.write_field_end();
+        p.write_field_begin("doubleVal", ::fbthrift::TType::Struct, -7);
+        ::fbthrift::Serialize::write(&self.doubleVal, p);
+        p.write_field_end();
+        p.write_field_begin("floatVal", ::fbthrift::TType::Struct, -6);
+        ::fbthrift::Serialize::write(&self.floatVal, p);
+        p.write_field_end();
+        p.write_field_begin("i64Val", ::fbthrift::TType::Struct, -5);
+        ::fbthrift::Serialize::write(&self.i64Val, p);
+        p.write_field_end();
+        p.write_field_begin("i32Val", ::fbthrift::TType::Struct, -4);
+        ::fbthrift::Serialize::write(&self.i32Val, p);
+        p.write_field_end();
+        p.write_field_begin("i16Val", ::fbthrift::TType::Struct, -3);
+        ::fbthrift::Serialize::write(&self.i16Val, p);
+        p.write_field_end();
+        p.write_field_begin("byteVal", ::fbthrift::TType::Struct, -2);
+        ::fbthrift::Serialize::write(&self.byteVal, p);
+        p.write_field_end();
+        p.write_field_begin("boolVal", ::fbthrift::TType::Struct, -1);
+        ::fbthrift::Serialize::write(&self.boolVal, p);
+        p.write_field_end();
+        p.write_field_begin("structWithFieldCustomDefault", ::fbthrift::TType::Struct, 1);
+        ::fbthrift::Serialize::write(&self.structWithFieldCustomDefault, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::MyStructFieldPatch
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("binaryVal", ::fbthrift::TType::Struct, -9),
+            ::fbthrift::Field::new("boolVal", ::fbthrift::TType::Struct, -1),
+            ::fbthrift::Field::new("byteVal", ::fbthrift::TType::Struct, -2),
+            ::fbthrift::Field::new("doubleVal", ::fbthrift::TType::Struct, -7),
+            ::fbthrift::Field::new("enumVal", ::fbthrift::TType::Struct, -10),
+            ::fbthrift::Field::new("floatVal", ::fbthrift::TType::Struct, -6),
+            ::fbthrift::Field::new("i16Val", ::fbthrift::TType::Struct, -3),
+            ::fbthrift::Field::new("i32Val", ::fbthrift::TType::Struct, -4),
+            ::fbthrift::Field::new("i32WithCustomDefault", ::fbthrift::TType::Struct, -31),
+            ::fbthrift::Field::new("i64Val", ::fbthrift::TType::Struct, -5),
+            ::fbthrift::Field::new("lateStructVal", ::fbthrift::TType::Struct, -13),
+            ::fbthrift::Field::new("listMap", ::fbthrift::TType::Struct, -29),
+            ::fbthrift::Field::new("mapMap", ::fbthrift::TType::Struct, -30),
+            ::fbthrift::Field::new("optBinaryVal", ::fbthrift::TType::Struct, -22),
+            ::fbthrift::Field::new("optBoolVal", ::fbthrift::TType::Struct, -14),
+            ::fbthrift::Field::new("optByteVal", ::fbthrift::TType::Struct, -15),
+            ::fbthrift::Field::new("optDoubleVal", ::fbthrift::TType::Struct, -20),
+            ::fbthrift::Field::new("optEnumVal", ::fbthrift::TType::Struct, -23),
+            ::fbthrift::Field::new("optFloatVal", ::fbthrift::TType::Struct, -19),
+            ::fbthrift::Field::new("optI16Val", ::fbthrift::TType::Struct, -16),
+            ::fbthrift::Field::new("optI32Val", ::fbthrift::TType::Struct, -17),
+            ::fbthrift::Field::new("optI64Val", ::fbthrift::TType::Struct, -18),
+            ::fbthrift::Field::new("optLateStructVal", ::fbthrift::TType::Struct, -25),
+            ::fbthrift::Field::new("optListVal", ::fbthrift::TType::Struct, -26),
+            ::fbthrift::Field::new("optMapVal", ::fbthrift::TType::Struct, -28),
+            ::fbthrift::Field::new("optSetVal", ::fbthrift::TType::Struct, -27),
+            ::fbthrift::Field::new("optStringVal", ::fbthrift::TType::Struct, -21),
+            ::fbthrift::Field::new("optStructVal", ::fbthrift::TType::Struct, -24),
+            ::fbthrift::Field::new("stringVal", ::fbthrift::TType::Struct, -8),
+            ::fbthrift::Field::new("structVal", ::fbthrift::TType::Struct, -11),
+            ::fbthrift::Field::new("structWithCustomDefault", ::fbthrift::TType::Struct, -32),
+            ::fbthrift::Field::new("structWithFieldCustomDefault", ::fbthrift::TType::Struct, 1),
+            ::fbthrift::Field::new("unionVal", ::fbthrift::TType::Struct, -12),
+        ];
+        let mut field_structWithCustomDefault = ::std::option::Option::None;
+        let mut field_i32WithCustomDefault = ::std::option::Option::None;
+        let mut field_mapMap = ::std::option::Option::None;
+        let mut field_listMap = ::std::option::Option::None;
+        let mut field_optMapVal = ::std::option::Option::None;
+        let mut field_optSetVal = ::std::option::Option::None;
+        let mut field_optListVal = ::std::option::Option::None;
+        let mut field_optLateStructVal = ::std::option::Option::None;
+        let mut field_optStructVal = ::std::option::Option::None;
+        let mut field_optEnumVal = ::std::option::Option::None;
+        let mut field_optBinaryVal = ::std::option::Option::None;
+        let mut field_optStringVal = ::std::option::Option::None;
+        let mut field_optDoubleVal = ::std::option::Option::None;
+        let mut field_optFloatVal = ::std::option::Option::None;
+        let mut field_optI64Val = ::std::option::Option::None;
+        let mut field_optI32Val = ::std::option::Option::None;
+        let mut field_optI16Val = ::std::option::Option::None;
+        let mut field_optByteVal = ::std::option::Option::None;
+        let mut field_optBoolVal = ::std::option::Option::None;
+        let mut field_lateStructVal = ::std::option::Option::None;
+        let mut field_unionVal = ::std::option::Option::None;
+        let mut field_structVal = ::std::option::Option::None;
+        let mut field_enumVal = ::std::option::Option::None;
+        let mut field_binaryVal = ::std::option::Option::None;
+        let mut field_stringVal = ::std::option::Option::None;
+        let mut field_doubleVal = ::std::option::Option::None;
+        let mut field_floatVal = ::std::option::Option::None;
+        let mut field_i64Val = ::std::option::Option::None;
+        let mut field_i32Val = ::std::option::Option::None;
+        let mut field_i16Val = ::std::option::Option::None;
+        let mut field_byteVal = ::std::option::Option::None;
+        let mut field_boolVal = ::std::option::Option::None;
+        let mut field_structWithFieldCustomDefault = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::Struct, -32) => field_structWithCustomDefault = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -31) => field_i32WithCustomDefault = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -30) => field_mapMap = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -29) => field_listMap = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -28) => field_optMapVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -27) => field_optSetVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -26) => field_optListVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -25) => field_optLateStructVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -24) => field_optStructVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -23) => field_optEnumVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -22) => field_optBinaryVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -21) => field_optStringVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -20) => field_optDoubleVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -19) => field_optFloatVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -18) => field_optI64Val = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -17) => field_optI32Val = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -16) => field_optI16Val = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -15) => field_optByteVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -14) => field_optBoolVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -13) => field_lateStructVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -12) => field_unionVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -11) => field_structVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -10) => field_enumVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -9) => field_binaryVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -8) => field_stringVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -7) => field_doubleVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -6) => field_floatVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -5) => field_i64Val = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -4) => field_i32Val = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -3) => field_i16Val = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -2) => field_byteVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -1) => field_boolVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, 1) => field_structWithFieldCustomDefault = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            structWithCustomDefault: field_structWithCustomDefault.unwrap_or_default(),
+            i32WithCustomDefault: field_i32WithCustomDefault.unwrap_or_default(),
+            mapMap: field_mapMap.unwrap_or_default(),
+            listMap: field_listMap.unwrap_or_default(),
+            optMapVal: field_optMapVal.unwrap_or_default(),
+            optSetVal: field_optSetVal.unwrap_or_default(),
+            optListVal: field_optListVal.unwrap_or_default(),
+            optLateStructVal: field_optLateStructVal.unwrap_or_default(),
+            optStructVal: field_optStructVal.unwrap_or_default(),
+            optEnumVal: field_optEnumVal.unwrap_or_default(),
+            optBinaryVal: field_optBinaryVal.unwrap_or_default(),
+            optStringVal: field_optStringVal.unwrap_or_default(),
+            optDoubleVal: field_optDoubleVal.unwrap_or_default(),
+            optFloatVal: field_optFloatVal.unwrap_or_default(),
+            optI64Val: field_optI64Val.unwrap_or_default(),
+            optI32Val: field_optI32Val.unwrap_or_default(),
+            optI16Val: field_optI16Val.unwrap_or_default(),
+            optByteVal: field_optByteVal.unwrap_or_default(),
+            optBoolVal: field_optBoolVal.unwrap_or_default(),
+            lateStructVal: field_lateStructVal.unwrap_or_default(),
+            unionVal: field_unionVal.unwrap_or_default(),
+            structVal: field_structVal.unwrap_or_default(),
+            enumVal: field_enumVal.unwrap_or_default(),
+            binaryVal: field_binaryVal.unwrap_or_default(),
+            stringVal: field_stringVal.unwrap_or_default(),
+            doubleVal: field_doubleVal.unwrap_or_default(),
+            floatVal: field_floatVal.unwrap_or_default(),
+            i64Val: field_i64Val.unwrap_or_default(),
+            i32Val: field_i32Val.unwrap_or_default(),
+            i16Val: field_i16Val.unwrap_or_default(),
+            byteVal: field_byteVal.unwrap_or_default(),
+            boolVal: field_boolVal.unwrap_or_default(),
+            structWithFieldCustomDefault: field_structWithFieldCustomDefault.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
 
 
 #[allow(clippy::derivable_impls)]
@@ -3277,1656 +5138,6 @@ where
 }
 
 
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyStructField10Patch {
-    fn default() -> Self {
-        Self {
-            assign: ::std::option::Option::None,
-            clear: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::MyStructField10Patch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("MyStructField10Patch")
-            .field("assign", &self.assign)
-            .field("clear", &self.clear)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::MyStructField10Patch {}
-unsafe impl ::std::marker::Sync for self::MyStructField10Patch {}
-impl ::std::marker::Unpin for self::MyStructField10Patch {}
-
-impl ::fbthrift::GetTType for self::MyStructField10Patch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::MyStructField10Patch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyStructField10Patch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::MyStructField10Patch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyStructField10Patch");
-        if let ::std::option::Option::Some(some) = &self.assign {
-            p.write_field_begin("assign", ::fbthrift::TType::I32, 1);
-            ::fbthrift::Serialize::write(some, p);
-            p.write_field_end();
-        }
-        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
-        ::fbthrift::Serialize::write(&self.clear, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::MyStructField10Patch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("assign", ::fbthrift::TType::I32, 1),
-            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
-        ];
-        let mut field_assign = ::std::option::Option::None;
-        let mut field_clear = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::I32, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            assign: field_assign,
-            clear: field_clear.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
-
-
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyStructField23Patch {
-    fn default() -> Self {
-        Self {
-            assign: ::std::option::Option::None,
-            clear: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::MyStructField23Patch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("MyStructField23Patch")
-            .field("assign", &self.assign)
-            .field("clear", &self.clear)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::MyStructField23Patch {}
-unsafe impl ::std::marker::Sync for self::MyStructField23Patch {}
-impl ::std::marker::Unpin for self::MyStructField23Patch {}
-
-impl ::fbthrift::GetTType for self::MyStructField23Patch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::MyStructField23Patch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyStructField23Patch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::MyStructField23Patch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyStructField23Patch");
-        if let ::std::option::Option::Some(some) = &self.assign {
-            p.write_field_begin("assign", ::fbthrift::TType::I32, 1);
-            ::fbthrift::Serialize::write(some, p);
-            p.write_field_end();
-        }
-        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
-        ::fbthrift::Serialize::write(&self.clear, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::MyStructField23Patch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("assign", ::fbthrift::TType::I32, 1),
-            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
-        ];
-        let mut field_assign = ::std::option::Option::None;
-        let mut field_clear = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::I32, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            assign: field_assign,
-            clear: field_clear.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
-
-
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyStructField26Patch {
-    fn default() -> Self {
-        Self {
-            assign: ::std::option::Option::None,
-            clear: ::std::default::Default::default(),
-            patch: ::std::default::Default::default(),
-            remove: ::std::default::Default::default(),
-            prepend: ::std::default::Default::default(),
-            append: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::MyStructField26Patch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("MyStructField26Patch")
-            .field("assign", &self.assign)
-            .field("clear", &self.clear)
-            .field("patch", &self.patch)
-            .field("remove", &self.remove)
-            .field("prepend", &self.prepend)
-            .field("append", &self.append)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::MyStructField26Patch {}
-unsafe impl ::std::marker::Sync for self::MyStructField26Patch {}
-impl ::std::marker::Unpin for self::MyStructField26Patch {}
-
-impl ::fbthrift::GetTType for self::MyStructField26Patch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::MyStructField26Patch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyStructField26Patch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::MyStructField26Patch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyStructField26Patch");
-        if let ::std::option::Option::Some(some) = &self.assign {
-            p.write_field_begin("assign", ::fbthrift::TType::List, 1);
-            ::fbthrift::Serialize::write(some, p);
-            p.write_field_end();
-        }
-        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
-        ::fbthrift::Serialize::write(&self.clear, p);
-        p.write_field_end();
-        p.write_field_begin("patch", ::fbthrift::TType::Map, 3);
-        ::fbthrift::Serialize::write(&self.patch, p);
-        p.write_field_end();
-        p.write_field_begin("remove", ::fbthrift::TType::List, 7);
-        ::fbthrift::Serialize::write(&self.remove, p);
-        p.write_field_end();
-        p.write_field_begin("prepend", ::fbthrift::TType::List, 8);
-        ::fbthrift::Serialize::write(&self.prepend, p);
-        p.write_field_end();
-        p.write_field_begin("append", ::fbthrift::TType::List, 9);
-        ::fbthrift::Serialize::write(&self.append, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::MyStructField26Patch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("append", ::fbthrift::TType::List, 9),
-            ::fbthrift::Field::new("assign", ::fbthrift::TType::List, 1),
-            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
-            ::fbthrift::Field::new("patch", ::fbthrift::TType::Map, 3),
-            ::fbthrift::Field::new("prepend", ::fbthrift::TType::List, 8),
-            ::fbthrift::Field::new("remove", ::fbthrift::TType::List, 7),
-        ];
-        let mut field_assign = ::std::option::Option::None;
-        let mut field_clear = ::std::option::Option::None;
-        let mut field_patch = ::std::option::Option::None;
-        let mut field_remove = ::std::option::Option::None;
-        let mut field_prepend = ::std::option::Option::None;
-        let mut field_append = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::List, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 3) => field_patch = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::List, 7) => field_remove = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::List, 8) => field_prepend = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::List, 9) => field_append = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            assign: field_assign,
-            clear: field_clear.unwrap_or_default(),
-            patch: field_patch.unwrap_or_default(),
-            remove: field_remove.unwrap_or_default(),
-            prepend: field_prepend.unwrap_or_default(),
-            append: field_append.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
-
-
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyStructField27Patch {
-    fn default() -> Self {
-        Self {
-            assign: ::std::option::Option::None,
-            clear: ::std::default::Default::default(),
-            remove: ::std::default::Default::default(),
-            add: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::MyStructField27Patch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("MyStructField27Patch")
-            .field("assign", &self.assign)
-            .field("clear", &self.clear)
-            .field("remove", &self.remove)
-            .field("add", &self.add)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::MyStructField27Patch {}
-unsafe impl ::std::marker::Sync for self::MyStructField27Patch {}
-impl ::std::marker::Unpin for self::MyStructField27Patch {}
-
-impl ::fbthrift::GetTType for self::MyStructField27Patch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::MyStructField27Patch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyStructField27Patch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::MyStructField27Patch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyStructField27Patch");
-        if let ::std::option::Option::Some(some) = &self.assign {
-            p.write_field_begin("assign", ::fbthrift::TType::Set, 1);
-            ::fbthrift::Serialize::write(some, p);
-            p.write_field_end();
-        }
-        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
-        ::fbthrift::Serialize::write(&self.clear, p);
-        p.write_field_end();
-        p.write_field_begin("remove", ::fbthrift::TType::Set, 7);
-        ::fbthrift::Serialize::write(&self.remove, p);
-        p.write_field_end();
-        p.write_field_begin("add", ::fbthrift::TType::Set, 8);
-        ::fbthrift::Serialize::write(&self.add, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::MyStructField27Patch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("add", ::fbthrift::TType::Set, 8),
-            ::fbthrift::Field::new("assign", ::fbthrift::TType::Set, 1),
-            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
-            ::fbthrift::Field::new("remove", ::fbthrift::TType::Set, 7),
-        ];
-        let mut field_assign = ::std::option::Option::None;
-        let mut field_clear = ::std::option::Option::None;
-        let mut field_remove = ::std::option::Option::None;
-        let mut field_add = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Set, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Set, 7) => field_remove = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Set, 8) => field_add = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            assign: field_assign,
-            clear: field_clear.unwrap_or_default(),
-            remove: field_remove.unwrap_or_default(),
-            add: field_add.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
-
-
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyStructField28Patch {
-    fn default() -> Self {
-        Self {
-            assign: ::std::option::Option::None,
-            clear: ::std::default::Default::default(),
-            patchPrior: ::std::default::Default::default(),
-            add: ::std::default::Default::default(),
-            patch: ::std::default::Default::default(),
-            remove: ::std::default::Default::default(),
-            put: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::MyStructField28Patch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("MyStructField28Patch")
-            .field("assign", &self.assign)
-            .field("clear", &self.clear)
-            .field("patchPrior", &self.patchPrior)
-            .field("add", &self.add)
-            .field("patch", &self.patch)
-            .field("remove", &self.remove)
-            .field("put", &self.put)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::MyStructField28Patch {}
-unsafe impl ::std::marker::Sync for self::MyStructField28Patch {}
-impl ::std::marker::Unpin for self::MyStructField28Patch {}
-
-impl ::fbthrift::GetTType for self::MyStructField28Patch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::MyStructField28Patch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyStructField28Patch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::MyStructField28Patch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyStructField28Patch");
-        if let ::std::option::Option::Some(some) = &self.assign {
-            p.write_field_begin("assign", ::fbthrift::TType::Map, 1);
-            ::fbthrift::Serialize::write(some, p);
-            p.write_field_end();
-        }
-        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
-        ::fbthrift::Serialize::write(&self.clear, p);
-        p.write_field_end();
-        p.write_field_begin("patchPrior", ::fbthrift::TType::Map, 3);
-        ::fbthrift::Serialize::write(&self.patchPrior, p);
-        p.write_field_end();
-        p.write_field_begin("add", ::fbthrift::TType::Map, 5);
-        ::fbthrift::Serialize::write(&self.add, p);
-        p.write_field_end();
-        p.write_field_begin("patch", ::fbthrift::TType::Map, 6);
-        ::fbthrift::Serialize::write(&self.patch, p);
-        p.write_field_end();
-        p.write_field_begin("remove", ::fbthrift::TType::Set, 7);
-        ::fbthrift::Serialize::write(&self.remove, p);
-        p.write_field_end();
-        p.write_field_begin("put", ::fbthrift::TType::Map, 9);
-        ::fbthrift::Serialize::write(&self.put, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::MyStructField28Patch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("add", ::fbthrift::TType::Map, 5),
-            ::fbthrift::Field::new("assign", ::fbthrift::TType::Map, 1),
-            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
-            ::fbthrift::Field::new("patch", ::fbthrift::TType::Map, 6),
-            ::fbthrift::Field::new("patchPrior", ::fbthrift::TType::Map, 3),
-            ::fbthrift::Field::new("put", ::fbthrift::TType::Map, 9),
-            ::fbthrift::Field::new("remove", ::fbthrift::TType::Set, 7),
-        ];
-        let mut field_assign = ::std::option::Option::None;
-        let mut field_clear = ::std::option::Option::None;
-        let mut field_patchPrior = ::std::option::Option::None;
-        let mut field_add = ::std::option::Option::None;
-        let mut field_patch = ::std::option::Option::None;
-        let mut field_remove = ::std::option::Option::None;
-        let mut field_put = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Map, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 3) => field_patchPrior = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 5) => field_add = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 6) => field_patch = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Set, 7) => field_remove = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 9) => field_put = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            assign: field_assign,
-            clear: field_clear.unwrap_or_default(),
-            patchPrior: field_patchPrior.unwrap_or_default(),
-            add: field_add.unwrap_or_default(),
-            patch: field_patch.unwrap_or_default(),
-            remove: field_remove.unwrap_or_default(),
-            put: field_put.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
-
-
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyStructField29Patch {
-    fn default() -> Self {
-        Self {
-            assign: ::std::option::Option::None,
-            clear: ::std::default::Default::default(),
-            patch: ::std::default::Default::default(),
-            remove: ::std::default::Default::default(),
-            prepend: ::std::default::Default::default(),
-            append: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::MyStructField29Patch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("MyStructField29Patch")
-            .field("assign", &self.assign)
-            .field("clear", &self.clear)
-            .field("patch", &self.patch)
-            .field("remove", &self.remove)
-            .field("prepend", &self.prepend)
-            .field("append", &self.append)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::MyStructField29Patch {}
-unsafe impl ::std::marker::Sync for self::MyStructField29Patch {}
-impl ::std::marker::Unpin for self::MyStructField29Patch {}
-
-impl ::fbthrift::GetTType for self::MyStructField29Patch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::MyStructField29Patch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyStructField29Patch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::MyStructField29Patch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyStructField29Patch");
-        if let ::std::option::Option::Some(some) = &self.assign {
-            p.write_field_begin("assign", ::fbthrift::TType::List, 1);
-            ::fbthrift::Serialize::write(some, p);
-            p.write_field_end();
-        }
-        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
-        ::fbthrift::Serialize::write(&self.clear, p);
-        p.write_field_end();
-        p.write_field_begin("patch", ::fbthrift::TType::Map, 3);
-        ::fbthrift::Serialize::write(&self.patch, p);
-        p.write_field_end();
-        p.write_field_begin("remove", ::fbthrift::TType::List, 7);
-        ::fbthrift::Serialize::write(&self.remove, p);
-        p.write_field_end();
-        p.write_field_begin("prepend", ::fbthrift::TType::List, 8);
-        ::fbthrift::Serialize::write(&self.prepend, p);
-        p.write_field_end();
-        p.write_field_begin("append", ::fbthrift::TType::List, 9);
-        ::fbthrift::Serialize::write(&self.append, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::MyStructField29Patch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("append", ::fbthrift::TType::List, 9),
-            ::fbthrift::Field::new("assign", ::fbthrift::TType::List, 1),
-            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
-            ::fbthrift::Field::new("patch", ::fbthrift::TType::Map, 3),
-            ::fbthrift::Field::new("prepend", ::fbthrift::TType::List, 8),
-            ::fbthrift::Field::new("remove", ::fbthrift::TType::List, 7),
-        ];
-        let mut field_assign = ::std::option::Option::None;
-        let mut field_clear = ::std::option::Option::None;
-        let mut field_patch = ::std::option::Option::None;
-        let mut field_remove = ::std::option::Option::None;
-        let mut field_prepend = ::std::option::Option::None;
-        let mut field_append = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::List, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 3) => field_patch = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::List, 7) => field_remove = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::List, 8) => field_prepend = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::List, 9) => field_append = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            assign: field_assign,
-            clear: field_clear.unwrap_or_default(),
-            patch: field_patch.unwrap_or_default(),
-            remove: field_remove.unwrap_or_default(),
-            prepend: field_prepend.unwrap_or_default(),
-            append: field_append.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
-
-
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyStructField29Patch1 {
-    fn default() -> Self {
-        Self {
-            assign: ::std::option::Option::None,
-            clear: ::std::default::Default::default(),
-            patchPrior: ::std::default::Default::default(),
-            add: ::std::default::Default::default(),
-            patch: ::std::default::Default::default(),
-            remove: ::std::default::Default::default(),
-            put: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::MyStructField29Patch1 {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("MyStructField29Patch1")
-            .field("assign", &self.assign)
-            .field("clear", &self.clear)
-            .field("patchPrior", &self.patchPrior)
-            .field("add", &self.add)
-            .field("patch", &self.patch)
-            .field("remove", &self.remove)
-            .field("put", &self.put)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::MyStructField29Patch1 {}
-unsafe impl ::std::marker::Sync for self::MyStructField29Patch1 {}
-impl ::std::marker::Unpin for self::MyStructField29Patch1 {}
-
-impl ::fbthrift::GetTType for self::MyStructField29Patch1 {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::MyStructField29Patch1 {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyStructField29Patch1"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::MyStructField29Patch1
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyStructField29Patch1");
-        if let ::std::option::Option::Some(some) = &self.assign {
-            p.write_field_begin("assign", ::fbthrift::TType::Map, 1);
-            ::fbthrift::Serialize::write(some, p);
-            p.write_field_end();
-        }
-        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
-        ::fbthrift::Serialize::write(&self.clear, p);
-        p.write_field_end();
-        p.write_field_begin("patchPrior", ::fbthrift::TType::Map, 3);
-        ::fbthrift::Serialize::write(&self.patchPrior, p);
-        p.write_field_end();
-        p.write_field_begin("add", ::fbthrift::TType::Map, 5);
-        ::fbthrift::Serialize::write(&self.add, p);
-        p.write_field_end();
-        p.write_field_begin("patch", ::fbthrift::TType::Map, 6);
-        ::fbthrift::Serialize::write(&self.patch, p);
-        p.write_field_end();
-        p.write_field_begin("remove", ::fbthrift::TType::Set, 7);
-        ::fbthrift::Serialize::write(&self.remove, p);
-        p.write_field_end();
-        p.write_field_begin("put", ::fbthrift::TType::Map, 9);
-        ::fbthrift::Serialize::write(&self.put, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::MyStructField29Patch1
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("add", ::fbthrift::TType::Map, 5),
-            ::fbthrift::Field::new("assign", ::fbthrift::TType::Map, 1),
-            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
-            ::fbthrift::Field::new("patch", ::fbthrift::TType::Map, 6),
-            ::fbthrift::Field::new("patchPrior", ::fbthrift::TType::Map, 3),
-            ::fbthrift::Field::new("put", ::fbthrift::TType::Map, 9),
-            ::fbthrift::Field::new("remove", ::fbthrift::TType::Set, 7),
-        ];
-        let mut field_assign = ::std::option::Option::None;
-        let mut field_clear = ::std::option::Option::None;
-        let mut field_patchPrior = ::std::option::Option::None;
-        let mut field_add = ::std::option::Option::None;
-        let mut field_patch = ::std::option::Option::None;
-        let mut field_remove = ::std::option::Option::None;
-        let mut field_put = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Map, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 3) => field_patchPrior = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 5) => field_add = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 6) => field_patch = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Set, 7) => field_remove = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 9) => field_put = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            assign: field_assign,
-            clear: field_clear.unwrap_or_default(),
-            patchPrior: field_patchPrior.unwrap_or_default(),
-            add: field_add.unwrap_or_default(),
-            patch: field_patch.unwrap_or_default(),
-            remove: field_remove.unwrap_or_default(),
-            put: field_put.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
-
-
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyStructField30Patch {
-    fn default() -> Self {
-        Self {
-            assign: ::std::option::Option::None,
-            clear: ::std::default::Default::default(),
-            patchPrior: ::std::default::Default::default(),
-            add: ::std::default::Default::default(),
-            patch: ::std::default::Default::default(),
-            remove: ::std::default::Default::default(),
-            put: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::MyStructField30Patch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("MyStructField30Patch")
-            .field("assign", &self.assign)
-            .field("clear", &self.clear)
-            .field("patchPrior", &self.patchPrior)
-            .field("add", &self.add)
-            .field("patch", &self.patch)
-            .field("remove", &self.remove)
-            .field("put", &self.put)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::MyStructField30Patch {}
-unsafe impl ::std::marker::Sync for self::MyStructField30Patch {}
-impl ::std::marker::Unpin for self::MyStructField30Patch {}
-
-impl ::fbthrift::GetTType for self::MyStructField30Patch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::MyStructField30Patch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyStructField30Patch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::MyStructField30Patch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyStructField30Patch");
-        if let ::std::option::Option::Some(some) = &self.assign {
-            p.write_field_begin("assign", ::fbthrift::TType::Map, 1);
-            ::fbthrift::Serialize::write(some, p);
-            p.write_field_end();
-        }
-        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
-        ::fbthrift::Serialize::write(&self.clear, p);
-        p.write_field_end();
-        p.write_field_begin("patchPrior", ::fbthrift::TType::Map, 3);
-        ::fbthrift::Serialize::write(&self.patchPrior, p);
-        p.write_field_end();
-        p.write_field_begin("add", ::fbthrift::TType::Map, 5);
-        ::fbthrift::Serialize::write(&self.add, p);
-        p.write_field_end();
-        p.write_field_begin("patch", ::fbthrift::TType::Map, 6);
-        ::fbthrift::Serialize::write(&self.patch, p);
-        p.write_field_end();
-        p.write_field_begin("remove", ::fbthrift::TType::Set, 7);
-        ::fbthrift::Serialize::write(&self.remove, p);
-        p.write_field_end();
-        p.write_field_begin("put", ::fbthrift::TType::Map, 9);
-        ::fbthrift::Serialize::write(&self.put, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::MyStructField30Patch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("add", ::fbthrift::TType::Map, 5),
-            ::fbthrift::Field::new("assign", ::fbthrift::TType::Map, 1),
-            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
-            ::fbthrift::Field::new("patch", ::fbthrift::TType::Map, 6),
-            ::fbthrift::Field::new("patchPrior", ::fbthrift::TType::Map, 3),
-            ::fbthrift::Field::new("put", ::fbthrift::TType::Map, 9),
-            ::fbthrift::Field::new("remove", ::fbthrift::TType::Set, 7),
-        ];
-        let mut field_assign = ::std::option::Option::None;
-        let mut field_clear = ::std::option::Option::None;
-        let mut field_patchPrior = ::std::option::Option::None;
-        let mut field_add = ::std::option::Option::None;
-        let mut field_patch = ::std::option::Option::None;
-        let mut field_remove = ::std::option::Option::None;
-        let mut field_put = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Map, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 3) => field_patchPrior = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 5) => field_add = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 6) => field_patch = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Set, 7) => field_remove = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 9) => field_put = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            assign: field_assign,
-            clear: field_clear.unwrap_or_default(),
-            patchPrior: field_patchPrior.unwrap_or_default(),
-            add: field_add.unwrap_or_default(),
-            patch: field_patch.unwrap_or_default(),
-            remove: field_remove.unwrap_or_default(),
-            put: field_put.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
-
-
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyStructField30Patch1 {
-    fn default() -> Self {
-        Self {
-            assign: ::std::option::Option::None,
-            clear: ::std::default::Default::default(),
-            patchPrior: ::std::default::Default::default(),
-            add: ::std::default::Default::default(),
-            patch: ::std::default::Default::default(),
-            remove: ::std::default::Default::default(),
-            put: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::MyStructField30Patch1 {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("MyStructField30Patch1")
-            .field("assign", &self.assign)
-            .field("clear", &self.clear)
-            .field("patchPrior", &self.patchPrior)
-            .field("add", &self.add)
-            .field("patch", &self.patch)
-            .field("remove", &self.remove)
-            .field("put", &self.put)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::MyStructField30Patch1 {}
-unsafe impl ::std::marker::Sync for self::MyStructField30Patch1 {}
-impl ::std::marker::Unpin for self::MyStructField30Patch1 {}
-
-impl ::fbthrift::GetTType for self::MyStructField30Patch1 {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::MyStructField30Patch1 {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyStructField30Patch1"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::MyStructField30Patch1
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyStructField30Patch1");
-        if let ::std::option::Option::Some(some) = &self.assign {
-            p.write_field_begin("assign", ::fbthrift::TType::Map, 1);
-            ::fbthrift::Serialize::write(some, p);
-            p.write_field_end();
-        }
-        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
-        ::fbthrift::Serialize::write(&self.clear, p);
-        p.write_field_end();
-        p.write_field_begin("patchPrior", ::fbthrift::TType::Map, 3);
-        ::fbthrift::Serialize::write(&self.patchPrior, p);
-        p.write_field_end();
-        p.write_field_begin("add", ::fbthrift::TType::Map, 5);
-        ::fbthrift::Serialize::write(&self.add, p);
-        p.write_field_end();
-        p.write_field_begin("patch", ::fbthrift::TType::Map, 6);
-        ::fbthrift::Serialize::write(&self.patch, p);
-        p.write_field_end();
-        p.write_field_begin("remove", ::fbthrift::TType::Set, 7);
-        ::fbthrift::Serialize::write(&self.remove, p);
-        p.write_field_end();
-        p.write_field_begin("put", ::fbthrift::TType::Map, 9);
-        ::fbthrift::Serialize::write(&self.put, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::MyStructField30Patch1
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("add", ::fbthrift::TType::Map, 5),
-            ::fbthrift::Field::new("assign", ::fbthrift::TType::Map, 1),
-            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
-            ::fbthrift::Field::new("patch", ::fbthrift::TType::Map, 6),
-            ::fbthrift::Field::new("patchPrior", ::fbthrift::TType::Map, 3),
-            ::fbthrift::Field::new("put", ::fbthrift::TType::Map, 9),
-            ::fbthrift::Field::new("remove", ::fbthrift::TType::Set, 7),
-        ];
-        let mut field_assign = ::std::option::Option::None;
-        let mut field_clear = ::std::option::Option::None;
-        let mut field_patchPrior = ::std::option::Option::None;
-        let mut field_add = ::std::option::Option::None;
-        let mut field_patch = ::std::option::Option::None;
-        let mut field_remove = ::std::option::Option::None;
-        let mut field_put = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Map, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 3) => field_patchPrior = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 5) => field_add = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 6) => field_patch = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Set, 7) => field_remove = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Map, 9) => field_put = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            assign: field_assign,
-            clear: field_clear.unwrap_or_default(),
-            patchPrior: field_patchPrior.unwrap_or_default(),
-            add: field_add.unwrap_or_default(),
-            patch: field_patch.unwrap_or_default(),
-            remove: field_remove.unwrap_or_default(),
-            put: field_put.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
-
-
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyStructFieldPatch {
-    fn default() -> Self {
-        Self {
-            structWithCustomDefault: ::std::default::Default::default(),
-            i32WithCustomDefault: ::std::default::Default::default(),
-            mapMap: ::std::default::Default::default(),
-            listMap: ::std::default::Default::default(),
-            optMapVal: ::std::default::Default::default(),
-            optSetVal: ::std::default::Default::default(),
-            optListVal: ::std::default::Default::default(),
-            optLateStructVal: ::std::default::Default::default(),
-            optStructVal: ::std::default::Default::default(),
-            optEnumVal: ::std::default::Default::default(),
-            optBinaryVal: ::std::default::Default::default(),
-            optStringVal: ::std::default::Default::default(),
-            optDoubleVal: ::std::default::Default::default(),
-            optFloatVal: ::std::default::Default::default(),
-            optI64Val: ::std::default::Default::default(),
-            optI32Val: ::std::default::Default::default(),
-            optI16Val: ::std::default::Default::default(),
-            optByteVal: ::std::default::Default::default(),
-            optBoolVal: ::std::default::Default::default(),
-            lateStructVal: ::std::default::Default::default(),
-            unionVal: ::std::default::Default::default(),
-            structVal: ::std::default::Default::default(),
-            enumVal: ::std::default::Default::default(),
-            binaryVal: ::std::default::Default::default(),
-            stringVal: ::std::default::Default::default(),
-            doubleVal: ::std::default::Default::default(),
-            floatVal: ::std::default::Default::default(),
-            i64Val: ::std::default::Default::default(),
-            i32Val: ::std::default::Default::default(),
-            i16Val: ::std::default::Default::default(),
-            byteVal: ::std::default::Default::default(),
-            boolVal: ::std::default::Default::default(),
-            structWithFieldCustomDefault: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::MyStructFieldPatch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("MyStructFieldPatch")
-            .field("structWithCustomDefault", &self.structWithCustomDefault)
-            .field("i32WithCustomDefault", &self.i32WithCustomDefault)
-            .field("mapMap", &self.mapMap)
-            .field("listMap", &self.listMap)
-            .field("optMapVal", &self.optMapVal)
-            .field("optSetVal", &self.optSetVal)
-            .field("optListVal", &self.optListVal)
-            .field("optLateStructVal", &self.optLateStructVal)
-            .field("optStructVal", &self.optStructVal)
-            .field("optEnumVal", &self.optEnumVal)
-            .field("optBinaryVal", &self.optBinaryVal)
-            .field("optStringVal", &self.optStringVal)
-            .field("optDoubleVal", &self.optDoubleVal)
-            .field("optFloatVal", &self.optFloatVal)
-            .field("optI64Val", &self.optI64Val)
-            .field("optI32Val", &self.optI32Val)
-            .field("optI16Val", &self.optI16Val)
-            .field("optByteVal", &self.optByteVal)
-            .field("optBoolVal", &self.optBoolVal)
-            .field("lateStructVal", &self.lateStructVal)
-            .field("unionVal", &self.unionVal)
-            .field("structVal", &self.structVal)
-            .field("enumVal", &self.enumVal)
-            .field("binaryVal", &self.binaryVal)
-            .field("stringVal", &self.stringVal)
-            .field("doubleVal", &self.doubleVal)
-            .field("floatVal", &self.floatVal)
-            .field("i64Val", &self.i64Val)
-            .field("i32Val", &self.i32Val)
-            .field("i16Val", &self.i16Val)
-            .field("byteVal", &self.byteVal)
-            .field("boolVal", &self.boolVal)
-            .field("structWithFieldCustomDefault", &self.structWithFieldCustomDefault)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::MyStructFieldPatch {}
-unsafe impl ::std::marker::Sync for self::MyStructFieldPatch {}
-impl ::std::marker::Unpin for self::MyStructFieldPatch {}
-
-impl ::fbthrift::GetTType for self::MyStructFieldPatch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::MyStructFieldPatch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyStructFieldPatch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::MyStructFieldPatch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyStructFieldPatch");
-        p.write_field_begin("structWithCustomDefault", ::fbthrift::TType::Struct, -32);
-        ::fbthrift::Serialize::write(&self.structWithCustomDefault, p);
-        p.write_field_end();
-        p.write_field_begin("i32WithCustomDefault", ::fbthrift::TType::Struct, -31);
-        ::fbthrift::Serialize::write(&self.i32WithCustomDefault, p);
-        p.write_field_end();
-        p.write_field_begin("mapMap", ::fbthrift::TType::Struct, -30);
-        ::fbthrift::Serialize::write(&self.mapMap, p);
-        p.write_field_end();
-        p.write_field_begin("listMap", ::fbthrift::TType::Struct, -29);
-        ::fbthrift::Serialize::write(&self.listMap, p);
-        p.write_field_end();
-        p.write_field_begin("optMapVal", ::fbthrift::TType::Struct, -28);
-        ::fbthrift::Serialize::write(&self.optMapVal, p);
-        p.write_field_end();
-        p.write_field_begin("optSetVal", ::fbthrift::TType::Struct, -27);
-        ::fbthrift::Serialize::write(&self.optSetVal, p);
-        p.write_field_end();
-        p.write_field_begin("optListVal", ::fbthrift::TType::Struct, -26);
-        ::fbthrift::Serialize::write(&self.optListVal, p);
-        p.write_field_end();
-        p.write_field_begin("optLateStructVal", ::fbthrift::TType::Struct, -25);
-        ::fbthrift::Serialize::write(&self.optLateStructVal, p);
-        p.write_field_end();
-        p.write_field_begin("optStructVal", ::fbthrift::TType::Struct, -24);
-        ::fbthrift::Serialize::write(&self.optStructVal, p);
-        p.write_field_end();
-        p.write_field_begin("optEnumVal", ::fbthrift::TType::Struct, -23);
-        ::fbthrift::Serialize::write(&self.optEnumVal, p);
-        p.write_field_end();
-        p.write_field_begin("optBinaryVal", ::fbthrift::TType::Struct, -22);
-        ::fbthrift::Serialize::write(&self.optBinaryVal, p);
-        p.write_field_end();
-        p.write_field_begin("optStringVal", ::fbthrift::TType::Struct, -21);
-        ::fbthrift::Serialize::write(&self.optStringVal, p);
-        p.write_field_end();
-        p.write_field_begin("optDoubleVal", ::fbthrift::TType::Struct, -20);
-        ::fbthrift::Serialize::write(&self.optDoubleVal, p);
-        p.write_field_end();
-        p.write_field_begin("optFloatVal", ::fbthrift::TType::Struct, -19);
-        ::fbthrift::Serialize::write(&self.optFloatVal, p);
-        p.write_field_end();
-        p.write_field_begin("optI64Val", ::fbthrift::TType::Struct, -18);
-        ::fbthrift::Serialize::write(&self.optI64Val, p);
-        p.write_field_end();
-        p.write_field_begin("optI32Val", ::fbthrift::TType::Struct, -17);
-        ::fbthrift::Serialize::write(&self.optI32Val, p);
-        p.write_field_end();
-        p.write_field_begin("optI16Val", ::fbthrift::TType::Struct, -16);
-        ::fbthrift::Serialize::write(&self.optI16Val, p);
-        p.write_field_end();
-        p.write_field_begin("optByteVal", ::fbthrift::TType::Struct, -15);
-        ::fbthrift::Serialize::write(&self.optByteVal, p);
-        p.write_field_end();
-        p.write_field_begin("optBoolVal", ::fbthrift::TType::Struct, -14);
-        ::fbthrift::Serialize::write(&self.optBoolVal, p);
-        p.write_field_end();
-        p.write_field_begin("lateStructVal", ::fbthrift::TType::Struct, -13);
-        ::fbthrift::Serialize::write(&self.lateStructVal, p);
-        p.write_field_end();
-        p.write_field_begin("unionVal", ::fbthrift::TType::Struct, -12);
-        ::fbthrift::Serialize::write(&self.unionVal, p);
-        p.write_field_end();
-        p.write_field_begin("structVal", ::fbthrift::TType::Struct, -11);
-        ::fbthrift::Serialize::write(&self.structVal, p);
-        p.write_field_end();
-        p.write_field_begin("enumVal", ::fbthrift::TType::Struct, -10);
-        ::fbthrift::Serialize::write(&self.enumVal, p);
-        p.write_field_end();
-        p.write_field_begin("binaryVal", ::fbthrift::TType::Struct, -9);
-        ::fbthrift::Serialize::write(&self.binaryVal, p);
-        p.write_field_end();
-        p.write_field_begin("stringVal", ::fbthrift::TType::Struct, -8);
-        ::fbthrift::Serialize::write(&self.stringVal, p);
-        p.write_field_end();
-        p.write_field_begin("doubleVal", ::fbthrift::TType::Struct, -7);
-        ::fbthrift::Serialize::write(&self.doubleVal, p);
-        p.write_field_end();
-        p.write_field_begin("floatVal", ::fbthrift::TType::Struct, -6);
-        ::fbthrift::Serialize::write(&self.floatVal, p);
-        p.write_field_end();
-        p.write_field_begin("i64Val", ::fbthrift::TType::Struct, -5);
-        ::fbthrift::Serialize::write(&self.i64Val, p);
-        p.write_field_end();
-        p.write_field_begin("i32Val", ::fbthrift::TType::Struct, -4);
-        ::fbthrift::Serialize::write(&self.i32Val, p);
-        p.write_field_end();
-        p.write_field_begin("i16Val", ::fbthrift::TType::Struct, -3);
-        ::fbthrift::Serialize::write(&self.i16Val, p);
-        p.write_field_end();
-        p.write_field_begin("byteVal", ::fbthrift::TType::Struct, -2);
-        ::fbthrift::Serialize::write(&self.byteVal, p);
-        p.write_field_end();
-        p.write_field_begin("boolVal", ::fbthrift::TType::Struct, -1);
-        ::fbthrift::Serialize::write(&self.boolVal, p);
-        p.write_field_end();
-        p.write_field_begin("structWithFieldCustomDefault", ::fbthrift::TType::Struct, 1);
-        ::fbthrift::Serialize::write(&self.structWithFieldCustomDefault, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::MyStructFieldPatch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("binaryVal", ::fbthrift::TType::Struct, -9),
-            ::fbthrift::Field::new("boolVal", ::fbthrift::TType::Struct, -1),
-            ::fbthrift::Field::new("byteVal", ::fbthrift::TType::Struct, -2),
-            ::fbthrift::Field::new("doubleVal", ::fbthrift::TType::Struct, -7),
-            ::fbthrift::Field::new("enumVal", ::fbthrift::TType::Struct, -10),
-            ::fbthrift::Field::new("floatVal", ::fbthrift::TType::Struct, -6),
-            ::fbthrift::Field::new("i16Val", ::fbthrift::TType::Struct, -3),
-            ::fbthrift::Field::new("i32Val", ::fbthrift::TType::Struct, -4),
-            ::fbthrift::Field::new("i32WithCustomDefault", ::fbthrift::TType::Struct, -31),
-            ::fbthrift::Field::new("i64Val", ::fbthrift::TType::Struct, -5),
-            ::fbthrift::Field::new("lateStructVal", ::fbthrift::TType::Struct, -13),
-            ::fbthrift::Field::new("listMap", ::fbthrift::TType::Struct, -29),
-            ::fbthrift::Field::new("mapMap", ::fbthrift::TType::Struct, -30),
-            ::fbthrift::Field::new("optBinaryVal", ::fbthrift::TType::Struct, -22),
-            ::fbthrift::Field::new("optBoolVal", ::fbthrift::TType::Struct, -14),
-            ::fbthrift::Field::new("optByteVal", ::fbthrift::TType::Struct, -15),
-            ::fbthrift::Field::new("optDoubleVal", ::fbthrift::TType::Struct, -20),
-            ::fbthrift::Field::new("optEnumVal", ::fbthrift::TType::Struct, -23),
-            ::fbthrift::Field::new("optFloatVal", ::fbthrift::TType::Struct, -19),
-            ::fbthrift::Field::new("optI16Val", ::fbthrift::TType::Struct, -16),
-            ::fbthrift::Field::new("optI32Val", ::fbthrift::TType::Struct, -17),
-            ::fbthrift::Field::new("optI64Val", ::fbthrift::TType::Struct, -18),
-            ::fbthrift::Field::new("optLateStructVal", ::fbthrift::TType::Struct, -25),
-            ::fbthrift::Field::new("optListVal", ::fbthrift::TType::Struct, -26),
-            ::fbthrift::Field::new("optMapVal", ::fbthrift::TType::Struct, -28),
-            ::fbthrift::Field::new("optSetVal", ::fbthrift::TType::Struct, -27),
-            ::fbthrift::Field::new("optStringVal", ::fbthrift::TType::Struct, -21),
-            ::fbthrift::Field::new("optStructVal", ::fbthrift::TType::Struct, -24),
-            ::fbthrift::Field::new("stringVal", ::fbthrift::TType::Struct, -8),
-            ::fbthrift::Field::new("structVal", ::fbthrift::TType::Struct, -11),
-            ::fbthrift::Field::new("structWithCustomDefault", ::fbthrift::TType::Struct, -32),
-            ::fbthrift::Field::new("structWithFieldCustomDefault", ::fbthrift::TType::Struct, 1),
-            ::fbthrift::Field::new("unionVal", ::fbthrift::TType::Struct, -12),
-        ];
-        let mut field_structWithCustomDefault = ::std::option::Option::None;
-        let mut field_i32WithCustomDefault = ::std::option::Option::None;
-        let mut field_mapMap = ::std::option::Option::None;
-        let mut field_listMap = ::std::option::Option::None;
-        let mut field_optMapVal = ::std::option::Option::None;
-        let mut field_optSetVal = ::std::option::Option::None;
-        let mut field_optListVal = ::std::option::Option::None;
-        let mut field_optLateStructVal = ::std::option::Option::None;
-        let mut field_optStructVal = ::std::option::Option::None;
-        let mut field_optEnumVal = ::std::option::Option::None;
-        let mut field_optBinaryVal = ::std::option::Option::None;
-        let mut field_optStringVal = ::std::option::Option::None;
-        let mut field_optDoubleVal = ::std::option::Option::None;
-        let mut field_optFloatVal = ::std::option::Option::None;
-        let mut field_optI64Val = ::std::option::Option::None;
-        let mut field_optI32Val = ::std::option::Option::None;
-        let mut field_optI16Val = ::std::option::Option::None;
-        let mut field_optByteVal = ::std::option::Option::None;
-        let mut field_optBoolVal = ::std::option::Option::None;
-        let mut field_lateStructVal = ::std::option::Option::None;
-        let mut field_unionVal = ::std::option::Option::None;
-        let mut field_structVal = ::std::option::Option::None;
-        let mut field_enumVal = ::std::option::Option::None;
-        let mut field_binaryVal = ::std::option::Option::None;
-        let mut field_stringVal = ::std::option::Option::None;
-        let mut field_doubleVal = ::std::option::Option::None;
-        let mut field_floatVal = ::std::option::Option::None;
-        let mut field_i64Val = ::std::option::Option::None;
-        let mut field_i32Val = ::std::option::Option::None;
-        let mut field_i16Val = ::std::option::Option::None;
-        let mut field_byteVal = ::std::option::Option::None;
-        let mut field_boolVal = ::std::option::Option::None;
-        let mut field_structWithFieldCustomDefault = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Struct, -32) => field_structWithCustomDefault = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -31) => field_i32WithCustomDefault = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -30) => field_mapMap = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -29) => field_listMap = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -28) => field_optMapVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -27) => field_optSetVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -26) => field_optListVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -25) => field_optLateStructVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -24) => field_optStructVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -23) => field_optEnumVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -22) => field_optBinaryVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -21) => field_optStringVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -20) => field_optDoubleVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -19) => field_optFloatVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -18) => field_optI64Val = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -17) => field_optI32Val = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -16) => field_optI16Val = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -15) => field_optByteVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -14) => field_optBoolVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -13) => field_lateStructVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -12) => field_unionVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -11) => field_structVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -10) => field_enumVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -9) => field_binaryVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -8) => field_stringVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -7) => field_doubleVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -6) => field_floatVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -5) => field_i64Val = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -4) => field_i32Val = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -3) => field_i16Val = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -2) => field_byteVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, -1) => field_boolVal = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, 1) => field_structWithFieldCustomDefault = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            structWithCustomDefault: field_structWithCustomDefault.unwrap_or_default(),
-            i32WithCustomDefault: field_i32WithCustomDefault.unwrap_or_default(),
-            mapMap: field_mapMap.unwrap_or_default(),
-            listMap: field_listMap.unwrap_or_default(),
-            optMapVal: field_optMapVal.unwrap_or_default(),
-            optSetVal: field_optSetVal.unwrap_or_default(),
-            optListVal: field_optListVal.unwrap_or_default(),
-            optLateStructVal: field_optLateStructVal.unwrap_or_default(),
-            optStructVal: field_optStructVal.unwrap_or_default(),
-            optEnumVal: field_optEnumVal.unwrap_or_default(),
-            optBinaryVal: field_optBinaryVal.unwrap_or_default(),
-            optStringVal: field_optStringVal.unwrap_or_default(),
-            optDoubleVal: field_optDoubleVal.unwrap_or_default(),
-            optFloatVal: field_optFloatVal.unwrap_or_default(),
-            optI64Val: field_optI64Val.unwrap_or_default(),
-            optI32Val: field_optI32Val.unwrap_or_default(),
-            optI16Val: field_optI16Val.unwrap_or_default(),
-            optByteVal: field_optByteVal.unwrap_or_default(),
-            optBoolVal: field_optBoolVal.unwrap_or_default(),
-            lateStructVal: field_lateStructVal.unwrap_or_default(),
-            unionVal: field_unionVal.unwrap_or_default(),
-            structVal: field_structVal.unwrap_or_default(),
-            enumVal: field_enumVal.unwrap_or_default(),
-            binaryVal: field_binaryVal.unwrap_or_default(),
-            stringVal: field_stringVal.unwrap_or_default(),
-            doubleVal: field_doubleVal.unwrap_or_default(),
-            floatVal: field_floatVal.unwrap_or_default(),
-            i64Val: field_i64Val.unwrap_or_default(),
-            i32Val: field_i32Val.unwrap_or_default(),
-            i16Val: field_i16Val.unwrap_or_default(),
-            byteVal: field_byteVal.unwrap_or_default(),
-            boolVal: field_boolVal.unwrap_or_default(),
-            structWithFieldCustomDefault: field_structWithFieldCustomDefault.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
-
-
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::MyStructPatch {
-    fn default() -> Self {
-        Self {
-            assign: ::std::option::Option::None,
-            clear: ::std::default::Default::default(),
-            patchPrior: ::std::default::Default::default(),
-            ensure: ::std::default::Default::default(),
-            patch: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::MyStructPatch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("MyStructPatch")
-            .field("assign", &self.assign)
-            .field("clear", &self.clear)
-            .field("patchPrior", &self.patchPrior)
-            .field("ensure", &self.ensure)
-            .field("patch", &self.patch)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::MyStructPatch {}
-unsafe impl ::std::marker::Sync for self::MyStructPatch {}
-impl ::std::marker::Unpin for self::MyStructPatch {}
-
-impl ::fbthrift::GetTType for self::MyStructPatch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::MyStructPatch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/MyStructPatch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::MyStructPatch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("MyStructPatch");
-        if let ::std::option::Option::Some(some) = &self.assign {
-            p.write_field_begin("assign", ::fbthrift::TType::Struct, 1);
-            ::fbthrift::Serialize::write(some, p);
-            p.write_field_end();
-        }
-        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
-        ::fbthrift::Serialize::write(&self.clear, p);
-        p.write_field_end();
-        p.write_field_begin("patchPrior", ::fbthrift::TType::Struct, 3);
-        ::fbthrift::Serialize::write(&self.patchPrior, p);
-        p.write_field_end();
-        p.write_field_begin("ensure", ::fbthrift::TType::Struct, 5);
-        ::fbthrift::Serialize::write(&self.ensure, p);
-        p.write_field_end();
-        p.write_field_begin("patch", ::fbthrift::TType::Struct, 6);
-        ::fbthrift::Serialize::write(&self.patch, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::MyStructPatch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("assign", ::fbthrift::TType::Struct, 1),
-            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
-            ::fbthrift::Field::new("ensure", ::fbthrift::TType::Struct, 5),
-            ::fbthrift::Field::new("patch", ::fbthrift::TType::Struct, 6),
-            ::fbthrift::Field::new("patchPrior", ::fbthrift::TType::Struct, 3),
-        ];
-        let mut field_assign = ::std::option::Option::None;
-        let mut field_clear = ::std::option::Option::None;
-        let mut field_patchPrior = ::std::option::Option::None;
-        let mut field_ensure = ::std::option::Option::None;
-        let mut field_patch = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Struct, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, 3) => field_patchPrior = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, 5) => field_ensure = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Struct, 6) => field_patch = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            assign: field_assign,
-            clear: field_clear.unwrap_or_default(),
-            patchPrior: field_patchPrior.unwrap_or_default(),
-            ensure: field_ensure.unwrap_or_default(),
-            patch: field_patch.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
-
-
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::LateDefStructEnsureStruct {
-    fn default() -> Self {
-        Self {
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::LateDefStructEnsureStruct {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("LateDefStructEnsureStruct")
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::LateDefStructEnsureStruct {}
-unsafe impl ::std::marker::Sync for self::LateDefStructEnsureStruct {}
-impl ::std::marker::Unpin for self::LateDefStructEnsureStruct {}
-
-impl ::fbthrift::GetTType for self::LateDefStructEnsureStruct {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::LateDefStructEnsureStruct {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/LateDefStructEnsureStruct"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::LateDefStructEnsureStruct
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("LateDefStructEnsureStruct");
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::LateDefStructEnsureStruct
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-        ];
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
-
-
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::LateDefStructFieldPatch {
-    fn default() -> Self {
-        Self {
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::LateDefStructFieldPatch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("LateDefStructFieldPatch")
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::LateDefStructFieldPatch {}
-unsafe impl ::std::marker::Sync for self::LateDefStructFieldPatch {}
-impl ::std::marker::Unpin for self::LateDefStructFieldPatch {}
-
-impl ::fbthrift::GetTType for self::LateDefStructFieldPatch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::LateDefStructFieldPatch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/LateDefStructFieldPatch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::LateDefStructFieldPatch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("LateDefStructFieldPatch");
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::LateDefStructFieldPatch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-        ];
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
 
 
 #[allow(clippy::derivable_impls)]
@@ -5042,242 +5253,142 @@ where
 }
 
 
+
+
 #[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::RecursiveEnsureStruct {
+impl ::std::default::Default for self::LateDefStructFieldPatch {
     fn default() -> Self {
         Self {
-            nodes: ::std::option::Option::None,
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         }
     }
 }
 
-impl ::std::fmt::Debug for self::RecursiveEnsureStruct {
+impl ::std::fmt::Debug for self::LateDefStructFieldPatch {
     fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         formatter
-            .debug_struct("RecursiveEnsureStruct")
-            .field("nodes", &self.nodes)
+            .debug_struct("LateDefStructFieldPatch")
             .finish()
     }
 }
 
-unsafe impl ::std::marker::Send for self::RecursiveEnsureStruct {}
-unsafe impl ::std::marker::Sync for self::RecursiveEnsureStruct {}
-impl ::std::marker::Unpin for self::RecursiveEnsureStruct {}
+unsafe impl ::std::marker::Send for self::LateDefStructFieldPatch {}
+unsafe impl ::std::marker::Sync for self::LateDefStructFieldPatch {}
+impl ::std::marker::Unpin for self::LateDefStructFieldPatch {}
 
-impl ::fbthrift::GetTType for self::RecursiveEnsureStruct {
+impl ::fbthrift::GetTType for self::LateDefStructFieldPatch {
     const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
 }
 
-impl ::fbthrift::GetUri for self::RecursiveEnsureStruct {
+impl ::fbthrift::GetUri for self::LateDefStructFieldPatch {
     fn uri() -> &'static str {
-        "test.dev/fixtures/patch/RecursiveEnsureStruct"
+        "test.dev/fixtures/patch/LateDefStructFieldPatch"
     }
 }
 
-impl<P> ::fbthrift::Serialize<P> for self::RecursiveEnsureStruct
+impl<P> ::fbthrift::Serialize<P> for self::LateDefStructFieldPatch
 where
     P: ::fbthrift::ProtocolWriter,
 {
     fn write(&self, p: &mut P) {
-        p.write_struct_begin("RecursiveEnsureStruct");
-        if let ::std::option::Option::Some(some) = &self.nodes {
-            p.write_field_begin("nodes", ::fbthrift::TType::Map, -1);
-            ::fbthrift::Serialize::write(some, p);
-            p.write_field_end();
-        }
+        p.write_struct_begin("LateDefStructFieldPatch");
         p.write_field_stop();
         p.write_struct_end();
     }
 }
 
-impl<P> ::fbthrift::Deserialize<P> for self::RecursiveEnsureStruct
+impl<P> ::fbthrift::Deserialize<P> for self::LateDefStructFieldPatch
 where
     P: ::fbthrift::ProtocolReader,
 {
     fn read(p: &mut P) -> ::anyhow::Result<Self> {
         static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("nodes", ::fbthrift::TType::Map, -1),
         ];
-        let mut field_nodes = ::std::option::Option::None;
         let _ = p.read_struct_begin(|_| ())?;
         loop {
             let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
             match (fty, fid as ::std::primitive::i32) {
                 (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Map, -1) => field_nodes = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
                 (fty, _) => p.skip(fty)?,
             }
             p.read_field_end()?;
         }
         p.read_struct_end()?;
         ::std::result::Result::Ok(Self {
-            nodes: field_nodes,
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         })
     }
 }
 
 
+
+
 #[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::RecursiveField1Patch {
+impl ::std::default::Default for self::LateDefStructEnsureStruct {
     fn default() -> Self {
         Self {
-            assign: ::std::option::Option::None,
-            clear: ::std::default::Default::default(),
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         }
     }
 }
 
-impl ::std::fmt::Debug for self::RecursiveField1Patch {
+impl ::std::fmt::Debug for self::LateDefStructEnsureStruct {
     fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         formatter
-            .debug_struct("RecursiveField1Patch")
-            .field("assign", &self.assign)
-            .field("clear", &self.clear)
+            .debug_struct("LateDefStructEnsureStruct")
             .finish()
     }
 }
 
-unsafe impl ::std::marker::Send for self::RecursiveField1Patch {}
-unsafe impl ::std::marker::Sync for self::RecursiveField1Patch {}
-impl ::std::marker::Unpin for self::RecursiveField1Patch {}
+unsafe impl ::std::marker::Send for self::LateDefStructEnsureStruct {}
+unsafe impl ::std::marker::Sync for self::LateDefStructEnsureStruct {}
+impl ::std::marker::Unpin for self::LateDefStructEnsureStruct {}
 
-impl ::fbthrift::GetTType for self::RecursiveField1Patch {
+impl ::fbthrift::GetTType for self::LateDefStructEnsureStruct {
     const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
 }
 
-impl ::fbthrift::GetUri for self::RecursiveField1Patch {
+impl ::fbthrift::GetUri for self::LateDefStructEnsureStruct {
     fn uri() -> &'static str {
-        "test.dev/fixtures/patch/RecursiveField1Patch"
+        "test.dev/fixtures/patch/LateDefStructEnsureStruct"
     }
 }
 
-impl<P> ::fbthrift::Serialize<P> for self::RecursiveField1Patch
+impl<P> ::fbthrift::Serialize<P> for self::LateDefStructEnsureStruct
 where
     P: ::fbthrift::ProtocolWriter,
 {
     fn write(&self, p: &mut P) {
-        p.write_struct_begin("RecursiveField1Patch");
-        if let ::std::option::Option::Some(some) = &self.assign {
-            p.write_field_begin("assign", ::fbthrift::TType::Map, 1);
-            ::fbthrift::Serialize::write(some, p);
-            p.write_field_end();
-        }
-        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
-        ::fbthrift::Serialize::write(&self.clear, p);
-        p.write_field_end();
+        p.write_struct_begin("LateDefStructEnsureStruct");
         p.write_field_stop();
         p.write_struct_end();
     }
 }
 
-impl<P> ::fbthrift::Deserialize<P> for self::RecursiveField1Patch
+impl<P> ::fbthrift::Deserialize<P> for self::LateDefStructEnsureStruct
 where
     P: ::fbthrift::ProtocolReader,
 {
     fn read(p: &mut P) -> ::anyhow::Result<Self> {
         static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("assign", ::fbthrift::TType::Map, 1),
-            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
         ];
-        let mut field_assign = ::std::option::Option::None;
-        let mut field_clear = ::std::option::Option::None;
         let _ = p.read_struct_begin(|_| ())?;
         loop {
             let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
             match (fty, fid as ::std::primitive::i32) {
                 (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Map, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
                 (fty, _) => p.skip(fty)?,
             }
             p.read_field_end()?;
         }
         p.read_struct_end()?;
         ::std::result::Result::Ok(Self {
-            assign: field_assign,
-            clear: field_clear.unwrap_or_default(),
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         })
     }
 }
 
 
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::RecursiveFieldPatch {
-    fn default() -> Self {
-        Self {
-            nodes: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::RecursiveFieldPatch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("RecursiveFieldPatch")
-            .field("nodes", &self.nodes)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::RecursiveFieldPatch {}
-unsafe impl ::std::marker::Sync for self::RecursiveFieldPatch {}
-impl ::std::marker::Unpin for self::RecursiveFieldPatch {}
-
-impl ::fbthrift::GetTType for self::RecursiveFieldPatch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::RecursiveFieldPatch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/RecursiveFieldPatch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::RecursiveFieldPatch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("RecursiveFieldPatch");
-        p.write_field_begin("nodes", ::fbthrift::TType::Struct, -1);
-        ::fbthrift::Serialize::write(&self.nodes, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::RecursiveFieldPatch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("nodes", ::fbthrift::TType::Struct, -1),
-        ];
-        let mut field_nodes = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Struct, -1) => field_nodes = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            nodes: field_nodes.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
 
 
 #[allow(clippy::derivable_impls)]
@@ -5393,47 +5504,214 @@ where
 }
 
 
+
+
 #[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::BarEnsureStruct {
+impl ::std::default::Default for self::RecursiveField1Patch {
     fn default() -> Self {
         Self {
-            r#loop: ::std::option::Option::None,
+            assign: ::std::option::Option::None,
+            clear: ::std::default::Default::default(),
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         }
     }
 }
 
-impl ::std::fmt::Debug for self::BarEnsureStruct {
+impl ::std::fmt::Debug for self::RecursiveField1Patch {
     fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         formatter
-            .debug_struct("BarEnsureStruct")
-            .field("r#loop", &self.r#loop)
+            .debug_struct("RecursiveField1Patch")
+            .field("assign", &self.assign)
+            .field("clear", &self.clear)
             .finish()
     }
 }
 
-unsafe impl ::std::marker::Send for self::BarEnsureStruct {}
-unsafe impl ::std::marker::Sync for self::BarEnsureStruct {}
-impl ::std::marker::Unpin for self::BarEnsureStruct {}
+unsafe impl ::std::marker::Send for self::RecursiveField1Patch {}
+unsafe impl ::std::marker::Sync for self::RecursiveField1Patch {}
+impl ::std::marker::Unpin for self::RecursiveField1Patch {}
 
-impl ::fbthrift::GetTType for self::BarEnsureStruct {
+impl ::fbthrift::GetTType for self::RecursiveField1Patch {
     const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
 }
 
-impl ::fbthrift::GetUri for self::BarEnsureStruct {
+impl ::fbthrift::GetUri for self::RecursiveField1Patch {
     fn uri() -> &'static str {
-        "test.dev/fixtures/patch/BarEnsureStruct"
+        "test.dev/fixtures/patch/RecursiveField1Patch"
     }
 }
 
-impl<P> ::fbthrift::Serialize<P> for self::BarEnsureStruct
+impl<P> ::fbthrift::Serialize<P> for self::RecursiveField1Patch
 where
     P: ::fbthrift::ProtocolWriter,
 {
     fn write(&self, p: &mut P) {
-        p.write_struct_begin("BarEnsureStruct");
-        if let ::std::option::Option::Some(some) = &self.r#loop {
-            p.write_field_begin("loop", ::fbthrift::TType::Struct, -1);
+        p.write_struct_begin("RecursiveField1Patch");
+        if let ::std::option::Option::Some(some) = &self.assign {
+            p.write_field_begin("assign", ::fbthrift::TType::Map, 1);
+            ::fbthrift::Serialize::write(some, p);
+            p.write_field_end();
+        }
+        p.write_field_begin("clear", ::fbthrift::TType::Bool, 2);
+        ::fbthrift::Serialize::write(&self.clear, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::RecursiveField1Patch
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("assign", ::fbthrift::TType::Map, 1),
+            ::fbthrift::Field::new("clear", ::fbthrift::TType::Bool, 2),
+        ];
+        let mut field_assign = ::std::option::Option::None;
+        let mut field_clear = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::Map, 1) => field_assign = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Bool, 2) => field_clear = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            assign: field_assign,
+            clear: field_clear.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::RecursiveFieldPatch {
+    fn default() -> Self {
+        Self {
+            nodes: ::std::default::Default::default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::RecursiveFieldPatch {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("RecursiveFieldPatch")
+            .field("nodes", &self.nodes)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::RecursiveFieldPatch {}
+unsafe impl ::std::marker::Sync for self::RecursiveFieldPatch {}
+impl ::std::marker::Unpin for self::RecursiveFieldPatch {}
+
+impl ::fbthrift::GetTType for self::RecursiveFieldPatch {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::RecursiveFieldPatch {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/RecursiveFieldPatch"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::RecursiveFieldPatch
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("RecursiveFieldPatch");
+        p.write_field_begin("nodes", ::fbthrift::TType::Struct, -1);
+        ::fbthrift::Serialize::write(&self.nodes, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::RecursiveFieldPatch
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("nodes", ::fbthrift::TType::Struct, -1),
+        ];
+        let mut field_nodes = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::Struct, -1) => field_nodes = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            nodes: field_nodes.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::RecursiveEnsureStruct {
+    fn default() -> Self {
+        Self {
+            nodes: ::std::option::Option::None,
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::RecursiveEnsureStruct {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("RecursiveEnsureStruct")
+            .field("nodes", &self.nodes)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::RecursiveEnsureStruct {}
+unsafe impl ::std::marker::Sync for self::RecursiveEnsureStruct {}
+impl ::std::marker::Unpin for self::RecursiveEnsureStruct {}
+
+impl ::fbthrift::GetTType for self::RecursiveEnsureStruct {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::RecursiveEnsureStruct {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/RecursiveEnsureStruct"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::RecursiveEnsureStruct
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("RecursiveEnsureStruct");
+        if let ::std::option::Option::Some(some) = &self.nodes {
+            p.write_field_begin("nodes", ::fbthrift::TType::Map, -1);
             ::fbthrift::Serialize::write(some, p);
             p.write_field_end();
         }
@@ -5442,107 +5720,34 @@ where
     }
 }
 
-impl<P> ::fbthrift::Deserialize<P> for self::BarEnsureStruct
+impl<P> ::fbthrift::Deserialize<P> for self::RecursiveEnsureStruct
 where
     P: ::fbthrift::ProtocolReader,
 {
     fn read(p: &mut P) -> ::anyhow::Result<Self> {
         static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("loop", ::fbthrift::TType::Struct, -1),
+            ::fbthrift::Field::new("nodes", ::fbthrift::TType::Map, -1),
         ];
-        let mut field_loop = ::std::option::Option::None;
+        let mut field_nodes = ::std::option::Option::None;
         let _ = p.read_struct_begin(|_| ())?;
         loop {
             let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
             match (fty, fid as ::std::primitive::i32) {
                 (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Struct, -1) => field_loop = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Map, -1) => field_nodes = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
                 (fty, _) => p.skip(fty)?,
             }
             p.read_field_end()?;
         }
         p.read_struct_end()?;
         ::std::result::Result::Ok(Self {
-            r#loop: field_loop,
+            nodes: field_nodes,
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         })
     }
 }
 
 
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::BarFieldPatch {
-    fn default() -> Self {
-        Self {
-            r#loop: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::BarFieldPatch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("BarFieldPatch")
-            .field("r#loop", &self.r#loop)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::BarFieldPatch {}
-unsafe impl ::std::marker::Sync for self::BarFieldPatch {}
-impl ::std::marker::Unpin for self::BarFieldPatch {}
-
-impl ::fbthrift::GetTType for self::BarFieldPatch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::BarFieldPatch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/BarFieldPatch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::BarFieldPatch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("BarFieldPatch");
-        p.write_field_begin("loop", ::fbthrift::TType::Struct, -1);
-        ::fbthrift::Serialize::write(&self.r#loop, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::BarFieldPatch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("loop", ::fbthrift::TType::Struct, -1),
-        ];
-        let mut field_loop = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Struct, -1) => field_loop = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            r#loop: field_loop.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
 
 
 #[allow(clippy::derivable_impls)]
@@ -5658,47 +5863,126 @@ where
 }
 
 
+
+
 #[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::LoopEnsureStruct {
+impl ::std::default::Default for self::BarFieldPatch {
     fn default() -> Self {
         Self {
-            bar: ::std::option::Option::None,
+            r#loop: ::std::default::Default::default(),
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         }
     }
 }
 
-impl ::std::fmt::Debug for self::LoopEnsureStruct {
+impl ::std::fmt::Debug for self::BarFieldPatch {
     fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         formatter
-            .debug_struct("LoopEnsureStruct")
-            .field("bar", &self.bar)
+            .debug_struct("BarFieldPatch")
+            .field("r#loop", &self.r#loop)
             .finish()
     }
 }
 
-unsafe impl ::std::marker::Send for self::LoopEnsureStruct {}
-unsafe impl ::std::marker::Sync for self::LoopEnsureStruct {}
-impl ::std::marker::Unpin for self::LoopEnsureStruct {}
+unsafe impl ::std::marker::Send for self::BarFieldPatch {}
+unsafe impl ::std::marker::Sync for self::BarFieldPatch {}
+impl ::std::marker::Unpin for self::BarFieldPatch {}
 
-impl ::fbthrift::GetTType for self::LoopEnsureStruct {
+impl ::fbthrift::GetTType for self::BarFieldPatch {
     const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
 }
 
-impl ::fbthrift::GetUri for self::LoopEnsureStruct {
+impl ::fbthrift::GetUri for self::BarFieldPatch {
     fn uri() -> &'static str {
-        "test.dev/fixtures/patch/LoopEnsureStruct"
+        "test.dev/fixtures/patch/BarFieldPatch"
     }
 }
 
-impl<P> ::fbthrift::Serialize<P> for self::LoopEnsureStruct
+impl<P> ::fbthrift::Serialize<P> for self::BarFieldPatch
 where
     P: ::fbthrift::ProtocolWriter,
 {
     fn write(&self, p: &mut P) {
-        p.write_struct_begin("LoopEnsureStruct");
-        if let ::std::option::Option::Some(some) = &self.bar {
-            p.write_field_begin("bar", ::fbthrift::TType::Struct, -1);
+        p.write_struct_begin("BarFieldPatch");
+        p.write_field_begin("loop", ::fbthrift::TType::Struct, -1);
+        ::fbthrift::Serialize::write(&self.r#loop, p);
+        p.write_field_end();
+        p.write_field_stop();
+        p.write_struct_end();
+    }
+}
+
+impl<P> ::fbthrift::Deserialize<P> for self::BarFieldPatch
+where
+    P: ::fbthrift::ProtocolReader,
+{
+    fn read(p: &mut P) -> ::anyhow::Result<Self> {
+        static FIELDS: &[::fbthrift::Field] = &[
+            ::fbthrift::Field::new("loop", ::fbthrift::TType::Struct, -1),
+        ];
+        let mut field_loop = ::std::option::Option::None;
+        let _ = p.read_struct_begin(|_| ())?;
+        loop {
+            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
+            match (fty, fid as ::std::primitive::i32) {
+                (::fbthrift::TType::Stop, _) => break,
+                (::fbthrift::TType::Struct, -1) => field_loop = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (fty, _) => p.skip(fty)?,
+            }
+            p.read_field_end()?;
+        }
+        p.read_struct_end()?;
+        ::std::result::Result::Ok(Self {
+            r#loop: field_loop.unwrap_or_default(),
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        })
+    }
+}
+
+
+
+
+#[allow(clippy::derivable_impls)]
+impl ::std::default::Default for self::BarEnsureStruct {
+    fn default() -> Self {
+        Self {
+            r#loop: ::std::option::Option::None,
+            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
+        }
+    }
+}
+
+impl ::std::fmt::Debug for self::BarEnsureStruct {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        formatter
+            .debug_struct("BarEnsureStruct")
+            .field("r#loop", &self.r#loop)
+            .finish()
+    }
+}
+
+unsafe impl ::std::marker::Send for self::BarEnsureStruct {}
+unsafe impl ::std::marker::Sync for self::BarEnsureStruct {}
+impl ::std::marker::Unpin for self::BarEnsureStruct {}
+
+impl ::fbthrift::GetTType for self::BarEnsureStruct {
+    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
+}
+
+impl ::fbthrift::GetUri for self::BarEnsureStruct {
+    fn uri() -> &'static str {
+        "test.dev/fixtures/patch/BarEnsureStruct"
+    }
+}
+
+impl<P> ::fbthrift::Serialize<P> for self::BarEnsureStruct
+where
+    P: ::fbthrift::ProtocolWriter,
+{
+    fn write(&self, p: &mut P) {
+        p.write_struct_begin("BarEnsureStruct");
+        if let ::std::option::Option::Some(some) = &self.r#loop {
+            p.write_field_begin("loop", ::fbthrift::TType::Struct, -1);
             ::fbthrift::Serialize::write(some, p);
             p.write_field_end();
         }
@@ -5707,107 +5991,34 @@ where
     }
 }
 
-impl<P> ::fbthrift::Deserialize<P> for self::LoopEnsureStruct
+impl<P> ::fbthrift::Deserialize<P> for self::BarEnsureStruct
 where
     P: ::fbthrift::ProtocolReader,
 {
     fn read(p: &mut P) -> ::anyhow::Result<Self> {
         static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("bar", ::fbthrift::TType::Struct, -1),
+            ::fbthrift::Field::new("loop", ::fbthrift::TType::Struct, -1),
         ];
-        let mut field_bar = ::std::option::Option::None;
+        let mut field_loop = ::std::option::Option::None;
         let _ = p.read_struct_begin(|_| ())?;
         loop {
             let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
             match (fty, fid as ::std::primitive::i32) {
                 (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Struct, -1) => field_bar = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
+                (::fbthrift::TType::Struct, -1) => field_loop = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
                 (fty, _) => p.skip(fty)?,
             }
             p.read_field_end()?;
         }
         p.read_struct_end()?;
         ::std::result::Result::Ok(Self {
-            bar: field_bar,
+            r#loop: field_loop,
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         })
     }
 }
 
 
-#[allow(clippy::derivable_impls)]
-impl ::std::default::Default for self::LoopFieldPatch {
-    fn default() -> Self {
-        Self {
-            bar: ::std::default::Default::default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        }
-    }
-}
-
-impl ::std::fmt::Debug for self::LoopFieldPatch {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        formatter
-            .debug_struct("LoopFieldPatch")
-            .field("bar", &self.bar)
-            .finish()
-    }
-}
-
-unsafe impl ::std::marker::Send for self::LoopFieldPatch {}
-unsafe impl ::std::marker::Sync for self::LoopFieldPatch {}
-impl ::std::marker::Unpin for self::LoopFieldPatch {}
-
-impl ::fbthrift::GetTType for self::LoopFieldPatch {
-    const TTYPE: ::fbthrift::TType = ::fbthrift::TType::Struct;
-}
-
-impl ::fbthrift::GetUri for self::LoopFieldPatch {
-    fn uri() -> &'static str {
-        "test.dev/fixtures/patch/LoopFieldPatch"
-    }
-}
-
-impl<P> ::fbthrift::Serialize<P> for self::LoopFieldPatch
-where
-    P: ::fbthrift::ProtocolWriter,
-{
-    fn write(&self, p: &mut P) {
-        p.write_struct_begin("LoopFieldPatch");
-        p.write_field_begin("bar", ::fbthrift::TType::Struct, -1);
-        ::fbthrift::Serialize::write(&self.bar, p);
-        p.write_field_end();
-        p.write_field_stop();
-        p.write_struct_end();
-    }
-}
-
-impl<P> ::fbthrift::Deserialize<P> for self::LoopFieldPatch
-where
-    P: ::fbthrift::ProtocolReader,
-{
-    fn read(p: &mut P) -> ::anyhow::Result<Self> {
-        static FIELDS: &[::fbthrift::Field] = &[
-            ::fbthrift::Field::new("bar", ::fbthrift::TType::Struct, -1),
-        ];
-        let mut field_bar = ::std::option::Option::None;
-        let _ = p.read_struct_begin(|_| ())?;
-        loop {
-            let (_, fty, fid) = p.read_field_begin(|_| (), FIELDS)?;
-            match (fty, fid as ::std::primitive::i32) {
-                (::fbthrift::TType::Stop, _) => break,
-                (::fbthrift::TType::Struct, -1) => field_bar = ::std::option::Option::Some(::fbthrift::Deserialize::read(p)?),
-                (fty, _) => p.skip(fty)?,
-            }
-            p.read_field_end()?;
-        }
-        p.read_struct_end()?;
-        ::std::result::Result::Ok(Self {
-            bar: field_bar.unwrap_or_default(),
-            _dot_dot_Default_default: self::dot_dot::OtherFields(()),
-        })
-    }
-}
 
 
 #[allow(clippy::derivable_impls)]
@@ -5894,6 +6105,8 @@ where
         })
     }
 }
+
+
 
 
 mod dot_dot {

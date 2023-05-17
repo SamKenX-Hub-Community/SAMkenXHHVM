@@ -85,10 +85,20 @@ folly::Optional<hq::SettingId> httpToHqSettingsId(proxygen::SettingsId id) {
       return hq::SettingId::HEADER_TABLE_SIZE;
     case proxygen::SettingsId::MAX_HEADER_LIST_SIZE:
       return hq::SettingId::MAX_HEADER_LIST_SIZE;
+    case proxygen::SettingsId::ENABLE_CONNECT_PROTOCOL:
+      return hq::SettingId::ENABLE_CONNECT_PROTOCOL;
     case proxygen::SettingsId::_HQ_QPACK_BLOCKED_STREAMS:
       return hq::SettingId::QPACK_BLOCKED_STREAMS;
     case proxygen::SettingsId::_HQ_DATAGRAM:
       return hq::SettingId::H3_DATAGRAM;
+    case proxygen::SettingsId::_HQ_DATAGRAM_DRAFT_8:
+      return hq::SettingId::H3_DATAGRAM_DRAFT_8;
+    case proxygen::SettingsId::_HQ_DATAGRAM_RFC:
+      return hq::SettingId::H3_DATAGRAM_RFC;
+    case proxygen::SettingsId::ENABLE_WEBTRANSPORT:
+      return hq::SettingId::ENABLE_WEBTRANSPORT;
+    case proxygen::SettingsId::WEBTRANSPORT_MAX_SESSIONS:
+      return hq::SettingId::WEBTRANSPORT_MAX_SESSIONS;
     default:
       return folly::none; // this setting has no meaning in HQ
   }
@@ -101,10 +111,20 @@ folly::Optional<proxygen::SettingsId> hqToHttpSettingsId(hq::SettingId id) {
       return proxygen::SettingsId::HEADER_TABLE_SIZE;
     case hq::SettingId::MAX_HEADER_LIST_SIZE:
       return proxygen::SettingsId::MAX_HEADER_LIST_SIZE;
+    case hq::SettingId::ENABLE_CONNECT_PROTOCOL:
+      return proxygen::SettingsId::ENABLE_CONNECT_PROTOCOL;
     case hq::SettingId::QPACK_BLOCKED_STREAMS:
       return proxygen::SettingsId::_HQ_QPACK_BLOCKED_STREAMS;
     case hq::SettingId::H3_DATAGRAM:
       return proxygen::SettingsId::_HQ_DATAGRAM;
+    case hq::SettingId::H3_DATAGRAM_DRAFT_8:
+      return proxygen::SettingsId::_HQ_DATAGRAM_DRAFT_8;
+    case hq::SettingId::H3_DATAGRAM_RFC:
+      return proxygen::SettingsId::_HQ_DATAGRAM_RFC;
+    case hq::SettingId::ENABLE_WEBTRANSPORT:
+      return proxygen::SettingsId::ENABLE_WEBTRANSPORT;
+    case hq::SettingId::WEBTRANSPORT_MAX_SESSIONS:
+      return proxygen::SettingsId::WEBTRANSPORT_MAX_SESSIONS;
   }
   return folly::none;
 }

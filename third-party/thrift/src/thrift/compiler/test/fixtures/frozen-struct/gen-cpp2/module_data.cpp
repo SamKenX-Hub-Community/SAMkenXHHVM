@@ -33,6 +33,7 @@ FOLLY_CLANG_DISABLE_WARNING("-Wunused-macros")
 namespace apache {
 namespace thrift {
 
+THRIFT_DATA_MEMBER const folly::StringPiece TStructDataStorage<::some::ns::ModuleA>::name = "ModuleA";
 THRIFT_DATA_MEMBER const std::array<folly::StringPiece, 6> TStructDataStorage<::some::ns::ModuleA>::fields_names = {{
   "i32Field",
   "strField",
@@ -74,6 +75,7 @@ THRIFT_DATA_MEMBER const std::array<int, 6> TStructDataStorage<::some::ns::Modul
   5,
 }};
 
+THRIFT_DATA_MEMBER const folly::StringPiece TStructDataStorage<::some::ns::ModuleB>::name = "ModuleB";
 THRIFT_DATA_MEMBER const std::array<folly::StringPiece, 2> TStructDataStorage<::some::ns::ModuleB>::fields_names = {{
   "i32Field",
   "inclEnumB",
@@ -95,6 +97,7 @@ THRIFT_DATA_MEMBER const std::array<int, 2> TStructDataStorage<::some::ns::Modul
   1,
 }};
 
+THRIFT_DATA_MEMBER const folly::StringPiece TStructDataStorage<::some::ns::detail::DirectlyAdapted>::name = "DirectlyAdapted";
 THRIFT_DATA_MEMBER const std::array<folly::StringPiece, 1> TStructDataStorage<::some::ns::detail::DirectlyAdapted>::fields_names = {{
   "field",
 }};
@@ -109,6 +112,43 @@ THRIFT_DATA_MEMBER const std::array<folly::StringPiece, 1> TStructDataStorage<::
 }};
 THRIFT_DATA_MEMBER const std::array<int, 1> TStructDataStorage<::some::ns::detail::DirectlyAdapted>::isset_indexes = {{
   0,
+}};
+
+THRIFT_DATA_MEMBER const folly::StringPiece TStructDataStorage<::some::ns::CppRef>::name = "CppRef";
+THRIFT_DATA_MEMBER const std::array<folly::StringPiece, 5> TStructDataStorage<::some::ns::CppRef>::fields_names = {{
+  "shared_field",
+  "shared_const_field",
+  "opt_shared_field",
+  "opt_shared_const_field",
+  "boxed_field",
+}};
+THRIFT_DATA_MEMBER const std::array<int16_t, 5> TStructDataStorage<::some::ns::CppRef>::fields_ids = {{
+  1,
+  2,
+  3,
+  4,
+  5,
+}};
+THRIFT_DATA_MEMBER const std::array<protocol::TType, 5> TStructDataStorage<::some::ns::CppRef>::fields_types = {{
+  TType::T_I32,
+  TType::T_I32,
+  TType::T_I32,
+  TType::T_I32,
+  TType::T_I32,
+}};
+THRIFT_DATA_MEMBER const std::array<folly::StringPiece, 5> TStructDataStorage<::some::ns::CppRef>::storage_names = {{
+  "__fbthrift_field_shared_field",
+  "__fbthrift_field_shared_const_field",
+  "__fbthrift_field_opt_shared_field",
+  "__fbthrift_field_opt_shared_const_field",
+  "__fbthrift_field_boxed_field",
+}};
+THRIFT_DATA_MEMBER const std::array<int, 5> TStructDataStorage<::some::ns::CppRef>::isset_indexes = {{
+  -1,
+  -1,
+  -1,
+  -1,
+  -1,
 }};
 
 } // namespace thrift

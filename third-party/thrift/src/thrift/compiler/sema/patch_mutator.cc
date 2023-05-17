@@ -22,6 +22,7 @@
 
 #include <thrift/compiler/ast/diagnostic_context.h>
 #include <thrift/compiler/ast/t_field.h>
+#include <thrift/compiler/gen/cpp/namespace_resolver.h>
 #include <thrift/compiler/lib/uri.h>
 #include <thrift/compiler/sema/standard_mutator_stage.h>
 
@@ -132,16 +133,31 @@ struct StructGen {
   operator t_struct&() { return generated; }
   operator t_type_ref() { return generated; }
 
+  void add_frozen_exclude() {
+    const t_type* annotation = dynamic_cast<const t_type*>(
+        program_.scope()->find_def(kCppFrozen2ExcludeUri));
+    if (!annotation) {
+      return;
+    }
+    auto value = std::make_unique<t_const_value>();
+    value->set_ttype(*annotation);
+    auto frozen_exclude =
+        std::make_unique<t_const>(&program_, annotation, "", std::move(value));
+    generated.add_structured_annotation(std::move(frozen_exclude));
+  }
+
   void set_adapter(std::string name) {
     const t_type* annotation =
         dynamic_cast<const t_type*>(program_.scope()->find_def(kCppAdapterUri));
     assert(annotation); // transitive include from patch.thrift
     auto value = std::make_unique<t_const_value>();
+    auto ns = gen::cpp::namespace_resolver::gen_namespace(program_);
     value->set_map();
     value->add_map(
         std::make_unique<t_const_value>("name"),
         std::make_unique<t_const_value>(
-            "::apache::thrift::op::detail::" + std::move(name)));
+            "::apache::thrift::op::detail::" + std::move(name) + "<" +
+            std::move(ns) + "::" + generated.name() + "Struct" + ">"));
     value->add_map(
         std::make_unique<t_const_value>("underlyingName"),
         std::make_unique<t_const_value>(generated.name() + "Struct"));
@@ -241,9 +257,9 @@ struct PatchGen : StructGen {
 
   // {kEnsureUnionId}: {type} ensure;
   t_field& ensureUnion(t_type_ref type) {
-    return doc(
+    return intern_box(doc(
         "Assigns the value, if not already set to the same field. Applies third.",
-        field(kEnsureUnionId, type, "ensure"));
+        field(kEnsureUnionId, type, "ensure")));
   }
 
   // {kEnsureStructId}: {type} ensure;
@@ -304,11 +320,7 @@ void generate_struct_patch(
           ctx.program().inherit_annotation_or_null(node, kGeneratePatchUri)) {
     // Add a 'field patch' and 'struct patch' using it.
     auto& generator = patch_generator::get_for(ctx, mctx);
-    generator.add_struct_patch(
-        *annot,
-        node,
-        generator.add_ensure_struct(*annot, node),
-        generator.add_field_patch(*annot, node));
+    generator.add_struct_patch(*annot, node);
   }
 }
 
@@ -318,8 +330,7 @@ void generate_union_patch(
           ctx.program().inherit_annotation_or_null(node, kGeneratePatchUri)) {
     // Add a 'field patch' and 'union patch' using it.
     auto& generator = patch_generator::get_for(ctx, mctx);
-    generator.add_union_patch(
-        *annot, node, generator.add_field_patch(*annot, node));
+    generator.add_union_patch(*annot, node);
   }
 }
 
@@ -356,6 +367,7 @@ t_struct& patch_generator::add_ensure_struct(
     const t_const& annot, t_structured& orig) {
   StructGen gen{
       annot, gen_suffix_struct(annot, orig, "EnsureStruct"), program_};
+  gen.add_frozen_exclude();
   for (const auto& field : orig.fields_id_order()) {
     box(gen.field(field->id(), field->type(), field->name()));
   }
@@ -385,7 +397,7 @@ t_struct& patch_generator::add_field_patch(
 }
 
 t_struct& patch_generator::add_union_patch(
-    const t_const& annot, t_union& value_type, t_type_ref patch_type) {
+    const t_const& annot, t_union& value_type) {
   PatchGen gen{
       {annot, gen_suffix_struct(annot, value_type, "Patch"), program_}};
   gen.assign(value_type);
@@ -394,6 +406,7 @@ t_struct& patch_generator::add_union_patch(
     gen.set_adapter("AssignPatchAdapter");
     return gen;
   }
+  t_type_ref patch_type = add_field_patch(annot, value_type);
   gen.patchPrior(patch_type);
   gen.ensureUnion(value_type);
   gen.patchAfter(patch_type);
@@ -402,10 +415,7 @@ t_struct& patch_generator::add_union_patch(
 }
 
 t_struct& patch_generator::add_struct_patch(
-    const t_const& annot,
-    t_struct& value_type,
-    t_type_ref ensure_type,
-    t_type_ref patch_type) {
+    const t_const& annot, t_struct& value_type) {
   PatchGen gen{
       {annot, gen_suffix_struct(annot, value_type, "Patch"), program_}};
   gen.assign(value_type);
@@ -414,8 +424,9 @@ t_struct& patch_generator::add_struct_patch(
     gen.set_adapter("AssignPatchAdapter");
     return gen;
   }
+  t_type_ref patch_type = add_field_patch(annot, value_type);
   gen.patchPrior(patch_type);
-  gen.ensureStruct(ensure_type);
+  gen.ensureStruct(add_ensure_struct(annot, value_type));
   gen.patchAfter(patch_type);
   gen.set_adapter("StructPatchAdapter");
   return gen;
@@ -573,7 +584,9 @@ t_struct& patch_generator::gen_patch(
     // TODO(afuller): support 'replace' op.
     auto elem_patch_type = find_patch_type(
         annot, orig, list->elem_type(), field_id, traversal_order + 1);
-    gen.patchList(inst_map(t_base_type::t_i32(), elem_patch_type));
+    if (const auto* p = program_.scope()->find_type("patch.ListPatchIndex")) {
+      gen.patchList(inst_map(t_type_ref::from_ptr(p), elem_patch_type));
+    }
     // TODO(afuller): Support sets for all types in all languages, and switch
     // this to a set instead of a list.
     gen.remove(inst_list(list->elem_type()));

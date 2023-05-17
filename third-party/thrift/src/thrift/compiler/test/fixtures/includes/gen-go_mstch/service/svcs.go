@@ -25,15 +25,15 @@ var _ = thrift.ZERO
 
 
 type MyService interface {
-    Query(ctx context.Context, s *module.MyStruct, i *includes.Included) error
-    HasArgDocs(ctx context.Context, s *module.MyStruct, i *includes.Included) error
+    Query(ctx context.Context, s *module.MyStruct, i *includes.Included) (error)
+    HasArgDocs(ctx context.Context, s *module.MyStruct, i *includes.Included) (error)
 }
 
 // Deprecated: Use MyService instead.
 type MyServiceClientInterface interface {
     thrift.ClientInterface
-    Query(s *module.MyStruct, i *includes.Included) error
-    HasArgDocs(s *module.MyStruct, i *includes.Included) error
+    Query(s *module.MyStruct, i *includes.Included) (error)
+    HasArgDocs(s *module.MyStruct, i *includes.Included) (error)
 }
 
 type MyServiceChannelClient struct {
@@ -119,32 +119,38 @@ func NewMyServiceThreadsafeClientFactory(t thrift.Transport, pf thrift.ProtocolF
 }
 
 
-func (c *MyServiceChannelClient) Query(ctx context.Context, s *module.MyStruct, i *includes.Included) error {
+func (c *MyServiceChannelClient) Query(ctx context.Context, s *module.MyStruct, i *includes.Included) (error) {
     in := &reqMyServiceQuery{
         S: s,
         I: i,
     }
     out := newRespMyServiceQuery()
     err := c.ch.Call(ctx, "query", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyServiceClient) Query(s *module.MyStruct, i *includes.Included) error {
+func (c *MyServiceClient) Query(s *module.MyStruct, i *includes.Included) (error) {
     return c.chClient.Query(nil, s, i)
 }
 
 
-func (c *MyServiceChannelClient) HasArgDocs(ctx context.Context, s *module.MyStruct, i *includes.Included) error {
+func (c *MyServiceChannelClient) HasArgDocs(ctx context.Context, s *module.MyStruct, i *includes.Included) (error) {
     in := &reqMyServiceHasArgDocs{
         S: s,
         I: i,
     }
     out := newRespMyServiceHasArgDocs()
     err := c.ch.Call(ctx, "has_arg_docs", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyServiceClient) HasArgDocs(s *module.MyStruct, i *includes.Included) error {
+func (c *MyServiceClient) HasArgDocs(s *module.MyStruct, i *includes.Included) (error) {
     return c.chClient.HasArgDocs(nil, s, i)
 }
 
@@ -156,15 +162,13 @@ type reqMyServiceQuery struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceQuery{}
 
+type MyServiceQueryArgs = reqMyServiceQuery
+
 func newReqMyServiceQuery() *reqMyServiceQuery {
-    return (&reqMyServiceQuery{})
+    return (&reqMyServiceQuery{}).
+        SetSNonCompat(*module.NewMyStruct()).
+        SetINonCompat(*includes.NewIncluded())
 }
-
-// Deprecated: Use newReqMyServiceQuery().S instead.
-var reqMyServiceQuery_S_DEFAULT = newReqMyServiceQuery().S
-
-// Deprecated: Use newReqMyServiceQuery().I instead.
-var reqMyServiceQuery_I_DEFAULT = newReqMyServiceQuery().I
 
 func (x *reqMyServiceQuery) GetSNonCompat() *module.MyStruct {
     return x.S
@@ -172,7 +176,7 @@ func (x *reqMyServiceQuery) GetSNonCompat() *module.MyStruct {
 
 func (x *reqMyServiceQuery) GetS() *module.MyStruct {
     if !x.IsSetS() {
-      return module.NewMyStruct()
+        return module.NewMyStruct()
     }
 
     return x.S
@@ -184,19 +188,29 @@ func (x *reqMyServiceQuery) GetINonCompat() *includes.Included {
 
 func (x *reqMyServiceQuery) GetI() *includes.Included {
     if !x.IsSetI() {
-      return includes.NewIncluded()
+        return includes.NewIncluded()
     }
 
     return x.I
 }
 
-func (x *reqMyServiceQuery) SetS(value module.MyStruct) *reqMyServiceQuery {
+func (x *reqMyServiceQuery) SetSNonCompat(value module.MyStruct) *reqMyServiceQuery {
     x.S = &value
     return x
 }
 
-func (x *reqMyServiceQuery) SetI(value includes.Included) *reqMyServiceQuery {
+func (x *reqMyServiceQuery) SetS(value *module.MyStruct) *reqMyServiceQuery {
+    x.S = value
+    return x
+}
+
+func (x *reqMyServiceQuery) SetINonCompat(value includes.Included) *reqMyServiceQuery {
     x.I = &value
+    return x
+}
+
+func (x *reqMyServiceQuery) SetI(value *includes.Included) *reqMyServiceQuery {
+    x.I = value
     return x
 }
 
@@ -255,7 +269,7 @@ if err != nil {
     return err
 }
 
-    x.SetS(result)
+    x.SetSNonCompat(result)
     return nil
 }
 
@@ -266,8 +280,30 @@ if err != nil {
     return err
 }
 
-    x.SetI(result)
+    x.SetINonCompat(result)
     return nil
+}
+
+// Deprecated: Use newReqMyServiceQuery().GetS() instead.
+var reqMyServiceQuery_S_DEFAULT = newReqMyServiceQuery().GetS()
+
+// Deprecated: Use newReqMyServiceQuery().GetS() instead.
+func (x *reqMyServiceQuery) DefaultGetS() *module.MyStruct {
+    if !x.IsSetS() {
+        return module.NewMyStruct()
+    }
+    return x.S
+}
+
+// Deprecated: Use newReqMyServiceQuery().GetI() instead.
+var reqMyServiceQuery_I_DEFAULT = newReqMyServiceQuery().GetI()
+
+// Deprecated: Use newReqMyServiceQuery().GetI() instead.
+func (x *reqMyServiceQuery) DefaultGetI() *includes.Included {
+    if !x.IsSetI() {
+        return includes.NewIncluded()
+    }
+    return x.I
 }
 
 func (x *reqMyServiceQuery) String() string {
@@ -300,6 +336,7 @@ func (x *reqMyServiceQueryBuilder) Emit() *reqMyServiceQuery {
     var objCopy reqMyServiceQuery = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceQuery) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceQuery"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -364,10 +401,12 @@ func (x *reqMyServiceQuery) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceQuery struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceQuery{}
+var _ thrift.WritableResult = &respMyServiceQuery{}
 
 func newRespMyServiceQuery() *respMyServiceQuery {
     return (&respMyServiceQuery{})
@@ -393,6 +432,11 @@ func (x *respMyServiceQueryBuilder) Emit() *respMyServiceQuery {
     var objCopy respMyServiceQuery = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceQuery) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceQuery) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceQuery"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -441,6 +485,7 @@ func (x *respMyServiceQuery) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServiceHasArgDocs struct {
     S *module.MyStruct `thrift:"s,1" json:"s" db:"s"`
     I *includes.Included `thrift:"i,2" json:"i" db:"i"`
@@ -448,15 +493,13 @@ type reqMyServiceHasArgDocs struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceHasArgDocs{}
 
+type MyServiceHasArgDocsArgs = reqMyServiceHasArgDocs
+
 func newReqMyServiceHasArgDocs() *reqMyServiceHasArgDocs {
-    return (&reqMyServiceHasArgDocs{})
+    return (&reqMyServiceHasArgDocs{}).
+        SetSNonCompat(*module.NewMyStruct()).
+        SetINonCompat(*includes.NewIncluded())
 }
-
-// Deprecated: Use newReqMyServiceHasArgDocs().S instead.
-var reqMyServiceHasArgDocs_S_DEFAULT = newReqMyServiceHasArgDocs().S
-
-// Deprecated: Use newReqMyServiceHasArgDocs().I instead.
-var reqMyServiceHasArgDocs_I_DEFAULT = newReqMyServiceHasArgDocs().I
 
 func (x *reqMyServiceHasArgDocs) GetSNonCompat() *module.MyStruct {
     return x.S
@@ -464,7 +507,7 @@ func (x *reqMyServiceHasArgDocs) GetSNonCompat() *module.MyStruct {
 
 func (x *reqMyServiceHasArgDocs) GetS() *module.MyStruct {
     if !x.IsSetS() {
-      return module.NewMyStruct()
+        return module.NewMyStruct()
     }
 
     return x.S
@@ -476,19 +519,29 @@ func (x *reqMyServiceHasArgDocs) GetINonCompat() *includes.Included {
 
 func (x *reqMyServiceHasArgDocs) GetI() *includes.Included {
     if !x.IsSetI() {
-      return includes.NewIncluded()
+        return includes.NewIncluded()
     }
 
     return x.I
 }
 
-func (x *reqMyServiceHasArgDocs) SetS(value module.MyStruct) *reqMyServiceHasArgDocs {
+func (x *reqMyServiceHasArgDocs) SetSNonCompat(value module.MyStruct) *reqMyServiceHasArgDocs {
     x.S = &value
     return x
 }
 
-func (x *reqMyServiceHasArgDocs) SetI(value includes.Included) *reqMyServiceHasArgDocs {
+func (x *reqMyServiceHasArgDocs) SetS(value *module.MyStruct) *reqMyServiceHasArgDocs {
+    x.S = value
+    return x
+}
+
+func (x *reqMyServiceHasArgDocs) SetINonCompat(value includes.Included) *reqMyServiceHasArgDocs {
     x.I = &value
+    return x
+}
+
+func (x *reqMyServiceHasArgDocs) SetI(value *includes.Included) *reqMyServiceHasArgDocs {
+    x.I = value
     return x
 }
 
@@ -547,7 +600,7 @@ if err != nil {
     return err
 }
 
-    x.SetS(result)
+    x.SetSNonCompat(result)
     return nil
 }
 
@@ -558,8 +611,30 @@ if err != nil {
     return err
 }
 
-    x.SetI(result)
+    x.SetINonCompat(result)
     return nil
+}
+
+// Deprecated: Use newReqMyServiceHasArgDocs().GetS() instead.
+var reqMyServiceHasArgDocs_S_DEFAULT = newReqMyServiceHasArgDocs().GetS()
+
+// Deprecated: Use newReqMyServiceHasArgDocs().GetS() instead.
+func (x *reqMyServiceHasArgDocs) DefaultGetS() *module.MyStruct {
+    if !x.IsSetS() {
+        return module.NewMyStruct()
+    }
+    return x.S
+}
+
+// Deprecated: Use newReqMyServiceHasArgDocs().GetI() instead.
+var reqMyServiceHasArgDocs_I_DEFAULT = newReqMyServiceHasArgDocs().GetI()
+
+// Deprecated: Use newReqMyServiceHasArgDocs().GetI() instead.
+func (x *reqMyServiceHasArgDocs) DefaultGetI() *includes.Included {
+    if !x.IsSetI() {
+        return includes.NewIncluded()
+    }
+    return x.I
 }
 
 func (x *reqMyServiceHasArgDocs) String() string {
@@ -592,6 +667,7 @@ func (x *reqMyServiceHasArgDocsBuilder) Emit() *reqMyServiceHasArgDocs {
     var objCopy reqMyServiceHasArgDocs = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceHasArgDocs) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceHasArgDocs"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -656,10 +732,12 @@ func (x *reqMyServiceHasArgDocs) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceHasArgDocs struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceHasArgDocs{}
+var _ thrift.WritableResult = &respMyServiceHasArgDocs{}
 
 func newRespMyServiceHasArgDocs() *respMyServiceHasArgDocs {
     return (&respMyServiceHasArgDocs{})
@@ -685,6 +763,11 @@ func (x *respMyServiceHasArgDocsBuilder) Emit() *respMyServiceHasArgDocs {
     var objCopy respMyServiceHasArgDocs = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceHasArgDocs) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceHasArgDocs) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceHasArgDocs"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -733,6 +816,7 @@ func (x *respMyServiceHasArgDocs) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type MyServiceProcessor struct {
@@ -799,9 +883,11 @@ func (p *procFuncMyServiceQuery) Read(iprot thrift.Protocol) (thrift.Struct, thr
 func (p *procFuncMyServiceQuery) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Query", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -820,10 +906,12 @@ func (p *procFuncMyServiceQuery) Write(seqId int32, result thrift.WritableStruct
 func (p *procFuncMyServiceQuery) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqMyServiceQuery)
     result := newRespMyServiceQuery()
-    if err := p.handler.Query(args.S, args.I); err != nil {
+    err := p.handler.Query(args.S, args.I)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Query: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -846,9 +934,11 @@ func (p *procFuncMyServiceHasArgDocs) Read(iprot thrift.Protocol) (thrift.Struct
 func (p *procFuncMyServiceHasArgDocs) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("HasArgDocs", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -867,10 +957,12 @@ func (p *procFuncMyServiceHasArgDocs) Write(seqId int32, result thrift.WritableS
 func (p *procFuncMyServiceHasArgDocs) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqMyServiceHasArgDocs)
     result := newRespMyServiceHasArgDocs()
-    if err := p.handler.HasArgDocs(args.S, args.I); err != nil {
+    err := p.handler.HasArgDocs(args.S, args.I)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing HasArgDocs: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 

@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<daa6bb9f2b2c7acc4c46a84caeb8047d>>
+// @generated SignedSource<<f9256bf09b1bc3690b68a2e9d4062371>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -831,11 +831,6 @@ pub enum Expr_<'a, Ex, En> {
     ArrayGet(&'a (&'a Expr<'a, Ex, En>, Option<&'a Expr<'a, Ex, En>>)),
     /// Instance property or method access.
     ///
-    /// prop_or_method is:
-    ///   - Is_prop for property access
-    ///   - Is_method for method call, only possible when the node is
-    ///   - the receiver in a Call node.
-    ///
     ///     $foo->bar      // OG_nullthrows, Is_prop: access named property
     ///     ($foo->bar)()  // OG_nullthrows, Is_prop: call lambda stored in named property
     ///     $foo?->bar     // OG_nullsafe,   Is_prop
@@ -845,6 +840,10 @@ pub enum Expr_<'a, Ex, En> {
     ///     $foo->$bar()   // OG_nullthrows, Is_method: dynamic call, method name stored in local $bar
     ///     $foo?->bar()   // OG_nullsafe,   Is_method
     ///     $foo?->$bar()  // OG_nullsafe,   Is_method
+    ///
+    /// prop_or_method is:
+    ///   - Is_prop for property access
+    ///   - Is_method for method call, only possible when the node is the receiver in a Call node.
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
     #[rust_to_ocaml(name = "Obj_get")]
     #[rust_to_ocaml(inline_tuple)]
@@ -1025,14 +1024,7 @@ pub enum Expr_<'a, Ex, En> {
     ///
     ///     $foo + $bar
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
-    #[rust_to_ocaml(inline_tuple)]
-    Binop(
-        &'a (
-            ast_defs::Bop<'a>,
-            &'a Expr<'a, Ex, En>,
-            &'a Expr<'a, Ex, En>,
-        ),
-    ),
+    Binop(&'a Binop<'a, Ex, En>),
     /// Pipe expression. The lid is the ID of the $$ that is implicitly
     /// declared by this pipe.
     ///
@@ -1113,7 +1105,7 @@ pub enum Expr_<'a, Ex, En> {
     ///     ($x, $y) ==> { return $x + $y; }
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
     #[rust_to_ocaml(inline_tuple)]
-    Lfun(&'a (&'a Fun_<'a, Ex, En>, &'a [&'a Lid<'a>])),
+    Lfun(&'a (&'a Fun_<'a, Ex, En>, &'a [&'a CaptureLid<'a, Ex>])),
     /// XHP expression. May contain interpolated expressions.
     ///
     ///     <foo x="hello" y={$foo}>hello {$bar}</foo>
@@ -1242,6 +1234,11 @@ pub enum Expr_<'a, Ex, En> {
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
     #[rust_to_ocaml(inline_tuple)]
     Hole(&'a (&'a Expr<'a, Ex, En>, Ex, Ex, HoleSource<'a>)),
+    /// Expression used to check whether a package exists.
+    ///
+    ///     package package-name
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    Package(&'a Sid<'a>),
 }
 impl<'a, Ex: TrivialDrop, En: TrivialDrop> TrivialDrop for Expr_<'a, Ex, En> {}
 arena_deserializer::impl_deserialize_in_arena!(Expr_<'arena, Ex, En>);
@@ -1273,6 +1270,39 @@ pub enum HoleSource<'a> {
 }
 impl<'a> TrivialDrop for HoleSource<'a> {}
 arena_deserializer::impl_deserialize_in_arena!(HoleSource<'arena>);
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    FromOcamlRepIn,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
+#[serde(bound(
+    deserialize = "Ex: 'de + arena_deserializer::DeserializeInArena<'de>, En: 'de + arena_deserializer::DeserializeInArena<'de>"
+))]
+#[rust_to_ocaml(and)]
+#[repr(C)]
+pub struct Binop<'a, Ex, En> {
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    #[rust_to_ocaml(attr = "transform.opaque")]
+    pub bop: ast_defs::Bop<'a>,
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    #[rust_to_ocaml(attr = "transform.explicit")]
+    pub lhs: &'a Expr<'a, Ex, En>,
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    #[rust_to_ocaml(attr = "transform.explicit")]
+    pub rhs: &'a Expr<'a, Ex, En>,
+}
+impl<'a, Ex: TrivialDrop, En: TrivialDrop> TrivialDrop for Binop<'a, Ex, En> {}
+arena_deserializer::impl_deserialize_in_arena!(Binop<'arena, Ex, En>);
 
 #[derive(
     Clone,
@@ -1650,6 +1680,30 @@ arena_deserializer::impl_deserialize_in_arena!(Fun_<'arena, Ex, En>);
     Serialize,
     ToOcamlRep
 )]
+#[serde(bound(deserialize = "Ex: 'de + arena_deserializer::DeserializeInArena<'de>"))]
+#[rust_to_ocaml(and)]
+#[repr(C)]
+pub struct CaptureLid<'a, Ex>(
+    #[serde(deserialize_with = "arena_deserializer::arena")] pub Ex,
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)] pub &'a Lid<'a>,
+);
+impl<'a, Ex: TrivialDrop> TrivialDrop for CaptureLid<'a, Ex> {}
+arena_deserializer::impl_deserialize_in_arena!(CaptureLid<'arena, Ex>);
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    FromOcamlRepIn,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
 #[serde(bound(
     deserialize = "Ex: 'de + arena_deserializer::DeserializeInArena<'de>, En: 'de + arena_deserializer::DeserializeInArena<'de>"
 ))]
@@ -1660,7 +1714,7 @@ pub struct Efun<'a, Ex, En> {
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
     pub fun: &'a Fun_<'a, Ex, En>,
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
-    pub use_: &'a [&'a Lid<'a>],
+    pub use_: &'a [&'a CaptureLid<'a, Ex>],
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
     pub closure_class_name: Option<&'a str>,
 }
@@ -2117,6 +2171,7 @@ pub struct ClassAbstractTypeconst<'a> {
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
     pub super_constraint: Option<&'a Hint<'a>>,
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    #[rust_to_ocaml(attr = "transform.explicit")]
     pub default: Option<&'a Hint<'a>>,
 }
 impl<'a> TrivialDrop for ClassAbstractTypeconst<'a> {}
@@ -2386,6 +2441,7 @@ pub struct Typedef<'a, Ex, En> {
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
     pub super_constraint: Option<&'a Hint<'a>>,
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    #[rust_to_ocaml(attr = "transform.explicit")]
     pub kind: &'a Hint<'a>,
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
     pub user_attributes: &'a UserAttributes<'a, Ex, En>,
@@ -3121,7 +3177,7 @@ arena_deserializer::impl_deserialize_in_arena!(Enum_<'arena>);
     ToOcamlRep
 )]
 #[rust_to_ocaml(and)]
-#[rust_to_ocaml(attr = r#"deriving ((show { with_path = false }), eq, ord, map,
+#[rust_to_ocaml(attr = r#"deriving ((show { with_path = false }), eq, hash, ord, map,
     (transform ~restart:(`Disallow `Encode_as_result)),
     (visitors
        {

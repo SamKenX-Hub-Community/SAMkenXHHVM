@@ -768,10 +768,10 @@ pub fn async_magic_method(name: &str) -> Error {
 pub fn unsupported_magic_method(name: &str) -> Error {
     Cow::Owned(format!("Magic `{}` methods are no longer supported", name))
 }
-pub fn reserved_keyword_as_class_name(class_name: &str) -> Error {
+pub fn reserved_keyword_as_type_name(name: &str) -> Error {
     Cow::Owned(format!(
-        "Cannot use `{}` as class name as it is reserved",
-        class_name
+        "Cannot use `{}` as a type name as it is reserved",
+        name
     ))
 }
 pub const xhp_class_multiple_category_decls: Error =
@@ -1203,3 +1203,21 @@ pub fn module_first_in_file(name: &str) -> Error {
 
 pub const module_declaration_in_module: Error =
     Cow::Borrowed("You cannot declare new modules within an existing module");
+
+pub fn invalid_cross_package_argument(message: &str) -> Error {
+    Cow::Owned(format!(
+        "This is an invalid use of '__CrossPackage' because {}",
+        message
+    ))
+}
+
+pub fn cross_package_wrong_arity(count: usize) -> Error {
+    Cow::Owned(format!(
+        "The '__CrossPackage' attribute expects exactly 1 argument, {} given.",
+        count
+    ))
+}
+
+pub const expected_bar_or_semicolon: Error = Cow::Borrowed(
+    "Either the token `|` or `;` is expected here. Use `|` to specify additional variant types for this case type or use `;` to terminate the declaration.",
+);

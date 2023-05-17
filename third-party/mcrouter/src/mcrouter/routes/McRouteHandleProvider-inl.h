@@ -96,7 +96,8 @@ McRouteHandleProvider<RouterInfo>::McRouteHandleProvider(
       poolFactory_(poolFactory),
       extraProvider_(buildExtraProvider()),
       routeMap_(buildCheckedRouteMap()),
-      routeMapWithProxy_(buildCheckedRouteMapWithProxy()) {}
+      routeMapWithProxy_(buildCheckedRouteMapWithProxy()),
+      routeMapForWrapper_(buildCheckedRouteMapForWrapper()) {}
 
 template <class RouterInfo>
 McRouteHandleProvider<RouterInfo>::~McRouteHandleProvider() {
@@ -123,6 +124,26 @@ McRouteHandleProvider<RouterInfo>::createAsynclogRoute(
   }
   asyncLogRoutes_.emplace(std::move(asynclogName), target);
   return target;
+}
+
+template <class RouterInfo>
+std::shared_ptr<typename RouterInfo::RouteHandleIf>
+McRouteHandleProvider<RouterInfo>::wrapAxonLogRoute(
+    RouteHandlePtr route,
+    ProxyBase& proxy,
+    const folly::dynamic& json) {
+  bool needAxonlog = false;
+  if (auto* jNeedAxonlog = json.get_ptr("axonlog")) {
+    needAxonlog = parseBool(*jNeedAxonlog, "axonlog");
+  }
+  if (needAxonlog) {
+    auto it = routeMapForWrapper_.find("AxonLogRoute");
+    checkLogic(
+        it != routeMapForWrapper_.end(),
+        "AxonLogRoute is not implemented for this router");
+    return it->second(std::move(route), proxy, json);
+  }
+  return route;
 }
 
 template <class RouterInfo>
@@ -483,6 +504,8 @@ McRouteHandleProvider<RouterInfo>::createSRRoute(
     const RouteHandleFactoryFuncWithProxy& factoryFunc) {
   checkLogic(json.isObject(), "SRRoute should be object");
   auto route = factoryFunc(factory, json, proxy_);
+  // Track the SRRoute created so that we can save it to SRRoute map later
+  auto srRoute = route;
 
   if (auto maxOutstandingJson = json.get_ptr("max_outstanding")) {
     auto v = parseInt(
@@ -501,29 +524,49 @@ McRouteHandleProvider<RouterInfo>::createSRRoute(
           std::move(route), ShardSplitter(*jsplits));
     }
   }
+
+  bool needAsynclog = true;
+  if (auto* jNeedAsynclog = json.get_ptr("asynclog")) {
+    needAsynclog = parseBool(*jNeedAsynclog, "asynclog");
+  }
+  if (needAsynclog) {
+    folly::StringPiece asynclogName;
+    if (auto jAsynclogName = json.get_ptr("asynclog_name")) {
+      asynclogName = parseString(*jAsynclogName, "asynclog_name");
+    } else if (auto jServiceName = json.get_ptr("service_name")) {
+      asynclogName = parseString(*jServiceName, "service_name");
+    } else {
+      throwLogic(
+          "AsynclogRoute over SRRoute: 'service_name' property is missing");
+    }
+    route = createAsynclogRoute(std::move(route), asynclogName.toString());
+  }
+
+  route = wrapAxonLogRoute(std::move(route), proxy_, json);
+  route = bucketize(std::move(route), json);
+
+  if (auto jSRRouteName = json.get_ptr("service_name")) {
+    auto srRouteName = parseString(*jSRRouteName, "service_name");
+    srRoutes_.emplace(srRouteName, srRoute);
+  }
+
   return route;
 }
-
-template <>
-std::shared_ptr<MemcacheRouterInfo::RouteHandleIf>
-McRouteHandleProvider<MemcacheRouterInfo>::createSRRoute(
-    RouteHandleFactory<MemcacheRouterInfo::RouteHandleIf>& factory,
-    const folly::dynamic& json,
-    const RouteHandleFactoryFuncWithProxy& factoryFunc);
 
 template <class RouterInfo>
 std::shared_ptr<typename RouterInfo::RouteHandleIf>
 McRouteHandleProvider<RouterInfo>::bucketize(
     std::shared_ptr<typename RouterInfo::RouteHandleIf> route,
-    const folly::dynamic& /*json*/) {
+    const folly::dynamic& json) {
+  bool bucketize = false;
+  if (auto* jNeedBucketization = json.get_ptr("bucketize")) {
+    bucketize = parseBool(*jNeedBucketization, "bucketize");
+  }
+  if (bucketize) {
+    return makeMcBucketRoute<RouterInfo>(std::move(route), json);
+  }
   return route;
 }
-
-template <>
-std::shared_ptr<MemcacheRouterInfo::RouteHandleIf>
-McRouteHandleProvider<MemcacheRouterInfo>::bucketize(
-    std::shared_ptr<typename MemcacheRouterInfo::RouteHandleIf> route,
-    const folly::dynamic&);
 
 template <class RouterInfo>
 std::shared_ptr<typename RouterInfo::RouteHandleIf>
@@ -583,6 +626,15 @@ McRouteHandleProvider<RouterInfo>::makePoolRoute(
         }
       }
     }
+
+    if (poolJson.json.isObject()) {
+      if (auto* jErrorOnEmpty = poolJson.json.get_ptr("error_on_empty")) {
+        jhashWithWeights["error_on_empty"] =
+            parseBool(*jErrorOnEmpty, "error_on_empty");
+      }
+    }
+    jhashWithWeights["name"] = poolJson.name;
+
     auto route = createHashRoute<RouterInfo>(
         jhashWithWeights, std::move(destinations), factory.getThreadId());
 
@@ -611,6 +663,8 @@ McRouteHandleProvider<RouterInfo>::makePoolRoute(
       route = createAsynclogRoute(std::move(route), asynclogName.str());
     }
     if (json.isObject()) {
+      // Wrap AxonLogRoute if configured
+      route = wrapAxonLogRoute(std::move(route), proxy_, json);
       route = bucketize(std::move(route), json);
     }
     return route;
@@ -632,6 +686,12 @@ McRouteHandleProvider<RouterInfo>::buildRouteMapWithProxy() {
 }
 
 template <class RouterInfo>
+typename McRouteHandleProvider<RouterInfo>::RouteHandleFactoryMapForWrapper
+McRouteHandleProvider<RouterInfo>::buildRouteMapForWrapper() {
+  return RouterInfo::buildRouteMapForWrapper();
+}
+
+template <class RouterInfo>
 typename McRouteHandleProvider<RouterInfo>::RouteHandleFactoryMap
 McRouteHandleProvider<RouterInfo>::buildCheckedRouteMap() {
   typename McRouteHandleProvider<RouterInfo>::RouteHandleFactoryMap
@@ -642,7 +702,7 @@ McRouteHandleProvider<RouterInfo>::buildCheckedRouteMap() {
   // route handle factory function, e.g., in makeShadow() and makeFailover()
   // extra provider functions. So those code paths must be checked by other
   // means.
-  for (auto it : buildRouteMap()) {
+  for (auto& it : buildRouteMap()) {
     checkedRouteMap.emplace(
         it.first,
         [factoryFunc = std::move(it.second), rhName = it.first](
@@ -673,7 +733,7 @@ McRouteHandleProvider<RouterInfo>::buildCheckedRouteMapWithProxy() {
   // route handle factory function, e.g., in makeShadow() and makeFailover()
   // extra provider functions. So those code paths must be checked by other
   // means.
-  for (auto it : buildRouteMapWithProxy()) {
+  for (auto& it : buildRouteMapWithProxy()) {
     checkedRouteMapWithProxy.emplace(
         it.first,
         [factoryFunc = std::move(it.second), rhName = it.first](
@@ -694,6 +754,36 @@ McRouteHandleProvider<RouterInfo>::buildCheckedRouteMapWithProxy() {
   return checkedRouteMapWithProxy;
 }
 
+template <class RouterInfo>
+typename McRouteHandleProvider<RouterInfo>::RouteHandleFactoryMapForWrapper
+McRouteHandleProvider<RouterInfo>::buildCheckedRouteMapForWrapper() {
+  typename McRouteHandleProvider<RouterInfo>::RouteHandleFactoryMapForWrapper
+      checkedRouteMapForWrapper;
+
+  // Wrap all factory functions with a nullptr check. Note that there are still
+  // other code paths that could lead to a nullptr being returned from a
+  // route handle factory function, e.g., in makeShadow() and makeFailover()
+  // extra provider functions. So those code paths must be checked by other
+  // means.
+  for (auto& it : buildRouteMapForWrapper()) {
+    checkedRouteMapForWrapper.emplace(
+        it.first,
+        [factoryFunc = std::move(it.second), rhName = it.first](
+            RouteHandlePtr rh, ProxyBase& proxy, const folly::dynamic& json) {
+          try {
+            auto ret = factoryFunc(std::move(rh), proxy, json);
+            checkLogic(ret != nullptr, "make{} returned nullptr", rhName);
+            return ret;
+          } catch (const std::exception& e) {
+            throw std::logic_error(folly::sformat(
+                "make{} throws when contructing: {}", rhName, e.what()));
+          }
+        });
+  }
+
+  return checkedRouteMapForWrapper;
+}
+
 // TODO(@aap): Remove this override as soon as all route handles are migrated
 template <>
 typename McRouteHandleProvider<MemcacheRouterInfo>::RouteHandleFactoryMap
@@ -703,6 +793,11 @@ template <>
 typename McRouteHandleProvider<
     MemcacheRouterInfo>::RouteHandleFactoryMapWithProxy
 McRouteHandleProvider<MemcacheRouterInfo>::buildRouteMapWithProxy();
+
+template <>
+typename McRouteHandleProvider<
+    MemcacheRouterInfo>::RouteHandleFactoryMapForWrapper
+McRouteHandleProvider<MemcacheRouterInfo>::buildRouteMapForWrapper();
 
 template <class RouterInfo>
 std::vector<std::shared_ptr<typename RouterInfo::RouteHandleIf>>

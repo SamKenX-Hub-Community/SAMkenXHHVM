@@ -70,6 +70,9 @@ class D extends B {
   public static function bar(): void { }
 }
 
+// TEST-CHECK-1: define $root.MethCaller$C$b
+// CHECK: define $root.MethCaller$C$b($this: *void, $o: *HackMixed, $args: *array) : *HackMixed {
+
 // TEST-CHECK-BAL: define $root.fcall_func
 // CHECK: define $root.fcall_func($this: *void) : *void {
 // CHECK: #b0:
@@ -83,9 +86,8 @@ function fcall_func(): void {
 // TEST-CHECK-BAL: define $root.fcall_static
 // CHECK: define $root.fcall_static($this: *void) : *void {
 // CHECK: #b0:
-// CHECK:   n0: *C$static = load &const::C$static::static_singleton
-// CHECK:   n1 = $builtins.lazy_initialize(n0)
-// CHECK:   n2 = C$static.f(n0, $builtins.hack_int(1), $builtins.hack_int(2), $builtins.hack_int(3))
+// CHECK:   n0 = __sil_lazy_class_initialize(<C>)
+// CHECK:   n1 = C$static.f(n0, $builtins.hack_int(1), $builtins.hack_int(2), $builtins.hack_int(3))
 // CHECK:   ret null
 // CHECK: }
 function fcall_static(): void {
@@ -124,5 +126,118 @@ function fcall_nullsafe(?C $c): void {
   f($c?->g());
 }
 
-// TEST-CHECK-BAL: declare C$static.f
+// TEST-CHECK-BAL: define $root.fcall_class_meth
+// CHECK: define $root.fcall_class_meth($this: *void) : *void {
+// CHECK: local $x: *void, $0: *void
+// CHECK: #b0:
+// CHECK:   n0 = __sil_lazy_class_initialize(<C>)
+// CHECK:   n1 = __sil_allocate_curry("<C$static>", "sb", n0)
+// CHECK:   store &$x <- n1: *HackMixed
+// CHECK:   jmp b1
+// CHECK: #b1:
+// CHECK:   n2: *HackMixed = load &$x
+// CHECK:   store &$0 <- n2: *HackMixed
+// CHECK:   n3: *HackMixed = load &$0
+// CHECK:   n4 = n3.HackMixed.__invoke($builtins.hack_int(1), $builtins.hack_int(2), $builtins.hack_int(3))
+// CHECK:   jmp b3
+// CHECK:   .handlers b2
+// CHECK: #b2(n5: *HackMixed):
+// CHECK:   store &$0 <- null: *HackMixed
+// CHECK:   n6 = $builtins.hhbc_throw(n5)
+// CHECK:   unreachable
+// CHECK: #b3:
+// CHECK:   ret null
+// CHECK: }
+function fcall_class_meth(): void {
+  $x = C::sb<>;
+  $x(1, 2, 3);
+}
+
+// TEST-CHECK-BAL: define $root.fcall_func_invoke
+// CHECK: define $root.fcall_func_invoke($this: *void) : *void {
+// CHECK: local $x: *void, $0: *void
+// CHECK: #b0:
+// CHECK:   n0 = __sil_allocate_curry("<$root>", "f", null)
+// CHECK:   store &$x <- n0: *HackMixed
+// CHECK:   jmp b1
+// CHECK: #b1:
+// CHECK:   n1: *HackMixed = load &$x
+// CHECK:   store &$0 <- n1: *HackMixed
+// CHECK:   n2: *HackMixed = load &$0
+// CHECK:   n3 = n2.HackMixed.__invoke($builtins.hack_int(1), $builtins.hack_int(2), $builtins.hack_int(3))
+// CHECK:   jmp b3
+// CHECK:   .handlers b2
+// CHECK: #b2(n4: *HackMixed):
+// CHECK:   store &$0 <- null: *HackMixed
+// CHECK:   n5 = $builtins.hhbc_throw(n4)
+// CHECK:   unreachable
+// CHECK: #b3:
+// CHECK:   ret null
+// CHECK: }
+function fcall_func_invoke(): void {
+  $x = f<>;
+  $x(1, 2, 3);
+}
+
+// TEST-CHECK-BAL: define $root.fcall_splat
+// CHECK: define $root.fcall_splat($this: *void) : *void {
+// CHECK: local $x: *void
+// CHECK: #b0:
+// CHECK:   n0 = $builtins.hhbc_new_vec($builtins.hack_int(2), $builtins.hack_int(3), $builtins.hack_int(4))
+// CHECK:   store &$x <- n0: *HackMixed
+// CHECK:   n1: *HackMixed = load &$x
+// CHECK:   n2 = $builtins.__sil_splat(n1)
+// CHECK:   n3 = $root.f(null, $builtins.hack_int(1), n2)
+// CHECK:   ret null
+// CHECK: }
+function fcall_splat(): void {
+  $x = vec[2, 3, 4];
+  f(1, ...$x);
+}
+
+// TEST-CHECK-BAL: define $root.fcall_meth_caller
+// CHECK: define $root.fcall_meth_caller($this: *void, $b: *C) : *void {
+// CHECK: local $x: *void, $0: *void
+// CHECK: #b0:
+// CHECK:   n0 = __sil_allocate_curry("<$root>", "MethCaller$C$b", null)
+// CHECK:   store &$x <- n0: *HackMixed
+// CHECK:   jmp b1
+// CHECK: #b1:
+// CHECK:   n1: *HackMixed = load &$x
+// CHECK:   store &$0 <- n1: *HackMixed
+// CHECK:   n2: *HackMixed = load &$b
+// CHECK:   n3: *HackMixed = load &$0
+// CHECK:   n4 = n3.HackMixed.__invoke(n2, $builtins.hack_int(1), $builtins.hack_int(2), $builtins.hack_int(3))
+// CHECK:   jmp b3
+// CHECK:   .handlers b2
+// CHECK: #b2(n5: *HackMixed):
+// CHECK:   store &$0 <- null: *HackMixed
+// CHECK:   n6 = $builtins.hhbc_throw(n5)
+// CHECK:   unreachable
+// CHECK: #b3:
+// CHECK:   ret null
+// CHECK: }
+function fcall_meth_caller(C $b): void {
+  $x = meth_caller(C::class, 'b');
+  $x($b, 1, 2, 3);
+}
+
+// TEST-CHECK-BAL: define $root.fcall_cls_method
+// CHECK: define $root.fcall_cls_method($this: *void, $a: *Classname) : *void {
+// CHECK: #b0:
+// CHECK:   n0 = $builtins.hack_new_dict($builtins.hack_string("kind"), $builtins.hack_int(101), $builtins.hack_string("classname"), $builtins.hack_string("HH\\classname"))
+// CHECK:   n1: *HackMixed = load &$a
+// CHECK:   n2 = $builtins.hhbc_verify_param_type_ts(n1, n0)
+// CHECK:   n3: *HackMixed = load &$a
+// CHECK:   n4 = n3.HackMixed$static.static_fcall_self()
+// CHECK:   ret null
+// CHECK: }
+function fcall_cls_method(classname<D> $a): void {
+  $a::static_fcall_self();
+}
+
+// TEST-CHECK-1: declare C$static.f
 // CHECK: declare C$static.f(...): *HackMixed
+
+// TEST-CHECK-1: declare __sil_allocate_curry
+// CHECK: declare __sil_allocate_curry(...): *HackMixed

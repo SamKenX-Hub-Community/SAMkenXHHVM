@@ -1913,7 +1913,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "FooService";
-                METHOD_NAME = "FooService.simple_rpc";
+                SERVICE_METHOD_NAME = "FooService.simple_rpc";
             }
             let args = self::Args_FooService_simple_rpc {
                 _phantom: ::std::marker::PhantomData,
@@ -1928,8 +1928,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "FooService.simple_rpc"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "FooService.simple_rpc"));
 
             async move {
                 let reply_env = call.await?;
@@ -1945,7 +1945,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("FooService.simple_rpc"))
+            .instrument(::tracing::info_span!("stream", method = "FooService.simple_rpc"))
             .boxed()
         }
     }
@@ -2196,7 +2196,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "FB303Service";
-                METHOD_NAME = "FB303Service.simple_rpc";
+                SERVICE_METHOD_NAME = "FB303Service.simple_rpc";
             }
             let args = self::Args_FB303Service_simple_rpc {
                 int_parameter: arg_int_parameter,
@@ -2212,8 +2212,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "FB303Service.simple_rpc"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "FB303Service.simple_rpc"));
 
             async move {
                 let reply_env = call.await?;
@@ -2229,7 +2229,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("FB303Service.simple_rpc"))
+            .instrument(::tracing::info_span!("stream", method = "FB303Service.simple_rpc"))
             .boxed()
         }
     }
@@ -2493,7 +2493,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.ping";
+                SERVICE_METHOD_NAME = "MyService.ping";
             }
             let args = self::Args_MyService_ping {
                 _phantom: ::std::marker::PhantomData,
@@ -2508,8 +2508,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.ping"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.ping"));
 
             async move {
                 let reply_env = call.await?;
@@ -2525,7 +2525,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.ping"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.ping"))
             .boxed()
         }
 
@@ -2539,7 +2539,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.getRandomData";
+                SERVICE_METHOD_NAME = "MyService.getRandomData";
             }
             let args = self::Args_MyService_getRandomData {
                 _phantom: ::std::marker::PhantomData,
@@ -2554,8 +2554,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.getRandomData"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.getRandomData"));
 
             async move {
                 let reply_env = call.await?;
@@ -2571,7 +2571,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.getRandomData"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.getRandomData"))
             .boxed()
         }
 
@@ -2586,7 +2586,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.sink";
+                SERVICE_METHOD_NAME = "MyService.sink";
             }
             let args = self::Args_MyService_sink {
                 sink: arg_sink,
@@ -2602,8 +2602,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.sink"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.sink"));
 
             async move {
                 let reply_env = call.await?;
@@ -2619,7 +2619,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.sink"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.sink"))
             .boxed()
         }
 
@@ -2635,7 +2635,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.putDataById";
+                SERVICE_METHOD_NAME = "MyService.putDataById";
             }
             let args = self::Args_MyService_putDataById {
                 id: arg_id,
@@ -2652,8 +2652,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.putDataById"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.putDataById"));
 
             async move {
                 let reply_env = call.await?;
@@ -2669,7 +2669,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.putDataById"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.putDataById"))
             .boxed()
         }
 
@@ -2684,7 +2684,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.hasDataById";
+                SERVICE_METHOD_NAME = "MyService.hasDataById";
             }
             let args = self::Args_MyService_hasDataById {
                 id: arg_id,
@@ -2700,8 +2700,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.hasDataById"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.hasDataById"));
 
             async move {
                 let reply_env = call.await?;
@@ -2717,7 +2717,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.hasDataById"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.hasDataById"))
             .boxed()
         }
 
@@ -2732,7 +2732,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.getDataById";
+                SERVICE_METHOD_NAME = "MyService.getDataById";
             }
             let args = self::Args_MyService_getDataById {
                 id: arg_id,
@@ -2748,8 +2748,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.getDataById"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.getDataById"));
 
             async move {
                 let reply_env = call.await?;
@@ -2765,7 +2765,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.getDataById"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.getDataById"))
             .boxed()
         }
 
@@ -2780,7 +2780,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.deleteDataById";
+                SERVICE_METHOD_NAME = "MyService.deleteDataById";
             }
             let args = self::Args_MyService_deleteDataById {
                 id: arg_id,
@@ -2796,8 +2796,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.deleteDataById"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.deleteDataById"));
 
             async move {
                 let reply_env = call.await?;
@@ -2813,7 +2813,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.deleteDataById"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.deleteDataById"))
             .boxed()
         }
 
@@ -2829,7 +2829,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.lobDataById";
+                SERVICE_METHOD_NAME = "MyService.lobDataById";
             }
             let args = self::Args_MyService_lobDataById {
                 id: arg_id,
@@ -2846,8 +2846,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.lobDataById"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.lobDataById"));
 
             async move {
                 let reply_env = call.await?;
@@ -2863,7 +2863,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.lobDataById"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.lobDataById"))
             .boxed()
         }
 
@@ -2877,7 +2877,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.invalid_return_for_hack";
+                SERVICE_METHOD_NAME = "MyService.invalid_return_for_hack";
             }
             let args = self::Args_MyService_invalid_return_for_hack {
                 _phantom: ::std::marker::PhantomData,
@@ -2892,8 +2892,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.invalid_return_for_hack"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.invalid_return_for_hack"));
 
             async move {
                 let reply_env = call.await?;
@@ -2909,7 +2909,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.invalid_return_for_hack"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.invalid_return_for_hack"))
             .boxed()
         }
 
@@ -2923,7 +2923,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.rpc_skipped_codegen";
+                SERVICE_METHOD_NAME = "MyService.rpc_skipped_codegen";
             }
             let args = self::Args_MyService_rpc_skipped_codegen {
                 _phantom: ::std::marker::PhantomData,
@@ -2938,8 +2938,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.rpc_skipped_codegen"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.rpc_skipped_codegen"));
 
             async move {
                 let reply_env = call.await?;
@@ -2955,7 +2955,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.rpc_skipped_codegen"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.rpc_skipped_codegen"))
             .boxed()
         }
     }
@@ -3786,7 +3786,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "DbMixedStackArguments";
-                METHOD_NAME = "DbMixedStackArguments.getDataByKey0";
+                SERVICE_METHOD_NAME = "DbMixedStackArguments.getDataByKey0";
             }
             let args = self::Args_DbMixedStackArguments_getDataByKey0 {
                 key: arg_key,
@@ -3802,8 +3802,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "DbMixedStackArguments.getDataByKey0"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "DbMixedStackArguments.getDataByKey0"));
 
             async move {
                 let reply_env = call.await?;
@@ -3819,7 +3819,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("DbMixedStackArguments.getDataByKey0"))
+            .instrument(::tracing::info_span!("stream", method = "DbMixedStackArguments.getDataByKey0"))
             .boxed()
         }
 
@@ -3834,7 +3834,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "DbMixedStackArguments";
-                METHOD_NAME = "DbMixedStackArguments.getDataByKey1";
+                SERVICE_METHOD_NAME = "DbMixedStackArguments.getDataByKey1";
             }
             let args = self::Args_DbMixedStackArguments_getDataByKey1 {
                 key: arg_key,
@@ -3850,8 +3850,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "DbMixedStackArguments.getDataByKey1"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "DbMixedStackArguments.getDataByKey1"));
 
             async move {
                 let reply_env = call.await?;
@@ -3867,7 +3867,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("DbMixedStackArguments.getDataByKey1"))
+            .instrument(::tracing::info_span!("stream", method = "DbMixedStackArguments.getDataByKey1"))
             .boxed()
         }
     }
@@ -4229,8 +4229,10 @@ pub mod server {
         H: FooService,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
         RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         pub fn new(service: H) -> Self {
             Self {
@@ -4248,6 +4250,7 @@ pub mod server {
         async fn handle_simple_rpc<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -4257,20 +4260,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "FooService";
-                METHOD_NAME = "FooService.simple_rpc";
+                METHOD_NAME = "simple_rpc";
+                SERVICE_METHOD_NAME = "FooService.simple_rpc";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_FooService_simple_rpc = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.simple_rpc(
@@ -4282,7 +4287,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "FooService.simple_rpc", "success");
                     crate::services::foo_service::SimpleRpcExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::foo_service::SimpleRpcExn::Success(_))) => {
@@ -4292,11 +4297,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "FooService.simple_rpc", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("FooService.simple_rpc", exn);
+                    ::tracing::error!(method = "FooService.simple_rpc", panic = ?aexn);
                     crate::services::foo_service::SimpleRpcExn::ApplicationException(aexn)
                 }
             };
@@ -4322,9 +4328,11 @@ pub mod server {
         H: FooService,
         P::Frame: ::std::marker::Send + 'static,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         type RequestContext = R;
         type ReplyState = RS;
@@ -4342,13 +4350,14 @@ pub mod server {
             &self,
             idx: ::std::primitive::usize,
             _p: &mut P::Deserializer,
-            _r: &R,
+            _req: ::fbthrift::ProtocolDecoded<P>,
+            _req_ctxt: &R,
             _reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
         ) -> ::anyhow::Result<()> {
             match idx {
                 0usize => {
-                    self.handle_simple_rpc(_p, _r, _reply_state, _seqid).await
+                    self.handle_simple_rpc(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 bad => panic!(
                     "{}: unexpected method idx {}",
@@ -4394,9 +4403,11 @@ pub mod server {
         P::Frame: ::std::marker::Send + 'static,
         H: FooService,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         type Handler = H;
         type RequestContext = R;
@@ -4409,8 +4420,8 @@ pub mod server {
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
         ) -> ::anyhow::Result<()> {
-            use ::fbthrift::{BufExt as _, ProtocolReader as _, ServiceProcessor as _};
-            let mut p = P::deserializer(req);
+            use ::fbthrift::{ProtocolReader as _, ServiceProcessor as _};
+            let mut p = P::deserializer(req.clone());
             let (idx, mty, seqid) = p.read_message_begin(|name| self.method_idx(name))?;
             if mty != ::fbthrift::MessageType::Call {
                 return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ApplicationException::new(
@@ -4421,11 +4432,10 @@ pub mod server {
             let idx = match idx {
                 ::std::result::Result::Ok(idx) => idx,
                 ::std::result::Result::Err(_) => {
-                    let cur = P::into_buffer(p).reset();
-                    return self.supa.call(cur, req_ctxt, reply_state).await;
+                    return self.supa.call(req, req_ctxt, reply_state).await;
                 }
             };
-            self.handle_method(idx, &mut p, req_ctxt, reply_state, seqid).await?;
+            self.handle_method(idx, &mut p, req, req_ctxt, reply_state, seqid).await?;
             p.read_message_end()?;
 
             Ok(())
@@ -4474,8 +4484,10 @@ pub mod server {
         F: ::fbthrift::Framing + ::std::marker::Send + ::std::marker::Sync + 'static,
         H: FooService,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = F::DecBuf> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<F, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = F> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        RS: ::fbthrift::ReplyState<F, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::FramingDecoded<F>: ::std::clone::Clone,
+        ::fbthrift::FramingEncodedFinal<F>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         match proto {
             ::fbthrift::ProtocolID::BinaryProtocol => {
@@ -4566,8 +4578,10 @@ pub mod server {
         H: FB303Service,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
         RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         pub fn new(service: H) -> Self {
             Self {
@@ -4585,6 +4599,7 @@ pub mod server {
         async fn handle_simple_rpc<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -4594,20 +4609,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "FB303Service";
-                METHOD_NAME = "FB303Service.simple_rpc";
+                METHOD_NAME = "simple_rpc";
+                SERVICE_METHOD_NAME = "FB303Service.simple_rpc";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_FB303Service_simple_rpc = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.simple_rpc(
@@ -4620,7 +4637,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "FB303Service.simple_rpc", "success");
                     crate::services::f_b303_service::SimpleRpcExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::f_b303_service::SimpleRpcExn::Success(_))) => {
@@ -4630,11 +4647,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "FB303Service.simple_rpc", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("FB303Service.simple_rpc", exn);
+                    ::tracing::error!(method = "FB303Service.simple_rpc", panic = ?aexn);
                     crate::services::f_b303_service::SimpleRpcExn::ApplicationException(aexn)
                 }
             };
@@ -4660,9 +4678,11 @@ pub mod server {
         H: FB303Service,
         P::Frame: ::std::marker::Send + 'static,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         type RequestContext = R;
         type ReplyState = RS;
@@ -4680,13 +4700,14 @@ pub mod server {
             &self,
             idx: ::std::primitive::usize,
             _p: &mut P::Deserializer,
-            _r: &R,
+            _req: ::fbthrift::ProtocolDecoded<P>,
+            _req_ctxt: &R,
             _reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
         ) -> ::anyhow::Result<()> {
             match idx {
                 0usize => {
-                    self.handle_simple_rpc(_p, _r, _reply_state, _seqid).await
+                    self.handle_simple_rpc(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 bad => panic!(
                     "{}: unexpected method idx {}",
@@ -4732,9 +4753,11 @@ pub mod server {
         P::Frame: ::std::marker::Send + 'static,
         H: FB303Service,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         type Handler = H;
         type RequestContext = R;
@@ -4747,8 +4770,8 @@ pub mod server {
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
         ) -> ::anyhow::Result<()> {
-            use ::fbthrift::{BufExt as _, ProtocolReader as _, ServiceProcessor as _};
-            let mut p = P::deserializer(req);
+            use ::fbthrift::{ProtocolReader as _, ServiceProcessor as _};
+            let mut p = P::deserializer(req.clone());
             let (idx, mty, seqid) = p.read_message_begin(|name| self.method_idx(name))?;
             if mty != ::fbthrift::MessageType::Call {
                 return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ApplicationException::new(
@@ -4759,11 +4782,10 @@ pub mod server {
             let idx = match idx {
                 ::std::result::Result::Ok(idx) => idx,
                 ::std::result::Result::Err(_) => {
-                    let cur = P::into_buffer(p).reset();
-                    return self.supa.call(cur, req_ctxt, reply_state).await;
+                    return self.supa.call(req, req_ctxt, reply_state).await;
                 }
             };
-            self.handle_method(idx, &mut p, req_ctxt, reply_state, seqid).await?;
+            self.handle_method(idx, &mut p, req, req_ctxt, reply_state, seqid).await?;
             p.read_message_end()?;
 
             Ok(())
@@ -4812,8 +4834,10 @@ pub mod server {
         F: ::fbthrift::Framing + ::std::marker::Send + ::std::marker::Sync + 'static,
         H: FB303Service,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = F::DecBuf> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<F, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = F> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        RS: ::fbthrift::ReplyState<F, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::FramingDecoded<F>: ::std::clone::Clone,
+        ::fbthrift::FramingEncodedFinal<F>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         match proto {
             ::fbthrift::ProtocolID::BinaryProtocol => {
@@ -5311,8 +5335,10 @@ pub mod server {
         H: MyService,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
         RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         pub fn new(service: H) -> Self {
             Self {
@@ -5330,6 +5356,7 @@ pub mod server {
         async fn handle_ping<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5339,20 +5366,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.ping";
+                METHOD_NAME = "ping";
+                SERVICE_METHOD_NAME = "MyService.ping";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_MyService_ping = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.ping(
@@ -5364,7 +5393,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "MyService.ping", "success");
                     crate::services::my_service::PingExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::my_service::PingExn::Success(_))) => {
@@ -5374,11 +5403,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "MyService.ping", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("MyService.ping", exn);
+                    ::tracing::error!(method = "MyService.ping", panic = ?aexn);
                     crate::services::my_service::PingExn::ApplicationException(aexn)
                 }
             };
@@ -5399,6 +5429,7 @@ pub mod server {
         async fn handle_getRandomData<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5408,20 +5439,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.getRandomData";
+                METHOD_NAME = "getRandomData";
+                SERVICE_METHOD_NAME = "MyService.getRandomData";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_MyService_getRandomData = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.getRandomData(
@@ -5433,7 +5466,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "MyService.getRandomData", "success");
                     crate::services::my_service::GetRandomDataExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::my_service::GetRandomDataExn::Success(_))) => {
@@ -5443,11 +5476,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "MyService.getRandomData", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("MyService.getRandomData", exn);
+                    ::tracing::error!(method = "MyService.getRandomData", panic = ?aexn);
                     crate::services::my_service::GetRandomDataExn::ApplicationException(aexn)
                 }
             };
@@ -5468,6 +5502,7 @@ pub mod server {
         async fn handle_sink<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5477,20 +5512,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.sink";
+                METHOD_NAME = "sink";
+                SERVICE_METHOD_NAME = "MyService.sink";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_MyService_sink = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.sink(
@@ -5503,7 +5540,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "MyService.sink", "success");
                     crate::services::my_service::SinkExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::my_service::SinkExn::Success(_))) => {
@@ -5513,11 +5550,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "MyService.sink", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("MyService.sink", exn);
+                    ::tracing::error!(method = "MyService.sink", panic = ?aexn);
                     crate::services::my_service::SinkExn::ApplicationException(aexn)
                 }
             };
@@ -5538,6 +5576,7 @@ pub mod server {
         async fn handle_putDataById<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5547,20 +5586,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.putDataById";
+                METHOD_NAME = "putDataById";
+                SERVICE_METHOD_NAME = "MyService.putDataById";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_MyService_putDataById = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.putDataById(
@@ -5574,7 +5615,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "MyService.putDataById", "success");
                     crate::services::my_service::PutDataByIdExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::my_service::PutDataByIdExn::Success(_))) => {
@@ -5584,11 +5625,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "MyService.putDataById", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("MyService.putDataById", exn);
+                    ::tracing::error!(method = "MyService.putDataById", panic = ?aexn);
                     crate::services::my_service::PutDataByIdExn::ApplicationException(aexn)
                 }
             };
@@ -5609,6 +5651,7 @@ pub mod server {
         async fn handle_hasDataById<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5618,20 +5661,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.hasDataById";
+                METHOD_NAME = "hasDataById";
+                SERVICE_METHOD_NAME = "MyService.hasDataById";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_MyService_hasDataById = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.hasDataById(
@@ -5644,7 +5689,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "MyService.hasDataById", "success");
                     crate::services::my_service::HasDataByIdExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::my_service::HasDataByIdExn::Success(_))) => {
@@ -5654,11 +5699,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "MyService.hasDataById", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("MyService.hasDataById", exn);
+                    ::tracing::error!(method = "MyService.hasDataById", panic = ?aexn);
                     crate::services::my_service::HasDataByIdExn::ApplicationException(aexn)
                 }
             };
@@ -5679,6 +5725,7 @@ pub mod server {
         async fn handle_getDataById<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5688,20 +5735,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.getDataById";
+                METHOD_NAME = "getDataById";
+                SERVICE_METHOD_NAME = "MyService.getDataById";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_MyService_getDataById = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.getDataById(
@@ -5714,7 +5763,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "MyService.getDataById", "success");
                     crate::services::my_service::GetDataByIdExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::my_service::GetDataByIdExn::Success(_))) => {
@@ -5724,11 +5773,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "MyService.getDataById", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("MyService.getDataById", exn);
+                    ::tracing::error!(method = "MyService.getDataById", panic = ?aexn);
                     crate::services::my_service::GetDataByIdExn::ApplicationException(aexn)
                 }
             };
@@ -5749,6 +5799,7 @@ pub mod server {
         async fn handle_deleteDataById<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5758,20 +5809,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.deleteDataById";
+                METHOD_NAME = "deleteDataById";
+                SERVICE_METHOD_NAME = "MyService.deleteDataById";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_MyService_deleteDataById = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.deleteDataById(
@@ -5784,7 +5837,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "MyService.deleteDataById", "success");
                     crate::services::my_service::DeleteDataByIdExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::my_service::DeleteDataByIdExn::Success(_))) => {
@@ -5794,11 +5847,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "MyService.deleteDataById", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("MyService.deleteDataById", exn);
+                    ::tracing::error!(method = "MyService.deleteDataById", panic = ?aexn);
                     crate::services::my_service::DeleteDataByIdExn::ApplicationException(aexn)
                 }
             };
@@ -5819,6 +5873,7 @@ pub mod server {
         async fn handle_lobDataById<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5828,20 +5883,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.lobDataById";
+                METHOD_NAME = "lobDataById";
+                SERVICE_METHOD_NAME = "MyService.lobDataById";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_MyService_lobDataById = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.lobDataById(
@@ -5855,7 +5912,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "MyService.lobDataById", "success");
                     crate::services::my_service::LobDataByIdExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::my_service::LobDataByIdExn::Success(_))) => {
@@ -5865,11 +5922,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "MyService.lobDataById", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("MyService.lobDataById", exn);
+                    ::tracing::error!(method = "MyService.lobDataById", panic = ?aexn);
                     crate::services::my_service::LobDataByIdExn::ApplicationException(aexn)
                 }
             };
@@ -5890,6 +5948,7 @@ pub mod server {
         async fn handle_invalid_return_for_hack<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5899,20 +5958,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.invalid_return_for_hack";
+                METHOD_NAME = "invalid_return_for_hack";
+                SERVICE_METHOD_NAME = "MyService.invalid_return_for_hack";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_MyService_invalid_return_for_hack = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.invalid_return_for_hack(
@@ -5924,7 +5985,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "MyService.invalid_return_for_hack", "success");
                     crate::services::my_service::InvalidReturnForHackExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::my_service::InvalidReturnForHackExn::Success(_))) => {
@@ -5934,11 +5995,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "MyService.invalid_return_for_hack", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("MyService.invalid_return_for_hack", exn);
+                    ::tracing::error!(method = "MyService.invalid_return_for_hack", panic = ?aexn);
                     crate::services::my_service::InvalidReturnForHackExn::ApplicationException(aexn)
                 }
             };
@@ -5959,6 +6021,7 @@ pub mod server {
         async fn handle_rpc_skipped_codegen<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -5968,20 +6031,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.rpc_skipped_codegen";
+                METHOD_NAME = "rpc_skipped_codegen";
+                SERVICE_METHOD_NAME = "MyService.rpc_skipped_codegen";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_MyService_rpc_skipped_codegen = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.rpc_skipped_codegen(
@@ -5993,7 +6058,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "MyService.rpc_skipped_codegen", "success");
                     crate::services::my_service::RpcSkippedCodegenExn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::my_service::RpcSkippedCodegenExn::Success(_))) => {
@@ -6003,11 +6068,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "MyService.rpc_skipped_codegen", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("MyService.rpc_skipped_codegen", exn);
+                    ::tracing::error!(method = "MyService.rpc_skipped_codegen", panic = ?aexn);
                     crate::services::my_service::RpcSkippedCodegenExn::ApplicationException(aexn)
                 }
             };
@@ -6033,9 +6099,11 @@ pub mod server {
         H: MyService,
         P::Frame: ::std::marker::Send + 'static,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         type RequestContext = R;
         type ReplyState = RS;
@@ -6062,40 +6130,41 @@ pub mod server {
             &self,
             idx: ::std::primitive::usize,
             _p: &mut P::Deserializer,
-            _r: &R,
+            _req: ::fbthrift::ProtocolDecoded<P>,
+            _req_ctxt: &R,
             _reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
         ) -> ::anyhow::Result<()> {
             match idx {
                 0usize => {
-                    self.handle_ping(_p, _r, _reply_state, _seqid).await
+                    self.handle_ping(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 1usize => {
-                    self.handle_getRandomData(_p, _r, _reply_state, _seqid).await
+                    self.handle_getRandomData(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 2usize => {
-                    self.handle_sink(_p, _r, _reply_state, _seqid).await
+                    self.handle_sink(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 3usize => {
-                    self.handle_putDataById(_p, _r, _reply_state, _seqid).await
+                    self.handle_putDataById(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 4usize => {
-                    self.handle_hasDataById(_p, _r, _reply_state, _seqid).await
+                    self.handle_hasDataById(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 5usize => {
-                    self.handle_getDataById(_p, _r, _reply_state, _seqid).await
+                    self.handle_getDataById(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 6usize => {
-                    self.handle_deleteDataById(_p, _r, _reply_state, _seqid).await
+                    self.handle_deleteDataById(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 7usize => {
-                    self.handle_lobDataById(_p, _r, _reply_state, _seqid).await
+                    self.handle_lobDataById(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 8usize => {
-                    self.handle_invalid_return_for_hack(_p, _r, _reply_state, _seqid).await
+                    self.handle_invalid_return_for_hack(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 9usize => {
-                    self.handle_rpc_skipped_codegen(_p, _r, _reply_state, _seqid).await
+                    self.handle_rpc_skipped_codegen(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 bad => panic!(
                     "{}: unexpected method idx {}",
@@ -6141,9 +6210,11 @@ pub mod server {
         P::Frame: ::std::marker::Send + 'static,
         H: MyService,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         type Handler = H;
         type RequestContext = R;
@@ -6156,8 +6227,8 @@ pub mod server {
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
         ) -> ::anyhow::Result<()> {
-            use ::fbthrift::{BufExt as _, ProtocolReader as _, ServiceProcessor as _};
-            let mut p = P::deserializer(req);
+            use ::fbthrift::{ProtocolReader as _, ServiceProcessor as _};
+            let mut p = P::deserializer(req.clone());
             let (idx, mty, seqid) = p.read_message_begin(|name| self.method_idx(name))?;
             if mty != ::fbthrift::MessageType::Call {
                 return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ApplicationException::new(
@@ -6168,11 +6239,10 @@ pub mod server {
             let idx = match idx {
                 ::std::result::Result::Ok(idx) => idx,
                 ::std::result::Result::Err(_) => {
-                    let cur = P::into_buffer(p).reset();
-                    return self.supa.call(cur, req_ctxt, reply_state).await;
+                    return self.supa.call(req, req_ctxt, reply_state).await;
                 }
             };
-            self.handle_method(idx, &mut p, req_ctxt, reply_state, seqid).await?;
+            self.handle_method(idx, &mut p, req, req_ctxt, reply_state, seqid).await?;
             p.read_message_end()?;
 
             Ok(())
@@ -6230,8 +6300,10 @@ pub mod server {
         F: ::fbthrift::Framing + ::std::marker::Send + ::std::marker::Sync + 'static,
         H: MyService,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = F::DecBuf> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<F, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = F> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        RS: ::fbthrift::ReplyState<F, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::FramingDecoded<F>: ::std::clone::Clone,
+        ::fbthrift::FramingEncodedFinal<F>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         match proto {
             ::fbthrift::ProtocolID::BinaryProtocol => {
@@ -6369,8 +6441,10 @@ pub mod server {
         H: DbMixedStackArguments,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
         RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         pub fn new(service: H) -> Self {
             Self {
@@ -6388,6 +6462,7 @@ pub mod server {
         async fn handle_getDataByKey0<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -6397,20 +6472,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "DbMixedStackArguments";
-                METHOD_NAME = "DbMixedStackArguments.getDataByKey0";
+                METHOD_NAME = "getDataByKey0";
+                SERVICE_METHOD_NAME = "DbMixedStackArguments.getDataByKey0";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_DbMixedStackArguments_getDataByKey0 = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.getDataByKey0(
@@ -6423,7 +6500,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "DbMixedStackArguments.getDataByKey0", "success");
                     crate::services::db_mixed_stack_arguments::GetDataByKey0Exn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::db_mixed_stack_arguments::GetDataByKey0Exn::Success(_))) => {
@@ -6433,11 +6510,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "DbMixedStackArguments.getDataByKey0", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("DbMixedStackArguments.getDataByKey0", exn);
+                    ::tracing::error!(method = "DbMixedStackArguments.getDataByKey0", panic = ?aexn);
                     crate::services::db_mixed_stack_arguments::GetDataByKey0Exn::ApplicationException(aexn)
                 }
             };
@@ -6458,6 +6536,7 @@ pub mod server {
         async fn handle_getDataByKey1<'a>(
             &'a self,
             p: &'a mut P::Deserializer,
+            req: ::fbthrift::ProtocolDecoded<P>,
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
@@ -6467,20 +6546,22 @@ pub mod server {
 
             const_cstr! {
                 SERVICE_NAME = "DbMixedStackArguments";
-                METHOD_NAME = "DbMixedStackArguments.getDataByKey1";
+                METHOD_NAME = "getDataByKey1";
+                SERVICE_METHOD_NAME = "DbMixedStackArguments.getDataByKey1";
             }
             let mut ctx_stack = req_ctxt.get_context_stack(
                 SERVICE_NAME.as_cstr(),
-                METHOD_NAME.as_cstr(),
+                SERVICE_METHOD_NAME.as_cstr(),
             )?;
             ::fbthrift::ContextStack::pre_read(&mut ctx_stack)?;
             let _args: self::Args_DbMixedStackArguments_getDataByKey1 = ::fbthrift::Deserialize::read(p)?;
-            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, &::fbthrift::SerializedMessage {
+            let bytes_read = ::fbthrift::help::buf_len(&req)?;
+            ::fbthrift::ContextStack::on_read_data(&mut ctx_stack, ::fbthrift::SerializedMessage {
                 protocol: P::PROTOCOL_ID,
                 method_name: METHOD_NAME.as_cstr(),
-                buffer: ::std::marker::PhantomData, // FIXME P::into_buffer(p).reset(),
+                buffer: req,
             })?;
-            ::fbthrift::ContextStack::post_read(&mut ctx_stack, 0)?;
+            ::fbthrift::ContextStack::post_read(&mut ctx_stack, bytes_read)?;
 
             let res = ::std::panic::AssertUnwindSafe(
                 self.service.getDataByKey1(
@@ -6493,7 +6574,7 @@ pub mod server {
             // nested results - panic catch on the outside, method on the inside
             let res = match res {
                 ::std::result::Result::Ok(::std::result::Result::Ok(res)) => {
-                    ::tracing::info!("success");
+                    ::tracing::trace!(method = "DbMixedStackArguments.getDataByKey1", "success");
                     crate::services::db_mixed_stack_arguments::GetDataByKey1Exn::Success(res)
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(crate::services::db_mixed_stack_arguments::GetDataByKey1Exn::Success(_))) => {
@@ -6503,11 +6584,12 @@ pub mod server {
                     )
                 }
                 ::std::result::Result::Ok(::std::result::Result::Err(exn)) => {
-                    ::tracing::error!(exception = ?exn);
+                    ::tracing::info!(method = "DbMixedStackArguments.getDataByKey1", exception = ?exn);
                     exn
                 }
                 ::std::result::Result::Err(exn) => {
                     let aexn = ::fbthrift::ApplicationException::handler_panic("DbMixedStackArguments.getDataByKey1", exn);
+                    ::tracing::error!(method = "DbMixedStackArguments.getDataByKey1", panic = ?aexn);
                     crate::services::db_mixed_stack_arguments::GetDataByKey1Exn::ApplicationException(aexn)
                 }
             };
@@ -6533,9 +6615,11 @@ pub mod server {
         H: DbMixedStackArguments,
         P::Frame: ::std::marker::Send + 'static,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         type RequestContext = R;
         type ReplyState = RS;
@@ -6554,16 +6638,17 @@ pub mod server {
             &self,
             idx: ::std::primitive::usize,
             _p: &mut P::Deserializer,
-            _r: &R,
+            _req: ::fbthrift::ProtocolDecoded<P>,
+            _req_ctxt: &R,
             _reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
             _seqid: ::std::primitive::u32,
         ) -> ::anyhow::Result<()> {
             match idx {
                 0usize => {
-                    self.handle_getDataByKey0(_p, _r, _reply_state, _seqid).await
+                    self.handle_getDataByKey0(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 1usize => {
-                    self.handle_getDataByKey1(_p, _r, _reply_state, _seqid).await
+                    self.handle_getDataByKey1(_p, _req, _req_ctxt, _reply_state, _seqid).await
                 }
                 bad => panic!(
                     "{}: unexpected method idx {}",
@@ -6609,9 +6694,11 @@ pub mod server {
         P::Frame: ::std::marker::Send + 'static,
         H: DbMixedStackArguments,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = ::fbthrift::ProtocolDecoded<P>>
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = <P as ::fbthrift::Protocol>::Frame>
             + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        RS: ::fbthrift::ReplyState<P::Frame, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::ProtocolDecoded<P>: ::std::clone::Clone,
+        ::fbthrift::ProtocolEncodedFinal<P>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         type Handler = H;
         type RequestContext = R;
@@ -6624,8 +6711,8 @@ pub mod server {
             req_ctxt: &R,
             reply_state: ::std::sync::Arc<::std::sync::Mutex<RS>>,
         ) -> ::anyhow::Result<()> {
-            use ::fbthrift::{BufExt as _, ProtocolReader as _, ServiceProcessor as _};
-            let mut p = P::deserializer(req);
+            use ::fbthrift::{ProtocolReader as _, ServiceProcessor as _};
+            let mut p = P::deserializer(req.clone());
             let (idx, mty, seqid) = p.read_message_begin(|name| self.method_idx(name))?;
             if mty != ::fbthrift::MessageType::Call {
                 return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ApplicationException::new(
@@ -6636,11 +6723,10 @@ pub mod server {
             let idx = match idx {
                 ::std::result::Result::Ok(idx) => idx,
                 ::std::result::Result::Err(_) => {
-                    let cur = P::into_buffer(p).reset();
-                    return self.supa.call(cur, req_ctxt, reply_state).await;
+                    return self.supa.call(req, req_ctxt, reply_state).await;
                 }
             };
-            self.handle_method(idx, &mut p, req_ctxt, reply_state, seqid).await?;
+            self.handle_method(idx, &mut p, req, req_ctxt, reply_state, seqid).await?;
             p.read_message_end()?;
 
             Ok(())
@@ -6690,8 +6776,10 @@ pub mod server {
         F: ::fbthrift::Framing + ::std::marker::Send + ::std::marker::Sync + 'static,
         H: DbMixedStackArguments,
         R: ::fbthrift::RequestContext<Name = ::std::ffi::CStr> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Buffer = F::DecBuf> + ::std::marker::Send + ::std::marker::Sync + 'static,
-        RS: ::fbthrift::ReplyState<F, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static
+        <R as ::fbthrift::RequestContext>::ContextStack: ::fbthrift::ContextStack<Name = R::Name, Frame = F> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        RS: ::fbthrift::ReplyState<F, RequestContext = R> + ::std::marker::Send + ::std::marker::Sync + 'static,
+        ::fbthrift::FramingDecoded<F>: ::std::clone::Clone,
+        ::fbthrift::FramingEncodedFinal<F>: ::std::clone::Clone + ::fbthrift::BufExt,
     {
         match proto {
             ::fbthrift::ProtocolID::BinaryProtocol => {
@@ -7002,7 +7090,7 @@ pub mod mock {
         }
     }
 
-    mod r#impl {
+    pub mod r#impl {
         pub mod foo_service {
 
             pub struct simple_rpc<'mock> {
@@ -7016,7 +7104,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> simple_rpc<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|| panic!(
                             "{}::{} is not mocked",
@@ -7063,7 +7151,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> simple_rpc<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i32| panic!(
                             "{}::{} is not mocked",
@@ -7110,7 +7198,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> ping<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|| panic!(
                             "{}::{} is not mocked",
@@ -7155,7 +7243,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> getRandomData<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|| panic!(
                             "{}::{} is not mocked",
@@ -7200,7 +7288,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> sink<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i64| panic!(
                             "{}::{} is not mocked",
@@ -7245,7 +7333,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> putDataById<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i64, _: ::std::string::String| panic!(
                             "{}::{} is not mocked",
@@ -7290,7 +7378,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> hasDataById<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i64| panic!(
                             "{}::{} is not mocked",
@@ -7335,7 +7423,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> getDataById<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i64| panic!(
                             "{}::{} is not mocked",
@@ -7380,7 +7468,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> deleteDataById<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i64| panic!(
                             "{}::{} is not mocked",
@@ -7425,7 +7513,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> lobDataById<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i64, _: ::std::string::String| panic!(
                             "{}::{} is not mocked",
@@ -7470,7 +7558,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> invalid_return_for_hack<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|| panic!(
                             "{}::{} is not mocked",
@@ -7515,7 +7603,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> rpc_skipped_codegen<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|| panic!(
                             "{}::{} is not mocked",
@@ -7562,7 +7650,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> getDataByKey0<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::string::String| panic!(
                             "{}::{} is not mocked",
@@ -7607,7 +7695,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> getDataByKey1<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::string::String| panic!(
                             "{}::{} is not mocked",

@@ -4,10 +4,10 @@
 package module // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  includes "includes"
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    includes "includes"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = includes.GoUnusedProtection__
@@ -27,17 +27,12 @@ var _ thrift.Struct = &MyStruct{}
 
 func NewMyStruct() *MyStruct {
     return (&MyStruct{}).
-        SetMyIncludedField(
-            *includes.NewIncluded(),
-        ).
-        SetMyIncludedInt(42)
+        SetMyIncludedFieldNonCompat(
+              *includes.NewIncluded(),
+          ).
+        SetMyOtherIncludedFieldNonCompat(*includes.NewIncluded()).
+        SetMyIncludedIntNonCompat(42)
 }
-
-// Deprecated: Use NewMyStruct().MyIncludedField instead.
-var MyStruct_MyIncludedField_DEFAULT = NewMyStruct().MyIncludedField
-
-// Deprecated: Use NewMyStruct().MyOtherIncludedField instead.
-var MyStruct_MyOtherIncludedField_DEFAULT = NewMyStruct().MyOtherIncludedField
 
 func (x *MyStruct) GetMyIncludedFieldNonCompat() *includes.Included {
     return x.MyIncludedField
@@ -45,7 +40,7 @@ func (x *MyStruct) GetMyIncludedFieldNonCompat() *includes.Included {
 
 func (x *MyStruct) GetMyIncludedField() *includes.Included {
     if !x.IsSetMyIncludedField() {
-      return includes.NewIncluded()
+        return includes.NewIncluded()
     }
 
     return x.MyIncludedField
@@ -57,7 +52,7 @@ func (x *MyStruct) GetMyOtherIncludedFieldNonCompat() *includes.Included {
 
 func (x *MyStruct) GetMyOtherIncludedField() *includes.Included {
     if !x.IsSetMyOtherIncludedField() {
-      return includes.NewIncluded()
+        return includes.NewIncluded()
     }
 
     return x.MyOtherIncludedField
@@ -71,13 +66,28 @@ func (x *MyStruct) GetMyIncludedInt() includes.IncludedInt64 {
     return x.MyIncludedInt
 }
 
-func (x *MyStruct) SetMyIncludedField(value includes.Included) *MyStruct {
+func (x *MyStruct) SetMyIncludedFieldNonCompat(value includes.Included) *MyStruct {
     x.MyIncludedField = &value
     return x
 }
 
-func (x *MyStruct) SetMyOtherIncludedField(value includes.Included) *MyStruct {
+func (x *MyStruct) SetMyIncludedField(value *includes.Included) *MyStruct {
+    x.MyIncludedField = value
+    return x
+}
+
+func (x *MyStruct) SetMyOtherIncludedFieldNonCompat(value includes.Included) *MyStruct {
     x.MyOtherIncludedField = &value
+    return x
+}
+
+func (x *MyStruct) SetMyOtherIncludedField(value *includes.Included) *MyStruct {
+    x.MyOtherIncludedField = value
+    return x
+}
+
+func (x *MyStruct) SetMyIncludedIntNonCompat(value includes.IncludedInt64) *MyStruct {
+    x.MyIncludedInt = value
     return x
 }
 
@@ -93,7 +103,6 @@ func (x *MyStruct) IsSetMyIncludedField() bool {
 func (x *MyStruct) IsSetMyOtherIncludedField() bool {
     return x.MyOtherIncludedField != nil
 }
-
 
 func (x *MyStruct) writeField1(p thrift.Protocol) error {  // MyIncludedField
     if !x.IsSetMyIncludedField() {
@@ -159,7 +168,7 @@ if err != nil {
     return err
 }
 
-    x.SetMyIncludedField(result)
+    x.SetMyIncludedFieldNonCompat(result)
     return nil
 }
 
@@ -170,7 +179,7 @@ if err != nil {
     return err
 }
 
-    x.SetMyOtherIncludedField(result)
+    x.SetMyOtherIncludedFieldNonCompat(result)
     return nil
 }
 
@@ -180,8 +189,30 @@ if err != nil {
     return err
 }
 
-    x.SetMyIncludedInt(result)
+    x.SetMyIncludedIntNonCompat(result)
     return nil
+}
+
+// Deprecated: Use NewMyStruct().GetMyIncludedField() instead.
+var MyStruct_MyIncludedField_DEFAULT = NewMyStruct().GetMyIncludedField()
+
+// Deprecated: Use NewMyStruct().GetMyIncludedField() instead.
+func (x *MyStruct) DefaultGetMyIncludedField() *includes.Included {
+    if !x.IsSetMyIncludedField() {
+        return includes.NewIncluded()
+    }
+    return x.MyIncludedField
+}
+
+// Deprecated: Use NewMyStruct().GetMyOtherIncludedField() instead.
+var MyStruct_MyOtherIncludedField_DEFAULT = NewMyStruct().GetMyOtherIncludedField()
+
+// Deprecated: Use NewMyStruct().GetMyOtherIncludedField() instead.
+func (x *MyStruct) DefaultGetMyOtherIncludedField() *includes.Included {
+    if !x.IsSetMyOtherIncludedField() {
+        return includes.NewIncluded()
+    }
+    return x.MyOtherIncludedField
 }
 
 func (x *MyStruct) String() string {
@@ -219,6 +250,7 @@ func (x *MyStructBuilder) Emit() *MyStruct {
     var objCopy MyStruct = *x.obj
     return &objCopy
 }
+
 func (x *MyStruct) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("MyStruct"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -291,3 +323,4 @@ func (x *MyStruct) Read(p thrift.Protocol) error {
 
     return nil
 }
+

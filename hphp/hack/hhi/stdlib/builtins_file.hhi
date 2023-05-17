@@ -8,6 +8,7 @@
  *
  */
 
+namespace {
 const resource STDIN;
 const resource STDOUT;
 const resource STDERR;
@@ -373,3 +374,13 @@ function scandir(
 function closedir(
   HH\FIXME\MISSING_PARAM_TYPE $dir_handle,
 ): HH\FIXME\MISSING_RETURN_TYPE;
+}
+
+namespace HH {
+  <<__PHPStdLib>> function try_stdin()[]: ?resource;
+  <<__PHPStdLib>> function try_stdout()[]: ?resource;
+  <<__PHPStdLib>> function try_stderr()[]: ?resource;
+  <<__PHPStdLib>> function stdin()[]: resource;
+  <<__PHPStdLib>> function stdout()[]: resource;
+  <<__PHPStdLib>> function stderr()[]: resource;
+}

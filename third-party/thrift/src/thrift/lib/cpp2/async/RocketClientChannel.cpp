@@ -49,6 +49,7 @@
 #include <thrift/lib/cpp2/transport/core/RpcMetadataUtil.h>
 #include <thrift/lib/cpp2/transport/core/ThriftClientCallback.h>
 #include <thrift/lib/cpp2/transport/core/TryUtil.h>
+#include <thrift/lib/cpp2/transport/rocket/FdSocketMetadata.h>
 #include <thrift/lib/cpp2/transport/rocket/PayloadUtils.h>
 #include <thrift/lib/cpp2/transport/rocket/RocketException.h>
 #include <thrift/lib/cpp2/transport/rocket/client/RocketClient.h>
@@ -670,11 +671,26 @@ rocket::SetupFrame RocketClientChannel::makeSetupFrame(
       std::min(kRocketClientMaxVersion, THRIFT_FLAG(rocket_client_max_version));
   meta.minVersion_ref() = kRocketClientMinVersion;
   auto& clientMetadata = meta.clientMetadata_ref().ensure();
+
   if (const auto& hostMetadata = ClientChannel::getHostMetadata()) {
+    // TODO: verify if we can avoid overriding hostname blindly
+    // here.
     clientMetadata.hostname_ref().from_optional(hostMetadata->hostname);
-    clientMetadata.otherMetadata_ref().from_optional(
-        hostMetadata->otherMetadata);
+    // no otherMetadata provided in makeSetupFrame override, copy
+    // hostMetadata.otherMetadata directly instead of doing inserts
+    if (!clientMetadata.get_otherMetadata()) {
+      clientMetadata.otherMetadata_ref().from_optional(
+          hostMetadata->otherMetadata);
+    } else if (hostMetadata->otherMetadata) {
+      DCHECK(clientMetadata.otherMetadata_ref());
+      // append values from hostMetadata.otherMetadata to
+      // clientMetadata.otherMetadata
+      clientMetadata.otherMetadata_ref()->insert(
+          hostMetadata->otherMetadata->begin(),
+          hostMetadata->otherMetadata->end());
+    }
   }
+
   if (!clientMetadata.agent_ref()) {
     clientMetadata.agent_ref() = "RocketClientChannel.cpp";
   }
@@ -798,7 +814,8 @@ void RocketClientChannel::sendRequestStream(
   auto buf = std::move(request.buffer);
   setCompression(metadata, buf->computeChainDataLength());
 
-  auto payload = rocket::pack(metadata, std::move(buf));
+  auto payload = rocket::packWithFds(
+      &metadata, std::move(buf), rocket::releaseFdsFromMetadata(metadata));
   assert(metadata.name_ref());
   return rocket::RocketClient::sendRequestStream(
       std::move(payload),
@@ -839,7 +856,8 @@ void RocketClientChannel::sendRequestSink(
   auto buf = std::move(request.buffer);
   setCompression(metadata, buf->computeChainDataLength());
 
-  auto payload = rocket::pack(metadata, std::move(buf));
+  auto payload = rocket::packWithFds(
+      &metadata, std::move(buf), rocket::releaseFdsFromMetadata(metadata));
   assert(metadata.name_ref());
   return rocket::RocketClient::sendRequestSink(
       std::move(payload),
@@ -906,7 +924,8 @@ void RocketClientChannel::sendSingleRequestNoResponse(
     RequestRpcMetadata&& metadata,
     std::unique_ptr<folly::IOBuf> buf,
     RequestClientCallback::Ptr cb) {
-  auto requestPayload = rocket::pack(metadata, std::move(buf));
+  auto requestPayload = rocket::packWithFds(
+      &metadata, std::move(buf), rocket::releaseFdsFromMetadata(metadata));
   const bool isSync = cb->isSync();
   SingleRequestNoResponseCallback callback(std::move(cb));
 
@@ -926,7 +945,8 @@ void RocketClientChannel::sendSingleRequestSingleResponse(
     std::unique_ptr<folly::IOBuf> buf,
     RequestClientCallback::Ptr cb) {
   const auto requestSerializedSize = buf->computeChainDataLength();
-  auto requestPayload = rocket::pack(metadata, std::move(buf));
+  auto requestPayload = rocket::packWithFds(
+      &metadata, std::move(buf), rocket::releaseFdsFromMetadata(metadata));
   const auto requestWireSize = requestPayload.dataSize();
   const auto requestMetadataAndPayloadSize =
       requestPayload.metadataAndDataSize();

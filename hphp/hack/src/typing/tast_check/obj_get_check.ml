@@ -18,12 +18,12 @@ let handler =
     method! at_expr env =
       function
       | (_, _, Obj_get (_, (_, p, This), _, _)) ->
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Nonsense_member_selection { pos = p; kind = "$this" })
       | (_, _, Obj_get (_, (_, p, Lplaceholder _), _, _)) ->
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Nonsense_member_selection { pos = p; kind = "$_" })
@@ -40,7 +40,8 @@ let handler =
         ()
       | (_, _, Obj_get (_, (_, pos, Lvar (lvar_pos, lvar_lid)), _, _)) ->
         let lvar_name = Local_id.get_name lvar_lid in
-        Errors.add_naming_error
-        @@ Naming_error.Lvar_in_obj_get { pos; lvar_pos; lvar_name }
+        Errors.add_error
+          Naming_error.(
+            to_user_error @@ Lvar_in_obj_get { pos; lvar_pos; lvar_name })
       | _ -> ()
   end

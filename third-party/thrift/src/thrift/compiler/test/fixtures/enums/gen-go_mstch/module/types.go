@@ -4,10 +4,10 @@
 package module // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  thrift0 "thrift/annotation/thrift"
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift0 "thrift/annotation/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = thrift0.GoUnusedProtection__
@@ -508,19 +508,19 @@ var _ thrift.Struct = &SomeStruct{}
 
 func NewSomeStruct() *SomeStruct {
     return (&SomeStruct{}).
-        SetReasonable(
-            Metasyntactic_FOO,
-        ).
-        SetFine(
-            Metasyntactic_BAR,
-        ).
-        SetQuestionable(
-            Metasyntactic(-1),
-        ).
-        SetTags(
-            []int32{
+        SetReasonableNonCompat(
+              Metasyntactic_FOO,
+          ).
+        SetFineNonCompat(
+              Metasyntactic_BAR,
+          ).
+        SetQuestionableNonCompat(
+              Metasyntactic(-1),
+          ).
+        SetTagsNonCompat(
+              []int32{
 },
-        )
+          )
 }
 
 func (x *SomeStruct) GetReasonableNonCompat() Metasyntactic {
@@ -553,14 +553,24 @@ func (x *SomeStruct) GetTagsNonCompat() []int32 {
 
 func (x *SomeStruct) GetTags() []int32 {
     if !x.IsSetTags() {
-      return nil
+        return make([]int32, 0)
     }
 
     return x.Tags
 }
 
+func (x *SomeStruct) SetReasonableNonCompat(value Metasyntactic) *SomeStruct {
+    x.Reasonable = value
+    return x
+}
+
 func (x *SomeStruct) SetReasonable(value Metasyntactic) *SomeStruct {
     x.Reasonable = value
+    return x
+}
+
+func (x *SomeStruct) SetFineNonCompat(value Metasyntactic) *SomeStruct {
+    x.Fine = value
     return x
 }
 
@@ -569,8 +579,18 @@ func (x *SomeStruct) SetFine(value Metasyntactic) *SomeStruct {
     return x
 }
 
+func (x *SomeStruct) SetQuestionableNonCompat(value Metasyntactic) *SomeStruct {
+    x.Questionable = value
+    return x
+}
+
 func (x *SomeStruct) SetQuestionable(value Metasyntactic) *SomeStruct {
     x.Questionable = value
+    return x
+}
+
+func (x *SomeStruct) SetTagsNonCompat(value []int32) *SomeStruct {
+    x.Tags = value
     return x
 }
 
@@ -578,9 +598,6 @@ func (x *SomeStruct) SetTags(value []int32) *SomeStruct {
     x.Tags = value
     return x
 }
-
-
-
 
 func (x *SomeStruct) IsSetTags() bool {
     return x.Tags != nil
@@ -672,7 +689,7 @@ if err != nil {
 }
 result := Metasyntactic(enumResult)
 
-    x.SetReasonable(result)
+    x.SetReasonableNonCompat(result)
     return nil
 }
 
@@ -683,7 +700,7 @@ if err != nil {
 }
 result := Metasyntactic(enumResult)
 
-    x.SetFine(result)
+    x.SetFineNonCompat(result)
     return nil
 }
 
@@ -694,7 +711,7 @@ if err != nil {
 }
 result := Metasyntactic(enumResult)
 
-    x.SetQuestionable(result)
+    x.SetQuestionableNonCompat(result)
     return nil
 }
 
@@ -722,7 +739,7 @@ if err := p.ReadSetEnd(); err != nil {
 }
 result := setResult
 
-    x.SetTags(result)
+    x.SetTagsNonCompat(result)
     return nil
 }
 
@@ -766,6 +783,7 @@ func (x *SomeStructBuilder) Emit() *SomeStruct {
     var objCopy SomeStruct = *x.obj
     return &objCopy
 }
+
 func (x *SomeStruct) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("SomeStruct"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -847,6 +865,7 @@ func (x *SomeStruct) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type MyStruct struct {
     Me2_3 MyEnum2 `thrift:"me2_3,1" json:"me2_3" db:"me2_3"`
     Me3N3 MyEnum3 `thrift:"me3_n3,2" json:"me3_n3" db:"me3_n3"`
@@ -858,18 +877,18 @@ var _ thrift.Struct = &MyStruct{}
 
 func NewMyStruct() *MyStruct {
     return (&MyStruct{}).
-        SetMe2_3(
-            MyEnum2(3),
-        ).
-        SetMe3N3(
-            MyEnum3(-3),
-        ).
-        SetMe1T1(
-            MyEnum1_ME1_1,
-        ).
-        SetMe1T2(
-            MyEnum1_ME1_1,
-        )
+        SetMe2_3NonCompat(
+              MyEnum2(3),
+          ).
+        SetMe3N3NonCompat(
+              MyEnum3(-3),
+          ).
+        SetMe1T1NonCompat(
+              MyEnum1_ME1_1,
+          ).
+        SetMe1T2NonCompat(
+              MyEnum1_ME1_1,
+          )
 }
 
 func (x *MyStruct) GetMe2_3NonCompat() MyEnum2 {
@@ -904,8 +923,18 @@ func (x *MyStruct) GetMe1T2() MyEnum1 {
     return x.Me1T2
 }
 
+func (x *MyStruct) SetMe2_3NonCompat(value MyEnum2) *MyStruct {
+    x.Me2_3 = value
+    return x
+}
+
 func (x *MyStruct) SetMe2_3(value MyEnum2) *MyStruct {
     x.Me2_3 = value
+    return x
+}
+
+func (x *MyStruct) SetMe3N3NonCompat(value MyEnum3) *MyStruct {
+    x.Me3N3 = value
     return x
 }
 
@@ -914,8 +943,18 @@ func (x *MyStruct) SetMe3N3(value MyEnum3) *MyStruct {
     return x
 }
 
+func (x *MyStruct) SetMe1T1NonCompat(value MyEnum1) *MyStruct {
+    x.Me1T1 = value
+    return x
+}
+
 func (x *MyStruct) SetMe1T1(value MyEnum1) *MyStruct {
     x.Me1T1 = value
+    return x
+}
+
+func (x *MyStruct) SetMe1T2NonCompat(value MyEnum1) *MyStruct {
+    x.Me1T2 = value
     return x
 }
 
@@ -923,10 +962,6 @@ func (x *MyStruct) SetMe1T2(value MyEnum1) *MyStruct {
     x.Me1T2 = value
     return x
 }
-
-
-
-
 
 func (x *MyStruct) writeField1(p thrift.Protocol) error {  // Me2_3
     if err := p.WriteFieldBegin("me2_3", thrift.I32, 1); err != nil {
@@ -999,7 +1034,7 @@ if err != nil {
 }
 result := MyEnum2(enumResult)
 
-    x.SetMe2_3(result)
+    x.SetMe2_3NonCompat(result)
     return nil
 }
 
@@ -1010,7 +1045,7 @@ if err != nil {
 }
 result := MyEnum3(enumResult)
 
-    x.SetMe3N3(result)
+    x.SetMe3N3NonCompat(result)
     return nil
 }
 
@@ -1021,7 +1056,7 @@ if err != nil {
 }
 result := MyEnum1(enumResult)
 
-    x.SetMe1T1(result)
+    x.SetMe1T1NonCompat(result)
     return nil
 }
 
@@ -1032,7 +1067,7 @@ if err != nil {
 }
 result := MyEnum1(enumResult)
 
-    x.SetMe1T2(result)
+    x.SetMe1T2NonCompat(result)
     return nil
 }
 
@@ -1076,6 +1111,7 @@ func (x *MyStructBuilder) Emit() *MyStruct {
     var objCopy MyStruct = *x.obj
     return &objCopy
 }
+
 func (x *MyStruct) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("MyStruct"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1156,3 +1192,4 @@ func (x *MyStruct) Read(p thrift.Protocol) error {
 
     return nil
 }
+

@@ -8,7 +8,6 @@
  *)
 open Hh_prelude
 open Aast
-module Env = Tast_env
 module Cls = Decl_provider.Class
 module SN = Naming_special_names
 module MakeType = Typing_make_type
@@ -17,25 +16,14 @@ module Reason = Typing_reason
 let rec get_fty ty =
   let open Typing_defs in
   match get_node ty with
-  | Tnewtype (name, [ty1], _ty2) when String.equal name SN.Classes.cSupportDyn
-    ->
-    get_fty ty1
+  | Tnewtype (name, _, ty2) when String.equal name SN.Classes.cSupportDyn ->
+    get_fty ty2
   | Tfun fty -> Some fty
   | _ -> None
 
 type rty =
   | Readonly
   | Mut [@deriving show]
-
-let readonly_kind_to_rty = function
-  | Some Ast_defs.Readonly -> Readonly
-  | _ -> Mut
-
-let rty_to_str = function
-  | Readonly -> "readonly"
-  | Mut -> "mutable"
-
-let pp_rty fmt rty = Format.fprintf fmt "%s" (rty_to_str rty)
 
 (* Returns true if rty_sub is a subtype of rty_sup.
    TODO: Later, we'll have to consider the regular type as well, for example
@@ -157,12 +145,7 @@ let is_value_collection_ty env ty =
   let env = Tast_env.tast_env_as_typing_env env in
   let hackarray = MakeType.any_array Reason.none mixed mixed in
   (* Subtype against an empty open shape (shape(...)) *)
-  let shape =
-    MakeType.shape
-      Reason.none
-      Typing_defs.Open_shape
-      Typing_defs.TShapeMap.empty
-  in
+  let shape = MakeType.open_shape Reason.none Typing_defs.TShapeMap.empty in
   Typing_utils.is_sub_type env ty hackarray
   || Typing_utils.is_sub_type env ty shape
 
@@ -176,7 +159,7 @@ let rec is_safe_mut_ty env (seen : SSet.t) ty =
   | Tprim _ -> true
   (* Open shapes can technically have objects in them, but as long as the current fields don't have objects in them
      we will allow you to call the function. Note that the function fails at runtime if any shape fields are objects. *)
-  | Tshape (_, fields) ->
+  | Tshape (_, _, fields) ->
     TShapeMap.for_all (fun _k v -> is_safe_mut_ty env seen v.sft_ty) fields
   (* If it's a Tclass it's an array type by is_value_collection *)
   | Tintersection tyl -> List.exists tyl ~f:(fun l -> is_safe_mut_ty env seen l)
@@ -218,23 +201,27 @@ let rec is_safe_mut_ty env (seen : SSet.t) ty =
     not (Typing_subtype.is_type_disjoint env ty union)
 
 (* Check that function calls which return readonly are wrapped in readonly *)
-let check_readonly_return_call pos caller_ty is_readonly =
+let rec check_readonly_return_call pos caller_ty is_readonly =
   if is_readonly then
     ()
   else
     let open Typing_defs in
-    match get_fty caller_ty with
-    | Some fty when get_ft_returns_readonly fty ->
-      Errors.add_typing_error
-        Typing_error.(
-          readonly
-          @@ Primary.Readonly.Explicit_readonly_cast
-               {
-                 pos;
-                 kind = `fn_call;
-                 decl_pos = Typing_defs.get_pos caller_ty;
-               })
-    | _ -> ()
+    match get_node caller_ty with
+    | Tunion tyl ->
+      List.iter tyl ~f:(fun ty -> check_readonly_return_call pos ty is_readonly)
+    | _ ->
+      (match get_fty caller_ty with
+      | Some fty when get_ft_returns_readonly fty ->
+        Typing_error_utils.add_typing_error
+          Typing_error.(
+            readonly
+            @@ Primary.Readonly.Explicit_readonly_cast
+                 {
+                   pos;
+                   kind = `fn_call;
+                   decl_pos = Typing_defs.get_pos caller_ty;
+                 })
+      | _ -> ())
 
 let check_readonly_property env obj get obj_ro =
   let open Typing_defs in
@@ -244,7 +231,7 @@ let check_readonly_property env obj get obj_ro =
   let readonly_prop = List.find ~f:get_ce_readonly_prop prop_elts in
   match (readonly_prop, obj_ro) with
   | (Some elt, Mut) ->
-    Errors.add_typing_error
+    Typing_error_utils.add_typing_error
       Typing_error.(
         readonly
         @@ Primary.Readonly.Explicit_readonly_cast
@@ -262,7 +249,7 @@ let check_static_readonly_property pos env (class_ : Tast.class_id) get obj_ro =
   let readonly_prop = List.find ~f:Typing_defs.get_ce_readonly_prop prop_elts in
   match (readonly_prop, obj_ro) with
   | (Some elt, Mut) when Typing_defs.get_ce_readonly_prop elt ->
-    Errors.add_typing_error
+    Typing_error_utils.add_typing_error
       Typing_error.(
         readonly
         @@ Primary.Readonly.Explicit_readonly_cast
@@ -299,7 +286,7 @@ let rec assign env lval rval =
     in
     match mutable_prop with
     | Some elt when not (Typing_defs.get_ce_readonly_prop elt) ->
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(
           readonly
           @@ Primary.Readonly.Readonly_mismatch
@@ -325,7 +312,7 @@ let rec assign env lval rval =
         assign env array rval
       | _ -> ())
     | (Mut, Readonly) ->
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(
           readonly
           @@ Primary.Readonly.Readonly_mismatch
@@ -336,7 +323,7 @@ let rec assign env lval rval =
                  pos_super = Tast.get_position array |> Pos_or_decl.of_raw_pos;
                })
     | (Readonly, _) ->
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(
           readonly
           @@ Primary.Readonly.Readonly_modified
@@ -354,7 +341,7 @@ let rec assign env lval rval =
     begin
       match ty_expr env obj with
       | Readonly ->
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             readonly
             @@ Primary.Readonly.Readonly_modified
@@ -378,7 +365,7 @@ let method_call caller =
   | (ty, _, ReadonlyExpr (_, _, Obj_get (e1, _, _, Is_method))) ->
     (match get_fty ty with
     | Some fty when not (get_ft_readonly_this fty) ->
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(
           readonly
           @@ Primary.Readonly.Readonly_method_call
@@ -392,7 +379,7 @@ let check_special_function env caller args =
     when String.equal (Utils.strip_ns x) (Utils.strip_ns SN.Readonly.as_mut) ->
     let arg_ty = Tast.get_type arg in
     if not (is_safe_mut_ty env SSet.empty arg_ty) then
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(readonly @@ Primary.Readonly.Readonly_invalid_as_mut pos)
     else
       ()
@@ -433,7 +420,7 @@ let call
         (* Otherwise, it's likely from a Rwitness, but we suggest declaring it as readonly *)
         | _ -> "declaring this as a `readonly` function"
       in
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(
           readonly
           @@ Primary.Readonly.Readonly_closure_call
@@ -445,7 +432,7 @@ let call
     let param_rty = param_to_rty param in
     let arg_rty = ty_expr env arg in
     if not (subtype_rty arg_rty param_rty) then
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(
           readonly
           @@ Primary.Readonly.Readonly_mismatch
@@ -505,9 +492,9 @@ let check =
 
     method! on_expr env e =
       match e with
-      | (_, _, Binop (Ast_defs.Eq _, lval, rval)) ->
-        assign env lval rval;
-        self#on_expr env rval
+      | (_, _, Binop { bop = Ast_defs.Eq _; lhs; rhs }) ->
+        assign env lhs rhs;
+        self#on_expr env rhs
       | (_, _, ReadonlyExpr (_, _, Call (caller, targs, args, unpacked_arg))) ->
         let default () =
           (* Skip the recursive step into ReadonlyExpr to avoid erroring *)
@@ -619,7 +606,8 @@ let check =
       | (_, _, Class_const _)
       | (_, _, Float _)
       | (_, _, PrefixedString _)
-      | (_, _, Hole _) ->
+      | (_, _, Hole _)
+      | (_, _, Package _) ->
         super#on_expr env e
       (* Stop at invalid marker *)
       | (_, _, Invalid _) -> ()
@@ -678,9 +666,9 @@ let handler =
           fun e ->
         let val_kind = Tast_env.get_val_kind env in
         match (e, val_kind) with
-        | ((_, _, Binop (Ast_defs.Eq _, lval, rval)), _) ->
+        | ((_, _, Binop { bop = Ast_defs.Eq _; lhs; rhs }), _) ->
           (* Check property assignments to make sure they're safe *)
-          assign env lval rval
+          assign env lhs rhs
         (* Assume obj is mutable here since you can't have a readonly thing
            without readonly keyword/analysis *)
         (* Only check this for rvalues, not lvalues *)

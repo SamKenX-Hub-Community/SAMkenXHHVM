@@ -920,10 +920,8 @@ Variant HHVM_FUNCTION(filesize,
     return false;
   }
   if (StaticContentCache::TheFileCache) {
-    int64_t size =
-      StaticContentCache::TheFileCache->fileSize(filename.data(),
-        filename.data()[0] != '/');
-    if (size >= 0) return size;
+    auto sizeRes = StaticContentCache::TheFileCache->fileSize(filename.data());
+    if (sizeRes) return *sizeRes;
   }
   struct stat sb;
   CHECK_SYSTEM(statSyscall(filename, &sb, true));
@@ -1098,9 +1096,9 @@ bool HHVM_FUNCTION(is_executable,
   */
 }
 
-static VFileType lookupVirtualFile(const String& filename) {
+static VirtualFileSystem::FileType lookupVirtualFile(const String& filename) {
   if (filename.empty() || !StaticContentCache::TheFileCache) {
-    return VFileType::NotFound;
+    return VirtualFileSystem::FileType::NOT_FOUND;
   }
 
   String cwd;
@@ -1115,10 +1113,15 @@ static VFileType lookupVirtualFile(const String& filename) {
   }
 
   if (!isRelative || !root.compare(cwd.data())) {
-    return StaticContentCache::TheFileCache->getFileType(filename.data());
+    if (StaticContentCache::TheFileCache->exists(filename.toCppString())) {
+      if (StaticContentCache::TheFileCache->dirExists(filename.toCppString())) {
+        return VirtualFileSystem::FileType::DIRECTORY;
+      }
+      return VirtualFileSystem::FileType::REGULAR_FILE;
+    }
   }
 
-  return VFileType::NotFound;
+  return VirtualFileSystem::FileType::NOT_FOUND;
 }
 
 bool HHVM_FUNCTION(is_file,
@@ -1128,8 +1131,8 @@ bool HHVM_FUNCTION(is_file,
     return false;
   }
   auto vtype = lookupVirtualFile(filename);
-  if (vtype != VFileType::NotFound) {
-    return vtype == VFileType::PlainFile;
+  if (vtype != VirtualFileSystem::FileType::NOT_FOUND) {
+    return vtype == VirtualFileSystem::FileType::REGULAR_FILE;
   }
 
   struct stat sb;
@@ -1144,8 +1147,8 @@ bool HHVM_FUNCTION(is_dir,
     return false;
   }
   auto vtype = lookupVirtualFile(filename);
-  if (vtype != VFileType::NotFound) {
-    return vtype == VFileType::Directory;
+  if (vtype != VirtualFileSystem::FileType::NOT_FOUND) {
+    return vtype == VirtualFileSystem::FileType::DIRECTORY;
   }
 
   struct stat sb;
@@ -1174,7 +1177,7 @@ bool HHVM_FUNCTION(file_exists,
                    const String& filename) {
   CHECK_PATH_FALSE(filename, 1);
   auto vtype = lookupVirtualFile(filename);
-  if (vtype != VFileType::NotFound) {
+  if (vtype != VirtualFileSystem::FileType::NOT_FOUND) {
     return true;
   }
 
@@ -1258,7 +1261,7 @@ Variant HHVM_FUNCTION(realpath,
     return false;
   }
   if (StaticContentCache::TheFileCache &&
-      StaticContentCache::TheFileCache->exists(translated.data(), false)) {
+      StaticContentCache::TheFileCache->exists(translated.data())) {
     return translated;
   }
   // Zend doesn't support streams in realpath
@@ -2103,6 +2106,25 @@ void HHVM_FUNCTION(closedir,
   d->close();
 }
 
+namespace {
+template<typename T>
+Variant try_stdio(T f) {
+  return is_any_cli_mode() ? f().asCResRef() : Resource();
+}
+
+Variant HHVM_FUNCTION(try_stdin) {
+  return try_stdio([] { return BuiltinFiles::getSTDIN(); });
+}
+
+Variant HHVM_FUNCTION(try_stdout) {
+  return try_stdio([] { return BuiltinFiles::getSTDOUT(); });
+}
+
+Variant HHVM_FUNCTION(try_stderr) {
+  return try_stdio([] { return BuiltinFiles::getSTDERR(); });
+}
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 const StaticString
@@ -2119,8 +2141,6 @@ void StandardExtension::initFile() {
   HHVM_RC_INT(FILE_SKIP_EMPTY_LINES, PHP_FILE_SKIP_EMPTY_LINES);
   HHVM_RC_INT(FILE_APPEND, PHP_FILE_APPEND);
   HHVM_RC_INT(FILE_NO_DEFAULT_CONTEXT, PHP_FILE_NO_DEFAULT_CONTEXT);
-  HHVM_RC_INT(FILE_TEXT, 0);
-  HHVM_RC_INT(FILE_BINARY, 0);
   HHVM_RC_INT_SAME(FNM_NOESCAPE);
   HHVM_RC_INT_SAME(FNM_CASEFOLD);
   HHVM_RC_INT_SAME(FNM_PERIOD);
@@ -2148,6 +2168,9 @@ void StandardExtension::initFile() {
   Native::registerConstant(s_STDIN.get(),  BuiltinFiles::getSTDIN);
   Native::registerConstant(s_STDOUT.get(), BuiltinFiles::getSTDOUT);
   Native::registerConstant(s_STDERR.get(), BuiltinFiles::getSTDERR);
+  HHVM_FALIAS(HH\\try_stdin, try_stdin);
+  HHVM_FALIAS(HH\\try_stdout, try_stdout);
+  HHVM_FALIAS(HH\\try_stderr, try_stderr);
 
   HHVM_RC_INT(INI_SCANNER_NORMAL, k_INI_SCANNER_NORMAL);
   HHVM_RC_INT(INI_SCANNER_RAW,    k_INI_SCANNER_RAW);

@@ -16,19 +16,22 @@ module SN = Naming_special_names
 let check_local_capability (mk_required : env -> env * locl_ty) mk_err_opt env =
   (* gate the check behavior on coeffects TC option *)
   let tcopt = Env.get_tcopt env in
-  if
-    TypecheckerOptions.local_coeffects tcopt
-    && not
-         (TypecheckerOptions.enable_sound_dynamic tcopt
-         && Tast.is_under_dynamic_assumptions env.checked)
-  then (
+  let should_skip_check =
+    (not @@ TypecheckerOptions.local_coeffects tcopt)
+    || TypecheckerOptions.enable_sound_dynamic tcopt
+       && Tast.is_under_dynamic_assumptions env.checked
+    (* When inside an expression tree, expressions are virtualized and
+       thus never executed. Safe to skip coeffect checks in this case. *)
+    || Env.is_in_expr_tree env
+  in
+  if not should_skip_check then (
     let available = Env.get_local env Typing_coeffects.local_capability_id in
     let (env, required) = mk_required env in
     let err_opt = mk_err_opt available required in
     let (env, ty_err_opt) =
       Typing_subtype.sub_type_or_fail env available required err_opt
     in
-    Option.iter ~f:Errors.add_typing_error ty_err_opt;
+    Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
     env
   ) else
     env
@@ -69,7 +72,7 @@ module Capabilities = struct
       Typing_make_type.apply r (Reason.to_pos r, special_name) []
       |> Typing_phase.localize_no_subst ~ignore_errors:true env
     in
-    Option.iter ~f:Errors.add_typing_error ty_err_opt;
+    Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
     (env, res)
 end
 
@@ -261,7 +264,7 @@ let rec check_assignment env (x, append_pos_opt, te_) =
   match te_ with
   | Aast.Hole ((_, _, e), _, _, _) -> check_assignment env (x, append_pos_opt, e)
   | Aast.Unop ((Uincr | Udecr | Upincr | Updecr), te1)
-  | Aast.Binop (Eq _, te1, _) ->
+  | Aast.(Binop { bop = Eq _; lhs = te1; _ }) ->
     check_local_capability
       Capabilities.(mk writeProperty)
       (check_assignment_or_unset_target

@@ -1,0 +1,17 @@
+[
+  {
+    "diagnostics":[],
+    "edit":{
+      "changes":{
+        "FILE.php":[
+          {
+            "newText":"int $b, Box<int> $a",
+            "range":{"end":{"character":69,"line":7},"start":{"character":22,"line":7}}
+          }
+        ]
+      }
+    },
+    "kind":"refactor",
+    "title":"Flip around comma"
+  }
+]

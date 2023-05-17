@@ -20,7 +20,7 @@ const DEFAULT_SAVED_STATE_LOADING: SavedStateLoading<'_> = SavedStateLoading {
 const DEFAULT_SAVED_STATE: SavedState<'_> = SavedState {
     loading: &DEFAULT_SAVED_STATE_LOADING,
     rollouts: &DEFAULT_SAVED_STATE_ROLLOUTS,
-    project_metadata_w_flags: false,
+    project_metadata_w_flags: true,
 };
 
 const DEFAULT: GlobalOptions<'_> = GlobalOptions {
@@ -28,7 +28,6 @@ const DEFAULT: GlobalOptions<'_> = GlobalOptions {
     tco_experimental_features: s_set::SSet::empty(),
     tco_migration_flags: s_set::SSet::empty(),
     tco_num_local_workers: None,
-    tco_parallel_type_checking_threshold: 10,
     tco_max_typechecker_worker_memory_mb: None,
     tco_defer_class_declaration_threshold: None,
     tco_prefetch_deferred_files: false,
@@ -107,7 +106,6 @@ const DEFAULT: GlobalOptions<'_> = GlobalOptions {
     symbol_write_sym_hash_in: None,
     symbol_write_exclude_out: None,
     symbol_write_sym_hash_out: false,
-    po_enable_enum_classes: true,
     po_disable_hh_ignore_error: 0,
     tco_is_systemlib: false,
     tco_higher_kinded_types: false,
@@ -118,7 +116,6 @@ const DEFAULT: GlobalOptions<'_> = GlobalOptions {
     tco_skip_check_under_dynamic: false,
     tco_ifc_enabled: &[],
     tco_global_access_check_enabled: false,
-    po_enable_enum_supertyping: true,
     po_interpret_soft_types_as_like_types: false,
     tco_enable_strict_string_concat_interp: false,
     tco_ignore_unsafe_cast: false,
@@ -135,7 +132,6 @@ const DEFAULT: GlobalOptions<'_> = GlobalOptions {
     tco_strict_value_equality: false,
     tco_enforce_sealed_subclasses: false,
     tco_everything_sdt: false,
-    tco_pessimise_builtins: false,
     tco_explicit_consistent_constructors: 0,
     tco_require_types_class_consts: 0,
     tco_type_printer_fuel: 100,
@@ -154,6 +150,7 @@ const DEFAULT: GlobalOptions<'_> = GlobalOptions {
     tco_ide_should_use_hack_64_distc: false,
     tco_tast_under_dynamic: false,
     tco_rust_elab: false,
+    tco_ide_load_naming_table_on_disk: false,
 };
 
 impl GlobalOptions<'static> {

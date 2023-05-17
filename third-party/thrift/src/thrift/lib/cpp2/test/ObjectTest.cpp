@@ -260,11 +260,11 @@ TEST(ObjectTest, Map) {
   std::map<std::string, int> data = {{"one", 1}, {"four", 4}, {"two", 2}};
   Value value = asValueStruct<type::map<type::string_t, type::byte_t>>(data);
   ASSERT_EQ(value.getType(), Value::Type::mapValue);
-  ASSERT_EQ(value.get_mapValue().size(), data.size());
+  ASSERT_EQ(value.mapValue_ref()->size(), data.size());
   for (const auto& entry : data) {
     auto itr =
-        value.get_mapValue().find(asValueStruct<type::string_t>(entry.first));
-    ASSERT_NE(itr, value.get_mapValue().end());
+        value.mapValue_ref()->find(asValueStruct<type::string_t>(entry.first));
+    ASSERT_NE(itr, value.mapValue_ref()->end());
     EXPECT_EQ(itr->second, asValueStruct<type::byte_t>(entry.second));
   }
 
@@ -272,11 +272,11 @@ TEST(ObjectTest, Map) {
   std::vector<std::pair<std::string, int>> otherData(data.begin(), data.end());
   value = asValueStruct<type::map<type::string_t, type::byte_t>>(otherData);
   ASSERT_EQ(value.getType(), Value::Type::mapValue);
-  ASSERT_EQ(value.get_mapValue().size(), data.size());
+  ASSERT_EQ(value.mapValue_ref()->size(), data.size());
   for (const auto& entry : data) {
     auto itr =
-        value.get_mapValue().find(asValueStruct<type::string_t>(entry.first));
-    ASSERT_NE(itr, value.get_mapValue().end());
+        value.mapValue_ref()->find(asValueStruct<type::string_t>(entry.first));
+    ASSERT_NE(itr, value.mapValue_ref()->end());
     EXPECT_EQ(itr->second, asValueStruct<type::byte_t>(entry.second));
   }
 }
@@ -520,59 +520,6 @@ bool hasEmptyContainer(const type::standard_type<Tag>& value) {
   return false;
 }
 
-template <
-    ::apache::thrift::conformance::StandardProtocol Protocol,
-    typename Tag,
-    typename T>
-void testSerializeObject() {
-  T testsetValue;
-  for (const auto& val : data::ValueGenerator<Tag>::getKeyValues()) {
-    SCOPED_TRACE(val.name);
-    testsetValue.field_1_ref() = val.value;
-    auto valueStruct = asValueStruct<type::struct_c>(testsetValue);
-    const Object& object = valueStruct.get_objectValue();
-    auto schemalessSerializedData =
-        serializeObject<protocol_writer_t<Protocol>>(object);
-
-    auto schemaBasedSerializedData = serialize<Protocol, T>(testsetValue);
-
-    // FIXME: skip validation for structs with empty list, set, map.
-    if (hasEmptyContainer<Tag>(val.value)) {
-      continue;
-    }
-    EXPECT_TRUE(folly::IOBufEqualTo{}(
-        *schemalessSerializedData, *schemaBasedSerializedData));
-  }
-}
-
-template <
-    ::apache::thrift::conformance::StandardProtocol Protocol,
-    typename Tag,
-    typename T>
-void testSerializeObjectAny() {
-  AnyRegistry registry;
-  registry.registerType<T>(
-      createThriftTypeInfo({"facebook.com/thrift/conformance/struct_with"}));
-  registry.registerSerializer<T>(&getAnyStandardSerializer<T, Protocol>());
-  for (const auto& val : data::ValueGenerator<Tag>::getKeyValues()) {
-    SCOPED_TRACE(val.name);
-    RoundTripResponse anyValue;
-    T testsetValue;
-    testsetValue.field_1_ref() = val.value;
-    anyValue.value_ref() = registry.store<Protocol>(testsetValue);
-
-    auto schemaBasedSerializedData = serialize<Protocol>(anyValue);
-    auto objFromParseObject =
-        parseObject<protocol_reader_t<Protocol>>(*schemaBasedSerializedData);
-
-    auto schemalessSerializedData =
-        serializeObject<protocol_writer_t<Protocol>>(objFromParseObject);
-
-    EXPECT_TRUE(folly::IOBufEqualTo{}(
-        *schemalessSerializedData, *schemaBasedSerializedData));
-  }
-}
-
 // The tests cases to run.
 using ParseObjectTestCases = ::testing::Types<
     type::bool_t,
@@ -635,44 +582,6 @@ TYPED_TEST(TypedParseObjectTest, SerializeObjectWithMask) {
       testset::struct_with<TypeParam>>(true);
 }
 
-TYPED_TEST(TypedParseObjectTest, SerializeObjectSameAsDirectSerialization) {
-  testSerializeObject<
-      ::apache::thrift::conformance::StandardProtocol::Binary,
-      TypeParam,
-      testset::struct_with<TypeParam>>();
-  testSerializeObject<
-      ::apache::thrift::conformance::StandardProtocol::Compact,
-      TypeParam,
-      testset::struct_with<TypeParam>>();
-  testSerializeObject<
-      ::apache::thrift::conformance::StandardProtocol::Binary,
-      TypeParam,
-      testset::union_with<TypeParam>>();
-  testSerializeObject<
-      ::apache::thrift::conformance::StandardProtocol::Compact,
-      TypeParam,
-      testset::union_with<TypeParam>>();
-}
-
-TYPED_TEST(TypedParseObjectTest, SerializeObjectSameAsDirectSerializationAny) {
-  testSerializeObjectAny<
-      ::apache::thrift::conformance::StandardProtocol::Binary,
-      TypeParam,
-      testset::struct_with<TypeParam>>();
-  testSerializeObjectAny<
-      ::apache::thrift::conformance::StandardProtocol::Compact,
-      TypeParam,
-      testset::struct_with<TypeParam>>();
-  testSerializeObjectAny<
-      ::apache::thrift::conformance::StandardProtocol::Binary,
-      TypeParam,
-      testset::union_with<TypeParam>>();
-  testSerializeObjectAny<
-      ::apache::thrift::conformance::StandardProtocol::Compact,
-      TypeParam,
-      testset::union_with<TypeParam>>();
-}
-
 TEST(Object, invalid_object) {
   {
     Object obj;
@@ -718,35 +627,21 @@ TEST(Object, uri) {
 TEST(Object, Wrapper) {
   Object object;
   EXPECT_TRUE(object.empty());
-  object.members()[0];
+  object[FieldId{0}];
   EXPECT_FALSE(object.empty());
-  object.members()[2];
+  object[FieldId{2}];
   EXPECT_EQ(object.size(), 2);
-  EXPECT_EQ(&object[FieldId{0}], &object.members()[0]);
-  EXPECT_EQ(&object[FieldId{2}], &object.members()[2]);
-  EXPECT_EQ(&object.at(FieldId{0}), &object.members()[0]);
-  EXPECT_EQ(&object.at(FieldId{2}), &object.members()[2]);
-  EXPECT_EQ(object.if_contains(FieldId{0}), &object.members()[0]);
-  EXPECT_EQ(object.if_contains(FieldId{2}), &object.members()[2]);
+  EXPECT_EQ(&object[FieldId{0}], &object[FieldId{0}]);
+  EXPECT_EQ(&object[FieldId{2}], &object[FieldId{2}]);
+  EXPECT_EQ(&object.at(FieldId{0}), &object[FieldId{0}]);
+  EXPECT_EQ(&object.at(FieldId{2}), &object[FieldId{2}]);
+  EXPECT_EQ(object.if_contains(FieldId{0}), &object[FieldId{0}]);
+  EXPECT_EQ(object.if_contains(FieldId{2}), &object[FieldId{2}]);
 
   EXPECT_EQ(object.contains(FieldId{0}), true);
   EXPECT_EQ(object.contains(FieldId{1}), false);
   EXPECT_EQ(object.contains(FieldId{2}), true);
   EXPECT_THROW(object.at(FieldId{1}), std::out_of_range);
-
-  std::vector<int16_t> ids;
-  std::vector<Value*> values;
-  for (auto&& i : object) {
-    ids.push_back(i.first);
-    values.push_back(&i.second);
-  }
-
-  EXPECT_EQ(ids.size(), 2);
-  EXPECT_EQ(ids[0], 0);
-  EXPECT_EQ(ids[1], 2);
-  EXPECT_EQ(values.size(), 2);
-  EXPECT_EQ(values[0], &object.members()[0]);
-  EXPECT_EQ(values[1], &object.members()[2]);
 
   EXPECT_EQ(object.erase(FieldId{0}), 1);
   EXPECT_EQ(object.contains(FieldId{0}), false);
@@ -764,7 +659,7 @@ TEST(Object, Wrapper) {
 
 TEST(Value, Wrapper) {
   Object obj;
-  obj.members()[100] = asValueStruct<type::string_t>("200");
+  obj[FieldId{100}] = asValueStruct<type::string_t>("200");
 
   const std::vector<Value> l = {
       asValueStruct<type::i32_t>(10), asValueStruct<type::i32_t>(20)};
@@ -772,7 +667,7 @@ TEST(Value, Wrapper) {
   const std::set<Value> s = {
       asValueStruct<type::i32_t>(30), asValueStruct<type::i32_t>(40)};
 
-  const std::map<Value, Value> m = {
+  const folly::F14FastMap<Value, Value> m = {
       {asValueStruct<type::i32_t>(50), asValueStruct<type::i32_t>(60)},
       {asValueStruct<type::i32_t>(70), asValueStruct<type::i32_t>(80)}};
 
@@ -831,13 +726,11 @@ TEST(Value, IsIntrinsicDefaultTrue) {
   EXPECT_TRUE(isIntrinsicDefault(asValueStruct<type::double_t>(0.0)));
   EXPECT_TRUE(isIntrinsicDefault(asValueStruct<type::string_t>("")));
   EXPECT_TRUE(isIntrinsicDefault(asValueStruct<type::binary_t>("")));
-  EXPECT_TRUE(isIntrinsicDefault(
-      asValueStruct<type::list<type::string_t>>(std::vector<std::string>{})));
-  EXPECT_TRUE(isIntrinsicDefault(
-      asValueStruct<type::set<type::i64_t>>(std::set<int>{})));
   EXPECT_TRUE(
-      isIntrinsicDefault(asValueStruct<type::map<type::i32_t, type::string_t>>(
-          std::map<int, std::string>{})));
+      isIntrinsicDefault(asValueStruct<type::list<type::string_t>>({})));
+  EXPECT_TRUE(isIntrinsicDefault(asValueStruct<type::set<type::i64_t>>({})));
+  EXPECT_TRUE(isIntrinsicDefault(
+      asValueStruct<type::map<type::i32_t, type::string_t>>({})));
   testset::struct_with<type::map<type::string_t, type::i32_t>> s;
   s.field_1_ref() = std::map<std::string, int>{};
   Value objectValue = asValueStruct<type::struct_c>(s);
@@ -856,13 +749,13 @@ TEST(Value, IsIntrinsicDefaultFalse) {
   EXPECT_FALSE(isIntrinsicDefault(asValueStruct<type::double_t>(0.5)));
   EXPECT_FALSE(isIntrinsicDefault(asValueStruct<type::string_t>("foo")));
   EXPECT_FALSE(isIntrinsicDefault(asValueStruct<type::binary_t>("foo")));
-  EXPECT_FALSE(isIntrinsicDefault(asValueStruct<type::list<type::string_t>>(
-      std::vector<std::string>{"foo"})));
-  EXPECT_FALSE(isIntrinsicDefault(
-      asValueStruct<type::set<type::i64_t>>(std::set<int>{1, 2, 3})));
+  EXPECT_FALSE(
+      isIntrinsicDefault(asValueStruct<type::list<type::string_t>>({"foo"})));
+  EXPECT_FALSE(
+      isIntrinsicDefault(asValueStruct<type::set<type::i64_t>>({1, 2, 3})));
   EXPECT_FALSE(
       isIntrinsicDefault(asValueStruct<type::map<type::i32_t, type::string_t>>(
-          std::map<int, std::string>{{1, "foo"}, {2, "bar"}})));
+          {{1, "foo"}, {2, "bar"}})));
   testset::struct_with<type::map<type::string_t, type::i32_t>> s;
   s.field_1_ref() = std::map<std::string, int>{{"foo", 1}, {"bar", 2}};
   Value objectValue = asValueStruct<type::struct_c>(s);
@@ -870,12 +763,11 @@ TEST(Value, IsIntrinsicDefaultFalse) {
   EXPECT_FALSE(isIntrinsicDefault(objectValue.as_object()));
 }
 
-template <typename ProtocolReader>
-Value parseValue(const EncodedValue& encodedValue, TType type) {
-  EXPECT_EQ(encodedValue.wireType().value(), type::toBaseType(type));
-  ProtocolReader prot;
-  prot.setInput(&encodedValue.data().value());
-  return detail::parseValue(prot, type, false);
+template <typename ProtocolReader, typename Tag>
+Value parseValueFromEncodedValue(const EncodedValue& encodedValue) {
+  auto baseType = type::detail::getBaseType(Tag{});
+  EXPECT_EQ(encodedValue.wireType().value(), baseType);
+  return parseValue<ProtocolReader, Tag>(encodedValue.data().value(), false);
 }
 
 // Tests parseObject (and serializeObject if testSerialize) with mask.
@@ -930,17 +822,24 @@ void testParseObjectWithMask(bool testSerialize) {
   EXPECT_EQ(excludedFields.size(), 2);
   auto& i16Encoded = detail::getByValueId(
       values, excludedFields.at(FieldId{1}).full_ref().value());
-  EXPECT_EQ(
-      parseValue<protocol_reader_t<Protocol>>(i16Encoded, T_I16).as_i16(), 3);
+
+  {
+    Value v =
+        parseValueFromEncodedValue<protocol_reader_t<Protocol>, type::i16_t>(
+            i16Encoded);
+    EXPECT_EQ(v.as_i16(), 3);
+  }
   auto& nestedExcludedFields =
       excludedFields.at(FieldId{3}).fields_ref().value();
   EXPECT_EQ(nestedExcludedFields.size(), 1);
   auto& objectEncoded = detail::getByValueId(
       values, nestedExcludedFields.at(FieldId{5}).full_ref().value());
-  EXPECT_EQ(
-      parseValue<protocol_reader_t<Protocol>>(objectEncoded, T_STRUCT)
-          .as_object(),
-      foo);
+  {
+    Value v =
+        parseValueFromEncodedValue<protocol_reader_t<Protocol>, type::struct_c>(
+            objectEncoded);
+    EXPECT_EQ(v.as_object(), foo);
+  }
 }
 
 template <::apache::thrift::conformance::StandardProtocol Protocol>
@@ -1086,21 +985,17 @@ void testSerializeObjectWithMapMask(MaskedDecodeResult& result, Object& obj) {
     // modified{1: map{10: {},
     //                 30: {"foo": 1}}}
     // This tests when map is empty and types are determined from MaskedData.
-    std::map<int, std::map<std::string, int>> modifiedMap = {
-        {10, {}}, {30, {{"foo", 1}}}};
     modified[FieldId{1}] = asValueStruct<
         type::map<type::i16_t, type::map<type::string_t, type::i32_t>>>(
-        modifiedMap);
+        {{10, {}}, {30, {{"foo", 1}}}});
 
     Object expected;
     // expected{1: map{10: {"bar": 2},
     //                 20: {"baz": 3},
     //                 30: {"foo": 1}}}
-    std::map<int, std::map<std::string, int>> expectedMap = {
-        {10, {{"bar", 2}}}, {20, {{"baz", 3}}}, {30, {{"foo", 1}}}};
     expected[FieldId{1}] = asValueStruct<
         type::map<type::i16_t, type::map<type::string_t, type::i32_t>>>(
-        expectedMap);
+        {{10, {{"bar", 2}}}, {20, {{"baz", 3}}}, {30, {{"foo", 1}}}});
 
     auto reserialized = protocol::serializeObject<protocol_writer_t<Protocol>>(
         modified, result.excluded);
@@ -1117,10 +1012,9 @@ void testParseObjectWithMapMask(bool testSerialize) {
   //                 "bar": 2},
   //            20: {"baz": 3}},
   //     2: set{1, 2, 3}}
-  std::map<int, std::map<std::string, int>> map = {
-      {10, {{"foo", 1}, {"bar", 2}}}, {20, {{"baz", 3}}}};
   obj[FieldId{1}] = asValueStruct<
-      type::map<type::i16_t, type::map<type::string_t, type::i32_t>>>(map);
+      type::map<type::i16_t, type::map<type::string_t, type::i32_t>>>(
+      {{10, {{"foo", 1}, {"bar", 2}}}, {20, {{"baz", 3}}}});
   std::set<int> set = {1, 2, 3};
   obj[FieldId{2}] = asValueStruct<type::set<type::byte_t>>(set);
   auto serialized = protocol::serializeObject<protocol_writer_t<Protocol>>(obj);
@@ -1138,17 +1032,16 @@ void testParseObjectWithMapMask(bool testSerialize) {
       .includes_map_ref()
       .emplace()[(int64_t)&keyFoo] = allMask();
   // This is treated as allMask() as the type is set. It tests the edge case
-  // that a set field may have a map mask, since extractMaskFromPatch cannot
+  // that a set field may have a map mask, since extractMaskViewFromPatch cannot
   // determine if a patch is for map or set for some operators.
   includes[2].excludes_map_ref().emplace()[99] = allMask();
 
   Object expected;
   // expected{1: map{10: {"foo": 1}},
   //          2: set{1, 2, 3}}
-  std::map<int, std::map<std::string, int>> expectedMap = {{10, {{"foo", 1}}}};
   expected[FieldId{1}] = asValueStruct<
       type::map<type::i16_t, type::map<type::string_t, type::i32_t>>>(
-      expectedMap);
+      {{10, {{"foo", 1}}}});
   expected[FieldId{2}] = asValueStruct<type::set<type::byte_t>>(set);
 
   // serialize the object and deserialize with mask
@@ -1182,9 +1075,10 @@ void testParseObjectWithMapMask(bool testSerialize) {
   {
     auto& mapEncoded = detail::getByValueId(
         values, excludedKeys.at(getKeyValueId(key20)).full_ref().value());
-    EXPECT_EQ(
-        parseValue<protocol_reader_t<Protocol>>(mapEncoded, T_MAP).as_map(),
-        obj[FieldId{1}].as_map()[key20].as_map());
+    Value v =
+        parseValueFromEncodedValue<protocol_reader_t<Protocol>, type::map_c>(
+            mapEncoded);
+    EXPECT_EQ(v.as_map(), obj[FieldId{1}].as_map()[key20].as_map());
   }
   // check map[10]["bar"]
   {
@@ -1194,8 +1088,10 @@ void testParseObjectWithMapMask(bool testSerialize) {
     auto& i32Encoded = detail::getByValueId(
         values,
         nestedExcludedKeys.at(getKeyValueId(keyBar)).full_ref().value());
-    EXPECT_EQ(
-        parseValue<protocol_reader_t<Protocol>>(i32Encoded, T_I32).as_i32(), 2);
+    Value v =
+        parseValueFromEncodedValue<protocol_reader_t<Protocol>, type::i32_t>(
+            i32Encoded);
+    EXPECT_EQ(v.as_i32(), 2);
   }
 }
 
@@ -1227,13 +1123,11 @@ TEST(ObjectTest, ToDynamic) {
   v = asValueStruct<type::list<type::i16_t>>(vec);
   EXPECT_EQ(toDynamic(v), folly::dynamic::array(1, 4, 2));
 
-  std::vector<int> s = {1, 4, 2};
-  v = asValueStruct<type::set<type::i16_t>>(s);
+  v = asValueStruct<type::set<type::i16_t>>({1, 4, 2});
   EXPECT_EQ(toDynamic(v), folly::dynamic::array(1, 2, 4));
 
-  std::map<std::string, std::string> m = {
-      {"1", "10"}, {"4", "40"}, {"2", "20"}};
-  v = asValueStruct<type::map<type::string_t, type::string_t>>(m);
+  v = asValueStruct<type::map<type::string_t, type::string_t>>(
+      {{"1", "10"}, {"4", "40"}, {"2", "20"}});
   EXPECT_EQ(
       toDynamic(v),
       folly::dynamic(folly::dynamic::object("4", "40")("1", "10")("2", "20")));
@@ -1263,8 +1157,8 @@ template <::apache::thrift::conformance::StandardProtocol Protocol>
 void testSerializeObjectWithMapMaskError() {
   Object obj;
   // obj{1: map{1: "foo"}}
-  std::map<int, std::string> map = {{1, "foo"}};
-  obj[FieldId{1}] = asValueStruct<type::map<type::i32_t, type::string_t>>(map);
+  obj[FieldId{1}] =
+      asValueStruct<type::map<type::i32_t, type::string_t>>({{1, "foo"}});
 
   {
     // MaskedData[1] is full, which should be values.
@@ -1334,10 +1228,9 @@ void testParseObjectWithTwoMasks() {
   obj[FieldId{1}].objectValue_ref() = foo;
   obj[FieldId{2}].i32Value_ref() = 2;
   obj[FieldId{3}].i32Value_ref() = 3;
-  std::map<int, std::map<std::string, int>> map = {
-      {10, {{"foo", 1}, {"bar", 2}}}, {20, {{"baz", 3}}}};
   obj[FieldId{4}] = asValueStruct<
-      type::map<type::i16_t, type::map<type::string_t, type::i32_t>>>(map);
+      type::map<type::i16_t, type::map<type::string_t, type::i32_t>>>(
+      {{10, {{"foo", 1}, {"bar", 2}}}, {20, {{"baz", 3}}}});
 
   Value key10 = asValueStruct<type::i16_t>(10);
   Value key20 = asValueStruct<type::i16_t>(20);
@@ -1381,11 +1274,9 @@ void testParseObjectWithTwoMasks() {
     //                 20: {}}}
     expected[FieldId{1}].objectValue_ref().emplace();
     expected[FieldId{2}].i32Value_ref() = 2;
-    std::map<int, std::map<std::string, int>> expectedMap = {
-        {10, {{"foo", 1}}}, {20, {}}};
     expected[FieldId{4}] = asValueStruct<
         type::map<type::i16_t, type::map<type::string_t, type::i32_t>>>(
-        expectedMap);
+        {{10, {{"foo", 1}}}, {20, {}}});
     EXPECT_EQ(result.included, expected);
   }
 
@@ -1399,11 +1290,9 @@ void testParseObjectWithTwoMasks() {
     bar[FieldId{2}].stringValue_ref() = "bar";
     expected[FieldId{1}].objectValue_ref() = bar;
     expected[FieldId{2}].i32Value_ref() = 2;
-    std::map<int, std::map<std::string, int>> expectedMap = {
-        {10, {{"foo", 1}}}, {20, {}}};
     expected[FieldId{4}] = asValueStruct<
         type::map<type::i16_t, type::map<type::string_t, type::i32_t>>>(
-        expectedMap);
+        {{10, {{"foo", 1}}}, {20, {}}});
     auto reserialized = protocol::serializeObject<protocol_writer_t<Protocol>>(
         result.included, result.excluded);
     Object finalObj =
@@ -1490,7 +1379,8 @@ TEST(ToAnyTest, simple) {
   EXPECT_EQ(
       toType(value),
       type::Type::create<type::struct_c>(apache::thrift::uri<Bar>()));
-  EXPECT_EQ(any, toAny<CompactSerializer::ProtocolWriter>(value));
+  // TODO(dokwon): Enable this when we wrap Thrift Any with Adapter.
+  // EXPECT_EQ(any, toAny<CompactSerializer::ProtocolWriter>(value));
 }
 } // namespace
 } // namespace apache::thrift::protocol

@@ -22,18 +22,57 @@
   (pps ppx_deriving.std)))
 
 (library
+  (name typing_defs_core)
+  (wrapped false)
+  (modules
+    tanySentinel
+    typing_defs_core
+    typing_defs_flags
+    typing_reason
+    xhp_attribute)
+  (libraries
+    ast
+    heap_ident
+    nast
+    pos
+    pos_or_decl)
+ (preprocess
+  (pps ppx_deriving.std ppx_hash)))
+
+(library
+  (name typing_error)
+  (wrapped false)
+  (modules typing_error)
+  (libraries
+    ast
+    pos
+    pos_or_decl
+    typing_defs_core
+    error_codes
+    user_error)
+ (preprocess
+  (pps ppx_deriving.std)))
+
+(library
+  (name typing_error_utils)
+  (wrapped false)
+  (modules typing_error_utils)
+  (libraries
+    core_kernel
+    errors
+    error_codes
+    pos
+    pos_or_decl
+    typing_error
+    user_error))
+
+(library
  (name typing_defs)
  (wrapped false)
  (modules
-  coverage_level_defs
   type_visitor
   class_refinement
-  typing_defs
-  typing_defs_core
-  typing_defs_flags
-  tanySentinel
-  typing_reason
-  xhp_attribute)
+  typing_defs)
  (libraries
   ast
   core_kernel
@@ -44,9 +83,11 @@
   pos
   pos_or_decl
   relative_path
+  typing_defs_core
+  typing_error
   utils_core)
  (preprocess
-  (pps ppx_deriving.std)))
+  (pps ppx_deriving.std ppx_hash)))
 
 (library
  (name deferred_decl)
@@ -162,6 +203,7 @@
   (wrapped false)
   (modules typing_modules)
   (libraries typing_env typing_env_types decl_provider))
+
 
 (library
  (name typing)
@@ -295,7 +337,8 @@
   typing_log
   typing_utils
   typing_visibility
-  decl_typedef_expand)
+  decl_typedef_expand
+  lru)
  (preprocess
   (pps ppx_deriving.std)))
 
@@ -327,7 +370,7 @@
  (name typing_utils)
  (wrapped false)
  (modules typing_utils)
- (libraries typing_env typing_logic)
+ (libraries typing_env typing_logic typing_error errors)
  (preprocess
   (pps ppx_deriving.std)))
 
@@ -402,6 +445,7 @@
   common
   core_kernel
   errors
+  typing_error
   naming_attributes
   nast
   type_mapper_forget
@@ -409,15 +453,7 @@
   typing_logic
   typechecker_options)
  (preprocess
-  (pps ppx_deriving.std)))
-
-(library
- (name coverage_level)
- (wrapped false)
- (modules coverage_level)
- (libraries core_kernel ide_rpc_api_types tast_env typing_defs)
- (preprocess
-  (pps ppx_deriving.std)))
+  (pps ppx_deriving.std ppx_hash)))
 
 (library
  (name typing_check_job)
@@ -427,6 +463,7 @@
   core_kernel
   deferred_decl
   errors
+  typing_error
   file_info
   nast
   substitution_mutation
@@ -445,14 +482,19 @@
   cgroupprofiler
   core_kernel
   decl_counters
+  hh_distc_ffi
   decl_service
+  server_env
+  server_env_build
   deferred_decl
   diagnostic_pusher
   errors
+  typing_error
   file_info
   nast
   gc_utils
   global_options
+  hh_distc_types
   heap_global_storage
   procs_bucket
   counters
@@ -473,5 +515,13 @@
  (wrapped false)
  (modules delta tast_typecheck)
  (libraries core_kernel typing utils_core)
+ (preprocess
+  (pps ppx_deriving.std)))
+
+(library
+ (name hh_distc_types)
+ (wrapped false)
+ (modules hh_distc_types)
+ (libraries errors)
  (preprocess
   (pps ppx_deriving.std)))

@@ -39,12 +39,13 @@
 
 #include "hphp/hhbbc/hhbbc.h"
 #include "hphp/hhbbc/misc.h"
+#include "hphp/hhbbc/type-structure.h"
+#include "hphp/hhbbc/type-system.h"
 
 namespace HPHP::HHBBC {
 
 //////////////////////////////////////////////////////////////////////
 
-struct Type;
 struct Index;
 struct PublicSPropMutations;
 struct FuncAnalysisResult;
@@ -54,17 +55,13 @@ struct CallContext;
 struct PropertiesInfo;
 struct MethodsInfo;
 
-struct TypeStructureResolution;
-
-struct DCls;
-
-extern const Type TCell;
-
 namespace php {
 struct Class;
+struct ClassBytecode;
 struct Prop;
 struct Const;
 struct Func;
+struct FuncBytecode;
 struct Unit;
 struct Program;
 struct TypeAlias;
@@ -150,15 +147,13 @@ std::string show(Context);
  * State of properties on a class.  Map from property name to its
  * Type.
  */
-template <typename T = Type> // NB: The template param here is to
-                             // break a cyclic dependency on Type.
 struct PropStateElem {
-  T ty;
+  Type ty;
   const TypeConstraint* tc = nullptr;
   Attr attrs;
   bool everModified;
 
-  bool operator==(const PropStateElem<T>& o) const {
+  bool operator==(const PropStateElem& o) const {
     return
       ty == o.ty &&
       tc == o.tc &&
@@ -166,15 +161,13 @@ struct PropStateElem {
       everModified == o.everModified;
   }
 };
-using PropState = std::map<LSString,PropStateElem<>>;
+using PropState = std::map<LSString,PropStateElem>;
 
 /*
  * The result of Index::lookup_static
  */
-template <typename T = Type> // NB: The template parameter is here to
-                             // break a cyclic dependency on Type.
 struct PropLookupResult {
-  T ty; // The best known type of the property (TBottom if not found)
+  Type ty; // The best known type of the property (TBottom if not found)
   SString name; // The statically known name of the string, if any
   TriBool found; // If the property was found
   TriBool isConst; // If the property is AttrConst
@@ -186,9 +179,8 @@ struct PropLookupResult {
                             // others, this is only no or maybe).
 };
 
-template <typename T>
-inline PropLookupResult<T>& operator|=(PropLookupResult<T>& a,
-                                       const PropLookupResult<T>& b) {
+inline PropLookupResult& operator|=(PropLookupResult& a,
+                                    const PropLookupResult& b) {
   assertx(a.name == b.name);
   a.ty |= b.ty;
   a.found |= b.found;
@@ -200,69 +192,62 @@ inline PropLookupResult<T>& operator|=(PropLookupResult<T>& a,
   return a;
 }
 
-std::string show(const PropLookupResult<Type>&);
+std::string show(const PropLookupResult&);
 
 /*
  * The result of Index::merge_static_type
  */
-template <typename T = Type> // NB: The template parameter is here to
-                             // break a cyclic dependency on Type
 struct PropMergeResult {
-  T adjusted; // The merged type, potentially adjusted according to
-              // the prop's type-constraint (it's the subtype of the
-              // merged type that would succeed).
+  Type adjusted; // The merged type, potentially adjusted according to
+                 // the prop's type-constraint (it's the subtype of
+                 // the merged type that would succeed).
   TriBool throws; // Whether the mutation this merge represents
                   // can throw.
 };
 
-template <typename T>
-inline PropMergeResult<T>& operator|=(PropMergeResult<T>& a,
-                                      const PropMergeResult<T>& b) {
+inline PropMergeResult& operator|=(PropMergeResult& a,
+                                   const PropMergeResult& b) {
   a.adjusted |= b.adjusted;
   a.throws |= b.throws;
   return a;
 }
 
-std::string show(const PropMergeResult<Type>&);
+std::string show(const PropMergeResult&);
 
 /*
  * The result of Index::lookup_class_constant
  */
-template <typename T = Type> // NB: The template parameter is here to
-                             // break a cyclic dependency on Type
 struct ClsConstLookupResult {
-  T ty;            // The best known type of the constant (might not be a
-                   // scalar).
-  TriBool found;   // If the constant was found
-  bool mightThrow; // If accessing the constant can throw
+  Type ty;            // The best known type of the constant (might not be a
+                      // scalar).
+  TriBool found;      // If the constant was found
+  bool mightThrow;    // If accessing the constant can throw
 };
 
-template <typename T>
-inline ClsConstLookupResult<T>& operator|=(ClsConstLookupResult<T>& a,
-                                           const ClsConstLookupResult<T>& b) {
+inline ClsConstLookupResult& operator|=(ClsConstLookupResult& a,
+                                        const ClsConstLookupResult& b) {
   a.ty |= b.ty;
   a.found |= b.found;
   a.mightThrow |= b.mightThrow;
   return a;
 }
 
-std::string show(const ClsConstLookupResult<Type>&);
+std::string show(const ClsConstLookupResult&);
 
 /*
  * The result of Index::lookup_class_type_constant
  */
-template <typename T = TypeStructureResolution>
 struct ClsTypeConstLookupResult {
-  T resolution;     // The result from resolving the type-structure
+  TypeStructureResolution resolution; // The result from resolving
+                                      // the type-structure
   TriBool found;    // If the constant was found
   TriBool abstract; // If the constant was abstract (this only applies
                     // to the subset which wasn't found).
 };
 
-template <typename T>
-inline ClsTypeConstLookupResult<T>& operator|=(
-    ClsTypeConstLookupResult<T>& a,
-    const ClsTypeConstLookupResult<T>& b) {
+inline ClsTypeConstLookupResult& operator|=(
+    ClsTypeConstLookupResult& a,
+    const ClsTypeConstLookupResult& b) {
   a.resolution |= b.resolution;
   if (a.found == TriBool::Yes) {
     a.abstract = b.abstract;
@@ -273,12 +258,21 @@ inline ClsTypeConstLookupResult<T>& operator|=(
   return a;
 }
 
-std::string show(const ClsTypeConstLookupResult<TypeStructureResolution>&);
+std::string show(const ClsTypeConstLookupResult&);
+
+//////////////////////////////////////////////////////////////////////
+
+// Inferred class constant type from a 86cinit.
+struct ClsConstInfo {
+  Type type;
+  size_t refinements = 0;
+};
 
 //////////////////////////////////////////////////////////////////////
 
 // private types
 struct ClassInfo;
+struct UnresolvedClassMaker;
 
 //////////////////////////////////////////////////////////////////////
 
@@ -325,7 +319,7 @@ struct Class {
    */
   bool exactSubtypeOf(const Class& o, bool nonRegularL, bool nonRegularR) const;
   bool exactSubtypeOfExact(
-      const Class& o, bool nonRegularL, bool nonRegularR
+    const Class& o, bool nonRegularL, bool nonRegularR
   ) const;
   bool subSubtypeOf(const Class& o, bool nonRegularL, bool nonRegularR) const;
 
@@ -527,6 +521,14 @@ struct Class {
                            folly::Range<const Class*> classes2,
                            bool nonRegular1,
                            bool nonRegular2);
+
+  /*
+   * Produce an unresolved class representing the base class of a wait
+   * handle (this will be a sub-class of Awaitable). Since this is
+   * unresolved, it does not require an Index.
+   */
+  static Class unresolvedWaitHandle();
+
   /*
    * Convert this class to/from an opaque integer. The integer is
    * "pointerish" (has upper bits cleared), so can be used in
@@ -540,6 +542,23 @@ struct Class {
 
   size_t hash() const { return val.toOpaque(); }
 
+  /*
+   * NB: Serd-ing a Class only encodes the name. Deserializing it
+   * always produces a name-only unresolved class, regardless of the
+   * original. If necessary, the Class must be manually resolved
+   * afterwards.
+   */
+  template <typename SerDe> void serde(SerDe& sd) {
+    static_assert(!SerDe::deserializing);
+    sd(name());
+  }
+
+  template <typename SerDe> static Class makeForSerde(SerDe& sd) {
+    SString n;
+    sd(n);
+    assertx(n);
+    return Class{n};
+  }
 private:
   explicit Class(Either<SString,ClassInfo*> val) : val{val} {}
 
@@ -552,6 +571,7 @@ private:
   friend struct ::HPHP::HHBBC::Index;
   friend struct ::HPHP::HHBBC::PublicSPropMutations;
   friend struct ::HPHP::HHBBC::ClassInfo;
+  friend struct ::HPHP::HHBBC::UnresolvedClassMaker;
   Either<SString,ClassInfo*> val;
 };
 
@@ -574,6 +594,12 @@ struct Func {
    * If this resolved function represents exactly one php::Func, return it.
    */
   const php::Func* exactFunc() const;
+
+  /*
+   * Whether this function definitely exists or definitely does not
+   * exist.
+   */
+  TriBool exists() const;
 
   /*
    * Returns whether this resolved function is definitely safe to constant fold.
@@ -616,10 +642,9 @@ struct Func {
 private:
   friend struct ::HPHP::HHBBC::Index;
   struct FuncName {
-    FuncName(SString n, bool r) : name{n}, renamable{r} {}
+    explicit FuncName(SString n) : name{n} {}
     bool operator==(FuncName o) const { return name == o.name; }
     SString name;
-    bool renamable;
   };
   struct MethodName {
     bool operator==(MethodName o) const { return name == o.name; }
@@ -742,11 +767,24 @@ struct Index {
       std::vector<TypeMapping> typeMappings;
     };
 
+    struct FuncBytecodeMeta {
+      R<php::FuncBytecode> bc;
+      LSString name;
+      LSString methCallerUnit; // nullptr if not associated with a MethCaller
+    };
+
+    struct ClassBytecodeMeta {
+      R<php::ClassBytecode> bc;
+      LSString name;
+    };
+
     static std::vector<SString> makeDeps(const php::Class&);
 
     std::vector<ClassMeta> classes;
     std::vector<UnitMeta> units;
     std::vector<FuncMeta> funcs;
+    std::vector<ClassBytecodeMeta> classBC;
+    std::vector<FuncBytecodeMeta> funcBC;
   };
 
   /*
@@ -918,13 +956,12 @@ struct Index {
   res::Class builtin_class(SString name) const;
 
   /*
-   * Try to resolve a function named `name' from a given context.
+   * Try to resolve a function named `name'.
    *
-   * Note, the returned function may or may not be defined at the
-   * program point (it could require a function autoload that might
-   * fail).
+   * Returns std::nullopt if no such function with that name is known
+   * to exist.
    */
-  res::Func resolve_func(Context, SString name) const;
+  res::Func resolve_func(SString name) const;
 
   /*
    * Try to resolve a method named `name' with a this type of
@@ -956,53 +993,10 @@ struct Index {
   res::Class wait_handle_class() const;
 
   /*
-   * Resolve a type-constraint into its equivalent set of HHBBC types.
-   *
-   * In general, a type-constraint cannot be represented exactly by a
-   * single HHBBC type, so a lower and upper bound is provided
-   * instead.
-   *
-   * A "candidate" type can be provided which will be applied to the
-   * type-constraint and can further constrain the output types. This
-   * is useful for the magic interfaces, whose lower-bound cannot be
-   * precisely represented by a single type.
-   */
-  template <typename T = Type>
-  struct ConstraintType {
-    // Lower bound of constraint. Any type which is a subtype of this
-    // is guaranteed to pass a type-check without any side-effects.
-    T lower;
-    // Upper bound of constraint. Any type which does not intersect
-    // with this is guaranteed to always fail a type-check.
-    T upper;
-    // If this type-constraint might promote a "classish" type to a
-    // static string as a side-effect.
-    TriBool coerceClassToString{TriBool::No};
-    // Whether this type-constraint might map to a mixed
-    // type-hint. The mixed type-hint has special semantics when it
-    // comes to properties.
-    bool maybeMixed{false};
-  };
-
-  ConstraintType<>
-  lookup_constraint(const Context&, const TypeConstraint&,
-                    const Type& candidate = TCell) const;
-
-  /*
    * Returns true if the type constraint can contain a reified type
    * Currently, only classes and interfaces are supported
    */
   bool could_have_reified_type(Context ctx, const TypeConstraint& tc) const;
-
-  /*
-   * Returns a tuple containing a type after the parameter type
-   * verification, a flag indicating whether the verification is a
-   * no-op (because it always passes without any conversion), and a
-   * flag indicating whether the verification is effect free (the
-   * verification could convert a type without causing a side-effect).
-   */
-  std::tuple<Type, bool, bool>
-  verify_param_type(const Context& ctx, uint32_t paramId, const Type& t) const;
 
   /*
    * Lookup metadata about the constant access `cls'::`name', in the
@@ -1016,8 +1010,16 @@ struct Index {
    *
    * This function only looks up non-type, non-context constants.
    */
-  ClsConstLookupResult<>
+  ClsConstLookupResult
   lookup_class_constant(Context ctx, const Type& cls, const Type& name) const;
+
+  /*
+   * Retrieve the information the Index knows about all of the class
+   * constants defined on the given class. This does not register any
+   * dependency.
+   */
+  std::vector<std::pair<SString, ClsConstInfo>>
+  lookup_class_constants(const php::Class&) const;
 
   /*
    * Lookup metadata about the constant access `cls'::`name', where
@@ -1035,7 +1037,7 @@ struct Index {
   using ClsTypeConstLookupResolver =
     std::function<TypeStructureResolution(const php::Const&,const php::Class&)>;
 
-  ClsTypeConstLookupResult<>
+  ClsTypeConstLookupResult
   lookup_class_type_constant(
     const Type& cls,
     const Type& name,
@@ -1110,13 +1112,6 @@ struct Index {
                             bool move = false) const;
 
   /*
-   * Return the availability of $this on entry to the provided method.
-   * If the Func provided is not a method of a class false is
-   * returned.
-   */
-  bool lookup_this_available(const php::Func*) const;
-
-  /*
    * Returns the parameter preparation kind (if known) for parameter
    * `paramId' on the given resolved Func.
    */
@@ -1183,10 +1178,10 @@ struct Index {
    * accessibility rules. This is intended to be the source of truth
    * about static properties during analysis.
    */
-  PropLookupResult<> lookup_static(Context ctx,
-                                   const PropertiesInfo& privateProps,
-                                   const Type& cls,
-                                   const Type& name) const;
+  PropLookupResult lookup_static(Context ctx,
+                                 const PropertiesInfo& privateProps,
+                                 const Type& cls,
+                                 const Type& name) const;
 
   /*
    * Lookup if initializing (which is a side-effect of several bytecodes) the
@@ -1238,15 +1233,15 @@ struct Index {
    * successfully set (according to the type constraints), and if the
    * mutation would throw or not.
    */
-  PropMergeResult<> merge_static_type(Context ctx,
-                                      PublicSPropMutations& publicMutations,
-                                      PropertiesInfo& privateProps,
-                                      const Type& cls,
-                                      const Type& name,
-                                      const Type& val,
-                                      bool checkUB = false,
-                                      bool ignoreConst = false,
-                                      bool mustBeReadOnly = false) const;
+  PropMergeResult merge_static_type(Context ctx,
+                                    PublicSPropMutations& publicMutations,
+                                    PropertiesInfo& privateProps,
+                                    const Type& cls,
+                                    const Type& name,
+                                    const Type& val,
+                                    bool checkUB = false,
+                                    bool ignoreConst = false,
+                                    bool mustBeReadOnly = false) const;
 
   /*
    * Initialize the initial types for public static properties. This should be
@@ -1279,7 +1274,7 @@ struct Index {
    */
   void refine_class_constants(
     const Context& ctx,
-    const CompactVector<std::pair<size_t, Type>>& resolved,
+    const CompactVector<std::pair<size_t, ClsConstInfo>>& resolved,
     DependencyContextSet& deps);
 
   /*
@@ -1393,22 +1388,6 @@ struct Index {
                                       DependencyContextSet& deps);
 
   /*
-   * Mark any properties in cls that definitely do not redeclare a property in
-   * the parent, which has an inequivalent type-hint.
-   */
-  void mark_no_bad_redeclare_props(php::Class& cls) const;
-
-  /*
-   * Rewrite the initial values of any AttrSystemInitialValue properties to
-   * something more suitable for its type-hint, and add AttrNoImplicitNullable
-   * where appropriate.
-   *
-   * This must be done before any analysis is done, as the initial values
-   * affects the analysis.
-   */
-  void rewrite_default_initial_values() const;
-
-  /*
    * Return true if the resolved function supports async eager return.
    */
   TriBool supports_async_eager_return(res::Func rfunc) const;
@@ -1442,11 +1421,6 @@ private:
 
 private:
   friend struct PublicSPropMutations;
-
-  res::Func resolve_func_helper(const php::Func*, SString) const;
-  res::Func do_resolve(const php::Func*) const;
-
-  void init_return_type(const php::Func* func);
 
   template <typename F>
   bool visit_every_dcls_cls(const DCls&, const F&) const;

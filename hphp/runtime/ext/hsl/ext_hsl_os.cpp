@@ -844,7 +844,7 @@ void HHVM_FUNCTION(HSL_os_ftruncate, const Object& obj, int64_t length) {
 }
 
 Object HHVM_FUNCTION(HSL_os_request_stdio_fd, int64_t client_fd) {
-  if (RuntimeOption::ServerExecutionMode() && !is_cli_server_mode()) {
+  if (!is_any_cli_mode()) {
     throw_errno_exception(
       EBADF,
       "Request STDIO file descriptors are only available in CLI mode"
@@ -1058,7 +1058,7 @@ int64_t HHVM_FUNCTION(HSL_os_fork_and_execve,
 
 struct OSExtension final : Extension {
 
-  OSExtension() : Extension("hsl_os", "0.1") {}
+  OSExtension() : Extension("hsl_os", "0.1", NO_ONCALL_YET) {}
 
   void cliClientInit() override {
     CLI_REGISTER_HANDLER(HSL_os_open);

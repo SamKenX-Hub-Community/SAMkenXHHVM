@@ -361,6 +361,7 @@ void translateTypedef(TranslationState& ts, const hhbc::Typedef& t) {
     tname,
     tname->empty() ? AnnotType::Mixed : ty.type(),
     (ty.flags() & TypeConstraintFlags::Nullable) != 0,
+    (ty.flags() & TypeConstraintFlags::CaseType) != 0,
     ArrNR{tys.m_data.parr},
     Array{}
   );
@@ -1514,9 +1515,10 @@ std::unique_ptr<UnitEmitter> unitEmitterFromHackCUnit(
 	const SHA1& sha1,
 	const SHA1& bcSha1,
   const Native::FuncTable& nativeFuncs,
-  bool swallowErrors
+  bool swallowErrors,
+  const PackageInfo& packageInfo
 ) {
-  auto ue = std::make_unique<UnitEmitter>(sha1, bcSha1, nativeFuncs);
+  auto ue = std::make_unique<UnitEmitter>(sha1, bcSha1, nativeFuncs, packageInfo);
   StringData* sd = makeStaticString(filename);
   ue->m_filepath = sd;
 

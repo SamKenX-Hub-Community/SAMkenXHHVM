@@ -13,7 +13,6 @@ open Typing_defs
 open Utils
 module Env = Tast_env
 module Cls = Decl_provider.Class
-module MakeType = Typing_make_type
 module SN = Naming_special_names
 
 type kind =
@@ -31,7 +30,7 @@ let get_constant tc kind (seen, has_default) case =
   let check_case pos cls const =
     (* wish:T109260699 *)
     if String.( <> ) cls (Cls.name tc) then (
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(
           enum
           @@ Primary.Enum.Enum_switch_wrong_class
@@ -46,7 +45,7 @@ let get_constant tc kind (seen, has_default) case =
       match SMap.find_opt const seen with
       | None -> (SMap.add const pos seen, has_default)
       | Some old_pos ->
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             enum
             @@ Primary.Enum.Enum_switch_redundant
@@ -61,7 +60,7 @@ let get_constant tc kind (seen, has_default) case =
   | Case ((_, pos, EnumClassLabel (Some (_, cls), const)), _) ->
     check_case pos cls const
   | Case ((_, pos, _), _) ->
-    Errors.add_typing_error
+    Typing_error_utils.add_typing_error
       Typing_error.(enum @@ Primary.Enum.Enum_switch_not_const pos);
     (seen, has_default)
 
@@ -92,31 +91,24 @@ let check_enum_exhaustiveness pos tc kind (caselist, dfl) coming_from_unresolved
     in
     state
   in
-  let unhandled =
-    Cls.consts tc
-    |> List.map ~f:fst
-    |> List.filter ~f:(fun id -> String.( <> ) id SN.Members.mClass)
-    |> List.filter ~f:(fun id -> not (SMap.mem id seen))
-    |> List.rev
+  let rec first_n_unhandled n acc = function
+    | _ when n < 1 -> List.rev acc
+    | [] -> List.rev acc
+    | (id, _) :: rest ->
+      if String.equal id SN.Members.mClass || SMap.mem id seen then
+        first_n_unhandled n acc rest
+      else
+        first_n_unhandled (n - 1) (id :: acc) rest
   in
+  let unhandled = first_n_unhandled 10 [] @@ Cls.consts tc in
   let all_cases_handled = List.is_empty unhandled in
   let enum_err_opt =
     let open Typing_error in
     match (all_cases_handled, has_default, coming_from_unresolved) with
     | (false, false, _) ->
-      (* In what order should we list the unhandled ones?
-         Some people might prefer an alphabetical order.
-         Some people might prefer to see the list in order of declaration.
-         It honestly doesn't matter. I'm picking this because I
-         like errors to be deterministic. *)
       Some
         (Primary.Enum.Enum_switch_nonexhaustive
-           {
-             pos;
-             kind = str_kind;
-             missing = List.sort unhandled ~compare:String.compare;
-             decl_pos = Cls.pos tc;
-           })
+           { pos; kind = str_kind; missing = unhandled; decl_pos = Cls.pos tc })
     | (true, true, false) ->
       Some
         (Primary.Enum.Enum_switch_redundant_default
@@ -124,7 +116,7 @@ let check_enum_exhaustiveness pos tc kind (caselist, dfl) coming_from_unresolved
     | _ -> None
   in
   Option.iter enum_err_opt ~f:(fun err ->
-      Errors.add_typing_error @@ Typing_error.enum err)
+      Typing_error_utils.add_typing_error @@ Typing_error.enum err)
 
 (* Small reminder:
  * - enums are localized to `Tnewtype (name, _, _)` where name is the name of

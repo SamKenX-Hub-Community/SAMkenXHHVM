@@ -54,6 +54,7 @@
 #include "hphp/runtime/base/implicit-context.h"
 #include "hphp/runtime/debugger/debugger.h"
 #include "hphp/runtime/debugger/debugger_base.h"
+#include "hphp/runtime/ext/asio/ext_asio.h"
 #include "hphp/runtime/ext/std/ext_std_output.h"
 #include "hphp/runtime/ext/string/ext_string.h"
 #include "hphp/runtime/ext/reflection/ext_reflection.h"
@@ -1180,7 +1181,6 @@ const RepoOptions& ExecutionContext::getRepoOptionsForFrame(int frame) const {
 void ExecutionContext::onLoadWithOptions(
   const char* f, const RepoOptions& opts
 ) {
-  if (!RuntimeOption::EvalFatalOnParserOptionMismatch) return;
   if (!m_requestOptions) {
     m_requestOptions.emplace(opts);
     return;
@@ -1188,11 +1188,11 @@ void ExecutionContext::onLoadWithOptions(
   if (m_requestOptions != opts) {
     // The data buffer has to stay alive for the call to raise_error.
     auto const path_str = opts.path();
-    auto const path = path_str.empty() ? "{default options}" : path_str.data();
+    auto const path = path_str.empty() ? "{default options}" : path_str.c_str();
     raise_error(
       "Attempting to load file %s with incompatible parser settings from %s, "
       "this request is using parser settings from %s",
-      f, path, m_requestOptions->path().data()
+      f, path, m_requestOptions->path().c_str()
     );
   }
 }
@@ -1394,6 +1394,10 @@ void ExecutionContext::requestInit() {
   vmStack().requestInit();
   ResourceHdr::resetMaxId();
   jit::tc::requestInit();
+  if (UNLIKELY(RO::EvalRecordReplay && RO::EvalRecordSampleRate > 0)) {
+    m_recorder.emplace();
+    m_recorder->requestInit();
+  }
 
   *rl_num_coeffect_violations = 0;
 
@@ -1454,6 +1458,10 @@ void ExecutionContext::requestExit() {
   autoTypecheckRequestExit();
   HHProf::Request::FinishProfiling();
 
+  if (UNLIKELY(RO::EvalRecordReplay && RO::EvalRecordSampleRate > 0)) {
+    m_recorder->requestExit();
+    m_recorder.reset();
+  }
   manageAPCHandle();
   syncGdbState();
   vmStack().requestExit();
@@ -1574,27 +1582,33 @@ TypedValue ExecutionContext::invokeFuncImpl(const Func* f,
   // have cleared the implicit context since that logic is
   // done in a PHP try-finally. Let's clear the implicit context here.
   auto const prev_ic = *ImplicitContext::activeCtx;
-  SCOPE_FAIL { *ImplicitContext::activeCtx = prev_ic; };
-
-  enterVM(ar, [&] {
-    exception_handler([&] {
-      enterVMAtFunc(ar, numArgsInclUnpack);
+  try {
+    enterVM(ar, [&] {
+      exception_handler([&] {
+        enterVMAtFunc(ar, numArgsInclUnpack);
+      });
     });
-  });
 
-  assertx(prev_ic == *ImplicitContext::activeCtx);
+    assertx(prev_ic == *ImplicitContext::activeCtx);
 
-  if (UNLIKELY(f->takesInOutParams())) {
-    VecInit vec(f->numInOutParams() + 1);
-    for (uint32_t i = 0; i < f->numInOutParams() + 1; ++i) {
-      vec.append(*vmStack().topTV());
-      vmStack().popC();
+    if (UNLIKELY(f->takesInOutParams())) {
+      VecInit vec(f->numInOutParams() + 1);
+      for (uint32_t i = 0; i < f->numInOutParams() + 1; ++i) {
+        vec.append(*vmStack().topTV());
+        vmStack().popC();
+      }
+      return make_array_like_tv(vec.create());
+    } else {
+      auto const retval = *vmStack().topTV();
+      vmStack().discard();
+      return retval;
     }
-    return make_array_like_tv(vec.create());
-  } else {
-    auto const retval = *vmStack().topTV();
-    vmStack().discard();
-    return retval;
+  } catch (...) {
+    // This is an explicit try-catch-rethrow rather than a SCOPE_EXIT
+    // because std::uncaught_exceptions() is relatively expensive, and this
+    // is very hot code.
+    *ImplicitContext::activeCtx = prev_ic;
+    throw;
   }
 }
 
@@ -2036,7 +2050,7 @@ ExecutionContext::evalPHPDebugger(Unit* unit, int frame) {
               f->setAttrs(Attr(f->attrs() | AttrStatic));
             }
           }
-          assertx(f->numParams() >= 1 && f->numParams() == f->numInOutParams());
+          assertx(f->numParams() > 0);
           return f;
         }
       }
@@ -2053,7 +2067,8 @@ ExecutionContext::evalPHPDebugger(Unit* unit, int frame) {
     };
     for (Id id = 0; id < f->numParams() - 1; id++) {
       assertx(id < f->numNamedLocals());
-      assertx(f->params()[id].isInOut());
+      assertx(!f->params()[id].isInOut());
+      assertx(!f->params()[id].isVariadic());
       if (f->localVarName(id)->equal(s_debuggerThis.get()) &&
           ctx && fp->hasThis()) {
         args.append(make_tv<KindOfObject>(fp->getThis()));
@@ -2078,11 +2093,14 @@ ExecutionContext::evalPHPDebugger(Unit* unit, int frame) {
 
     auto const obj = ctx && fp->hasThis() ? fp->getThis() : nullptr;
     auto const cls = ctx && fp->hasClass() ? fp->getClass() : nullptr;
-    auto const arr_tv = invokeFunc(f, args.toArray(), obj, cls,
-                                   RuntimeCoeffects::defaults(), false);
-    assertx(isArrayLikeType(type(arr_tv)));
-    assertx(val(arr_tv).parr->size() == f->numParams() + 1);
-    Array arr = Array::attach(val(arr_tv).parr);
+    auto const wh = invokeFunc(f, args.toArray(), obj, cls,
+                               RuntimeCoeffects::defaults(), false);
+    assertx(f->isAsync());
+    assertx(tvIsObject(wh));
+    auto const arr_tv = HHVM_FN(join)(Object::attach(wh.m_data.pobj));
+    assertx(isArrayLikeType(arr_tv.getType()));
+    Array arr = arr_tv.toArray();
+    assertx(arr->size() == f->numParams() + 1);
     for (Id id = 0; id < f->numParams() - 1; id++) {
       auto const tv = arr.lookup(id + 1);
       if (isObjectType(type(tv)) &&

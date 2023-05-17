@@ -60,6 +60,8 @@ int Option::ParserDirGroupSizeLimit = kDefaultParserDirGroupSizeLimit;
 bool Option::ParserAsyncCleanup = true;
 bool Option::ParserOptimisticStore = true;
 
+bool Option::ForceEnableSymbolRefs = false;
+
 std::string Option::ExternWorkerUseCase;
 std::string Option::ExternWorkerFeaturesFile;
 bool Option::ExternWorkerForceSubprocess = false;
@@ -67,7 +69,7 @@ int Option::ExternWorkerTimeoutSecs = 0;
 bool Option::ExternWorkerUseExecCache = true;
 bool Option::ExternWorkerCleanup = true;
 bool Option::ExternWorkerUseRichClient = true;
-bool Option::ExternWorkerUseZippyRichClient = false;
+bool Option::ExternWorkerUseZippyRichClient = true;
 bool Option::ExternWorkerUseP2P = false;
 int Option::ExternWorkerCasConnectionCount = 16;
 int Option::ExternWorkerEngineConnectionCount = 6;
@@ -187,6 +189,9 @@ void Option::Load(const IniSetting::Map& ini, Hdf &config) {
   if (ParserThreadCount <= 0) {
     ParserThreadCount = Process::GetCPUCount();
   }
+
+  Config::Bind(ForceEnableSymbolRefs, ini, config,
+               "ForceEnableSymbolRefs", false);
 
   Config::Bind(RuntimeOption::EvalGenerateDocComments, ini, config,
                "GenerateDocComments", RuntimeOption::EvalGenerateDocComments);

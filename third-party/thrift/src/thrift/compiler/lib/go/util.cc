@@ -25,6 +25,10 @@ namespace thrift {
 namespace compiler {
 namespace go {
 
+// Name of the field of the response helper struct where
+// the return value is stored (if function call is not void).
+const std::string DEFAULT_RETVAL_FIELD_NAME = "value";
+
 // keywords
 // https://go.dev/ref/spec#Keywords
 static const std::set<std::string> go_keywords = {
@@ -60,21 +64,31 @@ static const std::set<std::string> go_predeclared = {
     "false", "imag",   "iota",    "len",   "make",    "new",  "nil",
     "panic", "print",  "println", "real",  "recover", "true",
 };
+// TODO: remove after migration. These are strings protected in the legacy
+// generator... for no valid reason - they won't conflict with anything.
+static const std::set<std::string> compat_protected = {
+    "Error",
+    "String",
+};
 static const std::set<std::string> go_reserved_words = []() {
   std::set<std::string> set;
   set.insert(go_keywords.cbegin(), go_keywords.cend());
   set.insert(go_types.cbegin(), go_types.cend());
   set.insert(go_predeclared.cbegin(), go_predeclared.cend());
+  set.insert(compat_protected.cbegin(), compat_protected.cend());
   return set;
 }();
 
 // common_initialisms from https://github.com/golang/lint/blob/master/lint.go
+//
+// TODO: add "ACL" back into this list after migration. Legacy generator is not
+// aware of this initialism - we had to take it out for compatibility.
 static const std::set<std::string> common_initialisms = {
-    "ACL",  "API",  "ASCII", "CPU",  "CSS",  "DNS",  "EOF", "GUID",
-    "HTML", "HTTP", "HTTPS", "ID",   "IP",   "JSON", "LHS", "QPS",
-    "RAM",  "RHS",  "RPC",   "SLA",  "SMTP", "SQL",  "SSH", "TCP",
-    "TLS",  "TTL",  "UDP",   "UI",   "UID",  "URI",  "URL", "UTF8",
-    "UUID", "VM",   "XML",   "XMPP", "XSRF", "XSS",
+    "API",  "ASCII", "CPU",  "CSS",  "DNS",  "EOF", "GUID", "HTML",
+    "HTTP", "HTTPS", "ID",   "IP",   "JSON", "LHS", "QPS",  "RAM",
+    "RHS",  "RPC",   "SLA",  "SMTP", "SQL",  "SSH", "TCP",  "TLS",
+    "TTL",  "UDP",   "UI",   "UID",  "URI",  "URL", "UTF8", "UUID",
+    "VM",   "XML",   "XMPP", "XSRF", "XSS",
 };
 
 // To avoid conflict with methods (e.g. Error(), String())
@@ -197,11 +211,11 @@ std::string munge_ident(const std::string& ident, bool exported, bool compat) {
 
   auto result = out.str();
 
-  // Compat: legacy generator adds underscores to names ending with Arg/Result.
+  // Compat: legacy generator adds underscores to names ending with Args/Result.
   // Compat: legacy generator adds underscores to names startng with New.
   // (to avoid name collisions with constructors and helper arg/result structs)
   bool starts_with_new = boost::algorithm::starts_with(result, "New");
-  bool ends_with_args = boost::algorithm::ends_with(result, "Arg");
+  bool ends_with_args = boost::algorithm::ends_with(result, "Args");
   bool ends_with_rslt = boost::algorithm::ends_with(result, "Result");
   if (compat && (starts_with_new || ends_with_args || ends_with_rslt)) {
     result += '_';
@@ -305,6 +319,42 @@ bool is_type_go_struct(const t_type* type) {
   return type->is_struct() || type->is_union() || type->is_exception();
 }
 
+bool is_type_go_comparable(
+    const t_type* type, std::set<std::string> visited_type_names) {
+  // Whether the underlying Go type is comparable.
+  // As per: https://go.dev/ref/spec#Comparison_operators
+  //   > Slice, map, and function types are not comparable.
+  // (By extension - structs with slice of map fields are incomparable.)
+
+  // Struct hierarchy can sometime be recursive.
+  // Check if we have already visited this type.
+  auto type_name = type->get_full_name();
+  if (visited_type_names.count(type_name) > 0) {
+    return true;
+  }
+
+  // All of the types below are represented by either slice or a map.
+  auto real_type = type->get_true_type();
+  if (real_type->is_list() || real_type->is_map() || real_type->is_set() ||
+      real_type->is_binary()) {
+    return false;
+  }
+
+  if (real_type->is_struct()) {
+    auto as_struct = dynamic_cast<const t_struct*>(real_type);
+    if (as_struct != nullptr) {
+      for (auto member : as_struct->get_members()) {
+        auto member_type = member->type().get_type();
+        visited_type_names.insert(member_type->get_full_name());
+        if (!is_type_go_comparable(member_type, visited_type_names)) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
 std::string get_go_func_name(const t_function* func) {
   if (func->has_annotation("go.name")) {
     return func->get_annotation("go.name");
@@ -312,12 +362,64 @@ std::string get_go_func_name(const t_function* func) {
   return munge_ident(func->name());
 }
 
-std::string get_field_name(const t_field* field) {
+std::string get_go_field_name(const t_field* field) {
+  if (field->has_annotation("go.name")) {
+    return field->get_annotation("go.name");
+  }
+
   auto name = munge_ident(field->name());
   if (reserved_field_names.count(name) > 0) {
     name += "_";
   }
   return name;
+}
+
+std::set<std::string> get_struct_go_field_names(const t_struct* struct_) {
+  // Returns a set of Go field names from the given struct.
+  std::set<std::string> field_names;
+  for (const t_field& field : struct_->fields()) {
+    field_names.insert(go::get_go_field_name(&field));
+  }
+  return field_names;
+}
+
+std::vector<t_struct*> get_service_req_resp_structs(const t_service* service) {
+  std::vector<t_struct*> req_resp_structs;
+  auto svcGoName = go::munge_ident(service->name());
+  for (auto func : service->get_functions()) {
+    if (!go::is_func_go_supported(func)) {
+      continue;
+    }
+
+    auto funcGoName = go::get_go_func_name(func);
+
+    auto req_struct_name =
+        go::munge_ident("req" + svcGoName + funcGoName, false);
+    auto req_struct = new t_struct(service->program(), req_struct_name);
+    for (auto member : func->params().get_members()) {
+      req_struct->append_field(std::unique_ptr<t_field>(member));
+    }
+    req_resp_structs.push_back(req_struct);
+
+    auto resp_struct_name =
+        go::munge_ident("resp" + svcGoName + funcGoName, false);
+    auto resp_struct = new t_struct(service->program(), resp_struct_name);
+    if (!func->get_return_type()->is_void()) {
+      auto resp_field = std::make_unique<t_field>(
+          func->get_return_type(), DEFAULT_RETVAL_FIELD_NAME, 0);
+      resp_field->set_qualifier(t_field_qualifier::none);
+      resp_struct->append_field(std::move(resp_field));
+    }
+    if (func->exceptions() != nullptr) {
+      for (const auto& xs : func->exceptions()->get_members()) {
+        auto xc_ptr = std::unique_ptr<t_field>(xs);
+        xc_ptr->set_qualifier(t_field_qualifier::optional);
+        resp_struct->append_field(std::move(xc_ptr));
+      }
+    }
+    req_resp_structs.push_back(resp_struct);
+  }
+  return req_resp_structs;
 }
 
 } // namespace go

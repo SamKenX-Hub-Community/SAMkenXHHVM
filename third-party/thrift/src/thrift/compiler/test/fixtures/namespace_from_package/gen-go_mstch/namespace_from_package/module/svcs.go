@@ -119,7 +119,10 @@ func (c *TestServiceChannelClient) Init(ctx context.Context, int1 int64) (int64,
     }
     out := newRespTestServiceInit()
     err := c.ch.Call(ctx, "init", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *TestServiceClient) Init(int1 int64) (int64, error) {
@@ -133,8 +136,11 @@ type reqTestServiceInit struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqTestServiceInit{}
 
+type TestServiceInitArgs = reqTestServiceInit
+
 func newReqTestServiceInit() *reqTestServiceInit {
-    return (&reqTestServiceInit{})
+    return (&reqTestServiceInit{}).
+        SetInt1NonCompat(0)
 }
 
 func (x *reqTestServiceInit) GetInt1NonCompat() int64 {
@@ -145,11 +151,15 @@ func (x *reqTestServiceInit) GetInt1() int64 {
     return x.Int1
 }
 
-func (x *reqTestServiceInit) SetInt1(value int64) *reqTestServiceInit {
+func (x *reqTestServiceInit) SetInt1NonCompat(value int64) *reqTestServiceInit {
     x.Int1 = value
     return x
 }
 
+func (x *reqTestServiceInit) SetInt1(value int64) *reqTestServiceInit {
+    x.Int1 = value
+    return x
+}
 
 func (x *reqTestServiceInit) writeField1(p thrift.Protocol) error {  // Int1
     if err := p.WriteFieldBegin("int1", thrift.I64, 1); err != nil {
@@ -173,7 +183,7 @@ if err != nil {
     return err
 }
 
-    x.SetInt1(result)
+    x.SetInt1NonCompat(result)
     return nil
 }
 
@@ -202,6 +212,7 @@ func (x *reqTestServiceInitBuilder) Emit() *reqTestServiceInit {
     var objCopy reqTestServiceInit = *x.obj
     return &objCopy
 }
+
 func (x *reqTestServiceInit) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqTestServiceInit"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -258,14 +269,17 @@ func (x *reqTestServiceInit) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respTestServiceInit struct {
-    Value int64 `thrift:"value,0,required" json:"value" db:"value"`
+    Value int64 `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respTestServiceInit{}
+var _ thrift.WritableResult = &respTestServiceInit{}
 
 func newRespTestServiceInit() *respTestServiceInit {
-    return (&respTestServiceInit{})
+    return (&respTestServiceInit{}).
+        SetValueNonCompat(0)
 }
 
 func (x *respTestServiceInit) GetValueNonCompat() int64 {
@@ -276,11 +290,15 @@ func (x *respTestServiceInit) GetValue() int64 {
     return x.Value
 }
 
-func (x *respTestServiceInit) SetValue(value int64) *respTestServiceInit {
+func (x *respTestServiceInit) SetValueNonCompat(value int64) *respTestServiceInit {
     x.Value = value
     return x
 }
 
+func (x *respTestServiceInit) SetValue(value int64) *respTestServiceInit {
+    x.Value = value
+    return x
+}
 
 func (x *respTestServiceInit) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.I64, 0); err != nil {
@@ -304,7 +322,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -333,6 +351,11 @@ func (x *respTestServiceInitBuilder) Emit() *respTestServiceInit {
     var objCopy respTestServiceInit = *x.obj
     return &objCopy
 }
+
+func (x *respTestServiceInit) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respTestServiceInit) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respTestServiceInit"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -389,6 +412,7 @@ func (x *respTestServiceInit) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type TestServiceProcessor struct {
@@ -453,9 +477,11 @@ func (p *procFuncTestServiceInit) Read(iprot thrift.Protocol) (thrift.Struct, th
 func (p *procFuncTestServiceInit) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Init", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -474,13 +500,13 @@ func (p *procFuncTestServiceInit) Write(seqId int32, result thrift.WritableStruc
 func (p *procFuncTestServiceInit) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqTestServiceInit)
     result := newRespTestServiceInit()
-    if retval, err := p.handler.Init(args.Int1); err != nil {
+    retval, err := p.handler.Init(args.Int1)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Init: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 

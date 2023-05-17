@@ -546,7 +546,11 @@ struct IsZeroInitializable
     : std::conditional<
           is_detected_v<traits_detail::detect_IsZeroInitializable, T>,
           traits_detail::has_true_IsZeroInitializable<T>,
-          bool_constant<!std::is_class<T>::value>>::type {};
+          bool_constant< //
+              !std::is_class<T>::value && //
+              !std::is_union<T>::value && //
+              !std::is_member_object_pointer<T>::value && // itanium
+              true>>::type {};
 
 namespace detail {
 template <bool>
@@ -963,8 +967,17 @@ using type_pack_element_fallback = _t<decltype(type_pack_element_test<I>::impl(
 
 #if FOLLY_HAS_BUILTIN(__type_pack_element)
 
+#if __clang__
 template <std::size_t I, typename... Ts>
 using type_pack_element_t = __type_pack_element<I, Ts...>;
+#else
+template <std::size_t I, typename... Ts>
+struct type_pack_element {
+  using type = __type_pack_element<I, Ts...>;
+};
+template <std::size_t I, typename... Ts>
+using type_pack_element_t = typename type_pack_element<I, Ts...>::type;
+#endif
 
 #else
 

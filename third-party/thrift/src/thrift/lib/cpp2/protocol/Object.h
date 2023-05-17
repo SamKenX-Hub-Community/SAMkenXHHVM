@@ -30,7 +30,7 @@ namespace apache::thrift::protocol {
 //
 // TT: The thrift type to use, for example
 // apache::thrift::type::binary_t.
-template <typename TT, typename T>
+template <typename TT, typename T = type::native_type<TT>>
 Value asValueStruct(T&& value) {
   Value result;
   detail::ValueHelper<TT>::set(result, std::forward<T>(value));
@@ -135,6 +135,22 @@ std::unique_ptr<folly::IOBuf> serializeObject(
     detail::serializeValue(prot, val, protocolData, *protocolData.data());
   }
   return queue.move();
+}
+
+template <class Protocol>
+Value parseValue(
+    const folly::IOBuf& buf,
+    apache::thrift::type::BaseType baseType,
+    bool string_to_binary = true) {
+  Protocol prot;
+  prot.setInput(&buf);
+  return detail::parseValue(prot, type::toTType(baseType), string_to_binary);
+}
+
+template <class Protocol, typename Tag>
+Value parseValue(const folly::IOBuf& buf, bool string_to_binary = true) {
+  return parseValue<Protocol>(
+      buf, type::detail::getBaseType(Tag{}), string_to_binary);
 }
 
 // Returns whether the protocol::Value/ Object is its intrinsic default.

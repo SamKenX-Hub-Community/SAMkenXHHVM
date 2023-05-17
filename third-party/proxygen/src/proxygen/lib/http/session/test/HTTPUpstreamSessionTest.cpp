@@ -16,9 +16,11 @@
 #include <proxygen/lib/http/codec/HTTPCodecFactory.h>
 #include <proxygen/lib/http/codec/test/MockHTTPCodec.h>
 #include <proxygen/lib/http/codec/test/TestUtils.h>
+#include <proxygen/lib/http/observer/HTTPSessionObserverInterface.h>
 #include <proxygen/lib/http/session/test/HTTPSessionMocks.h>
 #include <proxygen/lib/http/session/test/HTTPSessionTest.h>
 #include <proxygen/lib/http/session/test/MockByteEventTracker.h>
+#include <proxygen/lib/http/session/test/MockSessionObserver.h>
 #include <proxygen/lib/http/session/test/TestUtils.h>
 #include <proxygen/lib/test/TestAsyncTransport.h>
 #include <string>
@@ -27,7 +29,6 @@
 
 using folly::test::MockAsyncTransport;
 
-using namespace folly;
 using namespace proxygen;
 using namespace testing;
 
@@ -144,7 +145,7 @@ class HTTPUpstreamTest
             &eventBase_,
             std::chrono::milliseconds(
                 folly::HHWheelTimer::DEFAULT_TICK_INTERVAL),
-            TimeoutManager::InternalEnum::INTERNAL,
+            folly::TimeoutManager::InternalEnum::INTERNAL,
             std::chrono::milliseconds(500))),
         flowControl_(flowControl) {
   }
@@ -159,8 +160,8 @@ class HTTPUpstreamTest
   }
 
   virtual void onWriteChain(folly::AsyncTransport::WriteCallback* callback,
-                            std::shared_ptr<IOBuf> iob,
-                            WriteFlags) {
+                            std::shared_ptr<folly::IOBuf> iob,
+                            folly::WriteFlags) {
     if (pauseWrites_) {
       cbs_.push_back(callback);
       return; // let write requests timeout
@@ -173,7 +174,7 @@ class HTTPUpstreamTest
 
   void handleWrite(folly::AsyncTransport::WriteCallback* callback) {
     if (failWrites_) {
-      AsyncSocketException ex(AsyncSocketException::UNKNOWN, "");
+      folly::AsyncSocketException ex(folly::AsyncSocketException::UNKNOWN, "");
       callback->writeErr(0, ex);
     } else {
       if (writeInLoop_) {
@@ -186,6 +187,14 @@ class HTTPUpstreamTest
 
   void SetUp() override {
     commonSetUp(makeClientCodec<typename C::Codec>(C::version));
+  }
+
+  void TearDown() override {
+    folly::AsyncSocketException ex(folly::AsyncSocketException::UNKNOWN, "");
+    for (auto& cb : cbs_) {
+      cb->writeErr(0, ex);
+    }
+    EXPECT_EQ(onTransactionSymmetricCounter, 0);
   }
 
   void commonSetUp(unique_ptr<HTTPCodec> codec) {
@@ -218,7 +227,7 @@ class HTTPUpstreamTest
     }
     httpSession_ = new HTTPUpstreamSession(
         transactionTimeouts_.get(),
-        std::move(AsyncTransport::UniquePtr(transport_)),
+        std::move(folly::AsyncTransport::UniquePtr(transport_)),
         localAddr_,
         peerAddr_,
         std::move(codec),
@@ -243,7 +252,7 @@ class HTTPUpstreamTest
     }
 
     auto clientCodec = makeClientCodec<HTTP2Codec>(2);
-    folly::IOBufQueue c2s{IOBufQueue::cacheChainLength()};
+    folly::IOBufQueue c2s{folly::IOBufQueue::cacheChainLength()};
     clientCodec->getEgressSettings()->setSetting(SettingsId::ENABLE_EX_HEADERS,
                                                  1);
     clientCodec->generateConnectionPreface(c2s);
@@ -270,7 +279,7 @@ class HTTPUpstreamTest
     readAndLoop((const uint8_t*)input.data(), input.length());
   }
 
-  void readAndLoop(IOBuf* buf) {
+  void readAndLoop(folly::IOBuf* buf) {
     buf->coalesce();
     readAndLoop(buf->data(), buf->length());
   }
@@ -308,13 +317,6 @@ class HTTPUpstreamTest
   }
   void onSettingsOutgoingStreamsNotFull(const HTTPSessionBase&) override {
     transactionsFull_ = false;
-  }
-
-  void TearDown() override {
-    AsyncSocketException ex(AsyncSocketException::UNKNOWN, "");
-    for (auto& cb : cbs_) {
-      cb->writeErr(0, ex);
-    }
   }
 
   std::unique_ptr<StrictMock<MockHTTPHandler>> openTransaction(
@@ -363,6 +365,23 @@ class HTTPUpstreamTest
     return byteEventTracker;
   }
 
+  std::unique_ptr<MockSessionObserver> addMockSessionObserver(
+      MockSessionObserver::EventSet eventSet) {
+    auto observer = std::make_unique<NiceMock<MockSessionObserver>>(eventSet);
+    // MockSessionObserver::EventSetBuilder().enableAllEvents().build()
+    EXPECT_CALL(*observer, attached(_));
+    httpSession_->addObserver(observer.get());
+    return observer;
+  }
+
+  void onTransactionAttached(const HTTPSessionBase&) override {
+    onTransactionSymmetricCounter++;
+  }
+
+  void onTransactionDetached(const HTTPSessionBase&) override {
+    onTransactionSymmetricCounter--;
+  }
+
  protected:
   bool sessionCreated_{false};
   bool sessionDestroyed_{false};
@@ -370,22 +389,23 @@ class HTTPUpstreamTest
   bool transactionsFull_{false};
   bool transportGood_{true};
 
-  EventBase eventBase_;
-  EventBase* eventBasePtr_{&eventBase_};
+  folly::EventBase eventBase_;
+  folly::EventBase* eventBasePtr_{&eventBase_};
   MockAsyncTransport* transport_; // invalid once httpSession_ is destroyed
   folly::AsyncTransport::ReadCallback* readCallback_{nullptr};
   folly::AsyncTransport::ReplaySafetyCallback* replaySafetyCallback_{nullptr};
   folly::HHWheelTimer::UniquePtr transactionTimeouts_;
   std::vector<int64_t> flowControl_;
   wangle::TransportInfo mockTransportInfo_;
-  SocketAddress localAddr_{"127.0.0.1", 80};
-  SocketAddress peerAddr_{"127.0.0.1", 12345};
+  folly::SocketAddress localAddr_{"127.0.0.1", 80};
+  folly::SocketAddress peerAddr_{"127.0.0.1", 12345};
   HTTPUpstreamSession* httpSession_{nullptr};
-  IOBufQueue writes_{IOBufQueue::cacheChainLength()};
+  folly::IOBufQueue writes_{folly::IOBufQueue::cacheChainLength()};
   std::vector<folly::AsyncTransport::WriteCallback*> cbs_;
   bool failWrites_{false};
   bool pauseWrites_{false};
   bool writeInLoop_{false};
+  uint64_t onTransactionSymmetricCounter{0};
 };
 TYPED_TEST_SUITE_P(HTTPUpstreamTest);
 
@@ -411,7 +431,7 @@ TEST_F(HTTP2UpstreamSessionTest, IngressGoawayAbortUncreatedStreams) {
 
   // Create buf for GOAWAY with last good stream as 0 (no streams created)
   HTTP2Codec egressCodec(TransportDirection::DOWNSTREAM);
-  folly::IOBufQueue respBuf{IOBufQueue::cacheChainLength()};
+  folly::IOBufQueue respBuf{folly::IOBufQueue::cacheChainLength()};
   egressCodec.generateSettings(respBuf);
   egressCodec.generateGoaway(respBuf, 0, ErrorCode::NO_ERROR);
   std::unique_ptr<folly::IOBuf> goawayFrame = respBuf.move();
@@ -448,7 +468,7 @@ TEST_F(HTTP2UpstreamSessionTest, IngressGoawaySessionError) {
 
   // Create buf for GOAWAY with last good stream as 1
   HTTP2Codec egressCodec(TransportDirection::DOWNSTREAM);
-  folly::IOBufQueue respBuf{IOBufQueue::cacheChainLength()};
+  folly::IOBufQueue respBuf{folly::IOBufQueue::cacheChainLength()};
   egressCodec.generateSettings(respBuf);
   egressCodec.generateGoaway(respBuf, 1, ErrorCode::PROTOCOL_ERROR);
   std::unique_ptr<folly::IOBuf> goawayFrame = respBuf.move();
@@ -494,27 +514,52 @@ TEST_F(HTTP2UpstreamSessionTest, IngressGoawaySessionError) {
   // Session will delete itself after the abort
 }
 
+MATCHER_P(HasAbsoluteValue, value, "") {
+  return arg == std::abs(value);
+}
+
 TEST_F(HTTP2UpstreamSessionTest, TestUnderLimitOnWriteError) {
   InSequence enforceOrder;
-  auto handler = openTransaction();
 
+  NiceMock<MockHTTPSessionStats> stats, nextStats;
+  httpSession_->setSessionStats(&stats);
+
+  constexpr size_t bodyLen = 70000;
+
+  // create request and send headers
+  auto handler = openTransaction();
   auto req = getPostRequest();
   handler->txn_->sendHeaders(req);
-  // pause writes
+
+  // pause writes to prevent onWriteSuccess callbacks
   pauseWrites_ = true;
+  EXPECT_CALL(stats, _recordPendingBufferedWriteBytes(bodyLen));
   handler->expectEgressPaused();
+  // invoked via writechain when writing headers > 0
+  EXPECT_CALL(stats, _recordPendingBufferedWriteBytes(Gt(0)));
 
   // send body
-  handler->txn_->sendBody(makeBuf(70000));
+  handler->txn_->sendBody(makeBuf(bodyLen));
   eventBase_.loopOnce();
+
+  // setting another stats should "transfer" PendingBufferedWriteBytes
+  int64_t bufferedWrites{0};
+  EXPECT_CALL(stats, _recordPendingBufferedWriteBytes)
+      .WillOnce(SaveArg<0>(&bufferedWrites));
+  EXPECT_CALL(nextStats,
+              _recordPendingBufferedWriteBytes(
+                  HasAbsoluteValue(std::ref(bufferedWrites))));
+  httpSession_->setSessionStats(&nextStats);
 
   // but no expectEgressResumed
   handler->expectError();
   handler->expectDetachTransaction();
+  EXPECT_CALL(nextStats,
+              _recordPendingBufferedWriteBytes(Eq(std::ref(bufferedWrites))));
   failWrites_ = true;
   resumeWrites();
 
-  this->eventBase_.loop();
+  eventBase_.loop();
   EXPECT_EQ(this->sessionDestroyed_, true);
 }
 
@@ -659,7 +704,7 @@ TEST_F(HTTP2UpstreamSessionTest, TestCircularPriority) {
 
 TEST_F(HTTP2UpstreamSessionTest, TestSettingsAck) {
   auto serverCodec = makeServerCodec();
-  folly::IOBufQueue buf{IOBufQueue::cacheChainLength()};
+  folly::IOBufQueue buf{folly::IOBufQueue::cacheChainLength()};
   serverCodec->generateSettings(buf);
   auto settingsFrame = buf.move();
   settingsFrame->coalesce();
@@ -680,11 +725,11 @@ TEST_F(HTTP2UpstreamSessionTest, TestSettingsAck) {
 TEST_F(HTTP2UpstreamSessionTest, TestSettingsInfoCallbacks) {
   auto serverCodec = makeServerCodec();
 
-  folly::IOBufQueue settingsBuf{IOBufQueue::cacheChainLength()};
+  folly::IOBufQueue settingsBuf{folly::IOBufQueue::cacheChainLength()};
   serverCodec->generateSettings(settingsBuf);
   auto settingsFrame = settingsBuf.move();
 
-  folly::IOBufQueue settingsAckBuf{IOBufQueue::cacheChainLength()};
+  folly::IOBufQueue settingsAckBuf{folly::IOBufQueue::cacheChainLength()};
   serverCodec->generateSettingsAck(settingsAckBuf);
   auto settingsAckFrame = settingsAckBuf.move();
 
@@ -738,7 +783,7 @@ TEST_F(HTTP2UpstreamSessionTest, TestSetControllerInitHeaderIndexingStrat) {
  */
 
 TEST_F(HTTP2UpstreamSessionTest, ExheaderFromServer) {
-  folly::IOBufQueue queue{IOBufQueue::cacheChainLength()};
+  folly::IOBufQueue queue{folly::IOBufQueue::cacheChainLength()};
 
   // generate enable_ex_headers setting
   auto serverCodec = makeServerCodec();
@@ -788,7 +833,7 @@ TEST_F(HTTP2UpstreamSessionTest, ExheaderFromServer) {
 }
 
 TEST_F(HTTP2UpstreamSessionTest, InvalidControlStream) {
-  folly::IOBufQueue queue{IOBufQueue::cacheChainLength()};
+  folly::IOBufQueue queue{folly::IOBufQueue::cacheChainLength()};
 
   // generate enable_ex_headers setting
   auto serverCodec = makeServerCodec();
@@ -861,7 +906,7 @@ class HTTP2UpstreamSessionWithVirtualNodesTest
         .WillRepeatedly(ReturnPointee(&transportGood_));
     EXPECT_CALL(*transport_, closeNow())
         .WillRepeatedly(Assign(&transportGood_, false));
-    AsyncTransport::UniquePtr transportPtr(transport_);
+    folly::AsyncTransport::UniquePtr transportPtr(transport_);
     httpSession_ = new HTTPUpstreamSession(transactionTimeouts_.get(),
                                            std::move(transportPtr),
                                            localAddr_,
@@ -1745,8 +1790,8 @@ TEST_F(HTTPUpstreamRecvStreamTest, UpgradeFlowControl) {
 class NoFlushUpstreamSessionTest : public HTTPUpstreamTest<HTTP2CodecPair> {
  public:
   void onWriteChain(folly::AsyncTransport::WriteCallback* callback,
-                    std::shared_ptr<IOBuf>,
-                    WriteFlags) override {
+                    std::shared_ptr<folly::IOBuf>,
+                    folly::WriteFlags) override {
     if (!timesCalled_++) {
       callback->writeSuccess();
     } else {
@@ -1756,7 +1801,7 @@ class NoFlushUpstreamSessionTest : public HTTPUpstreamTest<HTTP2CodecPair> {
   }
 
   ~NoFlushUpstreamSessionTest() override {
-    AsyncSocketException ex(AsyncSocketException::UNKNOWN, "");
+    folly::AsyncSocketException ex(folly::AsyncSocketException::UNKNOWN, "");
     for (auto& cb : cbs_) {
       cb->writeErr(0, ex);
     }
@@ -1808,7 +1853,7 @@ class MockHTTPUpstreamTest : public HTTPUpstreamTest<MockHTTPCodecPair> {
     EXPECT_CALL(*codec, getProtocol())
         .WillRepeatedly(Return(CodecProtocol::HTTP_2));
     EXPECT_CALL(*codec, generateGoaway(_, _, _, _))
-        .WillRepeatedly(Invoke([&](IOBufQueue& writeBuf,
+        .WillRepeatedly(Invoke([&](folly::IOBufQueue& writeBuf,
                                    HTTPCodec::StreamID lastStream,
                                    ErrorCode,
                                    std::shared_ptr<folly::IOBuf>) {
@@ -2178,7 +2223,7 @@ TEST_F(MockHTTPUpstreamTest, GoawayPreHeaders) {
 
   handler.expectTransaction();
   EXPECT_CALL(*codecPtr_, generateHeader(_, _, _, _, _, _))
-      .WillOnce(Invoke([&](IOBufQueue& writeBuf,
+      .WillOnce(Invoke([&](folly::IOBufQueue& writeBuf,
                            HTTPCodec::StreamID /*stream*/,
                            const HTTPMessage& /*msg*/,
                            bool /*eom*/,
@@ -2848,7 +2893,7 @@ TEST_F(HTTP2UpstreamSessionTest, AttachDetach) {
   auto timer = folly::HHWheelTimer::newTimer(
       &base,
       std::chrono::milliseconds(folly::HHWheelTimer::DEFAULT_TICK_INTERVAL),
-      TimeoutManager::InternalEnum::INTERNAL,
+      folly::TimeoutManager::InternalEnum::INTERNAL,
       std::chrono::milliseconds(500));
   WheelTimerInstance timerInstance(timer.get());
   uint64_t filterCount = 0;
@@ -2898,7 +2943,7 @@ TEST_F(HTTP2UpstreamSessionTest, DetachFlowControlTimeout) {
   auto timer = folly::HHWheelTimer::newTimer(
       &base,
       std::chrono::milliseconds(folly::HHWheelTimer::DEFAULT_TICK_INTERVAL),
-      TimeoutManager::InternalEnum::INTERNAL,
+      folly::TimeoutManager::InternalEnum::INTERNAL,
       std::chrono::milliseconds(500));
   WheelTimerInstance timerInstance(timer.get());
   uint64_t filterCount = 0;
@@ -3007,6 +3052,109 @@ TEST_F(HTTP2UpstreamSessionTest, HTTPPriority) {
   EXPECT_EQ(handler->txn_->getHTTPPriority(), folly::none);
   eventBase_.loop();
   httpSession_->dropConnection();
+}
+
+TEST_F(HTTP2UpstreamSessionTest, Observer_Attach_Detach_Destroy) {
+  MockSessionObserver::EventSet eventSet;
+
+  // Test attached/detached callbacks when adding/removing observers
+  {
+    auto observer = addMockSessionObserver(eventSet);
+    EXPECT_CALL(*observer, detached(_));
+    httpSession_->removeObserver(observer.get());
+  }
+
+  // Test destroyed callback when session is destroyed
+  {
+
+    auto observer = addMockSessionObserver(eventSet);
+    httpSession_->addObserver(observer.get());
+
+    auto egressCodec = makeServerCodec();
+    folly::IOBufQueue output(folly::IOBufQueue::cacheChainLength());
+    egressCodec->generateSettings(output);
+    HTTPMessage resp;
+    resp.setStatusCode(200);
+    egressCodec->generateHeader(output, 1, resp);
+    auto buf = makeBuf(100);
+    egressCodec->generateBody(
+        output, 1, std::move(buf), HTTPCodec::NoPadding, true /* eom */);
+    std::unique_ptr<folly::IOBuf> input = output.move();
+    input->coalesce();
+
+    auto handler = openTransaction();
+
+    handler->expectHeaders([&](std::shared_ptr<HTTPMessage> msg) {
+      EXPECT_EQ(200, msg->getStatusCode());
+    });
+    handler->expectBody();
+    handler->expectEOM();
+    handler->expectDetachTransaction();
+    HTTPMessage req = getGetRequest();
+    handler->sendRequest(req);
+    readAndLoop(input->data(), input->length());
+    EXPECT_CALL(*observer, destroyed(_, _));
+    httpSession_->destroy();
+  }
+}
+
+TEST_F(HTTP2UpstreamSessionTest, Observer_RequestStarted) {
+
+  // Add an observer NOT subscribed to the RequestStarted event
+  auto observerUnsubscribed =
+      addMockSessionObserver(MockSessionObserver::EventSetBuilder().build());
+  httpSession_->addObserver(observerUnsubscribed.get());
+
+  // Add an observer subscribed to this event
+  auto observerSubscribed = addMockSessionObserver(
+      MockSessionObserver::EventSetBuilder()
+          .enable(HTTPSessionObserverInterface::Events::requestStarted)
+          .build());
+  httpSession_->addObserver(observerSubscribed.get());
+
+  EXPECT_CALL(*observerUnsubscribed, requestStarted(_, _)).Times(0);
+
+  // expect to see a request started with header 'x-meta-test-header' having
+  // value 'abc123'
+  EXPECT_CALL(*observerSubscribed, requestStarted(_, _))
+      .WillOnce(Invoke(
+          [](HTTPSessionObserverAccessor*,
+             const proxygen::MockSessionObserver::RequestStartedEvent& event) {
+            auto hdrs = event.requestHeaders;
+            EXPECT_EQ(hdrs.getSingleOrEmpty("x-meta-test-header"), "abc123");
+          }));
+  auto egressCodec = makeServerCodec();
+  folly::IOBufQueue output(folly::IOBufQueue::cacheChainLength());
+
+  egressCodec->generateSettings(output);
+
+  // While we are testing for the presence of the expected request headers (in
+  // this test), We also add response headers to check we do not trigger
+  // "ingress" call back on the client
+  HTTPMessage resp;
+  resp.setStatusCode(200);
+  resp.getHeaders().set("header1", "value1");
+  egressCodec->generateHeader(output, 1, resp);
+  auto buf = makeBuf(100);
+  egressCodec->generateBody(
+      output, 1, std::move(buf), HTTPCodec::NoPadding, true /* eom */);
+  std::unique_ptr<folly::IOBuf> input = output.move();
+  input->coalesce();
+
+  auto handler = openTransaction();
+
+  handler->expectHeaders([&](std::shared_ptr<HTTPMessage> msg) {
+    EXPECT_EQ(200, msg->getStatusCode());
+    EXPECT_EQ(msg->getHeaders().getSingleOrEmpty("header1"), "value1");
+  });
+  handler->expectBody();
+  handler->expectEOM();
+  handler->expectDetachTransaction();
+  HTTPMessage req = getGetRequest();
+  req.getHeaders().add("x-meta-test-header", "abc123");
+  handler->sendRequest(req);
+  readAndLoop(input->data(), input->length());
+  httpSession_->destroy();
 }
 
 // Register and instantiate all our type-paramterized tests

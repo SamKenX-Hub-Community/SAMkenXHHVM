@@ -63,7 +63,7 @@ let ft_redundant_generics env tparams ty =
           begin
             match super_bounds with
             | [] ->
-              Errors.add_typing_error
+              Typing_error_utils.add_typing_error
                 Typing_error.(
                   primary
                   @@ Primary.Redundant_covariant
@@ -73,7 +73,7 @@ let ft_redundant_generics env tparams ty =
                          suggest = "nothing";
                        })
             | [(_, t)] ->
-              Errors.add_typing_error
+              Typing_error_utils.add_typing_error
                 Typing_error.(
                   primary
                   @@ Primary.Redundant_covariant
@@ -113,7 +113,7 @@ let get_tracing_info env =
     file = Tast_env.get_file env;
   }
 
-let make_handler ctx =
+let create_handler ctx =
   let handler =
     object
       inherit Tast_visitor.handler_base

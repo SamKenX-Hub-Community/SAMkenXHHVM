@@ -3,10 +3,10 @@ from . import base
 import hhvm_lldb.utils as utils
 import hhvm_lldb.lookup as lookup
 
-class LookupCommandTestCase(base.LLDBTestBase):
+class LookupCommandTestCase(base.TestHHVMBinary):
 
     def setUp(self):
-        super().setUp(file="quick/method2.php", interp=True)
+        super().setUp(test_file="quick/method2.php", interp=True)
 
     def test_lookup_func_command(self):
         # Note: We can choose an earlier point to break;
@@ -15,10 +15,10 @@ class LookupCommandTestCase(base.LLDBTestBase):
         _, output = self.run_commands(["lookup func 0"])
         self.assertEqual("(HPHP::Func *) m_s = NULL", output.strip())
 
-class LookupHelperTestCase(base.LLDBTestBase):
+class LookupHelperTestCase(base.TestHHVMBinary):
 
     def setUp(self):
-        super().setUp(file="slow/reified-generics/reified-parent.php")
+        super().setUp(test_file="slow/reified-generics/reified-parent.php")
 
     def test_lookup_func_from_frame_pointer(self):
         self.run_until_breakpoint("checkClassReifiedGenericMismatch")

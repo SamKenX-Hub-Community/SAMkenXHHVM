@@ -7,7 +7,8 @@
  *
  *)
 
-type 'a job_result = 'a * Relative_path.t list
+type 'a job_result =
+  'a * (Relative_path.t list * MultiThreadedCall.cancel_reason) option
 
 type seconds_since_epoch = float
 
@@ -38,8 +39,11 @@ val go :
   Typing_service_delegate.state ->
   Telemetry.t ->
   Relative_path.t list ->
+  root:Path.t option ->
   memory_cap:int option ->
   longlived_workers:bool ->
+  use_hh_distc_instead_of_hulk:bool ->
+  hh_distc_fanout_threshold:int option ->
   check_info:Typing_service_types.check_info ->
   result
 
@@ -52,9 +56,12 @@ val go_with_interrupt :
   Typing_service_delegate.state ->
   Telemetry.t ->
   Relative_path.t list ->
+  root:Path.t option ->
   interrupt:'env MultiWorker.interrupt_config ->
   memory_cap:int option ->
   longlived_workers:bool ->
+  use_hh_distc_instead_of_hulk:bool ->
+  hh_distc_fanout_threshold:int option ->
   check_info:Typing_service_types.check_info ->
   ('env * result) job_result
 

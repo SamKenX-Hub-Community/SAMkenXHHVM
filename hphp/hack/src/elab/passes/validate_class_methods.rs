@@ -10,7 +10,7 @@ use nast::Method_;
 
 use crate::prelude::*;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct ValidateClassMethodsPass;
 
 impl Pass for ValidateClassMethodsPass {
@@ -19,9 +19,9 @@ impl Pass for ValidateClassMethodsPass {
         for method in class.methods.iter() {
             let Id(pos, name) = &method.name;
             if seen.contains(name as &str) {
-                env.emit_error(NamingError::AlreadyBound {
+                env.emit_error(NamingError::MethodNameAlreadyBound {
                     pos: pos.clone(),
-                    name: name.clone(),
+                    meth_name: name.clone(),
                 });
             }
             seen.insert(name);
@@ -36,7 +36,9 @@ impl Pass for ValidateClassMethodsPass {
                 ua == sn::user_attributes::MEMOIZE || ua == sn::user_attributes::MEMOIZE_LSB
             })
         {
-            env.emit_error(NastCheckError::AbstractMethodMemoize(method.span.clone()))
+            env.emit_error(NastCheckError::AbstractMethodMemoize(
+                method.name.pos().clone(),
+            ))
         }
         Continue(())
     }
@@ -140,7 +142,9 @@ mod tests {
         class.transform(&env, &mut ValidateClassMethodsPass);
         assert!(matches!(
             env.into_errors().as_slice(),
-            [NamingPhaseError::Naming(NamingError::AlreadyBound { .. })]
+            [NamingPhaseError::Naming(
+                NamingError::MethodNameAlreadyBound { .. }
+            )]
         ));
     }
 

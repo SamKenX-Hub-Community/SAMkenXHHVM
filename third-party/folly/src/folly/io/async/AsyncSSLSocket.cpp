@@ -1506,23 +1506,23 @@ void AsyncSSLSocket::handleRead() noexcept {
   AsyncSocket::handleRead();
 }
 
-AsyncSocket::ReadResult AsyncSSLSocket::performRead(
-    void** buf, size_t* buflen, size_t* offset) {
-  VLOG(4) << "AsyncSSLSocket::performRead() this=" << this << ", buf=" << *buf
-          << ", buflen=" << *buflen;
+AsyncSocket::ReadResult AsyncSSLSocket::performReadSingle(
+    void* buf, const size_t buflen) {
+  VLOG(4) << "AsyncSSLSocket::performReadSingle() this=" << this
+          << ", buf=" << buf << ", buflen=" << buflen;
 
-  if (sslState_ == STATE_UNENCRYPTED) {
-    return AsyncSocket::performRead(buf, buflen, offset);
-  }
+  // Integration with ancillary data would have to be implemented in
+  // `bioRead`, and the data then plumbed out via the outer `msghdr`.
+  DCHECK(readAncillaryDataCallback_ == nullptr);
 
   int numToRead = 0;
-  if (*buflen > std::numeric_limits<int>::max()) {
+  if (buflen > std::numeric_limits<int>::max()) {
     numToRead = std::numeric_limits<int>::max();
     VLOG(4) << "Clamping SSL_read to " << numToRead;
   } else {
-    numToRead = int(*buflen);
+    numToRead = int(buflen);
   }
-  int bytes = SSL_read(ssl_.get(), *buf, numToRead);
+  int bytes = SSL_read(ssl_.get(), buf, numToRead);
 
   if (server_ && renegotiateAttempted_) {
     LOG(ERROR) << "AsyncSSLSocket(fd=" << fd_ << ", state=" << int(state_)
@@ -1603,18 +1603,47 @@ AsyncSocket::ReadResult AsyncSSLSocket::performRead(
   }
 }
 
-AsyncSocket::ReadResult AsyncSSLSocket::performReadv(
-    struct iovec* iovs, size_t num) {
+AsyncSocket::ReadResult AsyncSSLSocket::performReadMsg(
+    struct ::msghdr& msg, AsyncReader::ReadCallback::ReadMode readMode) {
+  if (sslState_ == STATE_UNENCRYPTED) {
+    return AsyncSocket::performReadMsg(msg, readMode);
+  }
+
+  if (readMode == AsyncReader::ReadCallback::ReadMode::ReadBuffer) {
+    // FIXME: The test `AsyncSSLSocketTest.SendMsgParamsCallback` will break
+    // if we remove this branch, because:
+    //  - The loop below to fill multiple iovecs attempts reads until
+    //    `performReadSingle` returns 0.
+    //  - When the "0 bytes read" is due to an EOF condition, this final
+    //    read has the side effect of resetting the internal OpenSSL
+    //    error state to `SSL_ERROR_ZERO_RETURN`.
+    //  - The test instead wants to see the error from the failed write
+    //    attempt (`SSL_ERROR_SYSCALL` with errno of `EINVAL`), but
+    //    but the performance-oriented loop below clobbers the correct
+    //    error code and the test fails.
+    // So the only point of this branch is to fall back to the legacy
+    // behavior of `ReadBuffer`, which is to attempt a single SSL read.
+    //
+    // Per @knekritz, it would not be acceptable for the below loop to exit
+    // when `performReadSingle` fails to fill the buffer, even though this
+    // would avoid the second read that returns 0 bytes.  That would cause a
+    // perf regression because `SSL_read` will return at most one TLS
+    // record.  But, there can be more data in the socket buffer that will
+    // be returned on subsequent calls. See D43648653.
+    auto* buf = msg.msg_iov[0].iov_base;
+    auto bufLen = msg.msg_iov[0].iov_len;
+    // Ignores `msg_name*` but that's null in today's `AsyncSocket` anyway.
+    return performReadSingle(buf, bufLen);
+  }
+
   ssize_t totalRead = 0;
   ssize_t res = 1;
-  for (size_t i = 0; i < num && res > 0; i++) {
-    auto* buf = iovs[i].iov_base;
-    auto bufLen = iovs[i].iov_len;
+  // `msg_iovlen` is `int` on MacOS :(
+  for (size_t i = 0; i < (size_t)msg.msg_iovlen && res > 0; i++) {
+    auto* buf = msg.msg_iov[i].iov_base;
+    auto bufLen = msg.msg_iov[i].iov_len;
     while (bufLen > 0 && res > 0) {
-      // Should offset be into buf?  It seems unused.  Also buf and buflen
-      // are not really out params anymore.
-      size_t offset = 0;
-      auto readRes = performRead(&buf, &bufLen, &offset);
+      auto readRes = performReadSingle(buf, bufLen);
       res = readRes.readReturn;
       if (res > 0) {
         CHECK_GE(bufLen, res);
@@ -1689,10 +1718,11 @@ AsyncSocket::WriteResult AsyncSSLSocket::performWrite(
     uint32_t count,
     WriteFlags flags,
     uint32_t* countWritten,
-    uint32_t* partialWritten) {
+    uint32_t* partialWritten,
+    WriteRequestTag writeTag) {
   if (sslState_ == STATE_UNENCRYPTED) {
     return AsyncSocket::performWrite(
-        vec, count, flags, countWritten, partialWritten);
+        vec, count, flags, countWritten, partialWritten, std::move(writeTag));
   }
   if (sslState_ != STATE_ESTABLISHED) {
     LOG(ERROR) << "AsyncSSLSocket(fd=" << fd_ << ", state=" << int(state_)
@@ -1916,7 +1946,12 @@ int AsyncSSLSocket::bioWrite(BIO* b, const char* in, int inl) {
   struct iovec vec;
   vec.iov_base = const_cast<char*>(in);
   vec.iov_len = size_t(inl);
-  auto result = sslSock->sendSocketMessage(&vec, 1, flags);
+  // NB: It would be technically possible to plumb through the actual write
+  // tag in here, but we decided it not to be worth the implementation
+  // complexity.  The PoC implementation + tests are D43023628 (V15) +
+  // D44433483.
+  auto result = sslSock->sendSocketMessage(
+      &vec, 1, flags, WriteRequestTag{WriteRequestTag::EmptyDummy()});
   BIO_clear_retry_flags(b);
   if (!result.exception && result.writeReturn <= 0) {
     if (OpenSSLUtils::getBioShouldRetryWrite(int(result.writeReturn))) {

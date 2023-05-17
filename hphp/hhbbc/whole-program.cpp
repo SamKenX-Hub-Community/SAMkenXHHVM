@@ -54,8 +54,6 @@ namespace HHBBC {
 
 TRACE_SET_MOD(hhbbc);
 
-bool g_crash{false};
-
 //////////////////////////////////////////////////////////////////////
 
 namespace {
@@ -165,17 +163,13 @@ std::vector<Context> const_pass_contexts(const Index& index) {
    * Set of functions that should be processed in the constant
    * propagation pass.
    *
-   * Must include every function with a DefCns for correctness; cinit,
-   * pinit and sinit functions are added to improve overall
-   * performance.
+   * None are needed for correctness. cinit, pinit, sinit, and linit
+   * functions are processed to improve overall performance.
    */
   std::vector<Context> ret;
   for (auto const& c : index.program().classes) {
     for (auto const& m : c->methods) {
-      if (m->name == s_86cinit.get() ||
-          m->name == s_86pinit.get() ||
-          m->name == s_86sinit.get() ||
-          m->name == s_86linit.get()) {
+      if (is_86init_func(*m)) {
         ret.emplace_back(
           Context {
             index.lookup_class_unit(*c),
@@ -229,16 +223,6 @@ std::vector<WorkItem> initial_work(const Index& index,
     ret.emplace_back(
       WorkType::Func,
       Context { index.lookup_func_unit(*f), f.get() }
-    );
-  }
-  return ret;
-}
-
-std::vector<Context> opt_prop_type_hints_contexts(const Index& index) {
-  std::vector<Context> ret;
-  for (auto const& c : index.program().classes) {
-    ret.emplace_back(
-      Context { index.lookup_class_unit(*c), nullptr, c.get() }
     );
   }
   return ret;
@@ -440,21 +424,20 @@ void analyze_iteratively(Index& index, AnalyzeMode mode) {
 
     work.clear();
     work.reserve(deps.size());
-    for (auto& d : deps) work.push_back(work_item_for(d, mode, index));
+    if (mode == AnalyzeMode::ConstPass) {
+      for (auto& d : deps) {
+        auto item = work_item_for(d, mode, index);
+        if (item.type != WorkType::Func || is_86init_func(*item.ctx.func)) {
+          work.emplace_back(std::move(item));
+        }
+      }
+    } else {
+      for (auto& d : deps) {
+        work.emplace_back(work_item_for(d, mode, index));
+      }
+    }
     deps.clear();
   }
-}
-
-void prop_type_hint_pass(Index& index) {
-  trace_time tracer("optimize prop type-hints", index.sample());
-
-  auto const contexts = opt_prop_type_hints_contexts(index);
-  parallel::for_each(
-    contexts,
-    [&] (Context ctx) {
-      index.mark_no_bad_redeclare_props(const_cast<php::Class&>(*ctx.cls));
-    }
-  );
 }
 
 /*
@@ -514,7 +497,9 @@ struct WholeProgramInput::Key::Impl {
     Fail,
     Unit,
     Func,
-    Class
+    FuncBytecode,
+    Class,
+    ClassBytecode
   };
 
   using UnresolvedTypes =
@@ -540,6 +525,13 @@ struct WholeProgramInput::Key::Impl {
         ;
     }
   };
+  struct FuncBytecodeInfo {
+    LSString name;
+    LSString methCallerUnit;
+    template <typename SerDe> void serde(SerDe& sd) {
+      sd(name)(methCallerUnit);
+    }
+  };
   struct ClassInfo {
     LSString name;
     LSString context;
@@ -557,13 +549,21 @@ struct WholeProgramInput::Key::Impl {
         ;
     }
   };
+  struct ClassBytecodeInfo {
+    LSString name;
+    template <typename SerDe> void serde(SerDe& sd) {
+      sd(name);
+    }
+  };
 
   Type type;
   union {
     FailInfo fail;
     UnitInfo unit;
     FuncInfo func;
+    FuncBytecodeInfo funcBC;
     ClassInfo cls;
+    ClassBytecodeInfo clsBC;
   };
 
   Impl() : type{Type::None} {}
@@ -572,6 +572,10 @@ struct WholeProgramInput::Key::Impl {
   explicit Impl(UnitInfo i)  : type{Type::Unit},  unit{std::move(i)} {}
   explicit Impl(FuncInfo i)  : type{Type::Func},  func{std::move(i)} {}
   explicit Impl(ClassInfo i) : type{Type::Class}, cls{std::move(i)}  {}
+  explicit Impl(FuncBytecodeInfo i)
+    : type{Type::FuncBytecode}, funcBC{std::move(i)} {}
+  explicit Impl(ClassBytecodeInfo i)
+    : type{Type::ClassBytecode}, clsBC{std::move(i)} {}
 
   Impl(const Impl&) = delete;
   Impl(Impl&&) = delete;
@@ -585,6 +589,12 @@ struct WholeProgramInput::Key::Impl {
       case Type::Unit:  unit.~UnitInfo();  break;
       case Type::Func:  func.~FuncInfo();  break;
       case Type::Class: cls.~ClassInfo();  break;
+      case Type::FuncBytecode:
+        funcBC.~FuncBytecodeInfo();
+        break;
+      case Type::ClassBytecode:
+        clsBC.~ClassBytecodeInfo();
+        break;
     }
   }
 
@@ -600,6 +610,12 @@ struct WholeProgramInput::Key::Impl {
         case Type::Unit:  new (&unit) UnitInfo();  break;
         case Type::Func:  new (&func) FuncInfo();  break;
         case Type::Class: new (&cls)  ClassInfo(); break;
+        case Type::FuncBytecode:
+          new (&funcBC) FuncBytecodeInfo();
+          break;
+        case Type::ClassBytecode:
+          new (&clsBC) ClassBytecodeInfo();
+          break;
       }
     } else {
       sd(type);
@@ -611,6 +627,12 @@ struct WholeProgramInput::Key::Impl {
       case Type::Unit:  sd(unit); break;
       case Type::Func:  sd(func); break;
       case Type::Class: sd(cls);  break;
+      case Type::FuncBytecode:
+        sd(funcBC);
+        break;
+      case Type::ClassBytecode:
+        sd(clsBC);
+        break;
     }
   }
 };
@@ -619,11 +641,15 @@ struct WholeProgramInput::Value::Impl {
   std::unique_ptr<php::Func> func;
   std::unique_ptr<php::Class> cls;
   std::unique_ptr<php::Unit> unit;
+  std::unique_ptr<php::FuncBytecode> funcBC;
+  std::unique_ptr<php::ClassBytecode> clsBC;
 
   explicit Impl(std::nullptr_t) {}
   explicit Impl(std::unique_ptr<php::Func> func) : func{std::move(func)} {}
   explicit Impl(std::unique_ptr<php::Class> cls) : cls{std::move(cls)} {}
   explicit Impl(std::unique_ptr<php::Unit> unit) : unit{std::move(unit)} {}
+  explicit Impl(std::unique_ptr<php::FuncBytecode> b)  : funcBC{std::move(b)} {}
+  explicit Impl(std::unique_ptr<php::ClassBytecode> b) : clsBC{std::move(b)} {}
 };
 
 struct WholeProgramInput::Impl {
@@ -712,8 +738,12 @@ WholeProgramInput::make(std::unique_ptr<UnitEmitter> ue) {
     auto const isClosure = is_closure(*c);
     auto deps = Index::Input::makeDeps(*c);
 
+    php::ClassBytecode bc;
     KeyI::UnresolvedTypes types;
-    for (auto const& m : c->methods) addFuncTypes(types, *m, c.get());
+    for (auto& m : c->methods) {
+      addFuncTypes(types, *m, c.get());
+      bc.methodBCs.emplace_back(std::move(m->rawBlocks));
+    }
     for (auto const& p : c->properties) {
       addType(types, p.typeConstraint, c.get(), &p.ubs);
     }
@@ -737,6 +767,10 @@ WholeProgramInput::make(std::unique_ptr<UnitEmitter> ue) {
     }
 
     add(
+      KeyI::ClassBytecodeInfo{name},
+      std::make_unique<php::ClassBytecode>(std::move(bc))
+    );
+    add(
       KeyI::ClassInfo{
         name,
         context,
@@ -756,6 +790,10 @@ WholeProgramInput::make(std::unique_ptr<UnitEmitter> ue) {
     KeyI::UnresolvedTypes types;
     addFuncTypes(types, *f);
 
+    add(
+      KeyI::FuncBytecodeInfo{name, methCallerUnit},
+      std::make_unique<php::FuncBytecode>(std::move(f->rawBlocks))
+    );
     add(KeyI::FuncInfo{name, methCallerUnit, std::move(types)}, std::move(f));
   }
   return out;
@@ -774,7 +812,8 @@ void WholeProgramInput::Key::serde(BlobDecoder& sd) {
 void WholeProgramInput::Value::serde(BlobEncoder& sd) const {
   assertx(m_impl);
   assertx(
-    (bool)m_impl->func + (bool)m_impl->cls + (bool)m_impl->unit <= 1
+    (bool)m_impl->func + (bool)m_impl->cls + (bool)m_impl->unit +
+    (bool)m_impl->funcBC + (bool)m_impl->clsBC <= 1
   );
   if (m_impl->func) {
     sd(m_impl->func, nullptr);
@@ -782,6 +821,10 @@ void WholeProgramInput::Value::serde(BlobEncoder& sd) const {
     sd(m_impl->cls);
   } else if (m_impl->unit) {
     sd(m_impl->unit);
+  } else if (m_impl->funcBC) {
+    sd(m_impl->funcBC);
+  } else if (m_impl->clsBC) {
+    sd(m_impl->clsBC);
   }
 }
 
@@ -814,7 +857,7 @@ Index::Input make_index_input(WholeProgramInput input) {
           // An unit which failed the verifier. This causes us
           // to exit immediately with an error.
           fprintf(stderr, "%s", p.first.m_impl->fail.message->data());
-          _Exit(1);
+          _Exit(HPHP_EXIT_FAILURE);
           break;
         case Key::Type::Class:
           out.classes.emplace_back(
@@ -851,6 +894,23 @@ Index::Input make_index_input(WholeProgramInput input) {
               p.second.cast<std::unique_ptr<php::Unit>>(),
               p.first.m_impl->unit.name,
               std::move(p.first.m_impl->unit.typeMappings)
+            }
+          );
+          break;
+        case Key::Type::FuncBytecode:
+          out.funcBC.emplace_back(
+            Index::Input::FuncBytecodeMeta{
+              p.second.cast<std::unique_ptr<php::FuncBytecode>>(),
+              p.first.m_impl->funcBC.name,
+              p.first.m_impl->funcBC.methCallerUnit
+            }
+          );
+          break;
+        case Key::Type::ClassBytecode:
+          out.classBC.emplace_back(
+            Index::Input::ClassBytecodeMeta{
+              p.second.cast<std::unique_ptr<php::ClassBytecode>>(),
+              p.first.m_impl->clsBC.name
             }
           );
           break;
@@ -904,14 +964,12 @@ void whole_program(WholeProgramInput inputs,
         "bailing because Eval.AbortBuildOnVerifyError is set\n",
         ue->m_filepath->data()
       );
-      _Exit(1);
+      _Exit(HPHP_EXIT_FAILURE);
     }
     callback(std::move(ue));
   };
 
   assertx(check(index.program()));
-  prop_type_hint_pass(index);
-  index.rewrite_default_initial_values();
   index.use_class_dependencies(false);
   analyze_iteratively(index, AnalyzeMode::ConstPass);
   // Defer preresolve type-structures and initializing public static

@@ -4,9 +4,9 @@
 package module0 // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 
@@ -23,7 +23,9 @@ type Accessory struct {
 var _ thrift.Struct = &Accessory{}
 
 func NewAccessory() *Accessory {
-    return (&Accessory{})
+    return (&Accessory{}).
+        SetInventoryIdNonCompat(0).
+        SetNameNonCompat("")
 }
 
 func (x *Accessory) GetInventoryIdNonCompat() int32 {
@@ -42,8 +44,18 @@ func (x *Accessory) GetName() string {
     return x.Name
 }
 
+func (x *Accessory) SetInventoryIdNonCompat(value int32) *Accessory {
+    x.InventoryId = value
+    return x
+}
+
 func (x *Accessory) SetInventoryId(value int32) *Accessory {
     x.InventoryId = value
+    return x
+}
+
+func (x *Accessory) SetNameNonCompat(value string) *Accessory {
+    x.Name = value
     return x
 }
 
@@ -51,8 +63,6 @@ func (x *Accessory) SetName(value string) *Accessory {
     x.Name = value
     return x
 }
-
-
 
 func (x *Accessory) writeField1(p thrift.Protocol) error {  // InventoryId
     if err := p.WriteFieldBegin("InventoryId", thrift.I32, 1); err != nil {
@@ -92,7 +102,7 @@ if err != nil {
     return err
 }
 
-    x.SetInventoryId(result)
+    x.SetInventoryIdNonCompat(result)
     return nil
 }
 
@@ -102,7 +112,7 @@ if err != nil {
     return err
 }
 
-    x.SetName(result)
+    x.SetNameNonCompat(result)
     return nil
 }
 
@@ -136,6 +146,7 @@ func (x *AccessoryBuilder) Emit() *Accessory {
     var objCopy Accessory = *x.obj
     return &objCopy
 }
+
 func (x *Accessory) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Accessory"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -201,6 +212,7 @@ func (x *Accessory) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type PartName struct {
     InventoryId int32 `thrift:"InventoryId,1" json:"InventoryId" db:"InventoryId"`
     Name string `thrift:"Name,2" json:"Name" db:"Name"`
@@ -209,7 +221,9 @@ type PartName struct {
 var _ thrift.Struct = &PartName{}
 
 func NewPartName() *PartName {
-    return (&PartName{})
+    return (&PartName{}).
+        SetInventoryIdNonCompat(0).
+        SetNameNonCompat("")
 }
 
 func (x *PartName) GetInventoryIdNonCompat() int32 {
@@ -228,8 +242,18 @@ func (x *PartName) GetName() string {
     return x.Name
 }
 
+func (x *PartName) SetInventoryIdNonCompat(value int32) *PartName {
+    x.InventoryId = value
+    return x
+}
+
 func (x *PartName) SetInventoryId(value int32) *PartName {
     x.InventoryId = value
+    return x
+}
+
+func (x *PartName) SetNameNonCompat(value string) *PartName {
+    x.Name = value
     return x
 }
 
@@ -237,8 +261,6 @@ func (x *PartName) SetName(value string) *PartName {
     x.Name = value
     return x
 }
-
-
 
 func (x *PartName) writeField1(p thrift.Protocol) error {  // InventoryId
     if err := p.WriteFieldBegin("InventoryId", thrift.I32, 1); err != nil {
@@ -278,7 +300,7 @@ if err != nil {
     return err
 }
 
-    x.SetInventoryId(result)
+    x.SetInventoryIdNonCompat(result)
     return nil
 }
 
@@ -288,7 +310,7 @@ if err != nil {
     return err
 }
 
-    x.SetName(result)
+    x.SetNameNonCompat(result)
     return nil
 }
 
@@ -322,6 +344,7 @@ func (x *PartNameBuilder) Emit() *PartName {
     var objCopy PartName = *x.obj
     return &objCopy
 }
+
 func (x *PartName) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("PartName"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -386,3 +409,4 @@ func (x *PartName) Read(p thrift.Protocol) error {
 
     return nil
 }
+

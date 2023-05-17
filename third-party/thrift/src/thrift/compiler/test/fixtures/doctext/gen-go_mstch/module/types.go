@@ -4,9 +4,9 @@
 package module // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 
@@ -124,7 +124,8 @@ type A struct {
 var _ thrift.Struct = &A{}
 
 func NewA() *A {
-    return (&A{})
+    return (&A{}).
+        SetUselessFieldNonCompat(0)
 }
 
 func (x *A) GetUselessFieldNonCompat() int32 {
@@ -135,11 +136,15 @@ func (x *A) GetUselessField() int32 {
     return x.UselessField
 }
 
-func (x *A) SetUselessField(value int32) *A {
+func (x *A) SetUselessFieldNonCompat(value int32) *A {
     x.UselessField = value
     return x
 }
 
+func (x *A) SetUselessField(value int32) *A {
+    x.UselessField = value
+    return x
+}
 
 func (x *A) writeField1(p thrift.Protocol) error {  // UselessField
     if err := p.WriteFieldBegin("useless_field", thrift.I32, 1); err != nil {
@@ -163,7 +168,7 @@ if err != nil {
     return err
 }
 
-    x.SetUselessField(result)
+    x.SetUselessFieldNonCompat(result)
     return nil
 }
 
@@ -192,6 +197,7 @@ func (x *ABuilder) Emit() *A {
     var objCopy A = *x.obj
     return &objCopy
 }
+
 func (x *A) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("A"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -249,6 +255,7 @@ func (x *A) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type U struct {
     I *int32 `thrift:"i,1" json:"i" db:"i"`
     S *string `thrift:"s,2" json:"s" db:"s"`
@@ -257,14 +264,10 @@ type U struct {
 var _ thrift.Struct = &U{}
 
 func NewU() *U {
-    return (&U{})
+    return (&U{}).
+        SetINonCompat(0).
+        SetSNonCompat("")
 }
-
-// Deprecated: Use NewU().I instead.
-var U_I_DEFAULT = NewU().I
-
-// Deprecated: Use NewU().S instead.
-var U_S_DEFAULT = NewU().S
 
 func (x *U) GetINonCompat() *int32 {
     return x.I
@@ -272,7 +275,7 @@ func (x *U) GetINonCompat() *int32 {
 
 func (x *U) GetI() int32 {
     if !x.IsSetI() {
-      return 0
+        return 0
     }
 
     return *x.I
@@ -284,19 +287,29 @@ func (x *U) GetSNonCompat() *string {
 
 func (x *U) GetS() string {
     if !x.IsSetS() {
-      return ""
+        return ""
     }
 
     return *x.S
 }
 
-func (x *U) SetI(value int32) *U {
+func (x *U) SetINonCompat(value int32) *U {
     x.I = &value
     return x
 }
 
-func (x *U) SetS(value string) *U {
+func (x *U) SetI(value *int32) *U {
+    x.I = value
+    return x
+}
+
+func (x *U) SetSNonCompat(value string) *U {
     x.S = &value
+    return x
+}
+
+func (x *U) SetS(value *string) *U {
+    x.S = value
     return x
 }
 
@@ -354,7 +367,7 @@ if err != nil {
     return err
 }
 
-    x.SetI(result)
+    x.SetINonCompat(result)
     return nil
 }
 
@@ -364,12 +377,33 @@ if err != nil {
     return err
 }
 
-    x.SetS(result)
+    x.SetSNonCompat(result)
     return nil
 }
 
+// Deprecated: Use NewU().GetI() instead.
+var U_I_DEFAULT = NewU().GetI()
+
+// Deprecated: Use NewU().GetS() instead.
+var U_S_DEFAULT = NewU().GetS()
+
 func (x *U) String() string {
     return fmt.Sprintf("%+v", x)
+}
+
+func (x *U) countSetFields() int {
+    count := int(0)
+    if (x.IsSetI()) {
+        count++
+    }
+    if (x.IsSetS()) {
+        count++
+    }
+    return count
+}
+
+func (x *U) CountSetFieldsU() int {
+    return x.countSetFields()
 }
 
 
@@ -398,7 +432,11 @@ func (x *UBuilder) Emit() *U {
     var objCopy U = *x.obj
     return &objCopy
 }
+
 func (x *U) Write(p thrift.Protocol) error {
+    if countSet := x.countSetFields(); countSet > 1 {
+        return fmt.Errorf("%T write union: no more than one field must be set (%d set).", x, countSet)
+    }
     if err := p.WriteStructBegin("U"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
     }
@@ -463,6 +501,7 @@ func (x *U) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Bang struct {
     Message string `thrift:"message,1" json:"message" db:"message"`
 }
@@ -470,7 +509,8 @@ type Bang struct {
 var _ thrift.Struct = &Bang{}
 
 func NewBang() *Bang {
-    return (&Bang{})
+    return (&Bang{}).
+        SetMessageNonCompat("")
 }
 
 func (x *Bang) GetMessageNonCompat() string {
@@ -481,11 +521,15 @@ func (x *Bang) GetMessage() string {
     return x.Message
 }
 
-func (x *Bang) SetMessage(value string) *Bang {
+func (x *Bang) SetMessageNonCompat(value string) *Bang {
     x.Message = value
     return x
 }
 
+func (x *Bang) SetMessage(value string) *Bang {
+    x.Message = value
+    return x
+}
 
 func (x *Bang) writeField1(p thrift.Protocol) error {  // Message
     if err := p.WriteFieldBegin("message", thrift.STRING, 1); err != nil {
@@ -509,7 +553,7 @@ if err != nil {
     return err
 }
 
-    x.SetMessage(result)
+    x.SetMessageNonCompat(result)
     return nil
 }
 
@@ -542,6 +586,7 @@ func (x *BangBuilder) Emit() *Bang {
     var objCopy Bang = *x.obj
     return &objCopy
 }
+
 func (x *Bang) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Bang"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -598,3 +643,4 @@ func (x *Bang) Read(p thrift.Protocol) error {
 
     return nil
 }
+

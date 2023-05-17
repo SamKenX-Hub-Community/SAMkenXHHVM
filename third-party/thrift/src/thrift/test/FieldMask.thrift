@@ -43,6 +43,7 @@ struct Baz {
 struct HasMap {
   1: map<i64, Foo> foos;
   2: Foo foo;
+  3: map<string, Foo> string_map;
 }
 
 struct Foo2 {
@@ -60,6 +61,7 @@ struct CustomDefault {
   1: string field = "default";
 }
 
+@thrift.Experimental
 @thrift.TerseWrite
 struct TerseWrite {
   1: i32 field;

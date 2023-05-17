@@ -77,13 +77,14 @@ let check_property_sound_for_dynamic_write
       | Some ty -> ((env, None), ty)
       | None -> Typing_phase.localize_no_subst ~ignore_errors:true env decl_ty
     in
-    Option.iter ~f:Errors.add_typing_error ty_err_opt;
+    Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
     if
       not
-        (Typing_utils.is_sub_type_for_union
-           env
-           (Typing_make_type.dynamic Reason.Rnone)
-           ty)
+        (Typing_utils.is_any env ty
+        || Typing_utils.is_sub_type_for_union
+             env
+             (Typing_make_type.dynamic Reason.Rnone)
+             ty)
     then (
       let pos = get_pos decl_ty in
       Typing_log.log_pessimise_prop
@@ -233,7 +234,7 @@ let rec try_push_like env ty =
              (r, Tfun { ft with ft_ret = { ft.ft_ret with et_type = ret_ty } }))
       else
         None )
-  | (r, Tshape (kind, fields)) ->
+  | (r, Tshape (_, kind, fields)) ->
     let add_like_to_shape_field changed _name { sft_optional; sft_ty } =
       let (changed, sft_ty) = make_like env changed sft_ty in
       (changed, { sft_optional; sft_ty })
@@ -243,7 +244,7 @@ let rec try_push_like env ty =
     in
     ( env,
       if changed then
-        Some (mk (r, Tshape (kind, fields)))
+        Some (mk (r, Tshape (Missing_origin, kind, fields)))
       else
         None )
   | (r, Tnewtype (n, tyl, bound)) -> begin
@@ -299,18 +300,24 @@ let rec strip_covariant_like env ty =
       let (env, ret_ty) = strip_covariant_like env ft.ft_ret.et_type in
       ( env,
         mk (r, Tfun { ft with ft_ret = { ft.ft_ret with et_type = ret_ty } }) )
-    | (r, Tshape (kind, fields)) ->
+    | (r, Tshape (_, kind, fields)) ->
       let strip_shape_field env _name { sft_optional; sft_ty } =
         let (env, sft_ty) = strip_covariant_like env sft_ty in
         (env, { sft_optional; sft_ty })
       in
       let (env, fields) = TShapeMap.map_env strip_shape_field env fields in
-      (env, mk (r, Tshape (kind, fields)))
+      (env, mk (r, Tshape (Missing_origin, kind, fields)))
     | (r, Tnewtype (n, tyl, bound)) -> begin
       match Env.get_typedef env n with
       | None -> (env, ty)
       | Some td ->
         let (env, tyl) = strip_covariant_like_tyargs env tyl td.td_tparams in
+        let (env, bound) =
+          if String.equal n Naming_special_names.Classes.cMemberOf then
+            strip_covariant_like env bound
+          else
+            (env, bound)
+        in
         (env, mk (r, Tnewtype (n, tyl, bound)))
     end
     | (r, Tclass ((p, n), exact, tyl)) -> begin

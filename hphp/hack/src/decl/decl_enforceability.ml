@@ -225,6 +225,7 @@ module Enforce (ContextAccess : ContextAccess) :
           tcopt
           experimental_consider_type_const_enforceable)
     in
+    let ty_pos = get_pos ty in
     (* is_dynamic_enforceable controls whether the type dynamic is considered enforceable.
        It isn't at the top-level of a type, but is as an argument to a reified generic. *)
     let rec enforcement
@@ -247,8 +248,33 @@ module Enforce (ContextAccess : ContextAccess) :
              in Typing_enforceability when we are typechecking the function/property definition
              it is part of. *)
           match ContextAccess.get_class_or_typedef ctx name with
-          | Some (TypedefResult { td_vis; td_type; _ }) ->
-            (* Expand type definition one step and compute its enforcement. *)
+          | Some
+              (TypedefResult
+                { td_vis = Aast.(CaseType | Transparent); td_type; _ }) ->
+            (* Expand type definition one step and compute its enforcement.
+             * While case types are Tnewtype in the type system, at runtime
+             * they are enforced transparently. TODO(dreeves) Case types
+             * may need to be intersected with their cover types at most. *)
+            enforcement
+              ~is_dynamic_enforceable
+              ctx
+              (SSet.add name visited)
+              td_type
+          | Some
+              (TypedefResult
+                {
+                  td_vis = Aast.Opaque;
+                  td_pos;
+                  td_type;
+                  td_as_constraint;
+                  td_tparams;
+                  _;
+                }) ->
+            let transparent =
+              Relative_path.equal
+                (Pos_or_decl.filename ty_pos)
+                (Pos_or_decl.filename td_pos)
+            in
             let exp_ty =
               enforcement
                 ~is_dynamic_enforceable
@@ -256,20 +282,63 @@ module Enforce (ContextAccess : ContextAccess) :
                 (SSet.add name visited)
                 td_type
             in
-            Aast.(
-              (match td_vis with
-              | Transparent -> exp_ty
-              | Opaque -> make_unenforced exp_ty
-              | OpaqueModule -> Unenforced None))
+            if not (Int.equal (List.length td_tparams) (List.length tyl)) then
+              (* If there is an arity error then assume enforced because this is
+                 * used to fake a Tany at localization time
+              *)
+              Enforced td_type
+            else if transparent then
+              (* Same as transparent case *)
+              exp_ty
+            else (
+              (* Similar to enums, newtypes must not be pessimised to their
+               * enforced types, otherwise for `newtype N = int;`, pessimising
+               * `N` to `~N & int` tells the truth, but breaks N's opaqueness.
+               * For `newtype N as O = P;` we want to allow `N` to override `O`,
+               * but it is not safe to just use the constraint to get `~N & O`.
+               * Consider `newtype N as IE = IE;` and `enum IE : int { A = 4; }`.
+               * `N` will only be enforced at `int`, whereas `~N & IE` lies
+               * that the value is definitely a member of `IE`. We could look at
+               * the enforcement of `O`, but it is valid to have newtypes point
+               * to enforced values but be constrained by unenforced ones, e.g.
+               * `newtype N as G<int> = int; newtype G<T> as T = T;`. Looking at
+               * `N`'s constraint's enforcement would take us to just `~N`. This
+               * could not override a non-pessimised `int`, which is a shame
+               * because we know N is an int.
+               *
+               * To compromise, if `newtype N as O = P;` is enforced at `Q`, we
+               * pessimise `N` to `~N & (O | Q)`. This allows the value to flow
+               * into an `O` if `Q` is a subtype of `O`, while making sure we
+               * are intersecting only with something the runtime verifies i.e.
+               * some type at least as large as `Q`.
+               * *)
+              match (exp_ty, td_as_constraint) with
+              | ((Enforced ty | Unenforced (Some ty)), Some cstr) ->
+                Unenforced
+                  (Some (Typing_make_type.union (get_reason cstr) [cstr; ty]))
+              | _ -> Unenforced None
+            )
+          | Some (TypedefResult { td_vis = Aast.OpaqueModule; _ }) ->
+            Unenforced None
           | Some (ClassResult cls) ->
             (match ContextAccess.get_enum_type cls with
             | Some et ->
+              (* for `enum E : int`, pessimising `E` to `~E & int` violates the
+               * opacity of the enum, allowing the value to flow to a position
+               * expecting `int`. We instead weaken our pessimised type to
+               * `~E & arraykey`. For transparent enums `enum F : int as int`,
+               * we pessimise to `~F & int`. *)
+              let intersected_type =
+                Option.value
+                  ~default:(Typing_make_type.arraykey (get_reason et.te_base))
+                  et.te_constraint
+              in
               make_unenforced
                 (enforcement
                    ~is_dynamic_enforceable
                    ctx
                    (SSet.add name visited)
-                   et.te_base)
+                   intersected_type)
             | None ->
               List.Or_unequal_lengths.(
                 (match

@@ -4,10 +4,10 @@
 package includes // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  transitive "transitive"
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    transitive "transitive"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = transitive.GoUnusedProtection__
@@ -79,14 +79,11 @@ var _ thrift.Struct = &Included{}
 
 func NewIncluded() *Included {
     return (&Included{}).
-        SetMyIntField(0).
-        SetMyTransitiveField(
-            *transitive.NewFoo(),
-        )
+        SetMyIntFieldNonCompat(0).
+        SetMyTransitiveFieldNonCompat(
+              *transitive.NewFoo(),
+          )
 }
-
-// Deprecated: Use NewIncluded().MyTransitiveField instead.
-var Included_MyTransitiveField_DEFAULT = NewIncluded().MyTransitiveField
 
 func (x *Included) GetMyIntFieldNonCompat() int64 {
     return x.MyIntField
@@ -102,10 +99,15 @@ func (x *Included) GetMyTransitiveFieldNonCompat() *transitive.Foo {
 
 func (x *Included) GetMyTransitiveField() *transitive.Foo {
     if !x.IsSetMyTransitiveField() {
-      return transitive.NewFoo()
+        return transitive.NewFoo()
     }
 
     return x.MyTransitiveField
+}
+
+func (x *Included) SetMyIntFieldNonCompat(value int64) *Included {
+    x.MyIntField = value
+    return x
 }
 
 func (x *Included) SetMyIntField(value int64) *Included {
@@ -113,11 +115,15 @@ func (x *Included) SetMyIntField(value int64) *Included {
     return x
 }
 
-func (x *Included) SetMyTransitiveField(value transitive.Foo) *Included {
+func (x *Included) SetMyTransitiveFieldNonCompat(value transitive.Foo) *Included {
     x.MyTransitiveField = &value
     return x
 }
 
+func (x *Included) SetMyTransitiveField(value *transitive.Foo) *Included {
+    x.MyTransitiveField = value
+    return x
+}
 
 func (x *Included) IsSetMyTransitiveField() bool {
     return x.MyTransitiveField != nil
@@ -165,7 +171,7 @@ if err != nil {
     return err
 }
 
-    x.SetMyIntField(result)
+    x.SetMyIntFieldNonCompat(result)
     return nil
 }
 
@@ -176,8 +182,19 @@ if err != nil {
     return err
 }
 
-    x.SetMyTransitiveField(result)
+    x.SetMyTransitiveFieldNonCompat(result)
     return nil
+}
+
+// Deprecated: Use NewIncluded().GetMyTransitiveField() instead.
+var Included_MyTransitiveField_DEFAULT = NewIncluded().GetMyTransitiveField()
+
+// Deprecated: Use NewIncluded().GetMyTransitiveField() instead.
+func (x *Included) DefaultGetMyTransitiveField() *transitive.Foo {
+    if !x.IsSetMyTransitiveField() {
+        return transitive.NewFoo()
+    }
+    return x.MyTransitiveField
 }
 
 func (x *Included) String() string {
@@ -210,6 +227,7 @@ func (x *IncludedBuilder) Emit() *Included {
     var objCopy Included = *x.obj
     return &objCopy
 }
+
 func (x *Included) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Included"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -274,3 +292,4 @@ func (x *Included) Read(p thrift.Protocol) error {
 
     return nil
 }
+

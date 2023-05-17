@@ -21,13 +21,13 @@ var _ = thrift.ZERO
 
 
 type MyRoot interface {
-    DoRoot(ctx context.Context) error
+    DoRoot(ctx context.Context) (error)
 }
 
 // Deprecated: Use MyRoot instead.
 type MyRootClientInterface interface {
     thrift.ClientInterface
-    DoRoot() error
+    DoRoot() (error)
 }
 
 type MyRootChannelClient struct {
@@ -113,15 +113,18 @@ func NewMyRootThreadsafeClientFactory(t thrift.Transport, pf thrift.ProtocolFact
 }
 
 
-func (c *MyRootChannelClient) DoRoot(ctx context.Context) error {
+func (c *MyRootChannelClient) DoRoot(ctx context.Context) (error) {
     in := &reqMyRootDoRoot{
     }
     out := newRespMyRootDoRoot()
     err := c.ch.Call(ctx, "do_root", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyRootClient) DoRoot() error {
+func (c *MyRootClient) DoRoot() (error) {
     return c.chClient.DoRoot(nil)
 }
 
@@ -130,6 +133,8 @@ type reqMyRootDoRoot struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyRootDoRoot{}
+
+type MyRootDoRootArgs = reqMyRootDoRoot
 
 func newReqMyRootDoRoot() *reqMyRootDoRoot {
     return (&reqMyRootDoRoot{})
@@ -155,6 +160,7 @@ func (x *reqMyRootDoRootBuilder) Emit() *reqMyRootDoRoot {
     var objCopy reqMyRootDoRoot = *x.obj
     return &objCopy
 }
+
 func (x *reqMyRootDoRoot) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyRootDoRoot"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -203,10 +209,12 @@ func (x *reqMyRootDoRoot) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyRootDoRoot struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyRootDoRoot{}
+var _ thrift.WritableResult = &respMyRootDoRoot{}
 
 func newRespMyRootDoRoot() *respMyRootDoRoot {
     return (&respMyRootDoRoot{})
@@ -232,6 +240,11 @@ func (x *respMyRootDoRootBuilder) Emit() *respMyRootDoRoot {
     var objCopy respMyRootDoRoot = *x.obj
     return &objCopy
 }
+
+func (x *respMyRootDoRoot) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyRootDoRoot) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyRootDoRoot"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -280,6 +293,7 @@ func (x *respMyRootDoRoot) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type MyRootProcessor struct {
@@ -344,9 +358,11 @@ func (p *procFuncMyRootDoRoot) Read(iprot thrift.Protocol) (thrift.Struct, thrif
 func (p *procFuncMyRootDoRoot) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("DoRoot", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -364,10 +380,12 @@ func (p *procFuncMyRootDoRoot) Write(seqId int32, result thrift.WritableStruct, 
 
 func (p *procFuncMyRootDoRoot) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespMyRootDoRoot()
-    if err := p.handler.DoRoot(); err != nil {
+    err := p.handler.DoRoot()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing DoRoot: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -378,13 +396,13 @@ type MyNode interface {
     // Inherited/extended service
     MyRoot
 
-    DoMid(ctx context.Context) error
+    DoMid(ctx context.Context) (error)
 }
 
 // Deprecated: Use MyNode instead.
 type MyNodeClientInterface interface {
     thrift.ClientInterface
-    DoMid() error
+    DoMid() (error)
 }
 
 type MyNodeChannelClient struct {
@@ -476,15 +494,18 @@ func NewMyNodeThreadsafeClientFactory(t thrift.Transport, pf thrift.ProtocolFact
 }
 
 
-func (c *MyNodeChannelClient) DoMid(ctx context.Context) error {
+func (c *MyNodeChannelClient) DoMid(ctx context.Context) (error) {
     in := &reqMyNodeDoMid{
     }
     out := newRespMyNodeDoMid()
     err := c.ch.Call(ctx, "do_mid", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyNodeClient) DoMid() error {
+func (c *MyNodeClient) DoMid() (error) {
     return c.chClient.DoMid(nil)
 }
 
@@ -493,6 +514,8 @@ type reqMyNodeDoMid struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyNodeDoMid{}
+
+type MyNodeDoMidArgs = reqMyNodeDoMid
 
 func newReqMyNodeDoMid() *reqMyNodeDoMid {
     return (&reqMyNodeDoMid{})
@@ -518,6 +541,7 @@ func (x *reqMyNodeDoMidBuilder) Emit() *reqMyNodeDoMid {
     var objCopy reqMyNodeDoMid = *x.obj
     return &objCopy
 }
+
 func (x *reqMyNodeDoMid) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyNodeDoMid"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -566,10 +590,12 @@ func (x *reqMyNodeDoMid) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyNodeDoMid struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyNodeDoMid{}
+var _ thrift.WritableResult = &respMyNodeDoMid{}
 
 func newRespMyNodeDoMid() *respMyNodeDoMid {
     return (&respMyNodeDoMid{})
@@ -595,6 +621,11 @@ func (x *respMyNodeDoMidBuilder) Emit() *respMyNodeDoMid {
     var objCopy respMyNodeDoMid = *x.obj
     return &objCopy
 }
+
+func (x *respMyNodeDoMid) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyNodeDoMid) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyNodeDoMid"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -645,6 +676,7 @@ func (x *respMyNodeDoMid) Read(p thrift.Protocol) error {
 }
 
 
+
 type MyNodeProcessor struct {
     // Inherited/extended processor
     *MyRootProcessor
@@ -682,9 +714,11 @@ func (p *procFuncMyNodeDoMid) Read(iprot thrift.Protocol) (thrift.Struct, thrift
 func (p *procFuncMyNodeDoMid) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("DoMid", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -702,10 +736,12 @@ func (p *procFuncMyNodeDoMid) Write(seqId int32, result thrift.WritableStruct, o
 
 func (p *procFuncMyNodeDoMid) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespMyNodeDoMid()
-    if err := p.handler.DoMid(); err != nil {
+    err := p.handler.DoMid()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing DoMid: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -716,13 +752,13 @@ type MyLeaf interface {
     // Inherited/extended service
     MyNode
 
-    DoLeaf(ctx context.Context) error
+    DoLeaf(ctx context.Context) (error)
 }
 
 // Deprecated: Use MyLeaf instead.
 type MyLeafClientInterface interface {
     thrift.ClientInterface
-    DoLeaf() error
+    DoLeaf() (error)
 }
 
 type MyLeafChannelClient struct {
@@ -814,15 +850,18 @@ func NewMyLeafThreadsafeClientFactory(t thrift.Transport, pf thrift.ProtocolFact
 }
 
 
-func (c *MyLeafChannelClient) DoLeaf(ctx context.Context) error {
+func (c *MyLeafChannelClient) DoLeaf(ctx context.Context) (error) {
     in := &reqMyLeafDoLeaf{
     }
     out := newRespMyLeafDoLeaf()
     err := c.ch.Call(ctx, "do_leaf", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyLeafClient) DoLeaf() error {
+func (c *MyLeafClient) DoLeaf() (error) {
     return c.chClient.DoLeaf(nil)
 }
 
@@ -831,6 +870,8 @@ type reqMyLeafDoLeaf struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyLeafDoLeaf{}
+
+type MyLeafDoLeafArgs = reqMyLeafDoLeaf
 
 func newReqMyLeafDoLeaf() *reqMyLeafDoLeaf {
     return (&reqMyLeafDoLeaf{})
@@ -856,6 +897,7 @@ func (x *reqMyLeafDoLeafBuilder) Emit() *reqMyLeafDoLeaf {
     var objCopy reqMyLeafDoLeaf = *x.obj
     return &objCopy
 }
+
 func (x *reqMyLeafDoLeaf) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyLeafDoLeaf"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -904,10 +946,12 @@ func (x *reqMyLeafDoLeaf) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyLeafDoLeaf struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyLeafDoLeaf{}
+var _ thrift.WritableResult = &respMyLeafDoLeaf{}
 
 func newRespMyLeafDoLeaf() *respMyLeafDoLeaf {
     return (&respMyLeafDoLeaf{})
@@ -933,6 +977,11 @@ func (x *respMyLeafDoLeafBuilder) Emit() *respMyLeafDoLeaf {
     var objCopy respMyLeafDoLeaf = *x.obj
     return &objCopy
 }
+
+func (x *respMyLeafDoLeaf) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyLeafDoLeaf) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyLeafDoLeaf"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -983,6 +1032,7 @@ func (x *respMyLeafDoLeaf) Read(p thrift.Protocol) error {
 }
 
 
+
 type MyLeafProcessor struct {
     // Inherited/extended processor
     *MyNodeProcessor
@@ -1020,9 +1070,11 @@ func (p *procFuncMyLeafDoLeaf) Read(iprot thrift.Protocol) (thrift.Struct, thrif
 func (p *procFuncMyLeafDoLeaf) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("DoLeaf", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -1040,10 +1092,12 @@ func (p *procFuncMyLeafDoLeaf) Write(seqId int32, result thrift.WritableStruct, 
 
 func (p *procFuncMyLeafDoLeaf) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespMyLeafDoLeaf()
-    if err := p.handler.DoLeaf(); err != nil {
+    err := p.handler.DoLeaf()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing DoLeaf: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 

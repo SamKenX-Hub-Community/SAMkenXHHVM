@@ -32,7 +32,9 @@
 #include <thrift/lib/cpp/server/TConnectionContext.h>
 #include <thrift/lib/cpp/server/TServerObserver.h>
 #include <thrift/lib/cpp/transport/THeader.h>
+#include <thrift/lib/cpp2/PluggableFunction.h>
 #include <thrift/lib/cpp2/async/Interaction.h>
+#include <thrift/lib/cpp2/util/TypeErasedStorage.h>
 #include <wangle/ssl/SSLUtil.h>
 
 using apache::thrift::concurrency::PriorityThreadManager;
@@ -66,6 +68,32 @@ class ClientMetadataRef {
   const ClientMetadata& md_;
 };
 
+namespace detail {
+using ConnectionInternalFieldsT =
+    util::TypeErasedValue<64, alignof(std::max_align_t)>;
+THRIFT_PLUGGABLE_FUNC_DECLARE(
+    ConnectionInternalFieldsT, createPerConnectionInternalFields);
+using RequestInternalFieldsT =
+    util::TypeErasedValue<128, alignof(std::max_align_t)>;
+THRIFT_PLUGGABLE_FUNC_DECLARE(
+    RequestInternalFieldsT, createPerRequestInternalFields);
+
+/*
+ * Cache the exported keying material from the transport per connection
+ * and per label (key). Note we expect the number of labels to be very small
+ * Computing this per request may be too expensive which is why we cache this
+ * here. This is stored as a vector for efficiency
+ */
+struct EkmInfo {
+  std::string label;
+  uint16_t length;
+  std::unique_ptr<folly::IOBuf> buf{nullptr};
+};
+
+THRIFT_PLUGGABLE_FUNC_DECLARE(
+    std::vector<EkmInfo>, populateCachedEkms, const folly::AsyncTransport&);
+} // namespace detail
+
 class Cpp2ConnContext : public apache::thrift::server::TConnectionContext {
   Cpp2ConnContext(
       const folly::SocketAddress* address,
@@ -80,7 +108,8 @@ class Cpp2ConnContext : public apache::thrift::server::TConnectionContext {
         manager_(manager),
         duplexChannel_(duplexChannel),
         worker_(worker),
-        workerContext_(workerContext) {
+        workerContext_(workerContext),
+        internalFields_(detail::createPerConnectionInternalFields()) {
     if (address) {
       transportInfo_.peerAddress = *address;
     }
@@ -94,6 +123,7 @@ class Cpp2ConnContext : public apache::thrift::server::TConnectionContext {
         peerCert = std::move(osslCert);
       }
       transportInfo_.securityProtocol = transport->getSecurityProtocol();
+      transportInfo_.cachedEkms = detail::populateCachedEkms(*transport);
 
       if (transportInfo_.localAddress.getFamily() == AF_UNIX) {
         auto wrapper = transport->getUnderlyingTransport<folly::AsyncSocket>();
@@ -223,27 +253,18 @@ class Cpp2ConnContext : public apache::thrift::server::TConnectionContext {
   }
 
   /*
-   * This is a thin wrapper over transport->getExportedKeyingMaterial(...). It
-   * will return a nullptr for a conn context that doesn't have a transport
-   * attached. Otherwise the return value should be exactly the same as calling
-   * getExportedKeyingMaterial, note that we don't allow passing in a context
-   * buf for this method
+   * The context may have prepopulated some cached ekms. This method
+   * will check against the cache and return ekm on a hit. The caller is
+   * expected to try to generate the ekm themselves on a cache miss.
    */
   std::unique_ptr<folly::IOBuf> getCachedEkm(
-      folly::StringPiece label, uint16_t length) {
-    for (const auto& ekm : cachedEkms_) {
-      if (ekm.first.label == label && ekm.first.length == length) {
-        return ekm.second->clone();
+      folly::StringPiece label, uint16_t length) const {
+    for (const auto& ekm : transportInfo_.cachedEkms) {
+      if (ekm.label == label && ekm.length == length) {
+        // We may have negatively cached (e.g. for a plaintext transport), this
+        // is a valid value so return.
+        return (ekm.buf != nullptr) ? ekm.buf->clone() : nullptr;
       }
-    }
-    if (transport_ == nullptr) {
-      return nullptr;
-    }
-    auto ekm = transport_->getExportedKeyingMaterial(label, nullptr, length);
-    if (ekm != nullptr) {
-      cachedEkms_.emplace_back(
-          std::make_pair(EkmInfo{label.toString(), length}, ekm->clone()));
-      return ekm;
     }
     return nullptr;
   }
@@ -333,6 +354,16 @@ class Cpp2ConnContext : public apache::thrift::server::TConnectionContext {
       return {};
     }
     return ClientMetadataRef{*clientMetadata_};
+  }
+
+  template <class T>
+  T& getInternalFields() noexcept {
+    return internalFields_.value_unchecked<T>();
+  }
+
+  template <class T>
+  const T& getInternalFields() const noexcept {
+    return internalFields_.value_unchecked<T>();
   }
 
   InterfaceKind getInterfaceKind() const { return interfaceKind_; }
@@ -481,19 +512,9 @@ class Cpp2ConnContext : public apache::thrift::server::TConnectionContext {
     folly::erased_unique_ptr peerIdentities{folly::empty_erased_unique_ptr()};
     std::string securityProtocol;
     std::shared_ptr<X509> peerCertificate;
+    std::vector<detail::EkmInfo> cachedEkms;
   } transportInfo_;
   const folly::AsyncTransport* transport_;
-  /*
-   * Cache the exported keying material from the transport per connection
-   * and per label (key). Note we expect the number of labels to be very small
-   * Computing this per request may be too expensive which is why we cache this
-   * here. This is stored as a vector for efficiency
-   */
-  struct EkmInfo {
-    std::string label;
-    uint16_t length;
-  };
-  std::vector<std::pair<EkmInfo, std::unique_ptr<folly::IOBuf>>> cachedEkms_;
 
   folly::EventBaseManager* manager_;
   std::shared_ptr<RequestChannel> duplexChannel_;
@@ -508,6 +529,7 @@ class Cpp2ConnContext : public apache::thrift::server::TConnectionContext {
   std::optional<TransportType> transportType_;
   std::optional<CLIENT_TYPE> clientType_;
   std::optional<ClientMetadata> clientMetadata_;
+  detail::ConnectionInternalFieldsT internalFields_;
 };
 
 class Cpp2ClientRequestContext
@@ -528,7 +550,8 @@ class Cpp2RequestContext : public apache::thrift::server::TConnectionContext {
       std::string methodName = std::string{})
       : TConnectionContext(header),
         ctx_(ctx),
-        methodName_(std::move(methodName)) {}
+        methodName_(std::move(methodName)),
+        internalFields_(detail::createPerRequestInternalFields()) {}
 
   void setConnectionContext(Cpp2ConnContext* ctx) { ctx_ = ctx; }
 
@@ -587,15 +610,14 @@ class Cpp2RequestContext : public apache::thrift::server::TConnectionContext {
     return std::exchange(requestData_, std::move(data));
   }
 
-  // These identities are set if the request contains a Token used for
-  // authenication. This is analagous to `peerIdentities_` set on a
-  // Cpp2ConnContext
-  void* getRequestIdentities() const { return requestIdentities_.get(); }
+  template <class T>
+  T& getInternalFields() noexcept {
+    return internalFields_.value_unchecked<T>();
+  }
 
-  // Set request level identities
-  void setRequestIdentities(folly::erased_unique_ptr data) {
-    DCHECK(requestIdentities_ == nullptr);
-    requestIdentities_ = std::move(data);
+  template <class T>
+  const T& getInternalFields() const noexcept {
+    return internalFields_.value_unchecked<T>();
   }
 
   virtual Cpp2ConnContext* getConnectionContext() const { return ctx_; }
@@ -662,7 +684,6 @@ class Cpp2RequestContext : public apache::thrift::server::TConnectionContext {
  private:
   Cpp2ConnContext* ctx_;
   folly::erased_unique_ptr requestData_{nullptr, nullptr};
-  folly::erased_unique_ptr requestIdentities_{folly::empty_erased_unique_ptr()};
   std::chrono::milliseconds requestTimeout_{0};
   std::string methodName_;
   int32_t protoSeqId_{0};
@@ -673,6 +694,7 @@ class Cpp2RequestContext : public apache::thrift::server::TConnectionContext {
   concurrency::ThreadManager::ExecutionScope executionScope_{
       concurrency::PRIORITY::NORMAL};
   folly::IOBuf frameworkMetadata_;
+  detail::RequestInternalFieldsT internalFields_;
 };
 
 } // namespace thrift

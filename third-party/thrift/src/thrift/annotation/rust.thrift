@@ -25,6 +25,7 @@ namespace py thrift.annotation.rust
 
 @scope.Field
 @scope.Typedef
+@scope.Struct
 struct Adapter {
   // A fully qualified path to a struct that implements `fbthrift::adapter::ThriftTypeAdapter`.
   //
@@ -63,5 +64,88 @@ struct Adapter {
   // }
   // ```
   // will use `fbthrift_adapters::DurationSecondsAdapter<i64>` as the adapter.
+  //
+  // If the adapter name starts with `crate::` and this `@rust.Adapter` is applied transitively with
+  // @scope.Transitive, `crate::` will be replaced with the name of the crate in which the
+  // transitive annotation is defined.
   1: string name;
 } (thrift.uri = "facebook.com/thrift/annotation/rust/Adapter")
+
+@scope.Struct
+struct Derive {
+  // List of additional derives to apply to the struct.
+  //
+  // Example:
+  // ```
+  // @rust.Derive{ derives = ["Foo"] }
+  // struct SomeStruct {
+  //    1: string some_field;
+  // }
+  // ```
+  // will generated the Rust struct
+  // ```
+  // #[derive(Foo)]
+  // struct SomeStruct {
+  //    some_field: String,
+  // }
+  // ```
+  //
+  // If the derive starts with `crate::` and this `@rust.Derive` is applied transitively with
+  // @scope.Transitive, `crate::` will be replaced with the name of the crate in which the
+  // transitive annotation is defined.
+  1: list<string> derives;
+} (thrift.uri = "facebook.com/thrift/annotation/rust/Derive")
+
+@scope.Function
+@scope.Service
+struct ServiceExn {
+  // If `true`, this allows returning an `anyhow::Error` from within a Thrift server handler method,
+  // and that `anyhow::Error` will be turned into an `ApplicationException`. This is similar in behavior
+  // to what happens if you throw an unhandled exception type in Python Thrift server or C++ Thrift server.
+  //
+  // The `ApplicationException` returned will have the error code `Unknown` and message
+  // `format!("{:#}", anyhow_err)`.
+  //
+  // NOTE: it is generally considered bad practice to use this because it eliminates the ability
+  // to match on specific error types on the client side. When possible, it is recommended you
+  // always return structured error types (though it is more verbose). This annotation is provided
+  // solely for convenience and should not be used services where error type matching is needed.
+  //
+  // Example, the following Thrift:
+  // ```
+  // service Foo {
+  //   @rust.ServiceExn{ anyhow_to_application_exn = true }
+  //   void bar();
+  // }
+  // ```
+  // would allow for the following Rust server impl:
+  // ```
+  // #[async_trait]
+  // impl Foo for FooServerImpl {
+  //     async fn bar() -> Result<(), BarExn> {
+  //         if some_condition {
+  //             Err(anyhow::anyhow!("some error"))?
+  //         }
+  //
+  //         // Note you must always convert to `anyhow::Error` first for non-`anyhow::Error`
+  //         // types.
+  //         some_client_call.await.context("failed some_client_call")?;
+  //
+  //         // you can still return a structured exn type if desired
+  //         return Err(BarExn::ie(...));
+  //     }
+  // }
+  // ```
+  //
+  // You can also use this annotation on the service definition itself to have it apply to all
+  // methods on the service, e.g.
+  // ```
+  // @rust.ServiceExn{ anyhow_to_application_exn = true }
+  // service Foo {
+  //   // Both `bar` and `baz` will support `anyhow::Error` -> `ApplicationException`.
+  //   void bar();
+  //   void baz();
+  // }
+  // ```
+  1: bool anyhow_to_application_exn;
+} (thrift.uri = "facebook.com/thrift/annotation/rust/ServiceExn")

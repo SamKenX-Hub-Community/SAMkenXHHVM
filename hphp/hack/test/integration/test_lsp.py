@@ -22,8 +22,14 @@ from utils import interpolate_variables, Json, JsonObject
 
 class LspTestDriver(common_tests.CommonTestDriver):
     def write_load_config(
-        self, use_serverless_ide: bool = False, use_saved_state: bool = False
+        self,
+        use_serverless_ide: bool = False,
+        use_saved_state: bool = False,
+        use_standalone_ide: bool = False,
     ) -> None:
+        assert (
+            use_serverless_ide or not use_standalone_ide
+        ), "use_standalone_ide requires use_serverless_ide"
         # Will use the .hhconfig already in the repo directory
         # As for hh.conf, we'll write it explicitly each test.
         with open(os.path.join(self.repo_dir, "hh.conf"), "w") as f:
@@ -43,9 +49,12 @@ lazy_init2 = {use_saved_state}
 symbolindex_search_provider = SqliteIndex
 allow_unstable_features = true
 ide_serverless = {use_serverless_ide}
+ide_standalone = {use_standalone_ide}
+produce_streaming_errors = {use_standalone_ide}
 """.format(
                     use_saved_state=str(use_saved_state).lower(),
                     use_serverless_ide=str(use_serverless_ide).lower(),
+                    use_standalone_ide=str(use_standalone_ide).lower(),
                 )
             )
 
@@ -254,10 +263,15 @@ class TestLsp(TestCase[LspTestDriver]):
             raise unittest.SkipTest("Hack server could not be launched")
         self.assertEqual(output.strip(), "No errors!")
 
-    def prepare_serverless_ide_environment(self) -> Mapping[str, str]:
+    def prepare_serverless_ide_environment(
+        self,
+        use_standalone_ide: bool = False,
+    ) -> Mapping[str, str]:
         self.maxDiff = None
         self.test_driver.write_load_config(
-            use_serverless_ide=True, use_saved_state=False
+            use_serverless_ide=True,
+            use_saved_state=False,
+            use_standalone_ide=use_standalone_ide,
         )
         naming_table_saved_state_path = (
             self.test_driver.write_naming_table_saved_state()
@@ -304,6 +318,8 @@ class TestLsp(TestCase[LspTestDriver]):
         variables: Mapping[str, str],
         wait_for_server: bool,
         use_serverless_ide: bool,
+        fall_back_to_full_index: bool = True,
+        batch_process_changes: bool = False,
     ) -> None:
         if wait_for_server:
             # wait until hh_server is ready before starting lsp
@@ -311,8 +327,15 @@ class TestLsp(TestCase[LspTestDriver]):
         elif use_serverless_ide:
             self.test_driver.stop_hh_server()
 
+        lsp_config_args = [
+            "--config",
+            f"ide_fall_back_to_full_index={str(fall_back_to_full_index).lower()}",
+            "--config",
+            f"ide_batch_process_changes={str(batch_process_changes).lower()}",
+        ]
+
         with LspCommandProcessor.create(
-            self.test_driver.test_env, []
+            self.test_driver.test_env, lsp_config_args
         ) as lsp_command_processor:
             (observed_transcript, error_details) = spec.run(
                 lsp_command_processor=lsp_command_processor, variables=variables
@@ -428,12 +451,18 @@ class TestLsp(TestCase[LspTestDriver]):
                         {
                             "label": "doStuff",
                             "kind": 2,
-                            "detail": "function(int $x, int $y=_): void",
+                            "detail": "function(int $x, int $y = _): void",
                             "sortText": "doStuff",
-                            # We don't want to require the user to provide optional arguments, so
-                            # only insert $x, not $y.
-                            "insertText": "doStuff(${1:\\$x})",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 4, "character": 6},
+                                    "end": {"line": 4, "character": 10},
+                                },
+                                # We don't want to require the user to provide optional arguments, so
+                                # only insert $x, not $y.
+                                "newText": "doStuff(${1:\\$x})",
+                            },
                             "data": {
                                 "fullname": "doStuff",
                                 "filename": "${root_path}/optional_param_completion.php",
@@ -500,10 +529,16 @@ class TestLsp(TestCase[LspTestDriver]):
                         {
                             "label": "doStuff",
                             "kind": 2,
-                            "detail": "function(int $x=_, int $y=_): void",
+                            "detail": "function(int $x = _, int $y = _): void",
                             "sortText": "doStuff",
-                            "insertText": "doStuff()",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 4, "character": 6},
+                                    "end": {"line": 4, "character": 10},
+                                },
+                                "newText": "doStuff()",
+                            },
                             "data": {
                                 "fullname": "doStuff",
                                 "filename": "${root_path}/all_optional_params_completion.php",
@@ -718,7 +753,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 6},
                                 },
-                                "newText": "ab:cd:alpha",
+                                "newText": "ab:cd:alpha>$0</ab:cd:alpha>",
                             },
                             "data": {"fullname": ":ab:cd:alpha"},
                         },
@@ -733,7 +768,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 6},
                                 },
-                                "newText": "ab:cd:text",
+                                "newText": "ab:cd:text>$0</ab:cd:text>",
                             },
                             "data": {"fullname": ":ab:cd:text"},
                         },
@@ -748,7 +783,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 6},
                                 },
-                                "newText": "xhp:enum-attribute",
+                                "newText": "xhp:enum-attribute>$0</xhp:enum-attribute>",
                             },
                             "data": {"fullname": ":xhp:enum-attribute"},
                         },
@@ -763,7 +798,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 6},
                                 },
-                                "newText": "xhp:generic",
+                                "newText": "xhp:generic>$0</xhp:generic>",
                             },
                             "data": {"fullname": ":xhp:generic"},
                         },
@@ -809,7 +844,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 7},
                                 },
-                                "newText": "ab:cd:alpha",
+                                "newText": "ab:cd:alpha>$0</ab:cd:alpha>",
                             },
                             "data": {"fullname": ":ab:cd:alpha"},
                         },
@@ -824,7 +859,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 7},
                                 },
-                                "newText": "ab:cd:text",
+                                "newText": "ab:cd:text>$0</ab:cd:text>",
                             },
                             "data": {"fullname": ":ab:cd:text"},
                         },
@@ -870,7 +905,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 9},
                                 },
-                                "newText": "ab:cd:alpha",
+                                "newText": "ab:cd:alpha>$0</ab:cd:alpha>",
                             },
                             "data": {"fullname": ":ab:cd:alpha"},
                         },
@@ -885,7 +920,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 9},
                                 },
-                                "newText": "ab:cd:text",
+                                "newText": "ab:cd:text>$0</ab:cd:text>",
                             },
                             "data": {"fullname": ":ab:cd:text"},
                         },
@@ -1257,7 +1292,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 7},
                                 },
-                                "newText": "ab:cd:alpha",
+                                "newText": "ab:cd:alpha>$0</ab:cd:alpha>",
                             },
                             "data": {"fullname": ":ab:cd:alpha"},
                         },
@@ -1272,7 +1307,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 7},
                                 },
-                                "newText": "ab:cd:text",
+                                "newText": "ab:cd:text>$0</ab:cd:text>",
                             },
                             "data": {"fullname": ":ab:cd:text"},
                         },
@@ -1654,8 +1689,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(mixed $value): bool",
                             "sortText": "isValid",
-                            "insertText": "isValid(${1:\\$value})",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "isValid(${1:\\$value})",
+                            },
                             "data": {
                                 "fullname": "isValid",
                                 "filename": "${hhi_path}/BuiltinEnum.hhi",
@@ -1669,8 +1710,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(): dict<string, Elsa>",
                             "sortText": "getValues",
-                            "insertText": "getValues()",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "getValues()",
+                            },
                             "data": {
                                 "fullname": "getValues",
                                 "filename": "${hhi_path}/BuiltinEnum.hhi",
@@ -1684,8 +1731,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(): dict<Elsa, string>",
                             "sortText": "getNames",
-                            "insertText": "getNames()",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "getNames()",
+                            },
                             "data": {
                                 "fullname": "getNames",
                                 "filename": "${hhi_path}/BuiltinEnum.hhi",
@@ -1699,8 +1752,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(mixed $value): ?Elsa",
                             "sortText": "coerce",
-                            "insertText": "coerce(${1:\\$value})",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "coerce(${1:\\$value})",
+                            },
                             "data": {
                                 "fullname": "coerce",
                                 "filename": "${hhi_path}/BuiltinEnum.hhi",
@@ -1714,8 +1773,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(Traversable<mixed> $values): Container<Elsa>",
                             "sortText": "assertAll",
-                            "insertText": "assertAll(${1:\\$values})",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "assertAll(${1:\\$values})",
+                            },
                             "data": {
                                 "fullname": "assertAll",
                                 "filename": "${hhi_path}/BuiltinEnum.hhi",
@@ -1729,8 +1794,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(mixed $value): Elsa",
                             "sortText": "assert",
-                            "insertText": "assert(${1:\\$value})",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "assert(${1:\\$value})",
+                            },
                             "data": {
                                 "fullname": "assert",
                                 "filename": "${hhi_path}/BuiltinEnum.hhi",
@@ -1894,8 +1965,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(): void",
                             "sortText": "interfaceDocBlockMethod",
-                            "insertText": "interfaceDocBlockMethod()",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 34},
+                                    "end": {"line": 3, "character": 41},
+                                },
+                                "newText": "interfaceDocBlockMethod()",
+                            },
                             "data": {
                                 "fullname": "interfaceDocBlockMethod",
                                 "filename": "${root_path}/completion.php",
@@ -2003,8 +2080,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(): void",
                             "sortText": "~test_do_not_use",
-                            "insertText": "test_do_not_use()",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "test_do_not_use()",
+                            },
                             "data": {
                                 "fullname": "test_do_not_use",
                                 "filename": "${root_path}/completion_extras.php",
@@ -2018,8 +2101,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(): void",
                             "sortText": "getName",
-                            "insertText": "getName()",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "getName()",
+                            },
                             "data": {
                                 "fullname": "getName",
                                 "filename": "${root_path}/completion_extras.php",
@@ -2033,8 +2122,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(): void",
                             "sortText": "~getAttributes_DO_NOT_USE",
-                            "insertText": "getAttributes_DO_NOT_USE()",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "getAttributes_DO_NOT_USE()",
+                            },
                             "data": {
                                 "fullname": "getAttributes_DO_NOT_USE",
                                 "filename": "${root_path}/completion_extras.php",
@@ -2048,8 +2143,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(): void",
                             "sortText": "~__getLoader",
-                            "insertText": "__getLoader()",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "__getLoader()",
+                            },
                             "data": {
                                 "fullname": "__getLoader",
                                 "filename": "${root_path}/completion_extras.php",
@@ -2092,7 +2193,7 @@ class TestLsp(TestCase[LspTestDriver]):
                         {
                             "label": "$mylambda",
                             "kind": 6,
-                            "detail": "local variable",
+                            "detail": "(function(int $n): int)",
                             "sortText": "$mylambda",
                             "insertTextFormat": 1,
                             "textEdit": {
@@ -2120,7 +2221,7 @@ class TestLsp(TestCase[LspTestDriver]):
                 params={
                     "label": "$mylambda",
                     "kind": 6,
-                    "detail": "local variable",
+                    "detail": "(function(int $n): int)",
                     "insertTextFormat": 1,
                     "textEdit": {
                         "range": {
@@ -2138,7 +2239,7 @@ class TestLsp(TestCase[LspTestDriver]):
                 result={
                     "label": "$mylambda",
                     "kind": 6,
-                    "detail": "local variable",
+                    "detail": "(function(int $n): int)",
                     "insertTextFormat": 1,
                     "textEdit": {
                         "range": {
@@ -2382,6 +2483,1940 @@ class TestLsp(TestCase[LspTestDriver]):
         )
         self.run_spec(spec, variables, wait_for_server=False, use_serverless_ide=True)
 
+    def test_serverless_ide_completion_batch_processing(self) -> None:
+        """This should be virtually identical to `test_serverless_ide_completion` with the only change being the usage of batch processing."""
+        variables = dict(self.prepare_serverless_ide_environment())
+        variables.update(self.setup_php_file("completion.php"))
+        self.test_driver.stop_hh_server()
+        spec = (
+            self.initialize_spec(LspTestSpec("ide_completion"), use_serverless_ide=True)
+            .notification(
+                method="textDocument/didOpen",
+                params={
+                    "textDocument": {
+                        "uri": "${php_file_uri}",
+                        "languageId": "hack",
+                        "version": 1,
+                        "text": "${php_file}",
+                    }
+                },
+            )
+            .notification(
+                comment="Add '$x = $point1['' to test autocomplete for shapes",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 22, "character": 0},
+                                "end": {"line": 22, "character": 0},
+                            },
+                            "text": "$x = $point1['",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after user types a shape",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 22, "character": 14},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "'x'",
+                            "kind": 12,
+                            "detail": "literal",
+                            "sortText": "'x'",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 22, "character": 13},
+                                    "end": {"line": 22, "character": 14},
+                                },
+                                "newText": "'x'",
+                            },
+                            "data": {
+                                "fullname": "'x'",
+                                "filename": "${root_path}/completion.php",
+                                "line": 22,
+                                "char": 19,
+                            },
+                        },
+                        {
+                            "label": "'y'",
+                            "kind": 12,
+                            "detail": "literal",
+                            "sortText": "'y'",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 22, "character": 13},
+                                    "end": {"line": 22, "character": 14},
+                                },
+                                "newText": "'y'",
+                            },
+                            "data": {
+                                "fullname": "'y'",
+                                "filename": "${root_path}/completion.php",
+                                "line": 22,
+                                "char": 30,
+                            },
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add automatically closed apostrophes when typing a shape key, the way visual studio code does it",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 22, "character": 0},
+                                "end": {"line": 22, "character": 14},
+                            },
+                            "text": "$x = $point1['']",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after a shape, with VS Code automatically closed apostrophes",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 22, "character": 14},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "'x",
+                            "kind": 12,
+                            "detail": "literal",
+                            "sortText": "'x",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 22, "character": 13},
+                                    "end": {"line": 22, "character": 13},
+                                },
+                                "newText": "'x",
+                            },
+                            "data": {
+                                "fullname": "'x'",
+                                "filename": "${root_path}/completion.php",
+                                "line": 22,
+                                "char": 19,
+                            },
+                        },
+                        {
+                            "label": "'y",
+                            "kind": 12,
+                            "detail": "literal",
+                            "sortText": "'y",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 22, "character": 13},
+                                    "end": {"line": 22, "character": 13},
+                                },
+                                "newText": "'y",
+                            },
+                            "data": {
+                                "fullname": "'y'",
+                                "filename": "${root_path}/completion.php",
+                                "line": 22,
+                                "char": 30,
+                            },
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add '$x = <'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 0},
+                            },
+                            "text": "$x = <",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after '$x = <'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 6},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "ab:cd:alpha",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": "ab:cd:alpha",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 6},
+                                    "end": {"line": 3, "character": 6},
+                                },
+                                "newText": "ab:cd:alpha>$0</ab:cd:alpha>",
+                            },
+                            "data": {"fullname": ":ab:cd:alpha"},
+                        },
+                        {
+                            "label": "ab:cd:text",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": "ab:cd:text",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 6},
+                                    "end": {"line": 3, "character": 6},
+                                },
+                                "newText": "ab:cd:text>$0</ab:cd:text>",
+                            },
+                            "data": {"fullname": ":ab:cd:text"},
+                        },
+                        {
+                            "label": "xhp:enum-attribute",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": "xhp:enum-attribute",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 6},
+                                    "end": {"line": 3, "character": 6},
+                                },
+                                "newText": "xhp:enum-attribute>$0</xhp:enum-attribute>",
+                            },
+                            "data": {"fullname": ":xhp:enum-attribute"},
+                        },
+                        {
+                            "label": "xhp:generic",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": "xhp:generic",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 6},
+                                    "end": {"line": 3, "character": 6},
+                                },
+                                "newText": "xhp:generic>$0</xhp:generic>",
+                            },
+                            "data": {"fullname": ":xhp:generic"},
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add '$x = <a'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 6},
+                            },
+                            "text": "$x = <a",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after '$x = <a'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 7},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "ab:cd:alpha",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": "ab:cd:alpha",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 6},
+                                    "end": {"line": 3, "character": 7},
+                                },
+                                "newText": "ab:cd:alpha>$0</ab:cd:alpha>",
+                            },
+                            "data": {"fullname": ":ab:cd:alpha"},
+                        },
+                        {
+                            "label": "ab:cd:text",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": "ab:cd:text",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 6},
+                                    "end": {"line": 3, "character": 7},
+                                },
+                                "newText": "ab:cd:text>$0</ab:cd:text>",
+                            },
+                            "data": {"fullname": ":ab:cd:text"},
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add '$x = <ab:'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 7},
+                            },
+                            "text": "$x = <ab:",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after '$x = <ab:'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 9},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "ab:cd:alpha",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": "ab:cd:alpha",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 6},
+                                    "end": {"line": 3, "character": 9},
+                                },
+                                "newText": "ab:cd:alpha>$0</ab:cd:alpha>",
+                            },
+                            "data": {"fullname": ":ab:cd:alpha"},
+                        },
+                        {
+                            "label": "ab:cd:text",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": "ab:cd:text",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 6},
+                                    "end": {"line": 3, "character": 9},
+                                },
+                                "newText": "ab:cd:text>$0</ab:cd:text>",
+                            },
+                            "data": {"fullname": ":ab:cd:text"},
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add '$x = <ab:cd:text '",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 9},
+                            },
+                            "text": "$x = <ab:cd:text ",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after '$x = <ab:cd:text '",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 17},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "width",
+                            "kind": 5,
+                            "detail": "?int",
+                            "sortText": "width",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "width",
+                            },
+                            "data": {
+                                "fullname": ":width",
+                                "filename": "${root_path}/xhp_class_definitions.php",
+                                "line": 5,
+                                "char": 27,
+                                "base_class": "\\:ab:cd:text",
+                            },
+                        },
+                        {
+                            "label": "color",
+                            "kind": 5,
+                            "detail": "?string",
+                            "sortText": "color",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "color",
+                            },
+                            "data": {
+                                "fullname": ":color",
+                                "filename": "${root_path}/xhp_class_definitions.php",
+                                "line": 5,
+                                "char": 13,
+                                "base_class": "\\:ab:cd:text",
+                            },
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add '$x = <ab:cd:text w'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 17},
+                            },
+                            "text": "$x = <ab:cd:text w",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after '$x = <ab:cd:text w'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 18},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "width",
+                            "kind": 5,
+                            "detail": "?int",
+                            "sortText": "width",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 18},
+                                },
+                                "newText": "width",
+                            },
+                            "data": {
+                                "fullname": ":width",
+                                "filename": "${root_path}/xhp_class_definitions.php",
+                                "line": 5,
+                                "char": 27,
+                                "base_class": "\\:ab:cd:text",
+                            },
+                        },
+                        {
+                            "label": "color",
+                            "kind": 5,
+                            "detail": "?string",
+                            "sortText": "color",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 18},
+                                },
+                                "newText": "color",
+                            },
+                            "data": {
+                                "fullname": ":color",
+                                "filename": "${root_path}/xhp_class_definitions.php",
+                                "line": 5,
+                                "char": 13,
+                                "base_class": "\\:ab:cd:text",
+                            },
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add '$x = new :'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 18},
+                            },
+                            "text": "$x = new :",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after '$x = new :'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 10},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": ":ab:cd:alpha",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": ":ab:cd:alpha",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 9},
+                                    "end": {"line": 3, "character": 10},
+                                },
+                                "newText": ":ab:cd:alpha",
+                            },
+                            "data": {"fullname": ":ab:cd:alpha"},
+                        },
+                        {
+                            "label": ":ab:cd:text",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": ":ab:cd:text",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 9},
+                                    "end": {"line": 3, "character": 10},
+                                },
+                                "newText": ":ab:cd:text",
+                            },
+                            "data": {"fullname": ":ab:cd:text"},
+                        },
+                        {
+                            "label": ":xhp:enum-attribute",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": ":xhp:enum-attribute",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 9},
+                                    "end": {"line": 3, "character": 10},
+                                },
+                                "newText": ":xhp:enum-attribute",
+                            },
+                            "data": {"fullname": ":xhp:enum-attribute"},
+                        },
+                        {
+                            "label": ":xhp:generic",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": ":xhp:generic",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 9},
+                                    "end": {"line": 3, "character": 10},
+                                },
+                                "newText": ":xhp:generic",
+                            },
+                            "data": {"fullname": ":xhp:generic"},
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add '$x = new :a'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 10},
+                            },
+                            "text": "$x = new :a",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after '$x = new :a'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 11},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": ":ab:cd:alpha",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": ":ab:cd:alpha",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 9},
+                                    "end": {"line": 3, "character": 11},
+                                },
+                                "newText": ":ab:cd:alpha",
+                            },
+                            "data": {"fullname": ":ab:cd:alpha"},
+                        },
+                        {
+                            "label": ":ab:cd:text",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": ":ab:cd:text",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 9},
+                                    "end": {"line": 3, "character": 11},
+                                },
+                                "newText": ":ab:cd:text",
+                            },
+                            "data": {"fullname": ":ab:cd:text"},
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            # Note that this request should match the result in the previous example
+            .request(
+                line=line(),
+                comment="autocomplete resolving after '$x = new :a'",
+                method="completionItem/resolve",
+                params={
+                    "label": ":ab:cd:alpha",
+                    "kind": 7,
+                    "detail": "class",
+                    "insertText": ":ab:cd:alpha",
+                    "insertTextFormat": 1,
+                    "data": {"fullname": ":ab:cd:alpha"},
+                },
+                result={
+                    "label": ":ab:cd:alpha",
+                    "kind": 7,
+                    "detail": "class",
+                    "documentation": {
+                        "kind": "markdown",
+                        "value": ":ab:cd:alpha docblock",
+                    },
+                    "insertText": ":ab:cd:alpha",
+                    "insertTextFormat": 1,
+                    "data": {"fullname": ":ab:cd:alpha"},
+                },
+                powered_by="serverless_ide",
+            )
+            # Try the same thing again, but this time without "new", instead using "<xhp" style
+            .notification(
+                comment="Add '$x = <a'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 11},
+                            },
+                            "text": "$x = <a",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after '$x = <a'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 7},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "ab:cd:alpha",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": "ab:cd:alpha",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 6},
+                                    "end": {"line": 3, "character": 7},
+                                },
+                                "newText": "ab:cd:alpha>$0</ab:cd:alpha>",
+                            },
+                            "data": {"fullname": ":ab:cd:alpha"},
+                        },
+                        {
+                            "label": "ab:cd:text",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": "ab:cd:text",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 6},
+                                    "end": {"line": 3, "character": 7},
+                                },
+                                "newText": "ab:cd:text>$0</ab:cd:text>",
+                            },
+                            "data": {"fullname": ":ab:cd:text"},
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .request(
+                line=line(),
+                comment="autocomplete resolving after '$x = <a'",
+                method="completionItem/resolve",
+                params={
+                    "label": "ab:cd:alpha",
+                    "kind": 7,
+                    "detail": "class",
+                    "insertText": "ab:cd:alpha",
+                    "insertTextFormat": 1,
+                    "data": {"fullname": ":ab:cd:alpha"},
+                },
+                result={
+                    "label": "ab:cd:alpha",
+                    "kind": 7,
+                    "detail": "class",
+                    "documentation": {
+                        "kind": "markdown",
+                        "value": ":ab:cd:alpha docblock",
+                    },
+                    "insertText": "ab:cd:alpha",
+                    "insertTextFormat": 1,
+                    "data": {"fullname": ":ab:cd:alpha"},
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add '$x = <ab:cd:text/>; $y = $x->'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 7},
+                            },
+                            "text": "$x = <ab:cd:text/>; $y = $x->",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after '$x = <ab:cd:text/>; $y = $x->'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 29},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": ":width",
+                            "kind": 5,
+                            "detail": "?int",
+                            "sortText": ":width",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 29},
+                                    "end": {"line": 3, "character": 29},
+                                },
+                                "newText": ":width",
+                            },
+                            "data": {
+                                "fullname": ":width",
+                                "filename": "${root_path}/xhp_class_definitions.php",
+                                "line": 5,
+                                "char": 27,
+                                "base_class": "\\:ab:cd:text",
+                            },
+                        },
+                        {
+                            "label": ":color",
+                            "kind": 5,
+                            "detail": "?string",
+                            "sortText": ":color",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 29},
+                                    "end": {"line": 3, "character": 29},
+                                },
+                                "newText": ":color",
+                            },
+                            "data": {
+                                "fullname": ":color",
+                                "filename": "${root_path}/xhp_class_definitions.php",
+                                "line": 5,
+                                "char": 13,
+                                "base_class": "\\:ab:cd:text",
+                            },
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add '$x = <ab:cd:text/>; $y = $x->:'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 29},
+                            },
+                            "text": "$x = <ab:cd:text/>; $y = $x->:",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after '$x = <ab:cd:text/>; $y = $x->:'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 30},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": ":width",
+                            "kind": 5,
+                            "detail": "?int",
+                            "sortText": ":width",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 29},
+                                    "end": {"line": 3, "character": 30},
+                                },
+                                "newText": ":width",
+                            },
+                            "data": {
+                                "fullname": ":width",
+                                "filename": "${root_path}/xhp_class_definitions.php",
+                                "line": 5,
+                                "char": 27,
+                                "base_class": "\\:ab:cd:text",
+                            },
+                        },
+                        {
+                            "label": ":color",
+                            "kind": 5,
+                            "detail": "?string",
+                            "sortText": ":color",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 29},
+                                    "end": {"line": 3, "character": 30},
+                                },
+                                "newText": ":color",
+                            },
+                            "data": {
+                                "fullname": ":color",
+                                "filename": "${root_path}/xhp_class_definitions.php",
+                                "line": 5,
+                                "char": 13,
+                                "base_class": "\\:ab:cd:text",
+                            },
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add 'test_fun'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 30},
+                            },
+                            "text": "test_fun",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after 'test_fun'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 8},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "test_function",
+                            "kind": 3,
+                            "detail": "function",
+                            "sortText": "test_function",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 0},
+                                    "end": {"line": 3, "character": 8},
+                                },
+                                "newText": "test_function",
+                            },
+                            "data": {"fullname": "test_function"},
+                        }
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .request(
+                line=line(),
+                comment="autocomplete resolving after 'test_fun'",
+                method="completionItem/resolve",
+                params={
+                    "label": "test_function",
+                    "kind": 3,
+                    "detail": "function(): void",
+                    "insertText": "test_function",
+                    "insertTextFormat": 1,
+                    "data": {
+                        "filename": "${root_path}/completion.php",
+                        "line": 8,
+                        "char": 10,
+                    },
+                },
+                result={
+                    "label": "test_function",
+                    "kind": 3,
+                    "detail": "function(): void",
+                    "documentation": {
+                        "kind": "markdown",
+                        "value": "test_function docblock.",
+                    },
+                    "insertText": "test_function",
+                    "insertTextFormat": 1,
+                    "data": {
+                        "filename": "${root_path}/completion.php",
+                        "line": 8,
+                        "char": 10,
+                    },
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add 'switch (Elsa::Alonso) { case Elsa:'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 8},
+                            },
+                            "text": "switch (Elsa::Alonso) { case Elsa:",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after 'switch (Elsa::Alonso) { case Elsa:'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 34},
+                },
+                result={"isIncomplete": False, "items": []},
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add 'switch (Elsa::Alonso) { case Elsa::'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 34},
+                            },
+                            "text": "switch (Elsa::Alonso) { case Elsa::",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after 'switch (Elsa::Alonso) { case Elsa::'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 35},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "class",
+                            "kind": 21,
+                            "detail": "classname<this>",
+                            "sortText": "class",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "class",
+                            },
+                            "data": {
+                                "fullname": "class",
+                                "filename": "${root_path}/completion_extras.php",
+                                "line": 3,
+                                "char": 6,
+                                "base_class": "\\Elsa",
+                            },
+                        },
+                        {
+                            "label": "Bard",
+                            "kind": 21,
+                            "detail": "Elsa",
+                            "sortText": "Bard",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "Bard",
+                            },
+                            "data": {
+                                "fullname": "Bard",
+                                "filename": "${root_path}/completion_extras.php",
+                                "line": 3,
+                                "char": 12,
+                                "base_class": "\\Elsa",
+                            },
+                        },
+                        {
+                            "label": "Alonso",
+                            "kind": 21,
+                            "detail": "Elsa",
+                            "sortText": "Alonso",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "Alonso",
+                            },
+                            "data": {
+                                "fullname": "Alonso",
+                                "filename": "${root_path}/completion_extras.php",
+                                "line": 3,
+                                "char": 12,
+                                "base_class": "\\Elsa",
+                            },
+                        },
+                        {
+                            "label": "isValid",
+                            "kind": 2,
+                            "detail": "function(mixed $value): bool",
+                            "sortText": "isValid",
+                            "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "isValid(${1:\\$value})",
+                            },
+                            "data": {
+                                "fullname": "isValid",
+                                "filename": "${hhi_path}/BuiltinEnum.hhi",
+                                "line": 48,
+                                "char": 34,
+                                "base_class": "\\Elsa",
+                            },
+                        },
+                        {
+                            "label": "getValues",
+                            "kind": 2,
+                            "detail": "function(): dict<string, Elsa>",
+                            "sortText": "getValues",
+                            "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "getValues()",
+                            },
+                            "data": {
+                                "fullname": "getValues",
+                                "filename": "${hhi_path}/BuiltinEnum.hhi",
+                                "line": 33,
+                                "char": 34,
+                                "base_class": "\\Elsa",
+                            },
+                        },
+                        {
+                            "label": "getNames",
+                            "kind": 2,
+                            "detail": "function(): dict<Elsa, string>",
+                            "sortText": "getNames",
+                            "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "getNames()",
+                            },
+                            "data": {
+                                "fullname": "getNames",
+                                "filename": "${hhi_path}/BuiltinEnum.hhi",
+                                "line": 41,
+                                "char": 34,
+                                "base_class": "\\Elsa",
+                            },
+                        },
+                        {
+                            "label": "coerce",
+                            "kind": 2,
+                            "detail": "function(mixed $value): ?Elsa",
+                            "sortText": "coerce",
+                            "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "coerce(${1:\\$value})",
+                            },
+                            "data": {
+                                "fullname": "coerce",
+                                "filename": "${hhi_path}/BuiltinEnum.hhi",
+                                "line": 54,
+                                "char": 34,
+                                "base_class": "\\Elsa",
+                            },
+                        },
+                        {
+                            "label": "assertAll",
+                            "kind": 2,
+                            "detail": "function(Traversable<mixed> $values): Container<Elsa>",
+                            "sortText": "assertAll",
+                            "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "assertAll(${1:\\$values})",
+                            },
+                            "data": {
+                                "fullname": "assertAll",
+                                "filename": "${hhi_path}/BuiltinEnum.hhi",
+                                "line": 66,
+                                "char": 34,
+                                "base_class": "\\Elsa",
+                            },
+                        },
+                        {
+                            "label": "assert",
+                            "kind": 2,
+                            "detail": "function(mixed $value): Elsa",
+                            "sortText": "assert",
+                            "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "assert(${1:\\$value})",
+                            },
+                            "data": {
+                                "fullname": "assert",
+                                "filename": "${hhi_path}/BuiltinEnum.hhi",
+                                "line": 60,
+                                "char": 34,
+                                "base_class": "\\Elsa",
+                            },
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add 'switch (Elsa::Alonso) { case Elsa::Alonso:'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 35},
+                            },
+                            "text": "switch (Elsa::Alonso) { case Elsa::Alonso:",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="docblock resolve after 'switch (Elsa::Alonso) { case Elsa::'",
+                method="completionItem/resolve",
+                params={
+                    "label": "isValid",
+                    "kind": 2,
+                    "detail": "function(mixed $value): bool",
+                    "insertTextFormat": 1,
+                    "textEdit": {
+                        "range": {
+                            "start": {"line": 3, "character": 35},
+                            "end": {"line": 3, "character": 35},
+                        },
+                        "newText": "isValid",
+                    },
+                    "data": {
+                        "filename": "${hhi_path}/BuiltinEnum.hhi",
+                        "line": 48,
+                        "char": 34,
+                    },
+                },
+                result={
+                    "label": "isValid",
+                    "kind": 2,
+                    "detail": "function(mixed $value): bool",
+                    "documentation": {
+                        "kind": "markdown",
+                        "value": "Returns whether or not the value is defined as a constant.",
+                    },
+                    "insertTextFormat": 1,
+                    "textEdit": {
+                        "range": {
+                            "start": {"line": 3, "character": 35},
+                            "end": {"line": 3, "character": 35},
+                        },
+                        "newText": "isValid",
+                    },
+                    "data": {
+                        "filename": "${hhi_path}/BuiltinEnum.hhi",
+                        "line": 48,
+                        "char": 34,
+                    },
+                },
+                powered_by="serverless_ide",
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after 'switch (Elsa::Alonso) { case Elsa::Alonso:'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 42},
+                },
+                result={"isIncomplete": False, "items": []},
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add 'TestNS\\'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 42},
+                            },
+                            "text": "TestNS\\",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after 'TestNS\\'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 7},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "test_func",
+                            "kind": 3,
+                            "detail": "function",
+                            "sortText": "test_func",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 7},
+                                    "end": {"line": 3, "character": 7},
+                                },
+                                "newText": "test_func",
+                            },
+                            "data": {"fullname": "TestNS\\test_func"},
+                        }
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add '$cc = new CompletionClass(); $cc->interfa'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 7},
+                            },
+                            "text": "$cc = new CompletionClass(); $cc->interfa",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after '$cc = new CompletionClass(); $cc->interfa'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 41},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "interfaceDocBlockMethod",
+                            "kind": 2,
+                            "detail": "function(): void",
+                            "sortText": "interfaceDocBlockMethod",
+                            "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 34},
+                                    "end": {"line": 3, "character": 41},
+                                },
+                                "newText": "interfaceDocBlockMethod()",
+                            },
+                            "data": {
+                                "fullname": "interfaceDocBlockMethod",
+                                "filename": "${root_path}/completion.php",
+                                "line": 18,
+                                "char": 19,
+                                "base_class": "\\CompletionClass",
+                            },
+                        }
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .request(
+                line=line(),
+                comment="autocomplete resolving after '$cc = new CompletionClass(); $cc->interfa'",
+                method="completionItem/resolve",
+                params={
+                    "label": "interfaceDocBlockMethod",
+                    "kind": 2,
+                    "detail": "function(): void",
+                    "insertTextFormat": 1,
+                    "textEdit": {
+                        "range": {
+                            "start": {"line": 3, "character": 34},
+                            "end": {"line": 3, "character": 41},
+                        },
+                        "newText": "interfaceDocBlockMethod",
+                    },
+                    "data": {
+                        "filename": "${root_path}/completion.php",
+                        "line": 18,
+                        "char": 19,
+                    },
+                },
+                result={
+                    "label": "interfaceDocBlockMethod",
+                    "kind": 2,
+                    "detail": "function(): void",
+                    "insertTextFormat": 1,
+                    "textEdit": {
+                        "range": {
+                            "start": {"line": 3, "character": 34},
+                            "end": {"line": 3, "character": 41},
+                        },
+                        "newText": "interfaceDocBlockMethod",
+                    },
+                    "data": {
+                        "filename": "${root_path}/completion.php",
+                        "line": 18,
+                        "char": 19,
+                    },
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add 'DeprecatedClass::'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 41},
+                            },
+                            "text": "DeprecatedClass::",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after 'DeprecatedClass::'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 17},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "class",
+                            "kind": 21,
+                            "detail": "classname<this>",
+                            "sortText": "class",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "class",
+                            },
+                            "data": {
+                                "fullname": "class",
+                                "filename": "${root_path}/completion_extras.php",
+                                "line": 8,
+                                "char": 13,
+                                "base_class": "\\DeprecatedClass",
+                            },
+                        },
+                        {
+                            "label": "test_do_not_use",
+                            "kind": 2,
+                            "detail": "function(): void",
+                            "sortText": "~test_do_not_use",
+                            "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "test_do_not_use()",
+                            },
+                            "data": {
+                                "fullname": "test_do_not_use",
+                                "filename": "${root_path}/completion_extras.php",
+                                "line": 12,
+                                "char": 26,
+                                "base_class": "\\DeprecatedClass",
+                            },
+                        },
+                        {
+                            "label": "getName",
+                            "kind": 2,
+                            "detail": "function(): void",
+                            "sortText": "getName",
+                            "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "getName()",
+                            },
+                            "data": {
+                                "fullname": "getName",
+                                "filename": "${root_path}/completion_extras.php",
+                                "line": 9,
+                                "char": 26,
+                                "base_class": "\\DeprecatedClass",
+                            },
+                        },
+                        {
+                            "label": "getAttributes_DO_NOT_USE",
+                            "kind": 2,
+                            "detail": "function(): void",
+                            "sortText": "~getAttributes_DO_NOT_USE",
+                            "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "getAttributes_DO_NOT_USE()",
+                            },
+                            "data": {
+                                "fullname": "getAttributes_DO_NOT_USE",
+                                "filename": "${root_path}/completion_extras.php",
+                                "line": 11,
+                                "char": 26,
+                                "base_class": "\\DeprecatedClass",
+                            },
+                        },
+                        {
+                            "label": "__getLoader",
+                            "kind": 2,
+                            "detail": "function(): void",
+                            "sortText": "~__getLoader",
+                            "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "__getLoader()",
+                            },
+                            "data": {
+                                "fullname": "__getLoader",
+                                "filename": "${root_path}/completion_extras.php",
+                                "line": 10,
+                                "char": 26,
+                                "base_class": "\\DeprecatedClass",
+                            },
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add 'call_lambda(3, $m'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 30, "character": 0},
+                                "end": {"line": 30, "character": 0},
+                            },
+                            "text": "  call_lambda(3, $m",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete results for 'call_lambda(3, $m'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 30, "character": 19},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "$mylambda",
+                            "kind": 6,
+                            "detail": "(function(int $n): int)",
+                            "sortText": "$mylambda",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 30, "character": 17},
+                                    "end": {"line": 30, "character": 19},
+                                },
+                                "newText": "$mylambda",
+                            },
+                            "data": {
+                                "fullname": "$mylambda",
+                                "filename": "${root_path}/completion.php",
+                                "line": 30,
+                                "char": 15,
+                            },
+                        }
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .request(
+                line=line(),
+                comment="resolve autocompletion for $mylambda'",
+                method="completionItem/resolve",
+                params={
+                    "label": "$mylambda",
+                    "kind": 6,
+                    "detail": "(function(int $n): int)",
+                    "insertTextFormat": 1,
+                    "textEdit": {
+                        "range": {
+                            "start": {"line": 30, "character": 17},
+                            "end": {"line": 30, "character": 19},
+                        },
+                        "newText": "$mylambda",
+                    },
+                    "data": {
+                        "filename": "${root_path}/completion.php",
+                        "line": 30,
+                        "char": 15,
+                    },
+                },
+                result={
+                    "label": "$mylambda",
+                    "kind": 6,
+                    "detail": "(function(int $n): int)",
+                    "insertTextFormat": 1,
+                    "textEdit": {
+                        "range": {
+                            "start": {"line": 30, "character": 17},
+                            "end": {"line": 30, "character": 19},
+                        },
+                        "newText": "$mylambda",
+                    },
+                    "data": {
+                        "filename": "${root_path}/completion.php",
+                        "line": 30,
+                        "char": 15,
+                    },
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add '<xhp:enum-attribute enum-attribute={}'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 17},
+                            },
+                            "text": "<xhp:enum-attribute enum-attribute={}",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after '<xhp:enum-attribute enum-attribute={'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 36},
+                    "context": {"triggerKind": 2, "triggerCharacter": "{"},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "MyEnum::TYPE_C",
+                            "kind": 13,
+                            "detail": "enum",
+                            "sortText": "MyEnum::TYPE_C",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 36},
+                                    "end": {"line": 3, "character": 36},
+                                },
+                                "newText": "MyEnum::TYPE_C",
+                            },
+                            "data": {
+                                "fullname": "MyEnum::TYPE_C",
+                                "filename": "${root_path}/xhp_class_definitions.php",
+                                "line": 13,
+                                "char": 14,
+                                "base_class": "\\MyEnum",
+                            },
+                        },
+                        {
+                            "label": "MyEnum::TYPE_B",
+                            "kind": 13,
+                            "detail": "enum",
+                            "sortText": "MyEnum::TYPE_B",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 36},
+                                    "end": {"line": 3, "character": 36},
+                                },
+                                "newText": "MyEnum::TYPE_B",
+                            },
+                            "data": {
+                                "fullname": "MyEnum::TYPE_B",
+                                "filename": "${root_path}/xhp_class_definitions.php",
+                                "line": 13,
+                                "char": 14,
+                                "base_class": "\\MyEnum",
+                            },
+                        },
+                        {
+                            "label": "MyEnum::TYPE_A",
+                            "kind": 13,
+                            "detail": "enum",
+                            "sortText": "MyEnum::TYPE_A",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 36},
+                                    "end": {"line": 3, "character": 36},
+                                },
+                                "newText": "MyEnum::TYPE_A",
+                            },
+                            "data": {
+                                "fullname": "MyEnum::TYPE_A",
+                                "filename": "${root_path}/xhp_class_definitions.php",
+                                "line": 13,
+                                "char": 14,
+                                "base_class": "\\MyEnum",
+                            },
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .notification(
+                comment="Add '1 is strin'",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 3, "character": 0},
+                                "end": {"line": 3, "character": 37},
+                            },
+                            "text": "1 is strin",
+                        }
+                    ],
+                },
+            )
+            .request(
+                line=line(),
+                comment="autocomplete after '1 is strin'",
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 10},
+                },
+                result={
+                    "isIncomplete": False,
+                    "items": [
+                        {
+                            "label": "string",
+                            "kind": 25,
+                            "detail": "builtin",
+                            "documentation": {
+                                "kind": "markdown",
+                                "value": "A sequence of characters.",
+                            },
+                            "sortText": "string",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 5},
+                                    "end": {"line": 3, "character": 10},
+                                },
+                                "newText": "string",
+                            },
+                            "data": {"fullname": "string"},
+                        },
+                        {
+                            "label": "StringBuffer",
+                            "kind": 7,
+                            "detail": "class",
+                            "sortText": "StringBuffer",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 5},
+                                    "end": {"line": 3, "character": 10},
+                                },
+                                "newText": "StringBuffer",
+                            },
+                            "data": {"fullname": "StringBuffer"},
+                        },
+                        {
+                            "label": "Stringish",
+                            "kind": 8,
+                            "detail": "interface",
+                            "sortText": "Stringish",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 5},
+                                    "end": {"line": 3, "character": 10},
+                                },
+                                "newText": "Stringish",
+                            },
+                            "data": {"fullname": "Stringish"},
+                        },
+                        {
+                            "label": "StringishObject",
+                            "kind": 8,
+                            "detail": "interface",
+                            "sortText": "StringishObject",
+                            "insertTextFormat": 1,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 5},
+                                    "end": {"line": 3, "character": 10},
+                                },
+                                "newText": "StringishObject",
+                            },
+                            "data": {"fullname": "StringishObject"},
+                        },
+                    ],
+                },
+                powered_by="serverless_ide",
+            )
+            .request(
+                line=line(),
+                comment="autocomplete resolving after '1 is strin'",
+                method="completionItem/resolve",
+                params={
+                    "data": {"fullname": "string"},
+                    "detail": "builtin",
+                    "documentation": {
+                        "kind": "markdown",
+                        "value": "A sequence of characters.",
+                    },
+                    "insertText": "string",
+                    "insertTextFormat": 1,
+                    "kind": 25,
+                    "label": "string",
+                    "sortText": "string",
+                },
+                result={
+                    "data": {"fullname": "string"},
+                    "detail": "builtin",
+                    "documentation": {
+                        "kind": "markdown",
+                        "value": "A sequence of characters.",
+                    },
+                    "insertText": "string",
+                    "insertTextFormat": 1,
+                    "kind": 25,
+                    "label": "string",
+                    "sortText": "string",
+                },
+                powered_by="serverless_ide",
+            )
+            .request(line=line(), method="shutdown", params={}, result=None)
+            .notification(method="exit", params={})
+        )
+        self.run_spec(
+            spec,
+            variables,
+            wait_for_server=False,
+            use_serverless_ide=True,
+            batch_process_changes=True,
+        )
+
     def test_serverless_ide_completion_legacy(self) -> None:
         variables = dict(self.prepare_serverless_ide_environment())
         variables.update(self.setup_php_file("completion.php"))
@@ -2440,7 +4475,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 6},
                                 },
-                                "newText": "ab:cd:alpha",
+                                "newText": "ab:cd:alpha>$0</ab:cd:alpha>",
                             },
                             "data": {"fullname": ":ab:cd:alpha"},
                         },
@@ -2455,7 +4490,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 6},
                                 },
-                                "newText": "ab:cd:text",
+                                "newText": "ab:cd:text>$0</ab:cd:text>",
                             },
                             "data": {"fullname": ":ab:cd:text"},
                         },
@@ -2470,7 +4505,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 6},
                                 },
-                                "newText": "xhp:enum-attribute",
+                                "newText": "xhp:enum-attribute>$0</xhp:enum-attribute>",
                             },
                             "data": {"fullname": ":xhp:enum-attribute"},
                         },
@@ -2485,7 +4520,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 6},
                                 },
-                                "newText": "xhp:generic",
+                                "newText": "xhp:generic>$0</xhp:generic>",
                             },
                             "data": {"fullname": ":xhp:generic"},
                         },
@@ -2531,7 +4566,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 7},
                                 },
-                                "newText": "ab:cd:alpha",
+                                "newText": "ab:cd:alpha>$0</ab:cd:alpha>",
                             },
                             "data": {"fullname": ":ab:cd:alpha"},
                         },
@@ -2546,7 +4581,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 7},
                                 },
-                                "newText": "ab:cd:text",
+                                "newText": "ab:cd:text>$0</ab:cd:text>",
                             },
                             "data": {"fullname": ":ab:cd:text"},
                         },
@@ -2592,7 +4627,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 9},
                                 },
-                                "newText": "ab:cd:alpha",
+                                "newText": "ab:cd:alpha>$0</ab:cd:alpha>",
                             },
                             "data": {"fullname": ":ab:cd:alpha"},
                         },
@@ -2607,7 +4642,7 @@ class TestLsp(TestCase[LspTestDriver]):
                                     "start": {"line": 3, "character": 6},
                                     "end": {"line": 3, "character": 9},
                                 },
-                                "newText": "ab:cd:text",
+                                "newText": "ab:cd:text>$0</ab:cd:text>",
                             },
                             "data": {"fullname": ":ab:cd:text"},
                         },
@@ -3288,8 +5323,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(mixed $value): bool",
                             "sortText": "isValid",
-                            "insertText": "isValid(${1:\\$value})",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "isValid(${1:\\$value})",
+                            },
                             "data": {
                                 "fullname": "isValid",
                                 "filename": "${hhi_path}/BuiltinEnum.hhi",
@@ -3303,8 +5344,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(): dict<string, Elsa>",
                             "sortText": "getValues",
-                            "insertText": "getValues()",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "getValues()",
+                            },
                             "data": {
                                 "fullname": "getValues",
                                 "filename": "${hhi_path}/BuiltinEnum.hhi",
@@ -3318,8 +5365,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(): dict<Elsa, string>",
                             "sortText": "getNames",
-                            "insertText": "getNames()",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "getNames()",
+                            },
                             "data": {
                                 "fullname": "getNames",
                                 "filename": "${hhi_path}/BuiltinEnum.hhi",
@@ -3333,8 +5386,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(mixed $value): ?Elsa",
                             "sortText": "coerce",
-                            "insertText": "coerce(${1:\\$value})",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "coerce(${1:\\$value})",
+                            },
                             "data": {
                                 "fullname": "coerce",
                                 "filename": "${hhi_path}/BuiltinEnum.hhi",
@@ -3348,8 +5407,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(Traversable<mixed> $values): Container<Elsa>",
                             "sortText": "assertAll",
-                            "insertText": "assertAll(${1:\\$values})",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "assertAll(${1:\\$values})",
+                            },
                             "data": {
                                 "fullname": "assertAll",
                                 "filename": "${hhi_path}/BuiltinEnum.hhi",
@@ -3363,8 +5428,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(mixed $value): Elsa",
                             "sortText": "assert",
-                            "insertText": "assert(${1:\\$value})",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 35},
+                                    "end": {"line": 3, "character": 35},
+                                },
+                                "newText": "assert(${1:\\$value})",
+                            },
                             "data": {
                                 "fullname": "assert",
                                 "filename": "${hhi_path}/BuiltinEnum.hhi",
@@ -3457,8 +5528,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(): void",
                             "sortText": "~test_do_not_use",
-                            "insertText": "test_do_not_use()",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "test_do_not_use()",
+                            },
                             "data": {
                                 "fullname": "test_do_not_use",
                                 "filename": "${root_path}/completion_extras.php",
@@ -3472,8 +5549,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(): void",
                             "sortText": "getName",
-                            "insertText": "getName()",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "getName()",
+                            },
                             "data": {
                                 "fullname": "getName",
                                 "filename": "${root_path}/completion_extras.php",
@@ -3487,8 +5570,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(): void",
                             "sortText": "~getAttributes_DO_NOT_USE",
-                            "insertText": "getAttributes_DO_NOT_USE()",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "getAttributes_DO_NOT_USE()",
+                            },
                             "data": {
                                 "fullname": "getAttributes_DO_NOT_USE",
                                 "filename": "${root_path}/completion_extras.php",
@@ -3502,8 +5591,14 @@ class TestLsp(TestCase[LspTestDriver]):
                             "kind": 2,
                             "detail": "function(): void",
                             "sortText": "~__getLoader",
-                            "insertText": "__getLoader()",
                             "insertTextFormat": 2,
+                            "textEdit": {
+                                "range": {
+                                    "start": {"line": 3, "character": 17},
+                                    "end": {"line": 3, "character": 17},
+                                },
+                                "newText": "__getLoader()",
+                            },
                             "data": {
                                 "fullname": "__getLoader",
                                 "filename": "${root_path}/completion_extras.php",
@@ -4153,7 +6248,6 @@ class TestLsp(TestCase[LspTestDriver]):
                     },
                     "renameProvider": True,
                     "implementationProvider": True,
-                    "typeCoverageProvider": True,
                     "rageProvider": True,
                 }
             },
@@ -5375,7 +7469,7 @@ class TestLsp(TestCase[LspTestDriver]):
                 result={
                     "signatures": [
                         {
-                            "label": "function Derp\\Lib\\Herp\\aliased_global_func(string $s): void",
+                            "label": "function aliased_global_func(string $s): void",
                             "documentation": "Namespace-aliased function with doc block",
                             "parameters": [{"label": "$s"}],
                         }
@@ -5396,7 +7490,7 @@ class TestLsp(TestCase[LspTestDriver]):
                 result={
                     "signatures": [
                         {
-                            "label": "function Derp\\Lib\\Herp\\aliased_global_func(string $s): void",
+                            "label": "function aliased_global_func(string $s): void",
                             "documentation": "Namespace-aliased function with doc block",
                             "parameters": [{"label": "$s"}],
                         }
@@ -5586,6 +7680,54 @@ class TestLsp(TestCase[LspTestDriver]):
         variables = self.setup_php_file("rename.php")
         self.load_and_run("rename", variables)
 
+    def test_rename_in_interface(self) -> None:
+        self.prepare_server_environment()
+        variables = self.setup_php_file("rename_in_interface.php")
+        self.test_driver.stop_hh_server()
+
+        spec = (
+            self.initialize_spec(
+                LspTestSpec("rename_in_interface"), use_serverless_ide=False
+            )
+            .wait_for_hh_server_ready()
+            .notification(
+                method="textDocument/didOpen",
+                params={
+                    "textDocument": {
+                        "uri": "${php_file_uri}",
+                        "languageId": "hack",
+                        "version": 1,
+                        "text": "${php_file}",
+                    }
+                },
+            )
+            .request(
+                line=line(),
+                method="textDocument/rename",
+                params={
+                    "textDocument": {"uri": "${php_file_uri}"},
+                    "position": {"line": 3, "character": 19},
+                    "newName": "previouslyCalledSomeMethod",
+                },
+                result={
+                    "changes": {
+                        "${php_file_uri}": [
+                            {
+                                "range": {
+                                    "start": {"line": 3, "character": 18},
+                                    "end": {"line": 3, "character": 28},
+                                },
+                                "newText": "previouslyCalledSomeMethod",
+                            },
+                        ]
+                    }
+                },
+            )
+            .request(line=line(), method="shutdown", params={}, result=None)
+            .notification(method="exit", params={})
+        )
+        self.run_spec(spec, variables, wait_for_server=True, use_serverless_ide=False)
+
     def test_references(self) -> None:
         self.prepare_server_environment()
         variables = self.setup_php_file("references.php")
@@ -5729,7 +7871,7 @@ function call_method(ClassWithFooBar $mc): void {
                                     },
                                 ],
                             }
-                        ],
+                        ]
                     },
                 },
                 result=[
@@ -5750,7 +7892,32 @@ function call_method(ClassWithFooBar $mc): void {
                                 ]
                             }
                         },
-                    }
+                    },
+                    {
+                        "title": "Extract into variable",
+                        "kind": "refactor",
+                        "diagnostics": [],
+                        "edit": {
+                            "changes": {
+                                "${root_path}/code_action_missing_method.php": [
+                                    {
+                                        "range": {
+                                            "start": {"line": 7, "character": 2},
+                                            "end": {"line": 7, "character": 2},
+                                        },
+                                        "newText": "$placeholder0 = foobaz;\n  ",
+                                    },
+                                    {
+                                        "range": {
+                                            "start": {"line": 7, "character": 7},
+                                            "end": {"line": 7, "character": 13},
+                                        },
+                                        "newText": "$placeholder0",
+                                    },
+                                ]
+                            }
+                        },
+                    },
                 ],
                 powered_by="serverless_ide",
             )
@@ -6135,7 +8302,7 @@ function unsaved_bar(): string { return "hello"; }
                 method="window/showStatus",
                 params={
                     "type": 2,
-                    "message": "Hack IDE: initializing.\nhh_server: stopped.",
+                    "message": "hh_client: initializing.\nhh_server: stopped.",
                     "shortMessage": "Hack: initializing",
                 },
             )
@@ -6144,7 +8311,7 @@ function unsaved_bar(): string { return "hello"; }
                 method="window/showStatus",
                 params={
                     "type": 2,
-                    "message": "Hack IDE: initializing.",
+                    "message": "hh_client: initializing.",
                     "shortMessage": "Hack: initializing",
                 },
             )
@@ -6153,14 +8320,14 @@ function unsaved_bar(): string { return "hello"; }
                 method="window/showStatus",
                 params={
                     "type": 3,
-                    "message": "Hack IDE: ready.",
+                    "message": "hh_client: ready.",
                     "shortMessage": "Hack: ready",
                 },
             )
             .wait_for_server_request(
                 method="window/showStatus",
                 params={
-                    "message": "Hack IDE: ready.\nhh_server: stopped.",
+                    "message": "hh_client: ready.\nhh_server: stopped.",
                     "shortMessage": "Hack: ready",
                     "type": 3,
                 },
@@ -6648,48 +8815,6 @@ If you want to examine the raw LSP logs, you can check the `.sent.log` and
         )
         self.run_spec(spec, variables, wait_for_server=False, use_serverless_ide=True)
 
-    def test_serverless_ide_coverage(self) -> None:
-        variables = dict(self.prepare_serverless_ide_environment())
-        variables.update(self.setup_php_file("coverage.php"))
-        self.test_driver.stop_hh_server()
-
-        spec = (
-            self.initialize_spec(
-                LspTestSpec("serverless_ide_coverage"), use_serverless_ide=True
-            )
-            .notification(
-                method="textDocument/didOpen",
-                params={
-                    "textDocument": {
-                        "uri": "${php_file_uri}",
-                        "languageId": "hack",
-                        "version": 1,
-                        "text": "${php_file}",
-                    }
-                },
-            )
-            .request(
-                line=line(),
-                comment="Check type coverage",
-                method="textDocument/typeCoverage",
-                params={"textDocument": {"uri": "${php_file_uri}"}},
-                result={
-                    "coveredPercent": 100,
-                    "uncoveredRanges": [],
-                    "defaultMessage": "Un-type checked code. Consider adding type annotations.",
-                },
-                powered_by="serverless_ide",
-            )
-            .request(
-                line=line(),
-                comment="Shutdown",
-                method="shutdown",
-                params={},
-                result=None,
-            )
-        )
-        self.run_spec(spec, variables, wait_for_server=False, use_serverless_ide=True)
-
     def test_status_stopped(self) -> None:
         self.prepare_server_environment()
         variables = self.setup_php_file("hover.php")
@@ -6760,7 +8885,7 @@ If you want to examine the raw LSP logs, you can check the `.sent.log` and
                 method="window/showStatus",
                 params={
                     "type": 2,
-                    "message": "Hack IDE: initializing.\nhh_server: stopped.",
+                    "message": "hh_client: initializing.\nhh_server: stopped.",
                     "shortMessage": "Hack: initializing",
                 },
             )
@@ -6769,7 +8894,7 @@ If you want to examine the raw LSP logs, you can check the `.sent.log` and
                 method="window/showStatus",
                 params={
                     "type": 2,
-                    "message": "Hack IDE: initializing.",
+                    "message": "hh_client: initializing.",
                     "shortMessage": "Hack: initializing",
                 },
             )
@@ -6778,14 +8903,14 @@ If you want to examine the raw LSP logs, you can check the `.sent.log` and
                 method="window/showStatus",
                 params={
                     "type": 3,
-                    "message": "Hack IDE: ready.",
+                    "message": "hh_client: ready.",
                     "shortMessage": "Hack: ready",
                 },
             )
             .wait_for_server_request(
                 method="window/showStatus",
                 params={
-                    "message": "Hack IDE: ready.\nhh_server: stopped.",
+                    "message": "hh_client: ready.\nhh_server: stopped.",
                     "shortMessage": "Hack: ready",
                     "type": 3,
                 },
@@ -6796,7 +8921,495 @@ If you want to examine the raw LSP logs, you can check the `.sent.log` and
         )
         self.run_spec(spec, variables, wait_for_server=False, use_serverless_ide=True)
 
-    def test_serverless_ide_failed_to_load_saved_state(self) -> None:
+    def test_standalone_status(self) -> None:
+        variables = dict(
+            self.prepare_serverless_ide_environment(use_standalone_ide=True)
+        )
+        variables.update(self.setup_php_file("hover.php"))
+        self.test_driver.stop_hh_server()
+
+        spec = (
+            self.initialize_spec(
+                LspTestSpec("test_standalone_status"),
+                use_serverless_ide=True,
+                supports_status=True,
+            )
+            .ignore_requests(
+                comment="Ignore all status requests not explicitly waited for in the test",
+                method="window/showStatus",
+                params=None,
+            )
+            .wait_for_server_request(
+                comment="standalone status upon startup when it starts with hh_server stopped",
+                method="window/showStatus",
+                params={
+                    "message": "Hack IDE support is ready\n\nhh_server is stopped. Try running `hh` at the command-line.",
+                    "shortMessage": "Hack: hh_server stopped",
+                    "type": 1,
+                },
+                result=NoResponse(),
+            )
+            .start_hh_server("Restart HH Server")
+            .wait_for_server_request(
+                comment="standalone status when hh_server transitions to starting up",
+                method="window/showStatus",
+                params={
+                    "message": "Hack IDE support is ready\n\nhh_server is ready",
+                    "shortMessage": "Hack",
+                    "type": 3,
+                },
+                result=NoResponse(),
+            )
+            .stop_hh_server("Shutdown HH Server")
+            .wait_for_server_request(
+                comment="standalone status when hh_server transitions to stopped",
+                method="window/showStatus",
+                params={
+                    "message": "Hack IDE support is ready\n\nhh_server is stopped. Try running `hh` at the command-line.",
+                    "shortMessage": "Hack: hh_server stopped",
+                    "type": 1,
+                },
+                result=NoResponse(),
+            )
+            .request(line=line(), method="shutdown", params={}, result=None)
+            .notification(method="exit", params={})
+        )
+        self.run_spec(spec, variables, wait_for_server=False, use_serverless_ide=True)
+
+    def test_standalone_errors(self) -> None:
+        variables = dict(
+            self.prepare_serverless_ide_environment(use_standalone_ide=True)
+        )
+        variables.update(self.setup_php_file("hover.php"))
+        errors_a_uri = self.repo_file_uri("errors_a.php")
+        errors_b_uri = self.repo_file_uri("errors_b.php")
+        variables.update({"errors_a_uri": errors_a_uri, "errors_b_uri": errors_b_uri})
+
+        spec = (
+            self.initialize_spec(
+                LspTestSpec("test_standalone_errors"),
+                use_serverless_ide=True,
+                supports_status=True,
+            )
+            .ignore_requests(
+                comment="Ignore all status requests not explicitly waited for in the test",
+                method="window/showStatus",
+                params=None,
+            )
+            .write_to_disk(
+                comment="create file errors_a.php",
+                uri="${errors_a_uri}",
+                contents="<?hh\nfunction aaa(): int { return 1 }\n",
+                notify=False,
+            )
+            .write_to_disk(
+                comment="create file errors_b.php",
+                uri="${errors_b_uri}",
+                contents="<?hh\nfunction bbb(): int { return 2 }\n",
+                notify=False,
+            )
+            .notification(
+                comment="actually open something that's different from what was on disk (with extra newline)",
+                method="textDocument/didOpen",
+                params={
+                    "textDocument": {
+                        "uri": "${errors_a_uri}",
+                        "languageId": "hack",
+                        "version": 1,
+                        "text": "<?hh\n\n\n\nfunction aaa(): int { return 1 }\n",
+                    }
+                },
+            )
+            .wait_for_notification(
+                comment="standalone should report a squiggle in errors_a.php from serverless",
+                method="textDocument/publishDiagnostics",
+                params={
+                    "uri": "${errors_a_uri}",
+                    "diagnostics": [
+                        {
+                            "range": {
+                                "start": {"line": 4, "character": 31},
+                                "end": {"line": 4, "character": 31},
+                            },
+                            "severity": 1,
+                            "code": 1002,
+                            "source": "Hack",
+                            "message": "A semicolon ; is expected here.",
+                            "relatedLocations": [],
+                            "relatedInformation": [],
+                        }
+                    ],
+                },
+            )
+            .start_hh_server("start HH Server")
+            .wait_for_notification(
+                comment="standalone should report a squiggle in errors_b.php from errors.bin",
+                method="textDocument/publishDiagnostics",
+                params={
+                    "uri": "${errors_b_uri}",
+                    "diagnostics": [
+                        {
+                            "range": {
+                                "start": {"line": 1, "character": 31},
+                                "end": {"line": 1, "character": 31},
+                            },
+                            "severity": 1,
+                            "code": 1002,
+                            "source": "Hack",
+                            "message": "A semicolon ; is expected here.",
+                            "relatedLocations": [],
+                            "relatedInformation": [],
+                        }
+                    ],
+                },
+            )
+            .start_hh_server("start HH Server")
+            .request(line=line(), method="shutdown", params={}, result=None)
+            .wait_for_notification(
+                comment="standalone should clean up squiggles - a",
+                method="textDocument/publishDiagnostics",
+                params={"uri": "${errors_a_uri}", "diagnostics": []},
+            )
+            .wait_for_notification(
+                comment="standalone should clean up squiggles - b",
+                method="textDocument/publishDiagnostics",
+                params={"uri": "${errors_b_uri}", "diagnostics": []},
+            )
+            .notification(method="exit", params={})
+        )
+        self.run_spec(spec, variables, wait_for_server=False, use_serverless_ide=True)
+
+    def test_live_squiggles(self) -> None:
+        """This tests that "live squiggles" (those from clientIdeDaemon) are correctly
+        produced by didOpen, didChange, codeAction and publishDiagnostics."""
+        variables = dict(
+            self.prepare_serverless_ide_environment(use_standalone_ide=True)
+        )
+        variables.update(self.setup_php_file("hover.php"))
+        errors_a_uri = self.repo_file_uri("errors_a.php")
+        errors_b_uri = self.repo_file_uri("errors_b.php")
+        variables.update({"errors_a_uri": errors_a_uri, "errors_b_uri": errors_b_uri})
+
+        spec = (
+            self.initialize_spec(
+                LspTestSpec("test_live_squiggles"),
+                use_serverless_ide=True,
+                supports_status=False,
+            )
+            .write_to_disk(
+                comment="create file errors_a.php",
+                uri="${errors_a_uri}",
+                contents="<?hh\nfunction aaa() { }\n",
+                notify=False,
+            )
+            .notification(
+                comment="open errors_a.php",
+                method="textDocument/didOpen",
+                params={
+                    "textDocument": {
+                        "uri": "${errors_a_uri}",
+                        "languageId": "hack",
+                        "version": 1,
+                        "text": "<?hh\nfunction aaa() { }\n",
+                    }
+                },
+            )
+            .wait_for_notification(
+                comment="didOpen should report a live squiggle in errors_a.php",
+                method="textDocument/publishDiagnostics",
+                params={
+                    "uri": "${errors_a_uri}",
+                    "diagnostics": [
+                        {
+                            "range": {
+                                "start": {"line": 1, "character": 9},
+                                "end": {"line": 1, "character": 12},
+                            },
+                            "severity": 1,
+                            "code": 4030,
+                            "source": "Hack",
+                            "message": "Was expecting a return type hint",
+                            "relatedLocations": [],
+                            "relatedInformation": [],
+                        }
+                    ],
+                },
+            )
+            .notification(
+                comment="change errors_a.php",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${errors_a_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 1, "character": 0},
+                                "end": {"line": 1, "character": 0},
+                            },
+                            "text": "\n",
+                        }
+                    ],
+                },
+            )
+            .wait_for_notification(
+                comment="didChange should update live squiggles in errors_a.php (one line down from what we got in didOpen)",
+                method="textDocument/publishDiagnostics",
+                params={
+                    "uri": "${errors_a_uri}",
+                    "diagnostics": [
+                        {
+                            "range": {
+                                "start": {"line": 2, "character": 9},
+                                "end": {"line": 2, "character": 12},
+                            },
+                            "severity": 1,
+                            "code": 4030,
+                            "source": "Hack",
+                            "message": "Was expecting a return type hint",
+                            "relatedLocations": [],
+                            "relatedInformation": [],
+                        }
+                    ],
+                },
+            )
+            .write_to_disk(
+                comment="create file errors_b.php and send didChangeWatchedFiles",
+                uri="${errors_b_uri}",
+                contents="<?hh\nfunction bbb(): int { return 2; }\n",
+                notify=True,
+            )
+            .request(
+                line=line(),
+                comment="send codeAction to trigger errors to be refreshed",
+                method="textDocument/codeAction",
+                params={
+                    "textDocument": {"uri": "${errors_a_uri}"},
+                    "range": {
+                        "start": {"line": 0, "character": 0},
+                        "end": {"line": 0, "character": 0},
+                    },
+                    "context": {"diagnostics": []},
+                },
+                result=[],
+                powered_by="serverless_ide",
+            )
+            .wait_for_notification(
+                comment="codeAction should update live squiggles in errors_a.php (same as what we had from didChange)",
+                method="textDocument/publishDiagnostics",
+                params={
+                    "uri": "${errors_a_uri}",
+                    "diagnostics": [
+                        {
+                            "range": {
+                                "start": {"line": 2, "character": 9},
+                                "end": {"line": 2, "character": 12},
+                            },
+                            "severity": 1,
+                            "code": 4030,
+                            "source": "Hack",
+                            "message": "Was expecting a return type hint",
+                            "relatedLocations": [],
+                            "relatedInformation": [],
+                        }
+                    ],
+                },
+            )
+            .notification(
+                method="textDocument/didClose",
+                params={"textDocument": {"uri": "${errors_a_uri}"}},
+            )
+            .wait_for_notification(
+                comment="didClose should update live squiggles in (unsaved) errors_a.php back to what they were on disk",
+                method="textDocument/publishDiagnostics",
+                params={
+                    "uri": "${errors_a_uri}",
+                    "diagnostics": [
+                        {
+                            "range": {
+                                "start": {"line": 1, "character": 9},
+                                "end": {"line": 1, "character": 12},
+                            },
+                            "severity": 1,
+                            "code": 4030,
+                            "source": "Hack",
+                            "message": "Was expecting a return type hint",
+                            "relatedLocations": [],
+                            "relatedInformation": [],
+                        }
+                    ],
+                },
+            )
+            .request(line=line(), method="shutdown", params={}, result=None)
+            .wait_for_notification(
+                comment="shutdown should clear out live squiggles",
+                method="textDocument/publishDiagnostics",
+                params={
+                    "uri": "${errors_a_uri}",
+                    "diagnostics": [],
+                },
+            )
+            .notification(method="exit", params={})
+        )
+        self.run_spec(spec, variables, wait_for_server=False, use_serverless_ide=True)
+
+    def test_parsing_squiggles_priority(self) -> None:
+        """This tests that parsing squiggles suppress typing squiggles from clientIdeDaemon"""
+        variables = dict(
+            self.prepare_serverless_ide_environment(use_standalone_ide=True)
+        )
+        variables.update(self.setup_php_file("hover.php"))
+        errors_a_uri = self.repo_file_uri("errors_a.php")
+        variables.update({"errors_a_uri": errors_a_uri})
+
+        spec = (
+            self.initialize_spec(
+                LspTestSpec("test_parsing_squiggles_priority"),
+                use_serverless_ide=True,
+                supports_status=False,
+            )
+            .write_to_disk(
+                comment="create file errors_a.php",
+                uri="${errors_a_uri}",
+                contents="<?hh\nfunction aaa(): int { return $undefined }\n",
+                notify=False,
+            )
+            .notification(
+                comment="open errors_a.php",
+                method="textDocument/didOpen",
+                params={
+                    "textDocument": {
+                        "uri": "${errors_a_uri}",
+                        "languageId": "hack",
+                        "version": 1,
+                        "text": "<?hh\nfunction aaa(): int { return $undefined }\n",
+                    }
+                },
+            )
+            .wait_for_notification(
+                comment="didOpen should report only a parsing squiggle in errors_a.php",
+                method="textDocument/publishDiagnostics",
+                params={
+                    "uri": "${errors_a_uri}",
+                    "diagnostics": [
+                        {
+                            "range": {
+                                "start": {"line": 1, "character": 40},
+                                "end": {"line": 1, "character": 40},
+                            },
+                            "severity": 1,
+                            "code": 1002,
+                            "source": "Hack",
+                            "message": "A semicolon ; is expected here.",
+                            "relatedLocations": [],
+                            "relatedInformation": [],
+                        }
+                    ],
+                },
+            )
+            .notification(
+                comment="change errors_a.php",
+                method="textDocument/didChange",
+                params={
+                    "textDocument": {"uri": "${errors_a_uri}"},
+                    "contentChanges": [
+                        {
+                            "range": {
+                                "start": {"line": 1, "character": 39},
+                                "end": {"line": 1, "character": 39},
+                            },
+                            "text": ";",
+                        }
+                    ],
+                },
+            )
+            .wait_for_notification(
+                comment="didChange should update live squiggles in errors_a.php (now revealing the typing error)",
+                method="textDocument/publishDiagnostics",
+                params={
+                    "uri": "${errors_a_uri}",
+                    "diagnostics": [
+                        {
+                            "range": {
+                                "start": {"line": 1, "character": 29},
+                                "end": {"line": 1, "character": 39},
+                            },
+                            "severity": 1,
+                            "code": 2050,
+                            "source": "Hack",
+                            "message": "Variable $undefined is undefined, or not always defined.",
+                            "relatedLocations": [],
+                            "relatedInformation": [],
+                        }
+                    ],
+                },
+            )
+            .request(line=line(), method="shutdown", params={}, result=None)
+            .wait_for_notification(
+                comment="shutdown should clear out live squiggles",
+                method="textDocument/publishDiagnostics",
+                params={
+                    "uri": "${errors_a_uri}",
+                    "diagnostics": [],
+                },
+            )
+            .notification(method="exit", params={})
+        )
+        self.run_spec(spec, variables, wait_for_server=False, use_serverless_ide=True)
+
+    def test_serverless_ide_falls_back_to_full_index(self) -> None:
+        # Test recovery behavior when we fail to load a naming table, but we're
+        # permitted to fall back to the full index naming table build.
+        variables = dict(
+            self.prepare_serverless_ide_environment(use_standalone_ide=True)
+        )
+        variables.update(self.setup_php_file("hover.php"))
+        assert "naming_table_saved_state_path" in variables
+        variables["naming_table_saved_state_path"] = "/tmp/nonexistent"
+
+        spec = (
+            self.initialize_spec(
+                LspTestSpec("serverless_ide_falls_back_to_full_index"),
+                use_serverless_ide=True,
+                supports_status=True,
+                supports_init=True,
+            )
+            .ignore_requests(
+                comment="Ignore all status requests not explicitly waited for in the test",
+                method="window/showStatus",
+                params=None,
+            )
+            .wait_for_notification(
+                comment="This log should appear whenever we fall back to a full index.",
+                method="telemetry/event",
+                params={
+                    "type": 4,
+                    "message": "[client-ide] Falling back to full index naming table build",
+                },
+            )
+            .wait_for_server_request(
+                comment="standalone status upon startup when it starts with hh_server stopped",
+                method="window/showStatus",
+                params={
+                    "message": "Hack IDE support is ready\n\nhh_server is stopped. Try running `hh` at the command-line.",
+                    "shortMessage": "Hack: hh_server stopped",
+                    "type": 1,
+                },
+                result=NoResponse(),
+            )
+            .request(line=line(), method="shutdown", params={}, result=None)
+            .notification(method="exit", params={})
+        )
+        self.run_spec(
+            spec,
+            variables,
+            # We don't need hh_server here
+            wait_for_server=False,
+            use_serverless_ide=True,
+        )
+
+    def test_serverless_ide_failed_to_load_saved_state_no_full_index(self) -> None:
+        # This test examines the failure behavior when the naming table is
+        # non-existent and we are *not* falling back to full index.
         variables = dict(self.prepare_serverless_ide_environment())
         variables.update(self.setup_php_file("hover.php"))
         assert "naming_table_saved_state_path" in variables
@@ -6814,7 +9427,7 @@ If you want to examine the raw LSP logs, you can check the `.sent.log` and
                 method="window/showStatus",
                 params={
                     "type": 2,
-                    "message": "Hack IDE: initializing.\nhh_server initializing: processing [<test> seconds]",
+                    "message": "hh_client: initializing.\nhh_server initializing: processing [<test> seconds]",
                     "shortMessage": "Hack: initializing",
                 },
             )
@@ -6823,7 +9436,7 @@ If you want to examine the raw LSP logs, you can check the `.sent.log` and
                 method="window/showStatus",
                 params={
                     "type": 2,
-                    "message": "Hack IDE: initializing.\nhh_server: ready.",
+                    "message": "hh_client: initializing.\nhh_server: ready.",
                     "shortMessage": "Hack: initializing",
                 },
             )
@@ -6832,7 +9445,7 @@ If you want to examine the raw LSP logs, you can check the `.sent.log` and
                 method="window/showStatus",
                 params={
                     "type": 2,
-                    "message": "Hack IDE: initializing.",
+                    "message": "hh_client: initializing.",
                     "shortMessage": "Hack: initializing",
                 },
             )
@@ -6841,7 +9454,7 @@ If you want to examine the raw LSP logs, you can check the `.sent.log` and
                 method="window/showStatus",
                 params={
                     "type": 1,
-                    "message": "Hack IDE has failed. See Output›Hack for details.",
+                    "message": "hh_client has failed. See Output›Hack for details.",
                     "shortMessage": "Hack: failed",
                 },
             )
@@ -6849,13 +9462,13 @@ If you want to examine the raw LSP logs, you can check the `.sent.log` and
                 method="window/logMessage",
                 params={
                     "type": 1,
-                    "message": "Hack IDE has failed.\nThis is unexpected.\nPlease file a bug within your IDE, and try restarting it.\nMore details: http://dummy/HH_TEST_MODE",
+                    "message": "hh_client has failed.\nThis is unexpected.\nPlease file a bug within your IDE, and try restarting it.\nMore details: http://dummy/HH_TEST_MODE",
                 },
             )
             .wait_for_server_request(
                 method="window/showStatus",
                 params={
-                    "message": "Hack IDE has failed. See Output›Hack for details.\nhh_server: ready.",
+                    "message": "hh_client has failed. See Output›Hack for details.\nhh_server: ready.",
                     "shortMessage": "Hack: failed",
                     "type": 1,
                 },
@@ -6864,7 +9477,14 @@ If you want to examine the raw LSP logs, you can check the `.sent.log` and
             .request(line=line(), method="shutdown", params={}, result=None)
             .notification(method="exit", params={})
         )
-        self.run_spec(spec, variables, wait_for_server=True, use_serverless_ide=True)
+        # By setting `fall_back_to_full_index` to `False`, the IDE will give up once it fails to load a saved state instead of attempting the naming table build.
+        self.run_spec(
+            spec,
+            variables,
+            wait_for_server=True,
+            use_serverless_ide=True,
+            fall_back_to_full_index=False,
+        )
 
     def test_workspace_symbol(self) -> None:
         self.prepare_server_environment()
@@ -6927,6 +9547,74 @@ If you want to examine the raw LSP logs, you can check the `.sent.log` and
             .notification(method="exit", params={})
         )
         self.run_spec(spec, variables, wait_for_server=True, use_serverless_ide=False)
+
+    def test_workspace_symbol_batch_processing(self) -> None:
+        self.prepare_server_environment()
+        variables = self.setup_php_file("didchange.php")
+        spec = (
+            self.initialize_spec(
+                LspTestSpec("test_workspace_symbol"), use_serverless_ide=False
+            )
+            .wait_for_hh_server_ready()
+            .request(
+                line=line(),
+                comment="Look up symbols",
+                method="workspace/symbol",
+                params={"query": "TestNS\\test"},
+                result=[
+                    {
+                        "name": "TestNS\\test_func",
+                        "kind": 12,
+                        "location": {
+                            "uri": "file://${root_path}/completion_extras_namespace.php",
+                            "range": {
+                                "start": {"line": 4, "character": 9},
+                                "end": {"line": 4, "character": 25},
+                            },
+                        },
+                    }
+                ],
+            )
+            .request(
+                line=line(),
+                comment="Look up symbols starting with 'test_f' within multiple namespaces",
+                method="workspace/symbol",
+                params={"query": "test_f"},
+                result=[
+                    {
+                        "name": "test_function",
+                        "kind": 12,
+                        "location": {
+                            "uri": "file://${root_path}/completion.php",
+                            "range": {
+                                "start": {"line": 7, "character": 9},
+                                "end": {"line": 7, "character": 22},
+                            },
+                        },
+                    },
+                    {
+                        "name": "TestNS\\test_func",
+                        "kind": 12,
+                        "location": {
+                            "uri": "file://${root_path}/completion_extras_namespace.php",
+                            "range": {
+                                "start": {"line": 4, "character": 9},
+                                "end": {"line": 4, "character": 25},
+                            },
+                        },
+                    },
+                ],
+            )
+            .request(line=line(), method="shutdown", params={}, result=None)
+            .notification(method="exit", params={})
+        )
+        self.run_spec(
+            spec,
+            variables,
+            wait_for_server=True,
+            use_serverless_ide=False,
+            batch_process_changes=True,
+        )
 
     def test_serverless_ide_during_hh_server_restart(self) -> None:
         variables = dict(self.prepare_serverless_ide_environment())
@@ -7381,7 +10069,7 @@ function aaa(): string {
                 method="window/showStatus",
                 params={
                     "type": 2,
-                    "message": "Hack IDE: initializing.\nhh_server: stopped.",
+                    "message": "hh_client: initializing.\nhh_server: stopped.",
                     "shortMessage": "Hack: initializing",
                 },
             )
@@ -7390,16 +10078,16 @@ function aaa(): string {
                 method="window/showStatus",
                 params={
                     "type": 2,
-                    "message": "Hack IDE: initializing.",
+                    "message": "hh_client: initializing.",
                     "shortMessage": "Hack: initializing",
                 },
             )
             .ignore_requests(
-                comment="another racy initialization, if HackIDE is done before hh_server has yet sent status",
+                comment="another racy initialization, if hh_client is done before hh_server has yet sent status",
                 method="window/showStatus",
                 params={
                     "type": 3,
-                    "message": "Hack IDE: ready.",
+                    "message": "hh_client: ready.",
                     "shortMessage": "Hack: ready",
                 },
             )
@@ -7459,7 +10147,7 @@ function aaa(): string {
             .wait_for_server_request(
                 method="window/showStatus",
                 params={
-                    "message": "Hack IDE: ready.\nhh_server: stopped.",
+                    "message": "hh_client: ready.\nhh_server: stopped.",
                     "shortMessage": "Hack: ready",
                     "type": 3,
                 },

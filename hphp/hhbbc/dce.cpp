@@ -1543,6 +1543,9 @@ void dce(Env& env, const bc::LazyClassFromClass&) {
 }
 void dce(Env& env, const bc::ClassGetC&)        { pushRemovableIfNoThrow(env); }
 void dce(Env& env, const bc::ResolveClass&)     { pushRemovableIfNoThrow(env); }
+void dce(Env& env, const bc::CreateSpecialImplicitContext&) {
+  pushRemovableIfNoThrow(env);
+}
 
 /*
  * Default implementation is conservative: assume we use all of our
@@ -2708,7 +2711,13 @@ bool global_dce(const Index& index, const FuncAnalysis& ai,
     return ai.bdata[blk].rpoId;
   };
 
-  auto collect = CollectedInfo{index, ai.ctx, nullptr, CollectionOpts{}, &ai};
+  auto collect = CollectedInfo{
+    index,
+    ai.ctx,
+    nullptr, CollectionOpts{},
+    nullptr,
+    &ai
+  };
   auto visit = VisitContext(index, ai, collect, func);
 
   FTRACE(1, "|---- global DCE analyze ({})\n", show(ai.ctx));

@@ -77,6 +77,7 @@ struct CarbonTestRouterInfo {
   using RouteHandleAsyncClient = apache::thrift::Client<carbon::test::thrift::CarbonTest>;
 
   static constexpr const char* name = "CarbonTest";
+  static constexpr const bool bucketization = false;
 
   template <class Route>
   using RouteHandle = CarbonTestRouteHandle<Route>;
@@ -101,8 +102,17 @@ struct CarbonTestRouterInfo {
           facebook::memcache::mcrouter::ProxyBase&)>,
       folly::Hash>;
 
+  using RouteHandleFactoryMapForWrapper = std::unordered_map<
+      folly::StringPiece,
+      std::function<RouteHandlePtr(
+          RouteHandlePtr,
+          facebook::memcache::mcrouter::ProxyBase&,
+          const folly::dynamic&)>,
+      folly::Hash>;
+
   static RouteHandleFactoryMap buildRouteMap();
   static RouteHandleFactoryMapWithProxy buildRouteMapWithProxy();
+  static RouteHandleFactoryMapForWrapper buildRouteMapForWrapper();
 
   static std::unique_ptr<facebook::memcache::mcrouter::
                              ExtraRouteHandleProviderIf<CarbonTestRouterInfo>>

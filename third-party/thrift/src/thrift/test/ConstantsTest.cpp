@@ -149,3 +149,26 @@ TEST(constants, examples) {
   EXPECT_EQ(test_constants::minNDub(), -2.2250738585072014e-308);
   EXPECT_EQ(test_constants::minNSDub(), -4.9406564584124654e-324);
 }
+
+TEST(constants, escapes) {
+  EXPECT_EQ(
+      test_constants::escapes(),
+      (std::vector<std::string>{
+          "Bcafes",
+          "café",
+          "\"",
+          "'",
+          "\u0001",
+          "\u007f",
+          "\u0080",
+          "\u07ff",
+          "\u0800",
+          "\uffff",
+          "\uABCD",
+          "continued"}));
+}
+
+TEST(constants, multi_line_string) {
+  EXPECT_EQ(
+      test_constants::multi_line_string(), "This\nis a\nmulti line string.\n");
+}

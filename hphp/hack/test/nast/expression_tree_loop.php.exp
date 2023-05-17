@@ -17,7 +17,10 @@
                    { et_hint = ([4:3-13], (Happly (([4:3-13], "\\ExampleDsl"), []))); 
                      et_splices = [];
                      et_function_pointers =
-                     [([4:37-40], (Expr ((), [4:37-40], (Binop ((Eq None), ((), [4:37-40], (Lvar ([4:37-40], $0fp0))), ((), [4:37-40], (FunctionPointer ((FP_id ([4:37-40], "\\foo")), []))))))))];
+                     [([4:37-40],
+                       (Expr
+                          ((), [4:37-40], (Binop { bop = (Eq None); lhs = ((), [4:37-40], (Lvar ([4:37-40], $0fp0))); rhs = ((), [4:37-40], (FunctionPointer ((FP_id ([4:37-40], "\\foo")), []))) }))))
+                       ];
                      et_virtualized_expr =
                      ((), [4:14-47],
                       (Call (
@@ -79,12 +82,12 @@
                                                     f_user_attributes = []; 
                                                     f_external = false; 
                                                     f_doc_comment = None },
-                                                  [([4:37-40], $0fp0)]))))))
+                                                  [((), ([4:37-40], $0fp0))]))))))
                                      ]
                                    };
                                  f_fun_kind = FSync; f_user_attributes = []; 
                                  f_external = false; f_doc_comment = None };
-                               ef_use = [([4:3-13], $0fp0)]; ef_closure_class_name = None })),
+                               ef_use = [((), ([4:3-13], $0fp0))]; ef_closure_class_name = None })),
                          [], [], None)));
                      et_runtime_expr =
                      ((), [4:14-47],
@@ -232,14 +235,14 @@
                                                          f_user_attributes = []; 
                                                          f_external = false; 
                                                          f_doc_comment = None },
-                                                       [([4:37-40], $0fp0)]))))
+                                                       [((), ([4:37-40], $0fp0))]))))
                                                   ],
                                                 None))))))
                                    ]
                                  };
                                f_fun_kind = FSync; f_user_attributes = []; 
                                f_external = false; f_doc_comment = None },
-                             [([4:37-40], $0fp0)]))),
+                             [((), ([4:37-40], $0fp0))]))),
                          [], [], None)));
                      et_dollardollar_pos = None }))))
             ]

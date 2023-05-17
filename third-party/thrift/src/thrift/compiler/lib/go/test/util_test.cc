@@ -37,6 +37,7 @@ TEST_F(GoUtilTest, test_munge_ident) {
   EXPECT_EQ(go::munge_ident("FooBar", true), "FooBar");
   EXPECT_EQ(go::munge_ident("fooBar", true), "FooBar");
   EXPECT_EQ(go::munge_ident("FOOBar", true), "FOOBar");
+  EXPECT_EQ(go::munge_ident("FooBar_", true), "FooBar_");
 
   // Initialisms
   EXPECT_EQ(go::munge_ident("url", true, false), "URL");
@@ -62,4 +63,12 @@ TEST_F(GoUtilTest, test_munge_ident) {
   // Reserved idents
   EXPECT_EQ(go::munge_ident("type", false, true), "type_");
   EXPECT_EQ(go::munge_ident("go", false, true), "go_");
+
+  // Compat cases
+  EXPECT_EQ(go::munge_ident("foo_args", true, true), "FooArgs_");
+  EXPECT_EQ(go::munge_ident("FooArgs", true, true), "FooArgs_");
+  EXPECT_EQ(go::munge_ident("foo_result", true, true), "FooResult_");
+  EXPECT_EQ(go::munge_ident("FooResult", true, true), "FooResult_");
+  EXPECT_EQ(go::munge_ident("new_bar", true, true), "NewBar_");
+  EXPECT_EQ(go::munge_ident("NewBar", true, true), "NewBar_");
 }

@@ -1,5 +1,10 @@
 <?hh // partial
 
+namespace {
+
+const int FILE_TEXT = 0;
+const int FILE_BINARY = 0;
+
 /**
  * fopen() binds a named resource, specified by filename, to a stream.
  *
@@ -1471,3 +1476,48 @@ function scandir(string $directory,
  */
 <<__Native>>
 function closedir(?resource $dir_handle = null): void;
+
+}
+
+namespace HH {
+
+<<__Native>>
+function try_stdin(): ?resource;
+
+<<__Native>>
+function try_stdout(): ?resource;
+
+<<__Native>>
+function try_stderr(): ?resource;
+
+function stdin(): resource {
+  $s = try_stdin();
+  if ($s is null) {
+    throw new \RuntimeException(
+      "Request STDIO file descriptors are only available in CLI mode"
+    );
+  }
+  return $s;
+}
+
+function stdout(): resource {
+  $s = try_stdout();
+  if ($s is null) {
+    throw new \RuntimeException(
+      "Request STDIO file descriptors are only available in CLI mode"
+    );
+  }
+  return $s;
+}
+
+function stderr(): resource {
+  $s = try_stderr();
+  if ($s is null) {
+    throw new \RuntimeException(
+      "Request STDIO file descriptors are only available in CLI mode"
+    );
+  }
+  return $s;
+}
+
+}

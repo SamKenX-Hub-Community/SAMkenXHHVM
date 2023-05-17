@@ -4,9 +4,9 @@
 package module // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 
@@ -97,7 +97,7 @@ if err != nil {
 type MyMapIdentifier = map[string]string
 
 func NewMyMapIdentifier() MyMapIdentifier {
-  return nil
+  return make(map[string]string)
 }
 
 func WriteMyMapIdentifier(item MyMapIdentifier, p thrift.Protocol) error {
@@ -352,17 +352,10 @@ type Internship struct {
 var _ thrift.Struct = &Internship{}
 
 func NewInternship() *Internship {
-    return (&Internship{})
+    return (&Internship{}).
+        SetWeeksNonCompat(0).
+        SetTitleNonCompat("")
 }
-
-// Deprecated: Use NewInternship().Employer instead.
-var Internship_Employer_DEFAULT = NewInternship().Employer
-
-// Deprecated: Use NewInternship().Compensation instead.
-var Internship_Compensation_DEFAULT = NewInternship().Compensation
-
-// Deprecated: Use NewInternship().School instead.
-var Internship_School_DEFAULT = NewInternship().School
 
 func (x *Internship) GetWeeksNonCompat() int32 {
     return x.Weeks
@@ -386,7 +379,7 @@ func (x *Internship) GetEmployerNonCompat() *Company {
 
 func (x *Internship) GetEmployer() Company {
     if !x.IsSetEmployer() {
-      return 0
+        return 0
     }
 
     return *x.Employer
@@ -398,7 +391,7 @@ func (x *Internship) GetCompensationNonCompat() *float64 {
 
 func (x *Internship) GetCompensation() float64 {
     if !x.IsSetCompensation() {
-      return 0.0
+        return 0.0
     }
 
     return *x.Compensation
@@ -410,14 +403,24 @@ func (x *Internship) GetSchoolNonCompat() *string {
 
 func (x *Internship) GetSchool() string {
     if !x.IsSetSchool() {
-      return ""
+        return ""
     }
 
     return *x.School
 }
 
+func (x *Internship) SetWeeksNonCompat(value int32) *Internship {
+    x.Weeks = value
+    return x
+}
+
 func (x *Internship) SetWeeks(value int32) *Internship {
     x.Weeks = value
+    return x
+}
+
+func (x *Internship) SetTitleNonCompat(value string) *Internship {
+    x.Title = value
     return x
 }
 
@@ -426,22 +429,35 @@ func (x *Internship) SetTitle(value string) *Internship {
     return x
 }
 
-func (x *Internship) SetEmployer(value Company) *Internship {
+func (x *Internship) SetEmployerNonCompat(value Company) *Internship {
     x.Employer = &value
     return x
 }
 
-func (x *Internship) SetCompensation(value float64) *Internship {
+func (x *Internship) SetEmployer(value *Company) *Internship {
+    x.Employer = value
+    return x
+}
+
+func (x *Internship) SetCompensationNonCompat(value float64) *Internship {
     x.Compensation = &value
     return x
 }
 
-func (x *Internship) SetSchool(value string) *Internship {
+func (x *Internship) SetCompensation(value *float64) *Internship {
+    x.Compensation = value
+    return x
+}
+
+func (x *Internship) SetSchoolNonCompat(value string) *Internship {
     x.School = &value
     return x
 }
 
-
+func (x *Internship) SetSchool(value *string) *Internship {
+    x.School = value
+    return x
+}
 
 func (x *Internship) IsSetEmployer() bool {
     return x.Employer != nil
@@ -553,7 +569,7 @@ if err != nil {
     return err
 }
 
-    x.SetWeeks(result)
+    x.SetWeeksNonCompat(result)
     return nil
 }
 
@@ -563,7 +579,7 @@ if err != nil {
     return err
 }
 
-    x.SetTitle(result)
+    x.SetTitleNonCompat(result)
     return nil
 }
 
@@ -574,7 +590,7 @@ if err != nil {
 }
 result := Company(enumResult)
 
-    x.SetEmployer(result)
+    x.SetEmployerNonCompat(result)
     return nil
 }
 
@@ -584,7 +600,7 @@ if err != nil {
     return err
 }
 
-    x.SetCompensation(result)
+    x.SetCompensationNonCompat(result)
     return nil
 }
 
@@ -594,9 +610,18 @@ if err != nil {
     return err
 }
 
-    x.SetSchool(result)
+    x.SetSchoolNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewInternship().GetEmployer() instead.
+var Internship_Employer_DEFAULT = NewInternship().GetEmployer()
+
+// Deprecated: Use NewInternship().GetCompensation() instead.
+var Internship_Compensation_DEFAULT = NewInternship().GetCompensation()
+
+// Deprecated: Use NewInternship().GetSchool() instead.
+var Internship_School_DEFAULT = NewInternship().GetSchool()
 
 func (x *Internship) String() string {
     return fmt.Sprintf("%+v", x)
@@ -643,6 +668,7 @@ func (x *InternshipBuilder) Emit() *Internship {
     var objCopy Internship = *x.obj
     return &objCopy
 }
+
 func (x *Internship) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Internship"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -732,6 +758,7 @@ func (x *Internship) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Range struct {
     Min int32 `thrift:"min,1,required" json:"min" db:"min"`
     Max int32 `thrift:"max,2,required" json:"max" db:"max"`
@@ -740,7 +767,9 @@ type Range struct {
 var _ thrift.Struct = &Range{}
 
 func NewRange() *Range {
-    return (&Range{})
+    return (&Range{}).
+        SetMinNonCompat(0).
+        SetMaxNonCompat(0)
 }
 
 func (x *Range) GetMinNonCompat() int32 {
@@ -759,8 +788,18 @@ func (x *Range) GetMax() int32 {
     return x.Max
 }
 
+func (x *Range) SetMinNonCompat(value int32) *Range {
+    x.Min = value
+    return x
+}
+
 func (x *Range) SetMin(value int32) *Range {
     x.Min = value
+    return x
+}
+
+func (x *Range) SetMaxNonCompat(value int32) *Range {
+    x.Max = value
     return x
 }
 
@@ -768,8 +807,6 @@ func (x *Range) SetMax(value int32) *Range {
     x.Max = value
     return x
 }
-
-
 
 func (x *Range) writeField1(p thrift.Protocol) error {  // Min
     if err := p.WriteFieldBegin("min", thrift.I32, 1); err != nil {
@@ -809,7 +846,7 @@ if err != nil {
     return err
 }
 
-    x.SetMin(result)
+    x.SetMinNonCompat(result)
     return nil
 }
 
@@ -819,7 +856,7 @@ if err != nil {
     return err
 }
 
-    x.SetMax(result)
+    x.SetMaxNonCompat(result)
     return nil
 }
 
@@ -853,6 +890,7 @@ func (x *RangeBuilder) Emit() *Range {
     var objCopy Range = *x.obj
     return &objCopy
 }
+
 func (x *Range) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Range"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -918,6 +956,7 @@ func (x *Range) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Struct1 struct {
     A int32 `thrift:"a,1" json:"a" db:"a"`
     B string `thrift:"b,2" json:"b" db:"b"`
@@ -927,8 +966,8 @@ var _ thrift.Struct = &Struct1{}
 
 func NewStruct1() *Struct1 {
     return (&Struct1{}).
-        SetA(1234567).
-        SetB("<uninitialized>")
+        SetANonCompat(1234567).
+        SetBNonCompat("<uninitialized>")
 }
 
 func (x *Struct1) GetANonCompat() int32 {
@@ -947,8 +986,18 @@ func (x *Struct1) GetB() string {
     return x.B
 }
 
+func (x *Struct1) SetANonCompat(value int32) *Struct1 {
+    x.A = value
+    return x
+}
+
 func (x *Struct1) SetA(value int32) *Struct1 {
     x.A = value
+    return x
+}
+
+func (x *Struct1) SetBNonCompat(value string) *Struct1 {
+    x.B = value
     return x
 }
 
@@ -956,8 +1005,6 @@ func (x *Struct1) SetB(value string) *Struct1 {
     x.B = value
     return x
 }
-
-
 
 func (x *Struct1) writeField1(p thrift.Protocol) error {  // A
     if err := p.WriteFieldBegin("a", thrift.I32, 1); err != nil {
@@ -997,7 +1044,7 @@ if err != nil {
     return err
 }
 
-    x.SetA(result)
+    x.SetANonCompat(result)
     return nil
 }
 
@@ -1007,7 +1054,7 @@ if err != nil {
     return err
 }
 
-    x.SetB(result)
+    x.SetBNonCompat(result)
     return nil
 }
 
@@ -1041,6 +1088,7 @@ func (x *Struct1Builder) Emit() *Struct1 {
     var objCopy Struct1 = *x.obj
     return &objCopy
 }
+
 func (x *Struct1) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("struct1"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1106,6 +1154,7 @@ func (x *Struct1) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Struct2 struct {
     A int32 `thrift:"a,1" json:"a" db:"a"`
     B string `thrift:"b,2" json:"b" db:"b"`
@@ -1116,11 +1165,12 @@ type Struct2 struct {
 var _ thrift.Struct = &Struct2{}
 
 func NewStruct2() *Struct2 {
-    return (&Struct2{})
+    return (&Struct2{}).
+        SetANonCompat(0).
+        SetBNonCompat("").
+        SetCNonCompat(*NewStruct1()).
+        SetDNonCompat(make([]int32, 0))
 }
-
-// Deprecated: Use NewStruct2().C instead.
-var Struct2_C_DEFAULT = NewStruct2().C
 
 func (x *Struct2) GetANonCompat() int32 {
     return x.A
@@ -1144,7 +1194,7 @@ func (x *Struct2) GetCNonCompat() *Struct1 {
 
 func (x *Struct2) GetC() *Struct1 {
     if !x.IsSetC() {
-      return NewStruct1()
+        return NewStruct1()
     }
 
     return x.C
@@ -1156,14 +1206,24 @@ func (x *Struct2) GetDNonCompat() []int32 {
 
 func (x *Struct2) GetD() []int32 {
     if !x.IsSetD() {
-      return nil
+        return make([]int32, 0)
     }
 
     return x.D
 }
 
+func (x *Struct2) SetANonCompat(value int32) *Struct2 {
+    x.A = value
+    return x
+}
+
 func (x *Struct2) SetA(value int32) *Struct2 {
     x.A = value
+    return x
+}
+
+func (x *Struct2) SetBNonCompat(value string) *Struct2 {
+    x.B = value
     return x
 }
 
@@ -1172,8 +1232,18 @@ func (x *Struct2) SetB(value string) *Struct2 {
     return x
 }
 
-func (x *Struct2) SetC(value Struct1) *Struct2 {
+func (x *Struct2) SetCNonCompat(value Struct1) *Struct2 {
     x.C = &value
+    return x
+}
+
+func (x *Struct2) SetC(value *Struct1) *Struct2 {
+    x.C = value
+    return x
+}
+
+func (x *Struct2) SetDNonCompat(value []int32) *Struct2 {
+    x.D = value
     return x
 }
 
@@ -1181,8 +1251,6 @@ func (x *Struct2) SetD(value []int32) *Struct2 {
     x.D = value
     return x
 }
-
-
 
 func (x *Struct2) IsSetC() bool {
     return x.C != nil
@@ -1281,7 +1349,7 @@ if err != nil {
     return err
 }
 
-    x.SetA(result)
+    x.SetANonCompat(result)
     return nil
 }
 
@@ -1291,7 +1359,7 @@ if err != nil {
     return err
 }
 
-    x.SetB(result)
+    x.SetBNonCompat(result)
     return nil
 }
 
@@ -1302,7 +1370,7 @@ if err != nil {
     return err
 }
 
-    x.SetC(result)
+    x.SetCNonCompat(result)
     return nil
 }
 
@@ -1330,8 +1398,19 @@ if err := p.ReadListEnd(); err != nil {
 }
 result := listResult
 
-    x.SetD(result)
+    x.SetDNonCompat(result)
     return nil
+}
+
+// Deprecated: Use NewStruct2().GetC() instead.
+var Struct2_C_DEFAULT = NewStruct2().GetC()
+
+// Deprecated: Use NewStruct2().GetC() instead.
+func (x *Struct2) DefaultGetC() *Struct1 {
+    if !x.IsSetC() {
+        return NewStruct1()
+    }
+    return x.C
 }
 
 func (x *Struct2) String() string {
@@ -1374,6 +1453,7 @@ func (x *Struct2Builder) Emit() *Struct2 {
     var objCopy Struct2 = *x.obj
     return &objCopy
 }
+
 func (x *Struct2) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("struct2"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1455,6 +1535,7 @@ func (x *Struct2) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Struct3 struct {
     A string `thrift:"a,1" json:"a" db:"a"`
     B int32 `thrift:"b,2" json:"b" db:"b"`
@@ -1464,11 +1545,11 @@ type Struct3 struct {
 var _ thrift.Struct = &Struct3{}
 
 func NewStruct3() *Struct3 {
-    return (&Struct3{})
+    return (&Struct3{}).
+        SetANonCompat("").
+        SetBNonCompat(0).
+        SetCNonCompat(*NewStruct2())
 }
-
-// Deprecated: Use NewStruct3().C instead.
-var Struct3_C_DEFAULT = NewStruct3().C
 
 func (x *Struct3) GetANonCompat() string {
     return x.A
@@ -1492,14 +1573,24 @@ func (x *Struct3) GetCNonCompat() *Struct2 {
 
 func (x *Struct3) GetC() *Struct2 {
     if !x.IsSetC() {
-      return NewStruct2()
+        return NewStruct2()
     }
 
     return x.C
 }
 
+func (x *Struct3) SetANonCompat(value string) *Struct3 {
+    x.A = value
+    return x
+}
+
 func (x *Struct3) SetA(value string) *Struct3 {
     x.A = value
+    return x
+}
+
+func (x *Struct3) SetBNonCompat(value int32) *Struct3 {
+    x.B = value
     return x
 }
 
@@ -1508,12 +1599,15 @@ func (x *Struct3) SetB(value int32) *Struct3 {
     return x
 }
 
-func (x *Struct3) SetC(value Struct2) *Struct3 {
+func (x *Struct3) SetCNonCompat(value Struct2) *Struct3 {
     x.C = &value
     return x
 }
 
-
+func (x *Struct3) SetC(value *Struct2) *Struct3 {
+    x.C = value
+    return x
+}
 
 func (x *Struct3) IsSetC() bool {
     return x.C != nil
@@ -1577,7 +1671,7 @@ if err != nil {
     return err
 }
 
-    x.SetA(result)
+    x.SetANonCompat(result)
     return nil
 }
 
@@ -1587,7 +1681,7 @@ if err != nil {
     return err
 }
 
-    x.SetB(result)
+    x.SetBNonCompat(result)
     return nil
 }
 
@@ -1598,8 +1692,19 @@ if err != nil {
     return err
 }
 
-    x.SetC(result)
+    x.SetCNonCompat(result)
     return nil
+}
+
+// Deprecated: Use NewStruct3().GetC() instead.
+var Struct3_C_DEFAULT = NewStruct3().GetC()
+
+// Deprecated: Use NewStruct3().GetC() instead.
+func (x *Struct3) DefaultGetC() *Struct2 {
+    if !x.IsSetC() {
+        return NewStruct2()
+    }
+    return x.C
 }
 
 func (x *Struct3) String() string {
@@ -1637,6 +1742,7 @@ func (x *Struct3Builder) Emit() *Struct3 {
     var objCopy Struct3 = *x.obj
     return &objCopy
 }
+
 func (x *Struct3) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("struct3"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1710,23 +1816,19 @@ func (x *Struct3) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Struct4 struct {
     A int32 `thrift:"a,1" json:"a" db:"a"`
     B *float64 `thrift:"b,2,optional" json:"b,omitempty" db:"b"`
-    C *byte `thrift:"c,3,optional" json:"c,omitempty" db:"c"`
+    C *int8 `thrift:"c,3,optional" json:"c,omitempty" db:"c"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &Struct4{}
 
 func NewStruct4() *Struct4 {
-    return (&Struct4{})
+    return (&Struct4{}).
+        SetANonCompat(0)
 }
-
-// Deprecated: Use NewStruct4().B instead.
-var Struct4_B_DEFAULT = NewStruct4().B
-
-// Deprecated: Use NewStruct4().C instead.
-var Struct4_C_DEFAULT = NewStruct4().C
 
 func (x *Struct4) GetANonCompat() int32 {
     return x.A
@@ -1742,22 +1844,27 @@ func (x *Struct4) GetBNonCompat() *float64 {
 
 func (x *Struct4) GetB() float64 {
     if !x.IsSetB() {
-      return 0.0
+        return 0.0
     }
 
     return *x.B
 }
 
-func (x *Struct4) GetCNonCompat() *byte {
+func (x *Struct4) GetCNonCompat() *int8 {
     return x.C
 }
 
-func (x *Struct4) GetC() byte {
+func (x *Struct4) GetC() int8 {
     if !x.IsSetC() {
-      return 0
+        return 0
     }
 
     return *x.C
+}
+
+func (x *Struct4) SetANonCompat(value int32) *Struct4 {
+    x.A = value
+    return x
 }
 
 func (x *Struct4) SetA(value int32) *Struct4 {
@@ -1765,16 +1872,25 @@ func (x *Struct4) SetA(value int32) *Struct4 {
     return x
 }
 
-func (x *Struct4) SetB(value float64) *Struct4 {
+func (x *Struct4) SetBNonCompat(value float64) *Struct4 {
     x.B = &value
     return x
 }
 
-func (x *Struct4) SetC(value byte) *Struct4 {
+func (x *Struct4) SetB(value *float64) *Struct4 {
+    x.B = value
+    return x
+}
+
+func (x *Struct4) SetCNonCompat(value int8) *Struct4 {
     x.C = &value
     return x
 }
 
+func (x *Struct4) SetC(value *int8) *Struct4 {
+    x.C = value
+    return x
+}
 
 func (x *Struct4) IsSetB() bool {
     return x.B != nil
@@ -1830,7 +1946,7 @@ func (x *Struct4) writeField3(p thrift.Protocol) error {  // C
     }
 
     item := *x.GetCNonCompat()
-    if err := p.WriteByte(item); err != nil {
+    if err := p.WriteByte(byte(item)); err != nil {
     return err
 }
 
@@ -1846,7 +1962,7 @@ if err != nil {
     return err
 }
 
-    x.SetA(result)
+    x.SetANonCompat(result)
     return nil
 }
 
@@ -1856,19 +1972,26 @@ if err != nil {
     return err
 }
 
-    x.SetB(result)
+    x.SetBNonCompat(result)
     return nil
 }
 
 func (x *Struct4) readField3(p thrift.Protocol) error {  // C
-    result, err := p.ReadByte()
+    resultByte, err := p.ReadByte()
+result := int8(resultByte)
 if err != nil {
     return err
 }
 
-    x.SetC(result)
+    x.SetCNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewStruct4().GetB() instead.
+var Struct4_B_DEFAULT = NewStruct4().GetB()
+
+// Deprecated: Use NewStruct4().GetC() instead.
+var Struct4_C_DEFAULT = NewStruct4().GetC()
 
 func (x *Struct4) String() string {
     return fmt.Sprintf("%+v", x)
@@ -1896,7 +2019,7 @@ func (x *Struct4Builder) B(value *float64) *Struct4Builder {
     return x
 }
 
-func (x *Struct4Builder) C(value *byte) *Struct4Builder {
+func (x *Struct4Builder) C(value *int8) *Struct4Builder {
     x.obj.C = value
     return x
 }
@@ -1905,6 +2028,7 @@ func (x *Struct4Builder) Emit() *Struct4 {
     var objCopy Struct4 = *x.obj
     return &objCopy
 }
+
 func (x *Struct4) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("struct4"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1978,6 +2102,7 @@ func (x *Struct4) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Union1 struct {
     I *int32 `thrift:"i,1" json:"i" db:"i"`
     D *float64 `thrift:"d,2" json:"d" db:"d"`
@@ -1986,14 +2111,10 @@ type Union1 struct {
 var _ thrift.Struct = &Union1{}
 
 func NewUnion1() *Union1 {
-    return (&Union1{})
+    return (&Union1{}).
+        SetINonCompat(0).
+        SetDNonCompat(0.0)
 }
-
-// Deprecated: Use NewUnion1().I instead.
-var Union1_I_DEFAULT = NewUnion1().I
-
-// Deprecated: Use NewUnion1().D instead.
-var Union1_D_DEFAULT = NewUnion1().D
 
 func (x *Union1) GetINonCompat() *int32 {
     return x.I
@@ -2001,7 +2122,7 @@ func (x *Union1) GetINonCompat() *int32 {
 
 func (x *Union1) GetI() int32 {
     if !x.IsSetI() {
-      return 0
+        return 0
     }
 
     return *x.I
@@ -2013,19 +2134,29 @@ func (x *Union1) GetDNonCompat() *float64 {
 
 func (x *Union1) GetD() float64 {
     if !x.IsSetD() {
-      return 0.0
+        return 0.0
     }
 
     return *x.D
 }
 
-func (x *Union1) SetI(value int32) *Union1 {
+func (x *Union1) SetINonCompat(value int32) *Union1 {
     x.I = &value
     return x
 }
 
-func (x *Union1) SetD(value float64) *Union1 {
+func (x *Union1) SetI(value *int32) *Union1 {
+    x.I = value
+    return x
+}
+
+func (x *Union1) SetDNonCompat(value float64) *Union1 {
     x.D = &value
+    return x
+}
+
+func (x *Union1) SetD(value *float64) *Union1 {
+    x.D = value
     return x
 }
 
@@ -2083,7 +2214,7 @@ if err != nil {
     return err
 }
 
-    x.SetI(result)
+    x.SetINonCompat(result)
     return nil
 }
 
@@ -2093,12 +2224,33 @@ if err != nil {
     return err
 }
 
-    x.SetD(result)
+    x.SetDNonCompat(result)
     return nil
 }
 
+// Deprecated: Use NewUnion1().GetI() instead.
+var Union1_I_DEFAULT = NewUnion1().GetI()
+
+// Deprecated: Use NewUnion1().GetD() instead.
+var Union1_D_DEFAULT = NewUnion1().GetD()
+
 func (x *Union1) String() string {
     return fmt.Sprintf("%+v", x)
+}
+
+func (x *Union1) countSetFields() int {
+    count := int(0)
+    if (x.IsSetI()) {
+        count++
+    }
+    if (x.IsSetD()) {
+        count++
+    }
+    return count
+}
+
+func (x *Union1) CountSetFieldsUnion1() int {
+    return x.countSetFields()
 }
 
 
@@ -2127,7 +2279,11 @@ func (x *Union1Builder) Emit() *Union1 {
     var objCopy Union1 = *x.obj
     return &objCopy
 }
+
 func (x *Union1) Write(p thrift.Protocol) error {
+    if countSet := x.countSetFields(); countSet > 1 {
+        return fmt.Errorf("%T write union: no more than one field must be set (%d set).", x, countSet)
+    }
     if err := p.WriteStructBegin("union1"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
     }
@@ -2192,6 +2348,7 @@ func (x *Union1) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Union2 struct {
     I *int32 `thrift:"i,1" json:"i" db:"i"`
     D *float64 `thrift:"d,2" json:"d" db:"d"`
@@ -2202,20 +2359,12 @@ type Union2 struct {
 var _ thrift.Struct = &Union2{}
 
 func NewUnion2() *Union2 {
-    return (&Union2{})
+    return (&Union2{}).
+        SetINonCompat(0).
+        SetDNonCompat(0.0).
+        SetSNonCompat(*NewStruct1()).
+        SetUNonCompat(*NewUnion1())
 }
-
-// Deprecated: Use NewUnion2().I instead.
-var Union2_I_DEFAULT = NewUnion2().I
-
-// Deprecated: Use NewUnion2().D instead.
-var Union2_D_DEFAULT = NewUnion2().D
-
-// Deprecated: Use NewUnion2().S instead.
-var Union2_S_DEFAULT = NewUnion2().S
-
-// Deprecated: Use NewUnion2().U instead.
-var Union2_U_DEFAULT = NewUnion2().U
 
 func (x *Union2) GetINonCompat() *int32 {
     return x.I
@@ -2223,7 +2372,7 @@ func (x *Union2) GetINonCompat() *int32 {
 
 func (x *Union2) GetI() int32 {
     if !x.IsSetI() {
-      return 0
+        return 0
     }
 
     return *x.I
@@ -2235,7 +2384,7 @@ func (x *Union2) GetDNonCompat() *float64 {
 
 func (x *Union2) GetD() float64 {
     if !x.IsSetD() {
-      return 0.0
+        return 0.0
     }
 
     return *x.D
@@ -2247,7 +2396,7 @@ func (x *Union2) GetSNonCompat() *Struct1 {
 
 func (x *Union2) GetS() *Struct1 {
     if !x.IsSetS() {
-      return NewStruct1()
+        return NewStruct1()
     }
 
     return x.S
@@ -2259,29 +2408,49 @@ func (x *Union2) GetUNonCompat() *Union1 {
 
 func (x *Union2) GetU() *Union1 {
     if !x.IsSetU() {
-      return NewUnion1()
+        return NewUnion1()
     }
 
     return x.U
 }
 
-func (x *Union2) SetI(value int32) *Union2 {
+func (x *Union2) SetINonCompat(value int32) *Union2 {
     x.I = &value
     return x
 }
 
-func (x *Union2) SetD(value float64) *Union2 {
+func (x *Union2) SetI(value *int32) *Union2 {
+    x.I = value
+    return x
+}
+
+func (x *Union2) SetDNonCompat(value float64) *Union2 {
     x.D = &value
     return x
 }
 
-func (x *Union2) SetS(value Struct1) *Union2 {
+func (x *Union2) SetD(value *float64) *Union2 {
+    x.D = value
+    return x
+}
+
+func (x *Union2) SetSNonCompat(value Struct1) *Union2 {
     x.S = &value
     return x
 }
 
-func (x *Union2) SetU(value Union1) *Union2 {
+func (x *Union2) SetS(value *Struct1) *Union2 {
+    x.S = value
+    return x
+}
+
+func (x *Union2) SetUNonCompat(value Union1) *Union2 {
     x.U = &value
+    return x
+}
+
+func (x *Union2) SetU(value *Union1) *Union2 {
+    x.U = value
     return x
 }
 
@@ -2387,7 +2556,7 @@ if err != nil {
     return err
 }
 
-    x.SetI(result)
+    x.SetINonCompat(result)
     return nil
 }
 
@@ -2397,7 +2566,7 @@ if err != nil {
     return err
 }
 
-    x.SetD(result)
+    x.SetDNonCompat(result)
     return nil
 }
 
@@ -2408,7 +2577,7 @@ if err != nil {
     return err
 }
 
-    x.SetS(result)
+    x.SetSNonCompat(result)
     return nil
 }
 
@@ -2419,12 +2588,61 @@ if err != nil {
     return err
 }
 
-    x.SetU(result)
+    x.SetUNonCompat(result)
     return nil
+}
+
+// Deprecated: Use NewUnion2().GetI() instead.
+var Union2_I_DEFAULT = NewUnion2().GetI()
+
+// Deprecated: Use NewUnion2().GetD() instead.
+var Union2_D_DEFAULT = NewUnion2().GetD()
+
+// Deprecated: Use NewUnion2().GetS() instead.
+var Union2_S_DEFAULT = NewUnion2().GetS()
+
+// Deprecated: Use NewUnion2().GetS() instead.
+func (x *Union2) DefaultGetS() *Struct1 {
+    if !x.IsSetS() {
+        return NewStruct1()
+    }
+    return x.S
+}
+
+// Deprecated: Use NewUnion2().GetU() instead.
+var Union2_U_DEFAULT = NewUnion2().GetU()
+
+// Deprecated: Use NewUnion2().GetU() instead.
+func (x *Union2) DefaultGetU() *Union1 {
+    if !x.IsSetU() {
+        return NewUnion1()
+    }
+    return x.U
 }
 
 func (x *Union2) String() string {
     return fmt.Sprintf("%+v", x)
+}
+
+func (x *Union2) countSetFields() int {
+    count := int(0)
+    if (x.IsSetI()) {
+        count++
+    }
+    if (x.IsSetD()) {
+        count++
+    }
+    if (x.IsSetS()) {
+        count++
+    }
+    if (x.IsSetU()) {
+        count++
+    }
+    return count
+}
+
+func (x *Union2) CountSetFieldsUnion2() int {
+    return x.countSetFields()
 }
 
 
@@ -2463,7 +2681,11 @@ func (x *Union2Builder) Emit() *Union2 {
     var objCopy Union2 = *x.obj
     return &objCopy
 }
+
 func (x *Union2) Write(p thrift.Protocol) error {
+    if countSet := x.countSetFields(); countSet > 1 {
+        return fmt.Errorf("%T write union: no more than one field must be set (%d set).", x, countSet)
+    }
     if err := p.WriteStructBegin("union2"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
     }
@@ -2543,3 +2765,4 @@ func (x *Union2) Read(p thrift.Protocol) error {
 
     return nil
 }
+

@@ -78,8 +78,10 @@ module.exports = {
       },
       items: [
         "idl/field-qualifiers",
+        "idl/annotations",
         "idl/structured-annotations",
         "idl/standard-thrift-annotation-library",
+        "idl/interfaces",
         "idl/mixins"
       ]
     },
@@ -91,23 +93,6 @@ module.exports = {
         id: 'spec/index'
       },
       items: [
-        "spec/about",
-        {
-          type: 'category',
-          label: 'Definitions',
-          link: {
-            type: 'doc',
-            id: 'spec/definition/index',
-          },
-          items: [
-            "spec/definition/interface",
-            "spec/definition/data",
-            "spec/definition/value",
-            "spec/definition/annotation",
-            "spec/definition/adapter",
-            "spec/definition/patch",
-          ]
-        },
         {
           type: 'category',
           label: 'Protocols',
@@ -127,7 +112,7 @@ module.exports = {
               },
               items: [
                 "spec/protocol/interface/rocket"
-              ]
+              ],
             }
           ]
         },
@@ -147,6 +132,7 @@ module.exports = {
 
         // Released features:
         'fb/features/serialization',
+        'features/operators',
         'features/universal-name',
         {
           type: 'category',
@@ -223,6 +209,7 @@ module.exports = {
             },
             'languages/cpp/channel',
             'languages/cpp/cpp2',
+            'languages/cpp/fd-passing',
             'fb/languages/cpp/serialization',
             'fb/languages/cpp/visitation',
             'fb/languages/cpp/hash',
@@ -254,17 +241,6 @@ module.exports = {
             'fb/languages/hack/adding-updating',
             'fb/languages/hack/adding-new-files',
             'fb/languages/hack/auto-sync-for-existing-thrift-files',
-            {
-              type: 'category',
-              label: 'Updating the thrift compiler in www',
-              link: {
-                type: 'doc',
-                id: "fb/languages/hack/updating-the-thrift-compiler-in-www/index",
-              },
-              items: [
-                'fb/languages/hack/updating-the-thrift-compiler-in-www/repo-lock',
-              ]
-            },
             'fb/languages/hack/adding-graphql-and-jsenum-support',
             {
               type: 'category',
@@ -359,7 +335,6 @@ module.exports = {
         'fb/server/threading-models',
         'fb/server/thrift-server-features',
         'fb/server/async-handling',
-        'fb/server/resource-pools',
         'fb/server/configuration',
         {
           type: 'category',
@@ -383,7 +358,18 @@ module.exports = {
           items: [
             'fb/server/overload-protection/cpuconcurrencycontroller',
             'fb/server/overload-protection/adaptive-concurrency',
-            'fb/server/overload-protection/queue-timeouts'
+            'fb/server/overload-protection/queue-timeout'
+          ]
+        },
+        {
+          type: 'category',
+          label: 'Resource Pools',
+          link: {
+            type: 'doc',
+            id: 'fb/server/resource-pools/index',
+          },
+          items: [
+            'fb/server/resource-pools/api'
           ]
         }
       ]
@@ -524,7 +510,15 @@ module.exports = {
         'fb/contributions/runbook',
         'fb/contributions/test-coverage',
         'fb/contributions/testing-dogpiles-locally',
-        'fb/contributions/compiler',
+        {
+          type: 'category',
+          label: 'Thrift Compiler',
+          link: {
+            type: 'doc',
+            id: "fb/contributions/compiler/index",
+          },
+          items: ['fb/contributions/compiler/updating-thrift-compiler-in-www']
+        },
         'fb/contributions/linter',
         'fb/contributions/oss',
         'fb/contributions/troubleshooting',
@@ -557,6 +551,7 @@ module.exports = {
         'contributions/universal-name',
         'contributions/terse-write',
         'contributions/adapter',
+        'contributions/fd-passing',
         'contributions/patch',
         {
           type: 'category',

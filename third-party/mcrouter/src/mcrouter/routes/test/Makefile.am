@@ -7,9 +7,11 @@ check_PROGRAMS = mcrouter_routes_test
 
 mcrouter_routes_test_SOURCES = \
   BigValueRouteTest.cpp \
+  BigValueRouteTestBase.h \
   ConstShardHashFuncTest.cpp \
   FailoverWithExptimeRouteTest.cpp \
   Main.cpp \
+  PoolRouteTest.cpp \
   RateLimitRouteTest.cpp \
   RouteHandleTestUtil.h \
   ShadowRouteTest.cpp \

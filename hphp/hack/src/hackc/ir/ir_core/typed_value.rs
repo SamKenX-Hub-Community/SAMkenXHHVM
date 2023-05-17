@@ -3,25 +3,64 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 
+use std::sync::Arc;
+
 use hash::IndexMap;
 use hash::IndexSet;
 
 use crate::ClassId;
+use crate::Constant;
 use crate::FloatBits;
+use crate::TypeInfo;
 use crate::UnitBytesId;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum TypedValue {
-    Uninit,
-    Int(i64),
     Bool(bool),
+    Dict(DictValue),
     Float(FloatBits),
-    String(UnitBytesId),
+    Int(i64),
+    Keyset(KeysetValue),
     LazyClass(ClassId),
     Null,
+    String(UnitBytesId),
+    Uninit,
     Vec(Vec<TypedValue>),
-    Keyset(KeysetValue),
-    Dict(DictValue),
+}
+
+impl TypedValue {
+    pub fn type_info(&self) -> TypeInfo {
+        use crate::types::BaseType;
+        match self {
+            TypedValue::Bool(_) => BaseType::Bool.into(),
+            TypedValue::Dict(_) => BaseType::Dict.into(),
+            TypedValue::Float(_) => BaseType::Float.into(),
+            TypedValue::Int(_) => BaseType::Int.into(),
+            TypedValue::Keyset(_) => BaseType::Keyset.into(),
+            TypedValue::LazyClass(_) => BaseType::String.into(),
+            TypedValue::Null => BaseType::Null.into(),
+            TypedValue::String(_) => BaseType::String.into(),
+            TypedValue::Uninit => TypeInfo::empty(),
+            TypedValue::Vec(_) => BaseType::Vec.into(),
+        }
+    }
+}
+
+impl<'a> From<TypedValue> for Constant<'a> {
+    fn from(tv: TypedValue) -> Self {
+        match tv {
+            TypedValue::Bool(b) => Constant::Bool(b),
+            TypedValue::Float(f) => Constant::Float(f),
+            TypedValue::Int(i) => Constant::Int(i),
+            TypedValue::LazyClass(id) => Constant::String(id.id),
+            TypedValue::Null => Constant::Null,
+            TypedValue::String(id) => Constant::String(id),
+            TypedValue::Uninit => Constant::Uninit,
+            TypedValue::Dict(_) | TypedValue::Keyset(_) | TypedValue::Vec(_) => {
+                Constant::Array(Arc::new(tv))
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]

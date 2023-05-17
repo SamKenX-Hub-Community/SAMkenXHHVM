@@ -80,50 +80,27 @@ std::string mangle_java_constant_name(const std::string& ref) {
 std::string quote_java_string(const std::string& unescaped) {
   std::ostringstream quoted;
   quoted << '\"';
-  for (std::string::size_type i = 0; i < unescaped.size();) {
-    switch (unescaped[i]) {
-      case '\\': {
-        quoted << unescaped[i];
-        ++i;
-        assert(i <= unescaped.size());
-        if (i == unescaped.size()) {
-          throw std::runtime_error(
-              "compiler error: leading backslash missing escape sequence: " +
-              unescaped);
-        }
-        if (unescaped[i] == 'x') {
-          auto end = unescaped.find_first_not_of("0123456789abcdefABCDEF", ++i);
-          if (end == std::string::npos) {
-            end = unescaped.size();
-          }
-          if (end == i) {
-            throw std::runtime_error(
-                "compiler error: missing hexadecimal character code in escape sequence: " +
-                unescaped);
-          }
-          assert(i < end);
-          if (end > i + 2) {
-            end = i + 2;
-          }
-          quoted << 'u';
-          for (auto n = 4 - (end - i); n--;) {
-            quoted << '0';
-          }
-          quoted.write(std::next(unescaped.data(), i), end - i);
-          i = end;
+  for (unsigned char c : unescaped) {
+    switch (c) {
+      case '\\':
+        quoted << "\\\\";
+        break;
+      case '"':
+        quoted << "\\\"";
+        break;
+      case '\n':
+        quoted << "\\n";
+        break;
+      default: {
+        if (c < 0x20) {
+          quoted << fmt::format("\\{:03o}", c);
+        } else if (c >= 0xf8) {
+          quoted << fmt::format("\\u{:04x}", c);
         } else {
-          quoted << unescaped[i++];
+          quoted << c;
         }
         break;
       }
-      case '"':
-        quoted << '\\' << unescaped[i];
-        ++i;
-        break;
-      default:
-        quoted << unescaped[i];
-        ++i;
-        break;
     }
   }
   quoted << '\"';

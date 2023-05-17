@@ -291,8 +291,7 @@ let make_remote_server_api
         State_loader_futures.download_and_unpack_saved_state_from_manifold
           ~ssopt
           ~progress_callback:(fun _ -> ())
-          ~saved_state_type:
-            (Saved_state_loader.Naming_and_dep_table { naming_sqlite = true })
+          ~saved_state_type:Saved_state_loader.Naming_and_dep_table
           ~manifold_path
           ~target_path:(Path.make target_path)
       in
@@ -705,6 +704,8 @@ let make_remote_server_api
           memtrace_dir = None;
         }
       in
+      (* It doesn't make sense for a remote worker to produce errors.bin itself. *)
+      ServerProgress.enable_error_production false;
       (* TODO: use the telemetry *)
       let { Typing_check_service.errors; telemetry; _ } =
         Typing_check_service.go
@@ -713,8 +714,11 @@ let make_remote_server_api
           Typing_service_delegate.default
           telemetry
           files_to_check
+          ~root:None
           ~memory_cap:(Some 200000)
           ~longlived_workers:false
+          ~use_hh_distc_instead_of_hulk:false
+          ~hh_distc_fanout_threshold:None
           ~check_info
       in
       HackEventLogger.remote_worker_type_check_end telemetry ~start_t:t;

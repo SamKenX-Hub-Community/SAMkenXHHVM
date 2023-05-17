@@ -171,8 +171,6 @@ where
         ::std::result::Result::Ok(Self::from(p.read_i32()?))
     }
 }
-
-
 impl ::fbthrift::GetTType for number {
     const TTYPE: ::fbthrift::TType = <::std::primitive::i32 as ::fbthrift::GetTType>::TTYPE;
 }
@@ -265,6 +263,29 @@ where
 }
 
 
+impl ::fbthrift::metadata::ThriftAnnotations for A {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            _ => {}
+        }
+
+        None
+    }
+}
+
+
 
 impl ::std::default::Default for U {
     fn default() -> Self {
@@ -325,20 +346,41 @@ where
                     alt = ::std::option::Option::Some(Self::s(::fbthrift::Deserialize::read(p)?));
                 }
                 (fty, _, false) => p.skip(fty)?,
-                (badty, badid, true) => return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ApplicationException::new(
-                    ::fbthrift::ApplicationExceptionErrorCode::ProtocolError,
-                    format!(
-                        "unwanted extra union {} field ty {:?} id {}",
-                        "U",
-                        badty,
-                        badid,
-                    ),
+                (badty, badid, true) => return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ProtocolError::UnwantedExtraUnionField(
+                    "U".to_string(),
+                    badty,
+                    badid,
                 ))),
             }
             p.read_field_end()?;
         }
         p.read_struct_end()?;
         ::std::result::Result::Ok(alt.unwrap_or_default())
+    }
+}
+
+
+impl ::fbthrift::metadata::ThriftAnnotations for U {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            2 => {
+            },
+            _ => {}
+        }
+
+        None
     }
 }
 
@@ -407,6 +449,29 @@ where
             message: field_message.unwrap_or_default(),
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         })
+    }
+}
+
+
+impl ::fbthrift::metadata::ThriftAnnotations for Bang {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            _ => {}
+        }
+
+        None
     }
 }
 

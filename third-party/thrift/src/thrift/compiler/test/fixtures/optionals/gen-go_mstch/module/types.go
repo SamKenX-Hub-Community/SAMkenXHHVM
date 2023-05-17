@@ -4,9 +4,9 @@
 package module // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 
@@ -111,7 +111,11 @@ type Color struct {
 var _ thrift.Struct = &Color{}
 
 func NewColor() *Color {
-    return (&Color{})
+    return (&Color{}).
+        SetRedNonCompat(0.0).
+        SetGreenNonCompat(0.0).
+        SetBlueNonCompat(0.0).
+        SetAlphaNonCompat(0.0)
 }
 
 func (x *Color) GetRedNonCompat() float64 {
@@ -146,8 +150,18 @@ func (x *Color) GetAlpha() float64 {
     return x.Alpha
 }
 
+func (x *Color) SetRedNonCompat(value float64) *Color {
+    x.Red = value
+    return x
+}
+
 func (x *Color) SetRed(value float64) *Color {
     x.Red = value
+    return x
+}
+
+func (x *Color) SetGreenNonCompat(value float64) *Color {
+    x.Green = value
     return x
 }
 
@@ -156,8 +170,18 @@ func (x *Color) SetGreen(value float64) *Color {
     return x
 }
 
+func (x *Color) SetBlueNonCompat(value float64) *Color {
+    x.Blue = value
+    return x
+}
+
 func (x *Color) SetBlue(value float64) *Color {
     x.Blue = value
+    return x
+}
+
+func (x *Color) SetAlphaNonCompat(value float64) *Color {
+    x.Alpha = value
     return x
 }
 
@@ -165,10 +189,6 @@ func (x *Color) SetAlpha(value float64) *Color {
     x.Alpha = value
     return x
 }
-
-
-
-
 
 func (x *Color) writeField1(p thrift.Protocol) error {  // Red
     if err := p.WriteFieldBegin("red", thrift.DOUBLE, 1); err != nil {
@@ -240,7 +260,7 @@ if err != nil {
     return err
 }
 
-    x.SetRed(result)
+    x.SetRedNonCompat(result)
     return nil
 }
 
@@ -250,7 +270,7 @@ if err != nil {
     return err
 }
 
-    x.SetGreen(result)
+    x.SetGreenNonCompat(result)
     return nil
 }
 
@@ -260,7 +280,7 @@ if err != nil {
     return err
 }
 
-    x.SetBlue(result)
+    x.SetBlueNonCompat(result)
     return nil
 }
 
@@ -270,7 +290,7 @@ if err != nil {
     return err
 }
 
-    x.SetAlpha(result)
+    x.SetAlphaNonCompat(result)
     return nil
 }
 
@@ -314,6 +334,7 @@ func (x *ColorBuilder) Emit() *Color {
     var objCopy Color = *x.obj
     return &objCopy
 }
+
 func (x *Color) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Color"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -395,6 +416,7 @@ func (x *Color) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Vehicle struct {
     Color *Color `thrift:"color,1" json:"color" db:"color"`
     LicensePlate *string `thrift:"licensePlate,2,optional" json:"licensePlate,omitempty" db:"licensePlate"`
@@ -407,23 +429,9 @@ var _ thrift.Struct = &Vehicle{}
 
 func NewVehicle() *Vehicle {
     return (&Vehicle{}).
-        SetHasAC(false)
+        SetColorNonCompat(*NewColor()).
+        SetHasACNonCompat(false)
 }
-
-// Deprecated: Use NewVehicle().Color instead.
-var Vehicle_Color_DEFAULT = NewVehicle().Color
-
-// Deprecated: Use NewVehicle().LicensePlate instead.
-var Vehicle_LicensePlate_DEFAULT = NewVehicle().LicensePlate
-
-// Deprecated: Use NewVehicle().Description instead.
-var Vehicle_Description_DEFAULT = NewVehicle().Description
-
-// Deprecated: Use NewVehicle().Name instead.
-var Vehicle_Name_DEFAULT = NewVehicle().Name
-
-// Deprecated: Use NewVehicle().HasAC instead.
-var Vehicle_HasAC_DEFAULT = NewVehicle().HasAC
 
 func (x *Vehicle) GetColorNonCompat() *Color {
     return x.Color
@@ -431,7 +439,7 @@ func (x *Vehicle) GetColorNonCompat() *Color {
 
 func (x *Vehicle) GetColor() *Color {
     if !x.IsSetColor() {
-      return NewColor()
+        return NewColor()
     }
 
     return x.Color
@@ -443,7 +451,7 @@ func (x *Vehicle) GetLicensePlateNonCompat() *string {
 
 func (x *Vehicle) GetLicensePlate() string {
     if !x.IsSetLicensePlate() {
-      return ""
+        return ""
     }
 
     return *x.LicensePlate
@@ -455,7 +463,7 @@ func (x *Vehicle) GetDescriptionNonCompat() *string {
 
 func (x *Vehicle) GetDescription() string {
     if !x.IsSetDescription() {
-      return ""
+        return ""
     }
 
     return *x.Description
@@ -467,7 +475,7 @@ func (x *Vehicle) GetNameNonCompat() *string {
 
 func (x *Vehicle) GetName() string {
     if !x.IsSetName() {
-      return ""
+        return ""
     }
 
     return *x.Name
@@ -479,29 +487,54 @@ func (x *Vehicle) GetHasACNonCompat() *bool {
 
 func (x *Vehicle) GetHasAC() bool {
     if !x.IsSetHasAC() {
-      return false
+        return false
     }
 
     return *x.HasAC
 }
 
-func (x *Vehicle) SetColor(value Color) *Vehicle {
+func (x *Vehicle) SetColorNonCompat(value Color) *Vehicle {
     x.Color = &value
     return x
 }
 
-func (x *Vehicle) SetLicensePlate(value string) *Vehicle {
+func (x *Vehicle) SetColor(value *Color) *Vehicle {
+    x.Color = value
+    return x
+}
+
+func (x *Vehicle) SetLicensePlateNonCompat(value string) *Vehicle {
     x.LicensePlate = &value
     return x
 }
 
-func (x *Vehicle) SetDescription(value string) *Vehicle {
+func (x *Vehicle) SetLicensePlate(value *string) *Vehicle {
+    x.LicensePlate = value
+    return x
+}
+
+func (x *Vehicle) SetDescriptionNonCompat(value string) *Vehicle {
     x.Description = &value
     return x
 }
 
-func (x *Vehicle) SetName(value string) *Vehicle {
+func (x *Vehicle) SetDescription(value *string) *Vehicle {
+    x.Description = value
+    return x
+}
+
+func (x *Vehicle) SetNameNonCompat(value string) *Vehicle {
     x.Name = &value
+    return x
+}
+
+func (x *Vehicle) SetName(value *string) *Vehicle {
+    x.Name = value
+    return x
+}
+
+func (x *Vehicle) SetHasACNonCompat(value bool) *Vehicle {
+    x.HasAC = &value
     return x
 }
 
@@ -637,7 +670,7 @@ if err != nil {
     return err
 }
 
-    x.SetColor(result)
+    x.SetColorNonCompat(result)
     return nil
 }
 
@@ -647,7 +680,7 @@ if err != nil {
     return err
 }
 
-    x.SetLicensePlate(result)
+    x.SetLicensePlateNonCompat(result)
     return nil
 }
 
@@ -657,7 +690,7 @@ if err != nil {
     return err
 }
 
-    x.SetDescription(result)
+    x.SetDescriptionNonCompat(result)
     return nil
 }
 
@@ -667,7 +700,7 @@ if err != nil {
     return err
 }
 
-    x.SetName(result)
+    x.SetNameNonCompat(result)
     return nil
 }
 
@@ -677,9 +710,32 @@ if err != nil {
     return err
 }
 
-    x.SetHasAC(result)
+    x.SetHasACNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewVehicle().GetColor() instead.
+var Vehicle_Color_DEFAULT = NewVehicle().GetColor()
+
+// Deprecated: Use NewVehicle().GetColor() instead.
+func (x *Vehicle) DefaultGetColor() *Color {
+    if !x.IsSetColor() {
+        return NewColor()
+    }
+    return x.Color
+}
+
+// Deprecated: Use NewVehicle().GetLicensePlate() instead.
+var Vehicle_LicensePlate_DEFAULT = NewVehicle().GetLicensePlate()
+
+// Deprecated: Use NewVehicle().GetDescription() instead.
+var Vehicle_Description_DEFAULT = NewVehicle().GetDescription()
+
+// Deprecated: Use NewVehicle().GetName() instead.
+var Vehicle_Name_DEFAULT = NewVehicle().GetName()
+
+// Deprecated: Use NewVehicle().GetHasAC() instead.
+var Vehicle_HasAC_DEFAULT = NewVehicle().GetHasAC()
 
 func (x *Vehicle) String() string {
     return fmt.Sprintf("%+v", x)
@@ -726,6 +782,7 @@ func (x *VehicleBuilder) Emit() *Vehicle {
     var objCopy Vehicle = *x.obj
     return &objCopy
 }
+
 func (x *Vehicle) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Vehicle"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -815,6 +872,7 @@ func (x *Vehicle) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Person struct {
     Id PersonID `thrift:"id,1" json:"id" db:"id"`
     Name string `thrift:"name,2" json:"name" db:"name"`
@@ -831,23 +889,10 @@ type Person struct {
 var _ thrift.Struct = &Person{}
 
 func NewPerson() *Person {
-    return (&Person{})
+    return (&Person{}).
+        SetIdNonCompat(NewPersonID()).
+        SetNameNonCompat("")
 }
-
-// Deprecated: Use NewPerson().Age instead.
-var Person_Age_DEFAULT = NewPerson().Age
-
-// Deprecated: Use NewPerson().Address instead.
-var Person_Address_DEFAULT = NewPerson().Address
-
-// Deprecated: Use NewPerson().FavoriteColor instead.
-var Person_FavoriteColor_DEFAULT = NewPerson().FavoriteColor
-
-// Deprecated: Use NewPerson().BestFriend instead.
-var Person_BestFriend_DEFAULT = NewPerson().BestFriend
-
-// Deprecated: Use NewPerson().AfraidOfAnimal instead.
-var Person_AfraidOfAnimal_DEFAULT = NewPerson().AfraidOfAnimal
 
 func (x *Person) GetIdNonCompat() PersonID {
     return x.Id
@@ -871,7 +916,7 @@ func (x *Person) GetAgeNonCompat() *int16 {
 
 func (x *Person) GetAge() int16 {
     if !x.IsSetAge() {
-      return 0
+        return 0
     }
 
     return *x.Age
@@ -883,7 +928,7 @@ func (x *Person) GetAddressNonCompat() *string {
 
 func (x *Person) GetAddress() string {
     if !x.IsSetAddress() {
-      return ""
+        return ""
     }
 
     return *x.Address
@@ -895,7 +940,7 @@ func (x *Person) GetFavoriteColorNonCompat() *Color {
 
 func (x *Person) GetFavoriteColor() *Color {
     if !x.IsSetFavoriteColor() {
-      return NewColor()
+        return NewColor()
     }
 
     return x.FavoriteColor
@@ -907,7 +952,7 @@ func (x *Person) GetFriendsNonCompat() []PersonID {
 
 func (x *Person) GetFriends() []PersonID {
     if !x.IsSetFriends() {
-      return nil
+        return make([]PersonID, 0)
     }
 
     return x.Friends
@@ -919,7 +964,7 @@ func (x *Person) GetBestFriendNonCompat() *PersonID {
 
 func (x *Person) GetBestFriend() PersonID {
     if !x.IsSetBestFriend() {
-      return NewPersonID()
+        return NewPersonID()
     }
 
     return *x.BestFriend
@@ -931,7 +976,7 @@ func (x *Person) GetPetNamesNonCompat() map[Animal]string {
 
 func (x *Person) GetPetNames() map[Animal]string {
     if !x.IsSetPetNames() {
-      return nil
+        return make(map[Animal]string)
     }
 
     return x.PetNames
@@ -943,7 +988,7 @@ func (x *Person) GetAfraidOfAnimalNonCompat() *Animal {
 
 func (x *Person) GetAfraidOfAnimal() Animal {
     if !x.IsSetAfraidOfAnimal() {
-      return 0
+        return 0
     }
 
     return *x.AfraidOfAnimal
@@ -955,14 +1000,24 @@ func (x *Person) GetVehiclesNonCompat() []*Vehicle {
 
 func (x *Person) GetVehicles() []*Vehicle {
     if !x.IsSetVehicles() {
-      return nil
+        return make([]*Vehicle, 0)
     }
 
     return x.Vehicles
 }
 
+func (x *Person) SetIdNonCompat(value PersonID) *Person {
+    x.Id = value
+    return x
+}
+
 func (x *Person) SetId(value PersonID) *Person {
     x.Id = value
+    return x
+}
+
+func (x *Person) SetNameNonCompat(value string) *Person {
+    x.Name = value
     return x
 }
 
@@ -971,18 +1026,38 @@ func (x *Person) SetName(value string) *Person {
     return x
 }
 
-func (x *Person) SetAge(value int16) *Person {
+func (x *Person) SetAgeNonCompat(value int16) *Person {
     x.Age = &value
     return x
 }
 
-func (x *Person) SetAddress(value string) *Person {
+func (x *Person) SetAge(value *int16) *Person {
+    x.Age = value
+    return x
+}
+
+func (x *Person) SetAddressNonCompat(value string) *Person {
     x.Address = &value
     return x
 }
 
-func (x *Person) SetFavoriteColor(value Color) *Person {
+func (x *Person) SetAddress(value *string) *Person {
+    x.Address = value
+    return x
+}
+
+func (x *Person) SetFavoriteColorNonCompat(value Color) *Person {
     x.FavoriteColor = &value
+    return x
+}
+
+func (x *Person) SetFavoriteColor(value *Color) *Person {
+    x.FavoriteColor = value
+    return x
+}
+
+func (x *Person) SetFriendsNonCompat(value []PersonID) *Person {
+    x.Friends = value
     return x
 }
 
@@ -991,8 +1066,18 @@ func (x *Person) SetFriends(value []PersonID) *Person {
     return x
 }
 
-func (x *Person) SetBestFriend(value PersonID) *Person {
+func (x *Person) SetBestFriendNonCompat(value PersonID) *Person {
     x.BestFriend = &value
+    return x
+}
+
+func (x *Person) SetBestFriend(value *PersonID) *Person {
+    x.BestFriend = value
+    return x
+}
+
+func (x *Person) SetPetNamesNonCompat(value map[Animal]string) *Person {
+    x.PetNames = value
     return x
 }
 
@@ -1001,8 +1086,18 @@ func (x *Person) SetPetNames(value map[Animal]string) *Person {
     return x
 }
 
-func (x *Person) SetAfraidOfAnimal(value Animal) *Person {
+func (x *Person) SetAfraidOfAnimalNonCompat(value Animal) *Person {
     x.AfraidOfAnimal = &value
+    return x
+}
+
+func (x *Person) SetAfraidOfAnimal(value *Animal) *Person {
+    x.AfraidOfAnimal = value
+    return x
+}
+
+func (x *Person) SetVehiclesNonCompat(value []*Vehicle) *Person {
+    x.Vehicles = value
     return x
 }
 
@@ -1010,8 +1105,6 @@ func (x *Person) SetVehicles(value []*Vehicle) *Person {
     x.Vehicles = value
     return x
 }
-
-
 
 func (x *Person) IsSetAge() bool {
     return x.Age != nil
@@ -1286,7 +1379,7 @@ if err != nil {
     return err
 }
 
-    x.SetId(result)
+    x.SetIdNonCompat(result)
     return nil
 }
 
@@ -1296,7 +1389,7 @@ if err != nil {
     return err
 }
 
-    x.SetName(result)
+    x.SetNameNonCompat(result)
     return nil
 }
 
@@ -1306,7 +1399,7 @@ if err != nil {
     return err
 }
 
-    x.SetAge(result)
+    x.SetAgeNonCompat(result)
     return nil
 }
 
@@ -1316,7 +1409,7 @@ if err != nil {
     return err
 }
 
-    x.SetAddress(result)
+    x.SetAddressNonCompat(result)
     return nil
 }
 
@@ -1327,7 +1420,7 @@ if err != nil {
     return err
 }
 
-    x.SetFavoriteColor(result)
+    x.SetFavoriteColorNonCompat(result)
     return nil
 }
 
@@ -1355,7 +1448,7 @@ if err := p.ReadSetEnd(); err != nil {
 }
 result := setResult
 
-    x.SetFriends(result)
+    x.SetFriendsNonCompat(result)
     return nil
 }
 
@@ -1365,7 +1458,7 @@ if err != nil {
     return err
 }
 
-    x.SetBestFriend(result)
+    x.SetBestFriendNonCompat(result)
     return nil
 }
 
@@ -1404,7 +1497,7 @@ if err := p.ReadMapEnd(); err != nil {
 }
 result := mapResult
 
-    x.SetPetNames(result)
+    x.SetPetNamesNonCompat(result)
     return nil
 }
 
@@ -1415,7 +1508,7 @@ if err != nil {
 }
 result := Animal(enumResult)
 
-    x.SetAfraidOfAnimal(result)
+    x.SetAfraidOfAnimalNonCompat(result)
     return nil
 }
 
@@ -1444,9 +1537,32 @@ if err := p.ReadListEnd(); err != nil {
 }
 result := listResult
 
-    x.SetVehicles(result)
+    x.SetVehiclesNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewPerson().GetAge() instead.
+var Person_Age_DEFAULT = NewPerson().GetAge()
+
+// Deprecated: Use NewPerson().GetAddress() instead.
+var Person_Address_DEFAULT = NewPerson().GetAddress()
+
+// Deprecated: Use NewPerson().GetFavoriteColor() instead.
+var Person_FavoriteColor_DEFAULT = NewPerson().GetFavoriteColor()
+
+// Deprecated: Use NewPerson().GetFavoriteColor() instead.
+func (x *Person) DefaultGetFavoriteColor() *Color {
+    if !x.IsSetFavoriteColor() {
+        return NewColor()
+    }
+    return x.FavoriteColor
+}
+
+// Deprecated: Use NewPerson().GetBestFriend() instead.
+var Person_BestFriend_DEFAULT = NewPerson().GetBestFriend()
+
+// Deprecated: Use NewPerson().GetAfraidOfAnimal() instead.
+var Person_AfraidOfAnimal_DEFAULT = NewPerson().GetAfraidOfAnimal()
 
 func (x *Person) String() string {
     return fmt.Sprintf("%+v", x)
@@ -1518,6 +1634,7 @@ func (x *PersonBuilder) Emit() *Person {
     var objCopy Person = *x.obj
     return &objCopy
 }
+
 func (x *Person) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Person"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1646,3 +1763,4 @@ func (x *Person) Read(p thrift.Protocol) error {
 
     return nil
 }
+

@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<8f8b4d866be3f0c339f26c984b9d756e>>
+// @generated SignedSource<<42edd10fb62ec9bc42e6663509069e93>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -62,6 +62,13 @@ pub trait Visitor<'node> {
     ) -> Result<(), <Self::Params as Params>::Error> {
         p.recurse(c, self.object())
     }
+    fn visit_binop(
+        &mut self,
+        c: &mut <Self::Params as Params>::Context,
+        p: &'node Binop<<Self::Params as Params>::Ex, <Self::Params as Params>::En>,
+    ) -> Result<(), <Self::Params as Params>::Error> {
+        p.recurse(c, self.object())
+    }
     fn visit_block(
         &mut self,
         c: &mut <Self::Params as Params>::Context,
@@ -73,6 +80,13 @@ pub trait Visitor<'node> {
         &mut self,
         c: &mut <Self::Params as Params>::Context,
         p: &'node Bop,
+    ) -> Result<(), <Self::Params as Params>::Error> {
+        p.recurse(c, self.object())
+    }
+    fn visit_capture_lid(
+        &mut self,
+        c: &mut <Self::Params as Params>::Context,
+        p: &'node CaptureLid<<Self::Params as Params>::Ex>,
     ) -> Result<(), <Self::Params as Params>::Error> {
         p.recurse(c, self.object())
     }

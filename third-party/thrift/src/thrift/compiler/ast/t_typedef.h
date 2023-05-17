@@ -88,6 +88,7 @@ class t_typedef : public t_type {
       : t_typedef(program, std::move(name), t_type_ref::from_req_ptr(type)) {}
 
   const t_type* get_type() const { return type_.get_type(); }
+  void set_type(t_type_ref type) { type_ = type; }
 
   bool is_typedef() const override { return true; }
   t_type::type get_type_value() const override {
@@ -129,7 +130,9 @@ class t_placeholder_typedef final : public t_typedef {
    */
   bool resolve();
 
-  std::string get_full_name() const override { return type_->get_full_name(); }
+  std::string get_full_name() const override {
+    return type_ ? type_->get_full_name() : name_;
+  }
 };
 
 } // namespace compiler

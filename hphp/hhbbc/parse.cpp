@@ -653,7 +653,8 @@ void add_frame_variables(php::Func& func, const FuncEmitter& fe) {
 
 const StaticString
   s_construct("__construct"),
-  s_DynamicallyCallable("__DynamicallyCallable");
+  s_DynamicallyCallable("__DynamicallyCallable"),
+  s_ModuleLevelTrait("__ModuleLevelTrait");
 
 std::unique_ptr<php::Func> parse_func(ParseUnitState& puState,
                                       php::Unit* unit,
@@ -689,6 +690,7 @@ std::unique_ptr<php::Func> parse_func(ParseUnitState& puState,
   ret->hasReturnWithMultiUBs = fe.hasReturnWithMultiUBs;
   ret->returnUBs          = fe.retUpperBounds;
   ret->originalFilename   = fe.originalFilename;
+  ret->originalModuleName = unit->moduleName;
 
   ret->isClosureBody       = fe.isClosureBody;
   ret->isAsync             = fe.isAsync;
@@ -704,6 +706,8 @@ std::unique_ptr<php::Func> parse_func(ParseUnitState& puState,
   ret->isReadonlyThis      = fe.attrs & AttrReadonlyThis;
   ret->noContextSensitiveAnalysis = fe.userAttributes.find(
     s___NoContextSensitiveAnalysis.get()) != fe.userAttributes.end();
+  ret->fromModuleLevelTrait = cls && cls->userAttributes.find(
+    s_ModuleLevelTrait.get()) != cls->userAttributes.end();
   ret->hasInOutArgs        = [&] {
     for (auto& a : fe.params) if (a.isInOut()) return true;
     return false;
@@ -891,6 +895,7 @@ std::unique_ptr<php::Class> parse_class(ParseUnitState& puState,
   ret->hasReifiedGenerics = ret->userAttributes.find(s___Reified.get()) !=
                             ret->userAttributes.end();
   ret->hasConstProp       = false;
+  ret->moduleName         = unit->moduleName;
 
   ret->sampleDynamicConstruct = [&] {
     if (!(ret->attrs & AttrDynamicallyConstructible)) return false;
@@ -926,7 +931,9 @@ std::unique_ptr<php::Class> parse_class(ParseUnitState& puState,
     ret->properties.push_back(
       php::Prop {
         prop.name(),
-        prop.attrs(),
+        static_cast<Attr>(
+          prop.attrs() & ~(AttrNoBadRedeclare | AttrNoImplicitNullable)
+        ),
         prop.userAttributes(),
         prop.docComment(),
         prop.userType(),
@@ -1081,6 +1088,7 @@ std::unique_ptr<php::TypeAlias> parse_type_alias(const TypeAliasEmitter& te) {
     te.attrs() | AttrUnique | AttrPersistent,
     te.type(),
     te.nullable(),
+    te.case_type(),
     te.userAttributes(),
     ts,
     Array{}
@@ -1098,6 +1106,7 @@ ParsedUnit parse_unit(const UnitEmitter& ue) {
   ret.unit->metaData       = ue.m_metaData;
   ret.unit->fileAttributes = ue.m_fileAttributes;
   ret.unit->moduleName     = ue.m_moduleName;
+  ret.unit->packageInfo    = ue.m_packageInfo;
 
   if (RO::EvalAbortBuildOnVerifyError && !ue.check(false)) {
     // Record a FatalInfo without a location. This represents a

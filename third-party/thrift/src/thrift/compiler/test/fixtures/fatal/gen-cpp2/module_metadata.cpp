@@ -358,7 +358,7 @@ StructMetadata<::test_cpp2::cpp_reflection::struct3>::gen(ThriftMetadata& metada
   module_struct3.is_union() = false;
   static const auto* const
   module_struct3_fields = new std::array<EncodedThriftField, 18>{{
-    {1, "fieldA", false, std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_I32_TYPE), std::vector<ThriftConstStruct>{*cvStruct("thrift.TerseWrite", {}).cv_struct_ref(), }},
+    {1, "fieldA", false, std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_I32_TYPE), std::vector<ThriftConstStruct>{*cvStruct("thrift.Experimental", {}).cv_struct_ref(), *cvStruct("thrift.TerseWrite", {}).cv_struct_ref(), }},
     {2, "fieldB", false, std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_STRING_TYPE), std::vector<ThriftConstStruct>{}},
     {3, "fieldC", false, std::make_unique<Enum<::test_cpp2::cpp_reflection::enum1>>("module.enum1"), std::vector<ThriftConstStruct>{}},
     {4, "fieldD", false, std::make_unique<Enum<::test_cpp2::cpp_reflection::enum2>>("module.enum2"), std::vector<ThriftConstStruct>{}},
@@ -684,7 +684,7 @@ StructMetadata<::test_cpp2::cpp_reflection::StructWithFieldAdapter>::gen(ThriftM
   module_StructWithFieldAdapter.is_union() = false;
   static const auto* const
   module_StructWithFieldAdapter_fields = new std::array<EncodedThriftField, 1>{{
-    {1, "field", false, std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_I32_TYPE), std::vector<ThriftConstStruct>{*cvStruct("cpp.Adapter", {{"name", cvString(R"(::my::Adapter1)")}}).cv_struct_ref(), }},
+    {1, "field", false, std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_I32_TYPE), std::vector<ThriftConstStruct>{*cvStruct("cpp.Adapter", {{"name", cvString("::my::Adapter1")}}).cv_struct_ref(), }},
   }};
   for (const auto& f : *module_StructWithFieldAdapter_fields) {
     ::apache::thrift::metadata::ThriftField field;
@@ -708,7 +708,7 @@ StructMetadata<::test_cpp2::cpp_reflection::UnionWithTypedefFieldAdapter>::gen(T
   module_UnionWithTypedefFieldAdapter.is_union() = true;
   static const auto* const
   module_UnionWithTypedefFieldAdapter_fields = new std::array<EncodedThriftField, 1>{{
-    {1, "field", false, std::make_unique<Typedef>("module.I32", std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_I32_TYPE), std::vector<ThriftConstStruct>{*cvStruct("cpp.Adapter", {{"name", cvString(R"(::my::Adapter1)")}}).cv_struct_ref(), }), std::vector<ThriftConstStruct>{}},
+    {1, "field", false, std::make_unique<Typedef>("module.I32", std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_I32_TYPE), std::vector<ThriftConstStruct>{*cvStruct("cpp.Adapter", {{"name", cvString("::my::Adapter1")}}).cv_struct_ref(), }), std::vector<ThriftConstStruct>{}},
   }};
   for (const auto& f : *module_UnionWithTypedefFieldAdapter_fields) {
     ::apache::thrift::metadata::ThriftField field;

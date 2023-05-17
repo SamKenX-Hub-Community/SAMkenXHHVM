@@ -118,6 +118,7 @@ class RocketServerConnection final
   void close(folly::exception_wrapper ew);
 
   // AsyncTransport::WriteCallback implementation
+  void writeStarting() noexcept final;
   void writeSuccess() noexcept final;
   void writeErr(
       size_t bytesWritten,
@@ -157,7 +158,7 @@ class RocketServerConnection final
     closeIfNeeded();
   }
 
-  void applyDscpAndMarkToSocket(const RequestSetupMetadata& setupMetadata);
+  void applyQosMarking(const RequestSetupMetadata& setupMetadata);
 
   class ReadResumableHandle {
    public:
@@ -235,9 +236,11 @@ class RocketServerConnection final
     return result;
   }
 
-  folly::SocketAddress getPeerAddress() const final {
-    return socket_->getPeerAddress();
+  const folly::SocketAddress& getPeerAddress() const noexcept override {
+    return peerAddress_;
   }
+
+  folly::AsyncSocket* getRawSocket() const { return rawSocket_; }
 
   using RocketServerConnectionObserverContainer = folly::ObserverContainer<
       RocketServerConnectionObserver,
@@ -296,7 +299,7 @@ class RocketServerConnection final
    * @return             Attached observers of type T.
    */
   template <typename T = Observer>
-  std::vector<T*> findObservers() {
+  std::vector<T*> findObservers() const {
     if (auto list = getObserverContainer()) {
       return list->findObservers<T>();
     }
@@ -322,8 +325,9 @@ class RocketServerConnection final
   // Note that attachEventBase()/detachEventBase() are not supported in server
   // code
   folly::EventBase& evb_;
-  folly::AsyncTransport::UniquePtr socket_;
+  folly::AsyncTransport::UniquePtr const socket_;
   folly::AsyncSocket* const rawSocket_;
+  folly::SocketAddress peerAddress_;
 
   Parser<RocketServerConnection> parser_{*this};
   std::unique_ptr<RocketServerHandler> frameHandler_;
@@ -349,6 +353,8 @@ class RocketServerConnection final
     std::vector<apache::thrift::MessageChannel::SendCallbackPtr> sendCallbacks;
     // the WriteEvent objects associated with each write in the batch
     std::vector<RocketServerConnectionObserver::WriteEvent> writeEvents;
+    // the raw byte offset at the beginning and end of the inflight write
+    RocketServerConnectionObserver::WriteEventBatchContext writeEventsContext;
   };
   // The size of the queue is equal to the total number of inflight writes to
   // the underlying transport, i.e., writes for which the

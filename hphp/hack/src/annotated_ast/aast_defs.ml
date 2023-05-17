@@ -11,7 +11,11 @@
  * requiring a lot of padding for inline doc comments. *)
 [@@@ocamlformat "doc-comments-padding=80"]
 
-type 'a local_id_map = 'a Local_id.Map.t [@@deriving eq, ord, map, show]
+(* We could open Hh_prelude here, but then we get errors about using ==,
+   which some visitor below uses. *)
+open Base.Export
+
+type 'a local_id_map = 'a Local_id.Map.t [@@deriving eq, hash, ord, map, show]
 
 let pp_local_id_map _ fmt map =
   Format.fprintf fmt "@[<hov 2>{";
@@ -25,17 +29,19 @@ let pp_local_id_map _ fmt map =
        false);
   Format.fprintf fmt "}@]"
 
-type pos = Ast_defs.pos [@@deriving eq, show, ord] [@@transform.opaque]
+type pos = Ast_defs.pos [@@deriving eq, hash, show, ord] [@@transform.opaque]
+
+let hash_pos hsv _pos = hsv
 
 type byte_string = Ast_defs.byte_string
-[@@deriving eq, show, ord] [@@transform.opaque]
+[@@deriving eq, hash, show, ord] [@@transform.opaque]
 
 type visibility = Ast_defs.visibility =
   | Private
   | Public
   | Protected
   | Internal
-[@@deriving eq, ord, show { with_path = false }] [@@transform.opaque]
+[@@deriving eq, hash, ord, show { with_path = false }] [@@transform.opaque]
 
 type tprim = Ast_defs.tprim =
   | Tnull
@@ -48,21 +54,23 @@ type tprim = Ast_defs.tprim =
   | Tnum
   | Tarraykey
   | Tnoreturn
-[@@deriving eq, ord, show { with_path = false }] [@@transform.opaque]
+[@@deriving eq, hash, ord, show { with_path = false }] [@@transform.opaque]
 
 type typedef_visibility = Ast_defs.typedef_visibility =
   | Transparent
   | Opaque
   | OpaqueModule
-[@@deriving eq, ord, show { with_path = false }] [@@transform.opaque]
+  | CaseType
+[@@deriving eq, hash, ord, show { with_path = false }] [@@transform.opaque]
 
 type reify_kind = Ast_defs.reify_kind =
   | Erased
   | SoftReified
   | Reified
-[@@deriving eq, ord, show { with_path = false }] [@@transform.opaque]
+[@@deriving eq, hash, ord, show { with_path = false }] [@@transform.opaque]
 
-type pstring = Ast_defs.pstring [@@deriving eq, ord, show] [@@transform.opaque]
+type pstring = Ast_defs.pstring
+[@@deriving eq, hash, ord, hash, show] [@@transform.opaque]
 
 type positioned_byte_string = Ast_defs.positioned_byte_string
 [@@deriving eq, ord, show]
@@ -70,12 +78,12 @@ type positioned_byte_string = Ast_defs.positioned_byte_string
 type og_null_flavor = Ast_defs.og_null_flavor =
   | OG_nullthrows
   | OG_nullsafe
-[@@deriving eq, ord, show { with_path = false }] [@@transform.opaque]
+[@@deriving eq, hash, ord, show { with_path = false }] [@@transform.opaque]
 
 type prop_or_method = Ast_defs.prop_or_method =
   | Is_prop
   | Is_method
-[@@deriving eq, ord, show { with_path = false }] [@@transform.opaque]
+[@@deriving eq, hash, ord, show { with_path = false }] [@@transform.opaque]
 
 type local_id = (Local_id.t[@visitors.opaque]) [@@transform.opaque]
 
@@ -430,11 +438,6 @@ and ('ex, 'en) expr_ =
       * (prop_or_method[@transform.opaque])
       (** Instance property or method access.
        *
-       * prop_or_method is:
-       *   - Is_prop for property access
-       *   - Is_method for method call, only possible when the node is
-       *   - the receiver in a Call node.
-       *
        *     $foo->bar      // OG_nullthrows, Is_prop: access named property
        *     ($foo->bar)()  // OG_nullthrows, Is_prop: call lambda stored in named property
        *     $foo?->bar     // OG_nullsafe,   Is_prop
@@ -444,6 +447,11 @@ and ('ex, 'en) expr_ =
        *     $foo->$bar()   // OG_nullthrows, Is_method: dynamic call, method name stored in local $bar
        *     $foo?->bar()   // OG_nullsafe,   Is_method
        *     $foo?->$bar()  // OG_nullsafe,   Is_method
+       *
+       * prop_or_method is:
+       *   - Is_prop for property access
+       *   - Is_method for method call, only possible when the node is the receiver in a Call node.
+       *
        *)
   | Class_get of
       ('ex, 'en) class_id
@@ -585,8 +593,7 @@ and ('ex, 'en) expr_ =
        *     -$foo
        *     +$foo
        *     $foo++ *)
-  | Binop of
-      (Ast_defs.bop[@transform.opaque]) * ('ex, 'en) expr * ('ex, 'en) expr
+  | Binop of ('ex, 'en) binop
       (** Binary operator.
        *
        *     $foo + $bar *)
@@ -642,7 +649,7 @@ and ('ex, 'en) expr_ =
        *     function(int $x): int { return $x; }
        *     function($x) use ($y) { return $y; }
        *     function($x): int use ($y, $z) { return $x + $y + $z; } *)
-  | Lfun of ('ex, 'en) fun_ * lid list
+  | Lfun of ('ex, 'en) fun_ * 'ex capture_lid list
       (** Hack lambda. Captures variables automatically.
        *
        *     $x ==> $x
@@ -746,12 +753,22 @@ and ('ex, 'en) expr_ =
        *   )
        * ```
        *)
+  | Package of sid
+      (** Expression used to check whether a package exists.
+       *
+       *     package package-name *)
 
 and hole_source =
   | Typing
   | UnsafeCast of hint list
   | UnsafeNonnullCast
   | EnforcedCast of hint list
+
+and ('ex, 'en) binop = {
+  bop: Ast_defs.bop; [@transform.opaque]
+  lhs: ('ex, 'en) expr; [@transform.explicit]
+  rhs: ('ex, 'en) expr; [@transform.explicit]
+}
 
 and ('ex, 'en) class_get_expr =
   | CGstring of (pstring[@transform.opaque])
@@ -817,9 +834,11 @@ and ('ex, 'en) fun_ = {
   f_doc_comment: doc_comment option;
 }
 
+and 'ex capture_lid = 'ex * lid
+
 and ('ex, 'en) efun = {
   ef_fun: ('ex, 'en) fun_;
-  ef_use: lid list;
+  ef_use: 'ex capture_lid list;
   ef_closure_class_name: string option;
 }
 
@@ -963,7 +982,7 @@ and ('ex, 'en) class_const = {
 and class_abstract_typeconst = {
   c_atc_as_constraint: hint option;
   c_atc_super_constraint: hint option;
-  c_atc_default: hint option;
+  c_atc_default: hint option; [@transform.explicit]
 }
 
 and class_concrete_typeconst = { c_tc_type: hint }
@@ -1036,7 +1055,7 @@ and ('ex, 'en) typedef = {
   t_tparams: ('ex, 'en) tparam list;
   t_as_constraint: hint option;
   t_super_constraint: hint option;
-  t_kind: hint;
+  t_kind: hint; [@transform.explicit]
   t_user_attributes: ('ex, 'en) user_attributes;
   t_file_attributes: ('ex, 'en) file_attribute list;
   t_mode: FileInfo.mode; [@visitors.opaque] [@transform.opaque]
@@ -1264,6 +1283,7 @@ and where_constraint_hint =
 [@@deriving
   show { with_path = false },
     eq,
+    hash,
     ord,
     map,
     transform ~restart:(`Disallow `Encode_as_result),

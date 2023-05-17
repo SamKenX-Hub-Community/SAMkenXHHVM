@@ -134,20 +134,24 @@ std::unique_ptr<t_const_value> gen_type(
 
   auto* ptr = &type;
   while (ptr->is_typedef()) {
-    if (ptr->uri().empty()) {
-      ptr = &*dynamic_cast<const t_typedef*>(ptr)->type();
+    auto& typedf = static_cast<const t_typedef&>(*ptr);
+    if (typedf.typedef_kind() != t_typedef::kind::defined) {
+      ptr = &*typedf.type();
       continue;
     }
 
     auto td = val();
     td->set_map();
-    td->add_map(val("uri"), val(ptr->uri()));
+    if (!ptr->uri().empty()) {
+      td->add_map(val("uri"), val(ptr->uri()));
+    }
     type_name->add_map(val("typedefType"), std::move(td));
     schema->add_map(val("name"), std::move(type_name));
     return schema;
   }
+  auto& resolved_type = *ptr;
 
-  switch (type.get_type_value()) {
+  switch (resolved_type.get_type_value()) {
     case t_type::type::t_void:
       break;
     case t_type::type::t_bool:
@@ -185,7 +189,7 @@ std::unique_ptr<t_const_value> gen_type(
           generator,
           program,
           defns_schema,
-          *static_cast<const t_list&>(type).elem_type()));
+          *static_cast<const t_list&>(resolved_type).elem_type()));
       break;
     case t_type::type::t_set:
       type_name->add_map(val("setType"), val(0));
@@ -195,14 +199,14 @@ std::unique_ptr<t_const_value> gen_type(
           generator,
           program,
           defns_schema,
-          *static_cast<const t_set&>(type).elem_type()));
+          *static_cast<const t_set&>(resolved_type).elem_type()));
       break;
     case t_type::type::t_map:
       type_name->add_map(val("mapType"), val(0));
       params = val();
       params->set_list();
       {
-        const auto& map = static_cast<const t_map&>(type);
+        const auto& map = static_cast<const t_map&>(resolved_type);
         params->add_list(
             gen_type(generator, program, defns_schema, *map.key_type()));
         params->add_list(
@@ -211,22 +215,31 @@ std::unique_ptr<t_const_value> gen_type(
       break;
     case t_type::type::t_enum: {
       if (defns_schema && program && generator) {
-        auto foundType =
-            dynamic_cast<const t_enum*>(program->scope()->find_def(type.uri()));
-        if (foundType) {
-          auto enum_schema = generator->gen_schema(*foundType);
-          add_as_definition(*defns_schema, "enumDef", std::move(enum_schema));
+        auto raw_type = program->scope()->find_def(resolved_type.uri());
+        if (!raw_type) {
+          raw_type =
+              program->scope()->find_type(resolved_type.get_scoped_name());
         }
+
+        auto found_type = dynamic_cast<const t_enum*>(raw_type);
+        auto enum_schema = generator->gen_schema(*found_type);
+        add_as_definition(*defns_schema, "enumDef", std::move(enum_schema));
       }
       auto enm = val();
       enm->set_map();
-      enm->add_map(val("uri"), val(type.uri()));
+      if (!resolved_type.uri().empty()) {
+        enm->add_map(val("uri"), val(resolved_type.uri()));
+      }
       type_name->add_map(val("enumType"), std::move(enm));
       break;
     }
     case t_type::type::t_struct: {
       if (defns_schema && program && generator) {
-        auto raw_type = program->scope()->find_def(type.uri());
+        auto raw_type = program->scope()->find_def(resolved_type.uri());
+        if (!raw_type) {
+          raw_type =
+              program->scope()->find_type(resolved_type.get_scoped_name());
+        }
         auto is_union = dynamic_cast<const t_union*>(raw_type);
         if (is_union) {
           auto union_schema = generator->gen_schema(*is_union);
@@ -247,12 +260,14 @@ std::unique_ptr<t_const_value> gen_type(
       }
       auto structured = val();
       structured->set_map();
-      structured->add_map(val("uri"), val(type.uri()));
+      if (!resolved_type.uri().empty()) {
+        structured->add_map(val("uri"), val(resolved_type.uri()));
+      }
       type_name->add_map(
           val([&] {
-            if (dynamic_cast<const t_union*>(&type)) {
+            if (dynamic_cast<const t_union*>(&resolved_type)) {
               return "unionType";
-            } else if (dynamic_cast<const t_exception*>(&type)) {
+            } else if (dynamic_cast<const t_exception*>(&resolved_type)) {
               return "exceptionType";
             } else {
               return "structType";
@@ -406,7 +421,7 @@ std::unique_ptr<t_const_value> schematizer::gen_schema(const t_service& node) {
     return_types_schema->set_list();
     for (const auto& ret : func.return_types()) {
       // TODO: Handle sink, stream, interactions
-      if (!ret->is_sink() && !ret->is_streamresponse()) {
+      if (!ret->is_sink() && !ret->is_streamresponse() && !ret->is_service()) {
         auto return_type_schema = val();
         return_type_schema->set_map();
         return_type_schema->add_map(
@@ -514,7 +529,9 @@ std::unique_ptr<t_const_value> schematizer::gen_schema(const t_typedef& node) {
   auto attrs = val();
   attrs->set_map();
   attrs->add_map(val("name"), val(node.get_name()));
-  attrs->add_map(val("uri"), val(node.uri()));
+  if (!node.uri().empty()) {
+    attrs->add_map(val("uri"), val(node.uri()));
+  }
   schema->add_map(val("attrs"), std::move(attrs));
 
   return schema;

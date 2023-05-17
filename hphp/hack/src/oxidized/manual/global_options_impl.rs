@@ -26,7 +26,7 @@ impl Default for SavedState {
         Self {
             loading: SavedStateLoading::default(),
             rollouts: SavedStateRollouts::default(),
-            project_metadata_w_flags: false,
+            project_metadata_w_flags: true,
         }
     }
 }
@@ -38,7 +38,6 @@ impl Default for GlobalOptions {
             tco_experimental_features: s_set::SSet::new(),
             tco_migration_flags: s_set::SSet::new(),
             tco_num_local_workers: None,
-            tco_parallel_type_checking_threshold: 10,
             tco_max_typechecker_worker_memory_mb: None,
             tco_defer_class_declaration_threshold: None,
             tco_prefetch_deferred_files: false,
@@ -47,6 +46,8 @@ impl Default for GlobalOptions {
             tco_remote_worker_key: None,
             tco_remote_check_id: None,
             tco_num_remote_workers: 0, // 4 in ocaml
+            tco_locl_cache_capacity: 30,
+            tco_locl_cache_node_threshold: 10_000,
             so_remote_version_specifier: None,
             so_naming_sqlite_path: None,
             po_auto_namespace_map: vec![],
@@ -116,8 +117,8 @@ impl Default for GlobalOptions {
             symbol_write_index_paths_file_output: None,
             symbol_write_sym_hash_in: None,
             symbol_write_exclude_out: None,
+            symbol_write_referenced_out: None,
             symbol_write_sym_hash_out: false,
-            po_enable_enum_classes: true,
             po_disable_hh_ignore_error: 0,
             tco_is_systemlib: false,
             tco_higher_kinded_types: false,
@@ -125,10 +126,10 @@ impl Default for GlobalOptions {
             tco_report_pos_from_reason: false,
             tco_typecheck_sample_rate: 1.0,
             tco_enable_sound_dynamic: false,
+            tco_enable_no_auto_dynamic: false,
             tco_skip_check_under_dynamic: false,
             tco_ifc_enabled: vec![],
             tco_global_access_check_enabled: false,
-            po_enable_enum_supertyping: true,
             po_interpret_soft_types_as_like_types: false,
             tco_enable_strict_string_concat_interp: false,
             tco_ignore_unsafe_cast: false,
@@ -145,7 +146,6 @@ impl Default for GlobalOptions {
             tco_strict_value_equality: false,
             tco_enforce_sealed_subclasses: false,
             tco_everything_sdt: false,
-            tco_pessimise_builtins: false,
             tco_explicit_consistent_constructors: 0,
             tco_require_types_class_consts: 0,
             tco_type_printer_fuel: 100,
@@ -164,6 +164,7 @@ impl Default for GlobalOptions {
             tco_ide_should_use_hack_64_distc: false,
             tco_tast_under_dynamic: false,
             tco_rust_elab: false,
+            tco_ide_load_naming_table_on_disk: false,
         }
     }
 }

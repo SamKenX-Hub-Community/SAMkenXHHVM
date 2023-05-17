@@ -552,6 +552,18 @@ TEST_F(HQCodecTest, ZeroLengthSettings) {
   EXPECT_EQ(callbacks_.sessionErrors, 0);
 }
 
+TEST_F(HQCodecTest, InvalidSettings) {
+  std::deque<hq::SettingPair> settings{
+      {hq::SettingId::ENABLE_WEBTRANSPORT, 37}};
+  hq::writeSettings(queueCtrl_, settings);
+  parseControl(CodecType::CONTROL_UPSTREAM);
+  EXPECT_EQ(callbacks_.settings, 0);
+  EXPECT_EQ(callbacks_.streamErrors, 0);
+  EXPECT_EQ(callbacks_.sessionErrors, 1);
+  EXPECT_EQ(callbacks_.lastParseError->getHttp3ErrorCode(),
+            HTTP3::ErrorCode::HTTP_SETTINGS_ERROR);
+}
+
 TEST_F(HQCodecTest, ZeroLengthTrailers) {
   writeValidFrame(queue_, FrameType::HEADERS);
 
@@ -801,6 +813,23 @@ TEST_F(HQCodecTest, HighAscii) {
   EXPECT_EQ(callbacks_.sessionErrors, 0);
 }
 
+TEST_F(HQCodecTest, WebTransportProtocol) {
+  HTTPMessage req;
+  req.setMethod(HTTPMethod::CONNECT);
+  req.setHTTPVersion(1, 1);
+  req.setURL("/wt");
+  req.setSecure(true);
+  req.setUpgradeProtocol("webtransport");
+
+  auto id = upstreamCodec_->createStream();
+  upstreamCodec_->generateHeader(queue_, id, req, false);
+  parse();
+
+  EXPECT_FALSE(callbacks_.msg->isIngressWebsocketUpgrade());
+  EXPECT_NE(nullptr, callbacks_.msg->getUpgradeProtocol());
+  EXPECT_EQ("webtransport", *callbacks_.msg->getUpgradeProtocol());
+}
+
 struct FrameAllowedParams {
   CodecType codecType;
   FrameType frameType;
@@ -860,6 +889,9 @@ std::string frameParamsToTestName(
       break;
     case FrameType::FB_PUSH_PRIORITY_UPDATE:
       testName += "PushPriorityUpdate";
+      break;
+    case FrameType::WEBTRANSPORT_BIDI:
+      testName += "WebTransportBidiStreamType";
       break;
     default:
       testName +=
@@ -973,9 +1005,13 @@ INSTANTIATE_TEST_SUITE_P(
         (FrameAllowedParams){
             CodecType::DOWNSTREAM, FrameType::FB_PUSH_PRIORITY_UPDATE, false},
         (FrameAllowedParams){
+            CodecType::DOWNSTREAM, FrameType::WEBTRANSPORT_BIDI, false},
+        (FrameAllowedParams){
             CodecType::UPSTREAM, FrameType::FB_PRIORITY_UPDATE, false},
         (FrameAllowedParams){
             CodecType::UPSTREAM, FrameType::FB_PUSH_PRIORITY_UPDATE, false},
+        (FrameAllowedParams){
+            CodecType::UPSTREAM, FrameType::WEBTRANSPORT_BIDI, false},
         // HQ Upstream Ingress Control Codec
         (FrameAllowedParams){
             CodecType::CONTROL_UPSTREAM, FrameType::DATA, false},
@@ -1005,6 +1041,8 @@ INSTANTIATE_TEST_SUITE_P(
         (FrameAllowedParams){CodecType::CONTROL_UPSTREAM,
                              FrameType::FB_PUSH_PRIORITY_UPDATE,
                              false},
+        (FrameAllowedParams){
+            CodecType::CONTROL_UPSTREAM, FrameType::WEBTRANSPORT_BIDI, false},
         // HQ Downstream Ingress Control Codec
         (FrameAllowedParams){
             CodecType::CONTROL_DOWNSTREAM, FrameType::DATA, false},
@@ -1033,7 +1071,10 @@ INSTANTIATE_TEST_SUITE_P(
             CodecType::CONTROL_DOWNSTREAM, FrameType::FB_PRIORITY_UPDATE, true},
         (FrameAllowedParams){CodecType::CONTROL_DOWNSTREAM,
                              FrameType::FB_PUSH_PRIORITY_UPDATE,
-                             true}),
+                             true},
+        (FrameAllowedParams){CodecType::CONTROL_DOWNSTREAM,
+                             FrameType::WEBTRANSPORT_BIDI,
+                             false}),
     frameParamsToTestName);
 
 class HQCodecTestFrameBeforeSettings

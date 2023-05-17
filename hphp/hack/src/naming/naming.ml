@@ -151,8 +151,7 @@ let passes =
        typechecker option *)
     Naming_elab_everything_sdt.top_down_pass;
     Naming_elab_everything_sdt.bottom_up_pass;
-    (* Validate use of `Hlike` hints - depends on `enable-like-type-hints`
-       and `everything_sdt` typechecker options *)
+    (* Validate use of `Hlike` hints - depends on `enable-like-type-hints` typechecker option *)
     Naming_validate_like_hint.pass on_error;
     (* Validate constructors under
        `consistent-explicit_consistent_constructors` typechecker option *)
@@ -167,6 +166,8 @@ let passes =
     Naming_validate_module.pass on_error;
   ]
 
+(* If we don't delegate to Rust, then all naming passes are done here in OCaml.
+   *)
 let ( elab_core_program,
       elab_core_class,
       elab_core_fun_def,

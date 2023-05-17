@@ -20,6 +20,7 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 @SwiftGenerated
 @ThriftUnion("DataUnion")
 public final class DataUnion implements com.facebook.thrift.payload.ThriftSerializable {
+    
     private static final TStruct STRUCT_DESC = new TStruct("DataUnion");
     private static final Map<String, Integer> NAMES_TO_IDS = new HashMap();
     public static final Map<String, Integer> THRIFT_NAMES_TO_IDS = new HashMap();
@@ -68,7 +69,7 @@ public final class DataUnion implements com.facebook.thrift.payload.ThriftSerial
                 default:
                 throw new IllegalArgumentException("invalid type " + _field.getClass().getName() + " for field " + _id);
             }
-        } catch (Exception t) {
+        } catch (java.lang.Exception t) {
             throw new IllegalArgumentException("invalid type " + _field.getClass().getName() + " for field " + _id);
         }
     }

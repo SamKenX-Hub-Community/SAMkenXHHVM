@@ -202,22 +202,31 @@ const string escaped_a = "\x61";
 const map<string, i32> char2ascii = {"'": 39, '"': 34, "\\": 92, "\x61": 97};
 
 const list<string> escaped_strings = [
+  // \x00 - \x1f are control characters:
+  "\x01",
+  "\x1f",
+  "\x20", // space
+  "\'",
+  '\"',
+  "\n",
+  "\r",
+  "\t",
   "\x61",
-  "\xab",
+  "\xc2\xab",
   "\x6a",
-  "\xa6",
+  "\xc2\xa6",
   "\x61yyy",
-  "\xabyyy",
+  "\xc2\xabyyy",
   "\x6ayyy",
-  "\xa6yyy",
+  "\xc2\xa6yyy",
   "zzz\x61",
-  "zzz\xab",
+  "zzz\xc2\xab",
   "zzz\x6a",
-  "zzz\xa6",
+  "zzz\xc2\xa6",
   "zzz\x61yyy",
-  "zzz\xabyyy",
+  "zzz\xc2\xabyyy",
   "zzz\x6ayyy",
-  "zzz\xa6yyy",
+  "zzz\xc2\xa6yyy",
 ];
 
 const bool false_c = false;

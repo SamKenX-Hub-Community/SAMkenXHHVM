@@ -18,17 +18,40 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
 #include <folly/Utility.h>
 #include <thrift/lib/cpp/util/VarintUtils.h>
+#include <thrift/lib/cpp2/Adapter.h>
 #include <thrift/lib/cpp2/op/detail/BasePatch.h>
 
 namespace apache {
 namespace thrift {
 namespace op {
 namespace detail {
+
+class ListPatchIndex
+    : public type::detail::EqWrap<ListPatchIndex, std::int32_t> {
+ private:
+  using Base = type::detail::EqWrap<ListPatchIndex, std::int32_t>;
+
+ public:
+  ListPatchIndex() = default;
+  explicit ListPatchIndex(size_t pos) : Base(util::toI32ZigZagOrdinal(pos)) {}
+  size_t position() const { return util::fromI32ZigZagOrdinal(toThrift()); }
+
+ private:
+  template <class>
+  friend struct ::apache::thrift::InlineAdapter;
+  template <class>
+  friend struct ::std::hash;
+  using Base::Base;
+  using Base::empty;
+  using Base::reset;
+  using Base::toThrift;
+};
 
 template <typename C1, typename C2>
 void erase_all(C1& container, const C2& values) {
@@ -155,63 +178,65 @@ class ListPatch : public BaseContainerPatch<Patch, ListPatch<Patch>> {
       folly::throw_exception<bad_patch_access>();
     }
 
-    return data_.patch()->operator[](util::toI32ZigZagOrdinal(pos));
+    return data_.patch()->operator[](ListPatchIndex(pos));
+  }
+
+  template <class Visitor>
+  void customVisit(Visitor&& v) const {
+    if (false) {
+      // Test whether the required methods exist in Visitor
+      v.assign(T{});
+      v.clear();
+      v.patchIfSet(std::unordered_map<ListPatchIndex, VP>{});
+      v.remove(std::vector<typename T::value_type>{});
+      v.prepend(T{});
+      v.append(T{});
+    }
+
+    if (Base::template customVisitAssignAndClear(v)) {
+      return;
+    }
+
+    v.patchIfSet(*data_.patch());
+    v.remove(*data_.remove());
+    v.prepend(*data_.prepend());
+    v.append(*data_.append());
   }
 
   void apply(T& val) const {
-    if (applyAssignOrClear(val)) {
-      return;
-    }
-
-    for (const auto& ep : *data_.patch()) {
-      auto idx = util::fromI32ZigZagOrdinal(ep.first);
-      if (idx >= 0 && idx < val.size()) {
-        ep.second.apply(val[idx]);
+    struct Visitor {
+      T& v;
+      void assign(const T& t) { v = t; }
+      void clear() { v.clear(); }
+      void patchIfSet(const VPMap& patches) {
+        for (const auto& ep : patches) {
+          auto idx = ep.first.position();
+          if (idx < v.size()) {
+            ep.second.apply(v[idx]);
+          }
+        }
       }
-    }
-
-    remove_all_values(val, *data_.remove());
-    val.insert(val.begin(), data_.prepend()->begin(), data_.prepend()->end());
-    val.insert(val.end(), data_.append()->begin(), data_.append()->end());
-  }
-
-  /// @copydoc AssignPatch::merge
-  template <typename U>
-  void merge(U&& next) {
-    if (mergeAssignAndClear(std::forward<U>(next))) {
-      return;
-    }
-
-    {
-      decltype(auto) rhs = *std::forward<U>(next).toThrift().patch();
-      auto& patch = data_.patch().value();
-      for (auto&& el : rhs) {
-        patch[el.first].merge(std::forward<decltype(el)>(el).second);
+      void remove(const std::vector<typename T::value_type>& t) {
+        remove_all_values(v, t);
       }
-    }
+      void prepend(const T& t) { v.insert(v.begin(), t.begin(), t.end()); }
+      void append(const T& t) { v.insert(v.end(), t.begin(), t.end()); }
+    };
 
-    {
-      decltype(auto) rhs = *std::forward<U>(next).toThrift().remove();
-      data_.remove()->reserve(data_.remove()->size() + rhs.size());
-      data_.remove()->insert(data_.remove()->end(), rhs.begin(), rhs.end());
-    }
-    // TODO(afuller): Optimize the r-value reference case.
-    if (!next.toThrift().prepend()->empty()) {
-      decltype(auto) rhs = *std::forward<U>(next).toThrift().prepend();
-      data_.prepend()->insert(data_.prepend()->begin(), rhs.begin(), rhs.end());
-    }
-    if (!next.toThrift().append()->empty()) {
-      decltype(auto) rhs = *std::forward<U>(next).toThrift().append();
-      data_.append()->insert(data_.append()->end(), rhs.begin(), rhs.end());
-    }
+    return customVisit(Visitor{val});
   }
 
  private:
-  using Base::applyAssignOrClear;
   using Base::assignOr;
   using Base::data_;
   using Base::hasAssign;
-  using Base::mergeAssignAndClear;
+
+  // Needed for merge(...). We can consider making this a public API.
+  void patchIfSet(const VPMap& patches) {
+    for (const auto& ep : patches) {
+      patchAt(ep.first.position()).merge(ep.second);
+    }
+  }
 };
 
 /// Patch for a Thrift set.
@@ -294,29 +319,39 @@ class SetPatch : public BaseContainerPatch<Patch, SetPatch<Patch>> {
     assignOr(*data_.remove()).insert(std::forward<U>(val));
   }
 
-  void apply(T& val) const {
-    if (applyAssignOrClear(val)) {
+  template <class Visitor>
+  void customVisit(Visitor&& v) const {
+    if (false) {
+      // Test whether the required methods exist in Visitor
+      v.assign(T{});
+      v.clear();
+      v.remove(T{});
+      v.add(T{});
+    }
+
+    if (Base::template customVisitAssignAndClear(v)) {
       return;
     }
 
-    erase_all(val, *data_.remove());
-    val.insert(data_.add()->begin(), data_.add()->end());
+    v.remove(*data_.remove());
+    v.add(*data_.add());
   }
 
-  /// @copydoc AssignPatch::merge
-  template <typename U>
-  void merge(U&& next) {
-    if (!mergeAssignAndClear(std::forward<U>(next))) {
-      remove(*std::forward<U>(next).toThrift().remove());
-      add(*std::forward<U>(next).toThrift().add());
-    }
+  void apply(T& val) const {
+    struct Visitor {
+      T& v;
+      void assign(const T& t) { v = t; }
+      void clear() { v.clear(); }
+      void remove(const T& t) { erase_all(v, t); }
+      void add(const T& t) { v.insert(t.begin(), t.end()); }
+    };
+
+    return customVisit(Visitor{val});
   }
 
  private:
-  using Base::applyAssignOrClear;
   using Base::assignOr;
   using Base::data_;
-  using Base::mergeAssignAndClear;
 };
 
 /// Patch for a Thrift map.
@@ -404,9 +439,13 @@ class MapPatch : public BaseContainerPatch<Patch, MapPatch<Patch>> {
   /// Returns the patch that for the entry.
   template <typename K = typename T::key_type>
   FOLLY_NODISCARD VP& patchByKey(K&& key) {
-    // TODO: Return dummy patch for cases when key is slotted for removal
-    return isKeyModifiedOrRemoved(key) ? data_.patch()->operator[](key)
-                                       : data_.patchPrior()->operator[](key);
+    if (data_.remove()->count(key)) {
+      // We are going to delete key, thus patchByKey is no-op and we return a
+      // dummy patch.
+      return dummy_;
+    }
+    return isKeyModified(key) ? data_.patch()->operator[](key)
+                              : data_.patchPrior()->operator[](key);
   }
 
   /// Ensures that key exists and patches the entry.
@@ -415,49 +454,54 @@ class MapPatch : public BaseContainerPatch<Patch, MapPatch<Patch>> {
     return (data_.add().value()[key], data_.patch()->operator[](key));
   }
 
-  void apply(T& val) const {
-    if (applyAssignOrClear(val)) {
+  template <class Visitor>
+  void customVisit(Visitor&& v) const {
+    if (false) {
+      // Test whether the required methods exist in Visitor
+      v.assign(T{});
+      v.clear();
+      v.patchIfSet(P{});
+      v.add(T{});
+      v.put(T{});
+      v.remove(std::unordered_set<typename T::key_type>{});
+    }
+
+    if (Base::template customVisitAssignAndClear(v)) {
       return;
     }
-    applyPatch(val, *data_.patchPrior());
-    val.insert(data_.add()->begin(), data_.add()->end());
-    erase_all(val, *data_.remove());
-    for (const auto& entry : *data_.put()) {
-      val.insert_or_assign(entry.first, entry.second);
-    }
-    applyPatch(val, *data_.patch());
+
+    v.patchIfSet(*data_.patchPrior());
+    v.add(*data_.add());
+    v.remove(*data_.remove());
+    v.put(*data_.put());
+    v.patchIfSet(*data_.patch());
   }
 
-  /// @copydoc AssignPatch::merge
-  template <typename U>
-  void merge(U&& next) {
-    if (mergeAssignAndClear(std::forward<U>(next))) {
-      return;
-    }
-
-    auto nextThrift = std::forward<U>(next).toThrift();
-    if (data_.add()->empty() && data_.put()->empty() &&
-        data_.remove()->empty()) {
-      mergePatches(*data_.patchPrior(), *nextThrift.patchPrior());
-    } else {
-      for (auto&& kv : *nextThrift.patchPrior()) {
-        // Move patches from patchPrior to patchAfter (aka patch) if current map
-        // patch had given key added/remove/put
-        patchByKey(kv.first).merge(kv.second);
+  void apply(T& val) const {
+    struct Visitor {
+      T& v;
+      void assign(const T& t) { v = t; }
+      void clear() { v.clear(); }
+      void patchIfSet(const P& kv) {
+        for (const auto& p : kv) {
+          auto it = v.find(p.first);
+          if (it != v.end()) {
+            p.second.apply(it->second);
+          }
+        }
       }
-    }
-    add(*nextThrift.add());
-    remove(*nextThrift.remove());
-    put(*nextThrift.put());
-    mergePatches(*data_.patch(), *nextThrift.patch());
-
-    // Cleanup keys that were removed in the final patch
-    for (const auto& key : *data_.remove()) {
-      data_.patchPrior()->erase(key);
-      if (!isKeyModified(key)) {
-        data_.patch()->erase(key);
+      void remove(const std::unordered_set<typename T::key_type>& keys) {
+        erase_all(v, keys);
       }
-    }
+      void add(const T& t) { v.insert(t.begin(), t.end()); }
+      void put(const T& t) {
+        for (const auto& entry : t) {
+          v.insert_or_assign(entry.first, entry.second);
+        }
+      }
+    };
+
+    return customVisit(Visitor{val});
   }
 
  private:
@@ -465,12 +509,6 @@ class MapPatch : public BaseContainerPatch<Patch, MapPatch<Patch>> {
   bool isKeyModified(K&& key) {
     return data_.add()->find(key) != data_.add()->end() ||
         data_.put()->find(key) != data_.put()->end();
-  }
-
-  template <typename K = typename T::key_type>
-  bool isKeyModifiedOrRemoved(K&& key) {
-    return isKeyModified(key) ||
-        data_.remove()->find(key) != data_.remove()->end();
   }
 
   void applyPatch(T& val, const P& patch) const {
@@ -482,19 +520,22 @@ class MapPatch : public BaseContainerPatch<Patch, MapPatch<Patch>> {
     }
   }
 
-  void mergePatches(P& ourPatch, P& otherPatch) {
-    for (auto&& el : otherPatch) {
-      ourPatch[el.first].merge(el.second);
+  // Needed for merge(...). We can consider making this a public API.
+  void patchIfSet(const P& patches) {
+    for (auto&& ep : patches) {
+      patchByKey(ep.first).merge(ep.second);
     }
   }
 
-  using Base::applyAssignOrClear;
   using Base::assignOr;
   using Base::data_;
-  using Base::mergeAssignAndClear;
+
+  VP dummy_;
 };
 
 } // namespace detail
 } // namespace op
 } // namespace thrift
 } // namespace apache
+
+FBTHRIFT_STD_HASH_WRAP_DATA(apache::thrift::op::detail::ListPatchIndex)

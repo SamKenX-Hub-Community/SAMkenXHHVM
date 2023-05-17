@@ -204,11 +204,17 @@ val with_origin : env -> Decl_counters.origin -> (env -> env * 'a) -> env * 'a
 val with_origin2 :
   env -> Decl_counters.origin -> (env -> env * 'a * 'b) -> env * 'a * 'b
 
-val with_in_expr_tree : env -> bool -> (env -> env * 'a * 'b) -> env * 'a * 'b
+val with_inside_expr_tree :
+  env -> Aast_defs.hint -> (env -> env * 'a * 'b) -> env * 'a * 'b
+
+val with_outside_expr_tree :
+  env -> (env -> Aast.class_name option -> env * 'a * 'b) -> env * 'a * 'b
+
+val inside_expr_tree : env -> Aast_defs.hint -> env
+
+val outside_expr_tree : env -> env
 
 val is_in_expr_tree : env -> bool
-
-val set_in_expr_tree : env -> bool -> env
 
 val is_static : env -> bool
 
@@ -345,7 +351,8 @@ val get_local : env -> Local_id.t -> locl_ty
 
 val get_local_pos : env -> Local_id.t -> locl_ty * Pos.t
 
-val get_locals : ?quiet:bool -> env -> Aast.lid list -> Typing_local_types.t
+val get_locals :
+  ?quiet:bool -> env -> 'a Aast.capture_lid list -> Typing_local_types.t
 
 val set_locals : env -> Typing_local_types.t -> env
 
@@ -551,6 +558,14 @@ val is_consistent : env -> bool
 val mark_inconsistent : env -> env
 
 val get_package_for_module : env -> string -> Package.package option
+
+val get_package_by_name : env -> string -> Package.package option
+
+val load_packages : env -> SSet.t -> env
+
+val with_packages : env -> SSet.t -> (env -> env * 'a) -> env * 'a
+
+val is_package_loaded : env -> string -> bool
 
 (** Remove solved variable from environment by replacing it by its binding. *)
 val remove_var :

@@ -170,9 +170,7 @@ static void PrepareEnv(Array& env, Transport *transport) {
     break;
   }
 
-  bool isServer =
-    RuntimeOption::ServerExecutionMode() && !is_cli_server_mode();
-  if (isServer) {
+  if (!is_any_cli_mode()) {
     env.set(s_HPHP_SERVER, 1);
     env.set(s_HPHP_HOTPROFILER, 1);
   }
@@ -355,7 +353,8 @@ void HttpProtocol::PreparePostVariables(Array& post,
                                         Array& files,
                                         Transport *transport,
                                         const RequestURI& r) {
-  if (transport->getMethod() != Transport::Method::POST) {
+  if (transport->getMethod() != Transport::Method::POST ||
+      transport->isStreamTransport()) {
     return;
   }
 

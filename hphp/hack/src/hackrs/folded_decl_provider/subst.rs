@@ -185,6 +185,7 @@ impl<'a, R: Reason> Substitution<'a, R> {
                     flags: ft.flags,
                     implicit_params: ft.implicit_params.clone(),
                     ifc_decl: ft.ifc_decl.clone(),
+                    cross_package: ft.cross_package.clone(),
                 }))
             }
             Ty_::Tapply(params) => {
@@ -197,7 +198,8 @@ impl<'a, R: Reason> Substitution<'a, R> {
                 )))
             }
             Ty_::Tshape(params) => {
-                let (shape_kind, ref fdm) = **params;
+                let (ref shape_kind, ref fdm) = **params;
+                let shape_kind = self.instantiate(shape_kind);
                 let fdm = fdm
                     .iter()
                     .map(|(f, sft)| {

@@ -77,6 +77,20 @@ std::string get_constants_class_name(const t_program& prog) {
 }
 
 template <typename Node>
+mstch::node get_structed_annotation_attribute(
+    const Node* node, const char* uri, const std::string& key) {
+  if (auto annotation = node->find_structured_annotation_or_null(uri)) {
+    for (const auto& item : annotation->value()->get_map()) {
+      if (item.first->get_string() == key) {
+        return item.second->get_string();
+      }
+    }
+  }
+
+  return nullptr;
+}
+
+template <typename Node>
 std::string get_java_swift_name(const Node* node) {
   return node->get_annotation(
       "java.swift.name", java::mangle_java_name(node->get_name(), false));
@@ -136,6 +150,9 @@ struct type_mapping {
 };
 
 std::vector<type_mapping> type_list;
+
+set<std::string> adapterDefinitionSet;
+std::string prevTypeName;
 
 } // namespace
 
@@ -491,9 +508,9 @@ class mstch_java_struct : public mstch_struct {
             {"struct:exceptionMessage", &mstch_java_struct::exception_message},
             {"struct:needsExceptionMessage?",
              &mstch_java_struct::needs_exception_message},
-            {"struct:enableIsSet?", &mstch_java_struct::enable_is_set},
             {"struct:hasTerseField?", &mstch_java_struct::has_terse_field},
             {"struct:hasWrapper?", &mstch_java_struct::has_wrapper},
+            {"struct:clearAdapter", &mstch_java_struct::clear_adapter},
         });
   }
   mstch::node java_package() {
@@ -521,6 +538,10 @@ class mstch_java_struct : public mstch_struct {
     }
     return false;
   }
+  mstch::node clear_adapter() {
+    adapterDefinitionSet.clear();
+    return mstch::node();
+  }
   mstch::node has_wrapper() {
     for (const auto& field : struct_->fields()) {
       auto has_annotation =
@@ -533,7 +554,8 @@ class mstch_java_struct : public mstch_struct {
   }
   mstch::node is_as_bean() {
     if (!struct_->is_xception() && !struct_->is_union()) {
-      return struct_->get_annotation("java.swift.mutable") == "true";
+      return struct_->get_annotation("java.swift.mutable") == "true" ||
+          struct_->find_structured_annotation_or_null(kJavaMutableUri);
     } else {
       return false;
     }
@@ -548,10 +570,17 @@ class mstch_java_struct : public mstch_struct {
     return java::mangle_java_name(struct_->get_name(), true);
   }
   mstch::node has_java_annotations() {
-    return struct_->has_annotation("java.swift.annotations");
+    return struct_->has_annotation("java.swift.annotations") ||
+        struct_->find_structured_annotation_or_null(kJavaAnnotationUri) !=
+        nullptr;
   }
   mstch::node java_annotations() {
-    return struct_->get_annotation("java.swift.annotations");
+    if (struct_->has_annotation("java.swift.annotations")) {
+      return struct_->get_annotation("java.swift.annotations");
+    }
+
+    return get_structed_annotation_attribute(
+        struct_, kJavaAnnotationUri, "java_annotation");
   }
   mstch::node exception_message() {
     const auto& field_name_to_use = struct_->get_annotation("message");
@@ -571,9 +600,6 @@ class mstch_java_struct : public mstch_struct {
     return struct_->is_xception() && struct_->has_annotation("message") &&
         struct_->get_field_by_name("message") == nullptr;
   }
-  mstch::node enable_is_set() {
-    return struct_->has_annotation("java.swift.enable_is_set");
-  }
 };
 
 class mstch_java_service : public mstch_service {
@@ -586,6 +612,8 @@ class mstch_java_service : public mstch_service {
         {
             {"service:javaPackage", &mstch_java_service::java_package},
             {"service:javaCapitalName", &mstch_java_service::java_capital_name},
+            {"service:javaParentCapitalName",
+             &mstch_java_service::java_parent_capital_name},
             {"service:onewayFunctions",
              &mstch_java_service::get_oneway_functions},
             {"service:requestResponseFunctions",
@@ -602,6 +630,10 @@ class mstch_java_service : public mstch_service {
   }
   mstch::node java_capital_name() {
     return java::mangle_java_name(service_->get_name(), true);
+  }
+  mstch::node java_parent_capital_name() {
+    return java::mangle_java_name(
+        context_.options.at("parent_service_name"), true);
   }
   mstch::node get_oneway_functions() {
     std::vector<t_function*> funcs;
@@ -722,155 +754,107 @@ class mstch_java_field : public mstch_field {
       : mstch_field(f, ctx, pos, field_context) {
     register_methods(
         this,
-        {{"field:javaName", &mstch_java_field::java_name},
-         {"field:javaCapitalName", &mstch_java_field::java_capital_name},
-         {"field:javaDefaultValue", &mstch_java_field::java_default_value},
-         {"field:javaAllCapsName", &mstch_java_field::java_all_caps_name},
-         {"field:recursive?", &mstch_java_field::is_recursive_reference},
-         {"field:negativeId?", &mstch_java_field::is_negative_id},
-         {"field:javaAnnotations?", &mstch_java_field::has_java_annotations},
-         {"field:javaAnnotations", &mstch_java_field::java_annotations},
-         {"field:javaTFieldName", &mstch_java_field::java_tfield_name},
-         {"field:isNullableOrOptionalNotEnum?",
-          &mstch_java_field::is_nullable_or_optional_not_enum},
-         {"field:isEnum?", &mstch_java_field::is_enum},
-         {"field:isObject?", &mstch_java_field::is_object},
-         {"field:isUnion?", &mstch_java_field::is_union},
-         {"field:nestedDepth", &mstch_java_field::get_nested_depth},
-         {"field:nestedDepth++", &mstch_java_field::increment_nested_depth},
-         {"field:nestedDepth--", &mstch_java_field::decrement_nested_depth},
-         {"field:isFirstDepth?", &mstch_java_field::is_first_depth},
-         {"field:prevNestedDepth", &mstch_java_field::preceding_nested_depth},
-         {"field:isContainer?", &mstch_java_field::is_container},
-         {"field:isNested?", &mstch_java_field::get_nested_container_flag},
-         {"field:setIsNested", &mstch_java_field::set_nested_container_flag},
-         {"field:typeFieldName", &mstch_java_field::type_field_name},
-         {"field:isSensitive?", &mstch_java_field::is_sensitive},
-         {"field:hasInitialValue?", &mstch_java_field::has_initial_value},
-         {"field:isPrimitive?", &mstch_java_field::is_primitive},
-         {"field:wrapper",
-          &mstch_java_field::get_structured_wrapper_class_name},
-         {"field:wrapperType",
-          &mstch_java_field::get_structured_wrapper_type_class_name},
-         {"field:hasAdapterOrWrapper?",
-          &mstch_java_field::has_adapter_or_wrapper},
-         {"field:hasWrapper?", &mstch_java_field::has_wrapper},
-         {"field:adapterClassName",
-          &mstch_java_field::get_structured_adapter_class_name},
-         {"field:typeClassName",
-          &mstch_java_field::get_structured_type_class_name},
-         {"field:hasMultipleTypeAdapters?",
-          &mstch_java_field::has_multiple_type_adapters},
-         {"field:secondAdapterClassName",
-          &mstch_java_field::get_second_structured_adapter_class_name},
-         {"field:secondTypeClassName",
-          &mstch_java_field::get_second_structured_adapter_type_name},
-         {"field:hasAdapter?", &mstch_java_field::has_type_adapter}});
+        {
+            {"field:javaName", &mstch_java_field::java_name},
+            {"field:javaCapitalName", &mstch_java_field::java_capital_name},
+            {"field:javaDefaultValue", &mstch_java_field::java_default_value},
+            {"field:javaAllCapsName", &mstch_java_field::java_all_caps_name},
+            {"field:recursive?", &mstch_java_field::is_recursive_reference},
+            {"field:negativeId?", &mstch_java_field::is_negative_id},
+            {"field:javaAnnotations?", &mstch_java_field::has_java_annotations},
+            {"field:javaAnnotations", &mstch_java_field::java_annotations},
+            {"field:javaTFieldName", &mstch_java_field::java_tfield_name},
+            {"field:isNullableOrOptionalNotEnum?",
+             &mstch_java_field::is_nullable_or_optional_not_enum},
+            {"field:isEnum?", &mstch_java_field::is_enum},
+            {"field:isObject?", &mstch_java_field::is_object},
+            {"field:isUnion?", &mstch_java_field::is_union},
+            {"field:nestedDepth", &mstch_java_field::get_nested_depth},
+            {"field:nestedDepth++", &mstch_java_field::increment_nested_depth},
+            {"field:nestedDepth--", &mstch_java_field::decrement_nested_depth},
+            {"field:isFirstDepth?", &mstch_java_field::is_first_depth},
+            {"field:prevNestedDepth",
+             &mstch_java_field::preceding_nested_depth},
+            {"field:isContainer?", &mstch_java_field::is_container},
+            {"field:isNested?", &mstch_java_field::get_nested_container_flag},
+            {"field:setIsNested", &mstch_java_field::set_nested_container_flag},
+            {"field:typeFieldName", &mstch_java_field::type_field_name},
+            {"field:isSensitive?", &mstch_java_field::is_sensitive},
+            {"field:hasInitialValue?", &mstch_java_field::has_initial_value},
+            {"field:isPrimitive?", &mstch_java_field::is_primitive},
+            {"field:hasWrapper?", &mstch_java_field::has_wrapper},
+            {"field:wrapper",
+             &mstch_java_field::get_structured_wrapper_class_name},
+            {"field:wrapperType",
+             &mstch_java_field::get_structured_wrapper_type_class_name},
+            {"field:hasAdapterOrWrapper?",
+             &mstch_java_field::has_adapter_or_wrapper},
+            {"field:hasAdapter?", &mstch_java_field::has_adapter},
+            {"field:hasTypeAdapter?", &mstch_java_field::has_type_adapter},
+            {"field:typeAdapterTypeClassName",
+             &mstch_java_field::get_typedef_adapter_type_class_name},
+            {"field:typeAdapterClassName",
+             &mstch_java_field::get_typedef_adapter_class_name},
+            {"field:hasFieldAdapter?", &mstch_java_field::has_field_adapter},
+            {"field:fieldAdapterTypeClassName",
+             &mstch_java_field::get_field_adapter_type_class_name},
+            {"field:fieldAdapterClassName",
+             &mstch_java_field::get_field_adapter_class_name},
+        });
   }
 
   int32_t nestedDepth = 0;
   bool isNestedContainerFlag = false;
 
-  mstch::node has_multiple_type_adapters() {
-    bool hasFieldAdapter =
-        field_->find_structured_annotation_or_null(kJavaAdapterUri);
-
-    bool hasTypeAdapter = false;
-
-    auto type = field_->get_type();
-    if (auto annotation = t_typedef::get_first_structured_annotation_or_null(
-            type, kJavaAdapterUri)) {
-      hasTypeAdapter = true;
-    }
-
-    return hasFieldAdapter && hasTypeAdapter;
+  bool _has_wrapper() {
+    return field_->find_structured_annotation_or_null(kJavaWrapperUri) !=
+        nullptr;
   }
 
-  mstch::node get_second_structured_adapter_class_name() {
-    return get_second_structed_annotation_attribute("adapterClassName");
-  }
-
-  mstch::node get_second_structured_adapter_type_name() {
-    return get_second_structed_annotation_attribute("typeClassName");
-  }
-
-  mstch::node get_second_structed_annotation_attribute(
-      const std::string& field) {
-    if (auto annotation =
-            field_->find_structured_annotation_or_null(kJavaAdapterUri)) {
-      for (const auto& item : annotation->value()->get_map()) {
-        if (item.first->get_string() == field) {
-          return item.second->get_string();
-        }
-      }
-    }
-
-    return nullptr;
-  }
-
-  mstch::node has_type_adapter() {
-    return has_structured_annotation(kJavaAdapterUri);
-  }
-
-  mstch::node has_structured_annotation(const char* uri) {
-    auto type = field_->get_type();
-    if (type->is_typedef()) {
-      if (auto annotation =
-              t_typedef::get_first_structured_annotation_or_null(type, uri)) {
-        return true;
-      }
-    }
-    auto has_annotation = field_->find_structured_annotation_or_null(uri);
-    return has_annotation != nullptr;
-  }
-
-  mstch::node has_wrapper() {
-    return has_structured_annotation(kJavaWrapperUri);
-  }
-
-  mstch::node has_adapter_or_wrapper() {
-    if (field_->find_structured_annotation_or_null(kJavaAdapterUri)) {
-      return true;
-    };
-
-    auto type = field_->get_type();
-    if (auto annotation = t_typedef::get_first_structured_annotation_or_null(
-            type, kJavaAdapterUri)) {
-      return true;
-    }
-
-    if (type->is_typedef()) {
-      if (auto annotation = t_typedef::get_first_structured_annotation_or_null(
-              type, kJavaWrapperUri)) {
-        return true;
-      }
-    }
-    if (field_->find_structured_annotation_or_null(kJavaWrapperUri)) {
-      return true;
-    };
-
-    return false;
-  }
-
-  mstch::node get_structured_adapter_class_name() {
-    return get_structed_annotation_attribute(
-        kJavaAdapterUri, "adapterClassName");
-  }
-
-  mstch::node get_structured_type_class_name() {
-    return get_structed_annotation_attribute(kJavaAdapterUri, "typeClassName");
-  }
+  mstch::node has_wrapper() { return _has_wrapper(); }
 
   mstch::node get_structured_wrapper_class_name() {
-    return get_structed_annotation_attribute2(
-        kJavaWrapperUri, "wrapperClassName");
+    return get_structed_annotation_attribute(
+        field_, kJavaWrapperUri, "wrapperClassName");
   }
 
   mstch::node get_structured_wrapper_type_class_name() {
-    return get_structed_annotation_attribute2(kJavaWrapperUri, "typeClassName");
+    return get_structed_annotation_attribute(
+        field_, kJavaWrapperUri, "typeClassName");
   }
 
-  mstch::node get_structed_annotation_attribute(
+  mstch::node has_adapter_or_wrapper() {
+    return _has_field_adapter() || _has_type_adapter() || _has_wrapper();
+  }
+
+  mstch::node has_adapter() {
+    return _has_field_adapter() || _has_type_adapter();
+  }
+
+  bool _has_type_adapter() {
+    auto type = field_->get_type();
+    if (type->is_typedef()) {
+      if (auto annotation = t_typedef::get_first_structured_annotation_or_null(
+              type, kJavaAdapterUri)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  mstch::node has_type_adapter() { return _has_type_adapter(); }
+
+  mstch::node get_typedef_adapter_type_class_name() {
+    return get_typedef_structed_annotation_attribute(
+        kJavaAdapterUri, "typeClassName");
+  }
+
+  mstch::node get_typedef_adapter_class_name() {
+    return get_typedef_structed_annotation_attribute(
+        kJavaAdapterUri, "adapterClassName");
+  }
+
+  mstch::node get_typedef_structed_annotation_attribute(
       const char* uri, const std::string& field) {
     auto type = field_->get_type();
     if (type->is_typedef()) {
@@ -882,30 +866,26 @@ class mstch_java_field : public mstch_field {
           }
         }
       }
-    } else {
-      if (auto annotation = field_->find_structured_annotation_or_null(uri)) {
-        for (const auto& item : annotation->value()->get_map()) {
-          if (item.first->get_string() == field) {
-            return item.second->get_string();
-          }
-        }
-      }
     }
 
     return nullptr;
   }
 
-  mstch::node get_structed_annotation_attribute2(
-      const char* uri, const std::string& field) {
-    if (auto annotation = field_->find_structured_annotation_or_null(uri)) {
-      for (const auto& item : annotation->value()->get_map()) {
-        if (item.first->get_string() == field) {
-          return item.second->get_string();
-        }
-      }
-    }
+  bool _has_field_adapter() {
+    return field_->find_structured_annotation_or_null(kJavaAdapterUri) !=
+        nullptr;
+  }
 
-    return nullptr;
+  mstch::node has_field_adapter() { return _has_field_adapter(); }
+
+  mstch::node get_field_adapter_type_class_name() {
+    return get_structed_annotation_attribute(
+        field_, kJavaAdapterUri, "typeClassName");
+  }
+
+  mstch::node get_field_adapter_class_name() {
+    return get_structed_annotation_attribute(
+        field_, kJavaAdapterUri, "adapterClassName");
   }
 
   mstch::node has_initial_value() {
@@ -1024,9 +1004,7 @@ class mstch_java_field : public mstch_field {
       return "null";
     }
   }
-  mstch::node has_java_annotations() {
-    return field_->has_annotation("java.swift.annotations");
-  }
+
   mstch::node is_sensitive() {
     return field_->has_annotation("java.sensitive");
   }
@@ -1047,8 +1025,18 @@ class mstch_java_field : public mstch_field {
     }
     return constant_str;
   }
+  mstch::node has_java_annotations() {
+    return field_->has_annotation("java.swift.annotations") ||
+        field_->find_structured_annotation_or_null(kJavaAnnotationUri) !=
+        nullptr;
+  }
   mstch::node java_annotations() {
-    return field_->get_annotation("java.swift.annotations");
+    if (field_->has_annotation("java.swift.annotations")) {
+      return field_->get_annotation("java.swift.annotations");
+    }
+
+    return get_structed_annotation_attribute(
+        field_, kJavaAnnotationUri, "java_annotation");
   }
 };
 
@@ -1200,10 +1188,24 @@ class mstch_java_type : public mstch_type {
             {"type:isMapValue?", &mstch_java_type::get_map_value_flag},
             {"type:isBinaryString?", &mstch_java_type::is_binary_string},
             {"type:setIsNotMap", &mstch_java_type::set_is_not_map},
+            {"type:hasAdapter?", &mstch_java_type::has_type_adapter},
+            {"type:adapterClassName",
+             &mstch_java_type::get_structured_adapter_class_name},
+            {"type:typeClassName",
+             &mstch_java_type::get_structured_type_class_name},
+            {"type:setAdapter", &mstch_java_type::set_adapter},
+            {"type:unsetAdapter", &mstch_java_type::unset_adapter},
+            {"type:isAdapterSet?", &mstch_java_type::is_adapter_set},
+            {"type:addAdapter", &mstch_java_type::add_type_adapter},
+            {"type:adapterDefined?", &mstch_java_type::is_type_adapter_defined},
+            {"type:lastAdapter?", &mstch_java_type::is_last_type_adapter},
+            {"type:setTypeName", &mstch_java_type::set_type_name},
+            {"type:getTypeName", &mstch_java_type::get_type_name},
         });
   }
   bool isMapValueFlag = false;
   bool isMapKeyFlag = false;
+  bool hasTypeAdapter = false;
 
   mstch::node set_is_not_map() {
     isMapValueFlag = false;
@@ -1236,6 +1238,100 @@ class mstch_java_type : public mstch_type {
   mstch::node is_binary_string() {
     return type_->get_true_type()->get_annotation("java.swift.binary_string");
   }
+
+  mstch::node has_type_adapter() {
+    return has_structured_annotation(kJavaAdapterUri);
+  }
+
+  mstch::node has_structured_annotation(const char* uri) {
+    if (type_->is_typedef()) {
+      if (auto annotation =
+              t_typedef::get_first_structured_annotation_or_null(type_, uri)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  mstch::node get_structured_adapter_class_name() {
+    return get_structed_annotation_attribute(
+        kJavaAdapterUri, "adapterClassName");
+  }
+
+  mstch::node get_structured_type_class_name() {
+    return get_structed_annotation_attribute(kJavaAdapterUri, "typeClassName");
+  }
+
+  mstch::node get_structed_annotation_attribute(
+      const char* uri, const std::string& field) {
+    if (type_->is_typedef()) {
+      if (auto annotation =
+              t_typedef::get_first_structured_annotation_or_null(type_, uri)) {
+        for (const auto& item : annotation->value()->get_map()) {
+          if (item.first->get_string() == field) {
+            return item.second->get_string();
+          }
+        }
+      }
+    }
+
+    return nullptr;
+  }
+
+  mstch::node set_adapter() {
+    hasTypeAdapter = true;
+    return mstch::node();
+  }
+
+  mstch::node unset_adapter() {
+    hasTypeAdapter = false;
+    return mstch::node();
+  }
+
+  mstch::node is_adapter_set() { return hasTypeAdapter; }
+
+  mstch::node add_type_adapter() {
+    adapterDefinitionSet.insert(type_->get_name());
+    return mstch::node();
+  }
+
+  mstch::node is_type_adapter_defined() {
+    return adapterDefinitionSet.find(type_->get_name()) !=
+        adapterDefinitionSet.end();
+  }
+
+  int32_t nested_adapter_count() {
+    int32_t count = 0;
+    auto type = type_;
+    while (type) {
+      if (type_->is_typedef() &&
+          type->find_structured_annotation_or_null(kJavaAdapterUri) !=
+              nullptr) {
+        count++;
+        if (const auto* as_typedef = dynamic_cast<const t_typedef*>(type)) {
+          type = as_typedef->get_type();
+        } else {
+          type = nullptr;
+        }
+      } else {
+        type = nullptr;
+      }
+    }
+
+    return count;
+  }
+
+  mstch::node is_last_type_adapter() { return nested_adapter_count() < 2; }
+
+  mstch::node set_type_name() {
+    if (nested_adapter_count() > 0) {
+      prevTypeName = type_->get_name();
+    }
+
+    return mstch::node();
+  }
+
+  mstch::node get_type_name() { return prevTypeName; }
 };
 
 void t_mstch_java_generator::generate_program() {

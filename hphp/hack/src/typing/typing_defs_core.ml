@@ -10,7 +10,7 @@
 open Hh_prelude
 module Reason = Typing_reason
 
-type pos_id = Reason.pos_id [@@deriving eq, ord, show]
+type pos_id = Reason.pos_id [@@deriving eq, hash, ord, show]
 
 type ce_visibility =
   | Vpublic
@@ -24,7 +24,9 @@ type ce_visibility =
 type ifc_fun_decl =
   | FDPolicied of string option
   | FDInferFlows
-[@@deriving eq, ord]
+[@@deriving eq, hash, ord]
+
+type cross_package_decl = string option [@@deriving eq, hash, ord]
 
 (* The default policy is the public one. PUBLIC is a keyword, so no need to prevent class collisions *)
 let default_ifc_fun_decl = FDPolicied (Some "PUBLIC")
@@ -37,9 +39,9 @@ let default_ifc_fun_decl = FDPolicied (Some "PUBLIC")
    inferred via local inference.
 *)
 (* create private types to represent the different type phases *)
-type decl_phase = Reason.decl_phase [@@deriving eq, show]
+type decl_phase = Reason.decl_phase [@@deriving eq, hash, show]
 
-type locl_phase = Reason.locl_phase [@@deriving eq, show]
+type locl_phase = Reason.locl_phase [@@deriving eq, hash, show]
 
 type val_kind =
   | Lval
@@ -60,26 +62,27 @@ type fun_tparams_kind =
       explicit type argument must be reified. *)
 [@@deriving eq]
 
-type shape_kind =
-  | Closed_shape
-  | Open_shape
-[@@deriving eq, ord, show]
+type type_origin =
+  | Missing_origin
+  | From_alias of string
+[@@deriving eq, hash, ord, show]
 
-type pos_string = Pos_or_decl.t * string [@@deriving eq, ord, show]
+type pos_string = Pos_or_decl.t * string [@@deriving eq, hash, ord, show]
 
 (* Trick the Rust generators to use a BStr, the same way it does for Ast_defs.shape_field_name. *)
-type t_byte_string = string [@@deriving eq, ord, show]
+type t_byte_string = string [@@deriving eq, hash, ord, show]
 
-type pos_byte_string = Pos_or_decl.t * t_byte_string [@@deriving eq, ord, show]
+type pos_byte_string = Pos_or_decl.t * t_byte_string
+[@@deriving eq, hash, ord, show]
 
 type tshape_field_name =
   | TSFlit_int of pos_string
   | TSFlit_str of pos_byte_string
   | TSFclass_const of pos_id * pos_string
-[@@deriving eq, ord, show]
+[@@deriving eq, hash, ord, show]
 
 module TShapeField = struct
-  type t = tshape_field_name
+  type t = tshape_field_name [@@deriving hash]
 
   let pos : t -> Pos_or_decl.t = function
     | TSFlit_int (p, _)
@@ -134,6 +137,8 @@ module TShapeMap = struct
       (fmt : Format.formatter)
       (map : 'a t) : unit =
     make_pp pp_tshape_field_name pp_val fmt map
+
+  let hash_fold_t x = make_hash_fold_t TShapeField.hash_fold_t x
 end
 
 module TShapeSet = Caml.Set.Make (TShapeField)
@@ -167,13 +172,13 @@ type dependent_type =
    *  The expression $x->foo() would have a different one
    *)
   | DTexpr of Ident.t
-[@@deriving eq, ord, show]
+[@@deriving eq, hash, ord, show]
 
 type user_attribute = {
   ua_name: pos_id;
   ua_classname_params: string list;
 }
-[@@deriving eq, show]
+[@@deriving eq, hash, show]
 
 type 'ty tparam = {
   tp_variance: Ast_defs.variance;
@@ -183,15 +188,18 @@ type 'ty tparam = {
   tp_reified: Ast_defs.reify_kind;
   tp_user_attributes: user_attribute list;
 }
-[@@deriving eq, show]
+[@@deriving eq, hash, show]
 
 type 'ty where_constraint = 'ty * Ast_defs.constraint_kind * 'ty
-[@@deriving eq, show]
+[@@deriving eq, hash, show]
 
 type enforcement =
   | Unenforced
   | Enforced
-[@@deriving eq, show, ord]
+[@@deriving eq, hash, show, ord]
+
+(* This is to avoid a compile error with ppx_hash "Unbound value _hash_fold_phase". *)
+let _hash_fold_phase hsv _ = hsv
 
 type 'phase ty = 'phase Reason.t_ * 'phase ty_
 
@@ -277,7 +285,9 @@ and _ ty_ =
        * function, method, lambda, etc. *)
   | Ttuple : 'phase ty list -> 'phase ty_
       (** Tuple, with ordered list of the types of the elements of the tuple. *)
-  | Tshape : shape_kind * 'phase shape_field_type TShapeMap.t -> 'phase ty_
+  | Tshape :
+      type_origin * 'phase ty * 'phase shape_field_type TShapeMap.t
+      -> 'phase ty_
       (** Whether all fields of this shape are known, types of each of the
        * known arms.
        *)
@@ -386,6 +396,7 @@ and 'ty fun_type = {
       (** Carries through the sync/async information from the aast *)
   ft_flags: Typing_defs_flags.fun_type_flags;
   ft_ifc_decl: ifc_fun_decl;
+  ft_cross_package: cross_package_decl;
 }
 
 and 'ty possibly_enforced_ty = {
@@ -401,7 +412,7 @@ and 'ty fun_param = {
   fp_flags: Typing_defs_flags.fun_param_flags;
 }
 
-and 'ty fun_params = 'ty fun_param list
+and 'ty fun_params = 'ty fun_param list [@@deriving hash]
 
 let nonexact = Nonexact { cr_consts = SMap.empty }
 
@@ -626,9 +637,9 @@ module Pp = struct
       Format.fprintf fmt "(@[<2>Ttuple@ ";
       pp_list pp_ty fmt a0;
       Format.fprintf fmt "@])"
-    | Tshape (a0, a1) ->
+    | Tshape (_, a0, a1) ->
       Format.fprintf fmt "(@[<2>Tshape (@,";
-      pp_shape_kind fmt a0;
+      pp_ty fmt a0;
       Format.fprintf fmt ",@ ";
       TShapeMap.pp pp_shape_field_type fmt a1;
       Format.fprintf fmt "@,))@]"
@@ -791,6 +802,15 @@ module Pp = struct
       Format.pp_print_string fmt s;
       Format.pp_print_string fmt "}"
 
+  and pp_cross_package_decl : Format.formatter -> cross_package_decl -> unit =
+   fun fmt r ->
+    match r with
+    | Some s ->
+      Format.pp_print_string fmt "CrossPackage(";
+      Format.pp_print_string fmt s;
+      Format.pp_print_string fmt ")"
+    | None -> Format.pp_print_string fmt "None"
+
   and pp_fun_type : type a. Format.formatter -> a ty fun_type -> unit =
    fun fmt x ->
     Format.fprintf fmt "@[<2>{ ";
@@ -867,6 +887,10 @@ module Pp = struct
 
     Format.fprintf fmt "@[%s =@ " "ft_ifc_decl";
     pp_ifc_fun_decl fmt x.ft_ifc_decl;
+    Format.fprintf fmt "@]";
+
+    Format.fprintf fmt "@[%s =@ " "ft_cross_package";
+    pp_cross_package_decl fmt x.ft_cross_package;
     Format.fprintf fmt "@]";
 
     Format.fprintf fmt "@ }@]"

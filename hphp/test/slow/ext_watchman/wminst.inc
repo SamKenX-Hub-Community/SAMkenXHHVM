@@ -8,7 +8,7 @@ class WatchmanInstance {
   private $config_file;
   private $repo_root;
   private $run_details = '';
-  const TIMEOUT = 20;
+  const TIMEOUT = 60;
   private function tempfile() {
     $temp = tempnam(sys_get_temp_dir(), 'wat');
     return $temp;
@@ -17,7 +17,7 @@ class WatchmanInstance {
     // Not atomic but PHP doesn't support this. Should be fine.
     $this->repo_root = $tmpdir;
     $this->logfile = $this->tempfile();
-    $this->sockname = $this->tempfile();
+    $this->sockname = tempnam(getenv('HPHP_TEST_SOCKETDIR'), 'wat');
     $this->config_file = $this->tempfile();
     $config_json = '{}';
     file_put_contents($this->config_file, $config_json);
@@ -92,7 +92,7 @@ class WatchmanInstance {
       if (!$st['running']) {
         return $st;
       }
-      usleep(30000);
+      usleep(250000);
     } while (time() <= $deadline);
     return $st;
   }
@@ -103,9 +103,8 @@ class WatchmanInstance {
     proc_terminate($this->proc);
     $st = $this->waitForTerminate(self::TIMEOUT);
     if ($st['running']) {
-      echo "Didn't stop, sending bigger signal\n";
       proc_terminate($this->proc, 9);
-      $st = $this->waitForTerminate(5);
+      $st = $this->waitForTerminate(15);
       $this->proc = null;
     }
   }

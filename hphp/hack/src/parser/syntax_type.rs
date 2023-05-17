@@ -38,6 +38,8 @@ pub trait SyntaxType<C>: SyntaxTypeBase<C>
     fn make_enum_class_enumerator(ctx: &C, enum_class_enumerator_modifiers: Self, enum_class_enumerator_type: Self, enum_class_enumerator_name: Self, enum_class_enumerator_initializer: Self, enum_class_enumerator_semicolon: Self) -> Self;
     fn make_alias_declaration(ctx: &C, alias_attribute_spec: Self, alias_modifiers: Self, alias_module_kw_opt: Self, alias_keyword: Self, alias_name: Self, alias_generic_parameter: Self, alias_constraint: Self, alias_equal: Self, alias_type: Self, alias_semicolon: Self) -> Self;
     fn make_context_alias_declaration(ctx: &C, ctx_alias_attribute_spec: Self, ctx_alias_keyword: Self, ctx_alias_name: Self, ctx_alias_generic_parameter: Self, ctx_alias_as_constraint: Self, ctx_alias_equal: Self, ctx_alias_context: Self, ctx_alias_semicolon: Self) -> Self;
+    fn make_case_type_declaration(ctx: &C, case_type_attribute_spec: Self, case_type_modifiers: Self, case_type_case_keyword: Self, case_type_type_keyword: Self, case_type_name: Self, case_type_generic_parameter: Self, case_type_as: Self, case_type_bounds: Self, case_type_equal: Self, case_type_variants: Self, case_type_semicolon: Self) -> Self;
+    fn make_case_type_variant(ctx: &C, case_type_variant_bar: Self, case_type_variant_type: Self) -> Self;
     fn make_property_declaration(ctx: &C, property_attribute_spec: Self, property_modifiers: Self, property_type: Self, property_declarators: Self, property_semicolon: Self) -> Self;
     fn make_property_declarator(ctx: &C, property_name: Self, property_initializer: Self) -> Self;
     fn make_namespace_declaration(ctx: &C, namespace_header: Self, namespace_body: Self) -> Self;
@@ -193,5 +195,6 @@ pub trait SyntaxType<C>: SyntaxTypeBase<C>
     fn make_module_exports(ctx: &C, module_exports_exports_keyword: Self, module_exports_left_brace: Self, module_exports_exports: Self, module_exports_right_brace: Self) -> Self;
     fn make_module_imports(ctx: &C, module_imports_imports_keyword: Self, module_imports_left_brace: Self, module_imports_imports: Self, module_imports_right_brace: Self) -> Self;
     fn make_module_membership_declaration(ctx: &C, module_membership_declaration_module_keyword: Self, module_membership_declaration_name: Self, module_membership_declaration_semicolon: Self) -> Self;
+    fn make_package_expression(ctx: &C, package_expression_keyword: Self, package_expression_name: Self) -> Self;
 
 }

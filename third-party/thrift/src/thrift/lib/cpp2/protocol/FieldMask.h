@@ -16,7 +16,12 @@
 
 #pragma once
 
+#include <vector>
+
+#include <folly/Range.h>
+#include <thrift/lib/cpp2/protocol/FieldMaskRef.h>
 #include <thrift/lib/cpp2/protocol/detail/FieldMask.h>
+#include <thrift/lib/cpp2/protocol/detail/FieldMaskUtil.h>
 #include <thrift/lib/cpp2/type/detail/Wrap.h>
 #include <thrift/lib/thrift/gen-cpp2/field_mask_constants.h>
 #include <thrift/lib/thrift/gen-cpp2/field_mask_types.h>
@@ -57,7 +62,7 @@ template <typename Struct>
 void ensure(const Mask& mask, Struct& t) {
   static_assert(is_thrift_struct_v<Struct>, "not a thrift struct");
   detail::throwIfContainsMapMask(mask);
-  return detail::ensure_fields(detail::MaskRef{mask, false}, t);
+  return detail::ensure_fields(MaskRef{mask, false}, t);
 }
 
 // Clears masked fields in the thrift struct.
@@ -67,7 +72,7 @@ template <typename Struct>
 void clear(const Mask& mask, Struct& t) {
   static_assert(is_thrift_struct_v<Struct>, "not a thrift struct");
   detail::throwIfContainsMapMask(mask);
-  return detail::clear_fields(detail::MaskRef{mask, false}, t);
+  return detail::clear_fields(MaskRef{mask, false}, t);
 }
 
 // Copys masked fields from one thrift struct to another.
@@ -77,7 +82,7 @@ template <typename Struct>
 void copy(const Mask& mask, const Struct& src, Struct& dst) {
   static_assert(is_thrift_struct_v<Struct>, "not a thrift struct");
   detail::throwIfContainsMapMask(mask);
-  detail::copy_fields(detail::MaskRef{mask, false}, src, dst);
+  detail::copy_fields(MaskRef{mask, false}, src, dst);
 }
 
 // Logical operators that can construct a new mask
@@ -135,6 +140,14 @@ struct MaskBuilder : type::detail::Wrap<Mask> {
     return includes<Id...>(map);
   }
 
+  template <typename... Id>
+  MaskBuilder& includes_map_element(
+      std::string key, const Mask& mask = allMask()) {
+    Mask map;
+    map.includes_string_map_ref().emplace()[std::move(key)] = mask;
+    return includes<Id...>(map);
+  }
+
   MaskBuilder& includes(
       const std::vector<folly::StringPiece>& fieldNames,
       const Mask& mask = allMask()) {
@@ -156,6 +169,14 @@ struct MaskBuilder : type::detail::Wrap<Mask> {
   MaskBuilder& excludes_map_element(int64_t key, const Mask& mask = allMask()) {
     Mask map;
     map.includes_map_ref().emplace()[key] = mask;
+    return excludes<Id...>(map);
+  }
+
+  template <typename... Id>
+  MaskBuilder& excludes_map_element(
+      std::string key, const Mask& mask = allMask()) {
+    Mask map;
+    map.includes_string_map_ref().emplace()[std::move(key)] = mask;
     return excludes<Id...>(map);
   }
 

@@ -21,6 +21,8 @@ val set_symbol_write_options : t -> SymbolWriteOptions.t -> t
 
 val repo_config_path : Relative_path.t
 
+val load_config : Config_file_common.t -> GlobalOptions.t -> GlobalOptions.t
+
 val load : silent:bool -> ServerArgs.options -> t * ServerLocalConfig.t
 
 val is_compatible : t -> t -> bool
@@ -50,6 +52,10 @@ val config_hash : t -> string option
 val version : t -> Config_file.version
 
 val warn_on_non_opt_build : t -> bool
+
+val ide_fall_back_to_full_index : t -> bool
+
+val ide_batch_process_changes : t -> bool
 
 val convert_auto_namespace_to_map : string -> (string * string) list
 

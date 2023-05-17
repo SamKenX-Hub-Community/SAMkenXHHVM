@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
 #include <thrift/lib/cpp2/server/RequestCompletionCallback.h>
 
@@ -58,18 +59,13 @@ class RequestPileInterface : public RequestCompletionCallback {
   // includes keeping space reserved for a potential future request from a
   // client instead of executing a request that would exceed the quota of a
   // different client.
-  //
-  // If a RequestPile returns a UserData value then it will
-  // receive a callback to its onRequestFinished method when request processing
-  // is finished.
-  virtual std::pair<std::optional<ServerRequest>, std::optional<intptr_t>>
-  dequeue() = 0;
+  virtual std::optional<ServerRequest> dequeue() = 0;
 
   // If a callback was requested this will be called when the request processing
   // has finished.
   void onRequestFinished(ServerRequestData&) override;
 
-  virtual std::string describe() const;
+  virtual std::string describe() const = 0;
 };
 
 } // namespace apache::thrift

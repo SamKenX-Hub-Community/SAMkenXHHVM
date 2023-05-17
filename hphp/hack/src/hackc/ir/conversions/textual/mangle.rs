@@ -11,7 +11,7 @@ use naming_special_names_rust::members;
 
 use crate::class::IsStatic;
 
-const TOP_LEVELS_CLASS: &str = "$root";
+pub(crate) const TOP_LEVELS_CLASS: &str = "$root";
 
 /// Used for things that can mangle themselves directly.
 pub(crate) trait Mangle {
@@ -82,12 +82,15 @@ impl Mangle for ir::PropId {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]
+#[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub(crate) enum Intrinsic {
+    AllocCurry,
+    ConstInit(ir::ClassId),
     Construct(ir::ClassId),
     Factory(ir::ClassId),
-    InitStatic(ir::ClassId),
+    Invoke(TypeName),
     PropInit(ir::ClassId),
+    StaticInit(ir::ClassId),
 }
 
 /// Represents a named callable thing.  This includes top-level functions and
@@ -130,15 +133,30 @@ impl fmt::Display for FmtFunctionName<'_> {
                 fid.as_bytes(strings).mangle(strings)
             )?,
             FunctionName::Intrinsic(intrinsic) => {
+                let tn;
                 let (ty, name) = match intrinsic {
+                    Intrinsic::AllocCurry => (None, "__sil_allocate_curry"),
+                    Intrinsic::ConstInit(cid) => {
+                        tn = TypeName::StaticClass(*cid);
+                        (Some(&tn), "_86cinit")
+                    }
                     Intrinsic::Construct(cid) => {
-                        (Some(TypeName::Class(*cid)), members::__CONSTRUCT)
+                        tn = TypeName::Class(*cid);
+                        (Some(&tn), members::__CONSTRUCT)
                     }
-                    Intrinsic::Factory(cid) => (Some(TypeName::StaticClass(*cid)), "__factory"),
-                    Intrinsic::InitStatic(cid) => {
-                        (Some(TypeName::StaticClass(*cid)), "$init_static")
+                    Intrinsic::Factory(cid) => {
+                        tn = TypeName::StaticClass(*cid);
+                        (Some(&tn), "__factory")
                     }
-                    Intrinsic::PropInit(cid) => (Some(TypeName::Class(*cid)), "_86pinit"),
+                    Intrinsic::Invoke(tn) => (Some(tn), "__invoke"),
+                    Intrinsic::PropInit(cid) => {
+                        tn = TypeName::Class(*cid);
+                        (Some(&tn), "_86pinit")
+                    }
+                    Intrinsic::StaticInit(cid) => {
+                        tn = TypeName::StaticClass(*cid);
+                        (Some(&tn), "_86sinit")
+                    }
                 };
                 if let Some(ty) = ty {
                     write!(f, "{}.{}", ty.display(strings), name)?;
@@ -163,7 +181,7 @@ impl fmt::Display for FmtFunctionName<'_> {
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub(crate) enum GlobalName {
     Global(ir::GlobalId),
-    StaticConst(ir::ClassId, ir::ConstId),
+    GlobalConst(ir::GlobalId),
 }
 
 impl GlobalName {
@@ -187,13 +205,8 @@ impl fmt::Display for FmtGlobalName<'_> {
             GlobalName::Global(id) => {
                 write!(f, "global::{}", id.as_bytes(strings).mangle(strings))
             }
-            GlobalName::StaticConst(class, cid) => {
-                write!(
-                    f,
-                    "const::{}::{}",
-                    TypeName::StaticClass(*class).display(strings),
-                    cid.as_bytes(strings).mangle(strings)
-                )
+            GlobalName::GlobalConst(id) => {
+                write!(f, "gconst::{}", id.as_bytes(strings).mangle(strings))
             }
         }
     }
@@ -202,6 +215,7 @@ impl fmt::Display for FmtGlobalName<'_> {
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub(crate) enum TypeName {
     Class(ir::ClassId),
+    HackMixed,
     StaticClass(ir::ClassId),
     UnmangledRef(&'static str),
 }
@@ -225,11 +239,11 @@ impl fmt::Display for FmtTypeName<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let FmtTypeName(strings, name) = *self;
         match name {
-            TypeName::Class(cid) => {
-                write!(f, "{}", cid.as_bytes(strings).mangle(strings))
-            }
+            TypeName::Class(cid) => f.write_str(&cid.as_bytes(strings).mangle(strings)),
+            TypeName::HackMixed => f.write_str("HackMixed"),
             TypeName::StaticClass(cid) => {
-                write!(f, "{}$static", cid.as_bytes(strings).mangle(strings))
+                f.write_str(&cid.as_bytes(strings).mangle(strings))?;
+                f.write_str("$static")
             }
             TypeName::UnmangledRef(s) => s.fmt(f),
         }

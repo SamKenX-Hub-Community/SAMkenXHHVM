@@ -44,6 +44,11 @@ let pp_tfun _ _ = Printf.printf "%s\n" "<tfun>"
 
 [@@@warning "+32"]
 
+type expr_tree_env = {
+  dsl: Aast.hint;
+  outer_locals: Typing_local_types.t;
+}
+
 (** See the .mli file for the documentation of fields. *)
 type env = {
   fresh_typarams: SSet.t;
@@ -52,7 +57,7 @@ type env = {
   decl_env: Decl_env.env;
   in_loop: bool;
   in_try: bool;
-  in_expr_tree: bool;
+  in_expr_tree: expr_tree_env option;
   inside_constructor: bool;
   checked: Tast.check_status;
   tracing_info: Decl_counters.tracing_info option;
@@ -62,6 +67,7 @@ type env = {
   allow_wildcards: bool;
   big_envs: (Pos.t * env) list ref;
   fun_tast_info: Tast.fun_tast_info option;
+  loaded_packages: SSet.t;
 }
 
 (** See the .mli file for the documentation of fields. *)
@@ -82,7 +88,7 @@ and genv = {
   current_module: Ast_defs.id option;
   this_internal: bool;
   this_support_dynamic_type: bool;
-  get_package_for_module: (string -> Package.package option) option;
+  package_info: Package.Info.t;
 }
 
 let initial_local tpenv =
@@ -98,7 +104,7 @@ let empty ?origin ?(mode = FileInfo.Mstrict) ctx file ~droot =
     lenv = initial_local Type_parameter_env.empty;
     in_loop = false;
     in_try = false;
-    in_expr_tree = false;
+    in_expr_tree = None;
     inside_constructor = false;
     checked = Tast.COnce;
     decl_env = { Decl_env.mode; droot; droot_member = None; ctx };
@@ -131,7 +137,7 @@ let empty ?origin ?(mode = FileInfo.Mstrict) ctx file ~droot =
         current_module = None;
         this_internal = false;
         this_support_dynamic_type = false;
-        get_package_for_module = Provider_context.get_package_for_module ctx;
+        package_info = Provider_context.get_package_info ctx;
       };
     tpenv = Type_parameter_env.empty;
     log_levels = TypecheckerOptions.log_levels (Provider_context.get_tcopt ctx);
@@ -139,6 +145,7 @@ let empty ?origin ?(mode = FileInfo.Mstrict) ctx file ~droot =
     allow_wildcards = false;
     big_envs = ref [];
     fun_tast_info = None;
+    loaded_packages = SSet.empty;
   }
 
 let get_log_level env key =

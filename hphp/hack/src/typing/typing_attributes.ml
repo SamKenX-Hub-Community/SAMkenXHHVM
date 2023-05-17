@@ -51,9 +51,11 @@ let check_implements
                   attr_interface
                   ~equal:String.equal
         then
-          Errors.add_nast_check_error
-            (Nast_check_error.Wrong_expression_kind_builtin_attribute
-               { expr_kind; pos = attr_pos; attr_name });
+          Errors.add_error
+            Nast_check_error.(
+              to_user_error
+              @@ Wrong_expression_kind_builtin_attribute
+                   { expr_kind; pos = attr_pos; attr_name });
         true
       | None -> false
     in
@@ -85,9 +87,11 @@ let check_implements
             (fun name -> name)
         in
 
-        Errors.add_naming_error
-        @@ Naming_error.Unbound_attribute_name
-             { pos = attr_pos; attr_name; closest_attr_name }
+        Errors.add_error
+          Naming_error.(
+            to_user_error
+            @@ Unbound_attribute_name
+                 { pos = attr_pos; attr_name; closest_attr_name })
     in
 
     env
@@ -115,7 +119,7 @@ let check_implements
       in
       if not (Typing_subtype.is_sub_type env attr_locl_ty interface_locl_ty)
       then (
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Wrong_expression_kind_attribute
@@ -131,9 +135,11 @@ let check_implements
       ) else
         check_new_object attr_pos env attr_cid params
     | _ ->
-      Errors.add_naming_error
-      @@ Naming_error.Unbound_attribute_name
-           { pos = attr_pos; attr_name; closest_attr_name = None };
+      Errors.add_error
+        Naming_error.(
+          to_user_error
+          @@ Unbound_attribute_name
+               { pos = attr_pos; attr_name; closest_attr_name = None });
       env
 
 let check_def env check_new_object (kind : attribute_interface_name) attributes

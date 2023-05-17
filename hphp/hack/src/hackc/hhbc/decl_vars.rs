@@ -9,6 +9,7 @@ use hash::IndexSet;
 use naming_special_names_rust::emitter_special_functions;
 use naming_special_names_rust::special_idents;
 use oxidized::aast;
+use oxidized::aast::Binop;
 use oxidized::aast_visitor::visit;
 use oxidized::aast_visitor::AstParams;
 use oxidized::aast_visitor::Node;
@@ -23,6 +24,7 @@ type SSet = std::collections::BTreeSet<String>;
 
 struct DeclvarVisitorContext<'a> {
     explicit_use_set_opt: Option<&'a SSet>,
+    capture_debugger_vars: bool,
 }
 
 struct DeclvarVisitor<'a> {
@@ -32,11 +34,12 @@ struct DeclvarVisitor<'a> {
 }
 
 impl<'a> DeclvarVisitor<'a> {
-    fn new(explicit_use_set_opt: Option<&'a SSet>) -> Self {
+    fn new(explicit_use_set_opt: Option<&'a SSet>, capture_debugger_vars: bool) -> Self {
         Self {
             locals: Default::default(),
             context: DeclvarVisitorContext {
                 explicit_use_set_opt,
+                capture_debugger_vars,
             },
         }
     }
@@ -100,13 +103,13 @@ impl<'ast, 'a> Visitor<'ast> for DeclvarVisitor<'a> {
     fn visit_expr_(&mut self, env: &mut (), e: &Expr_) -> Result<(), String> {
         use aast::Expr_;
         match e {
-            Expr_::Binop(box (binop, e1, e2)) => {
-                match (binop, &e2.2) {
+            Expr_::Binop(box Binop { bop, lhs, rhs }) => {
+                match (bop, &rhs.2) {
                     (Bop::Eq(_), Expr_::Await(_)) | (Bop::Eq(_), Expr_::Yield(_)) => {
                         // Visit e2 before e1. The ordering of declvars in async
                         // expressions matters to HHVM. See D5674623.
-                        self.visit_expr(env, e2)?;
-                        self.visit_expr(env, e1)
+                        self.visit_expr(env, rhs)?;
+                        self.visit_expr(env, lhs)
                     }
                     _ => e.recurse(env, self.object()),
                 }
@@ -118,7 +121,12 @@ impl<'ast, 'a> Visitor<'ast> for DeclvarVisitor<'a> {
             }
 
             // For an Lfun, we don't want to recurse, because it's a separate scope.
-            Expr_::Lfun(_) => Ok(()),
+            Expr_::Lfun(box lfun) => {
+                if self.context.capture_debugger_vars {
+                    visit(self, env, &lfun.0.body)?;
+                }
+                Ok(())
+            }
 
             Expr_::Efun(box efun) => {
                 // at this point AST is already rewritten so use lists on EFun nodes
@@ -141,10 +149,8 @@ impl<'ast, 'a> Visitor<'ast> for DeclvarVisitor<'a> {
                     .context
                     .explicit_use_set_opt
                     .map_or(false, |s| s.contains(fn_name));
-                if has_use_list {
-                    for id in use_list {
-                        self.add_local(id.name())
-                    }
+                if self.context.capture_debugger_vars || has_use_list {
+                    use_list.iter().for_each(|id| self.add_local(id.1.name()));
                 }
                 Ok(())
             }
@@ -188,12 +194,13 @@ fn uls_from_ast<P, F1, F2>(
     get_param_default_value: F2,
     explicit_use_set_opt: Option<&SSet>,
     body: &impl Node<AstParams<(), String>>,
+    capture_debugger_vars: bool,
 ) -> Result<impl Iterator<Item = String>, String>
 where
     F1: Fn(&P) -> &str,
     F2: Fn(&P) -> Maybe<&Expr>,
 {
-    let mut visitor = DeclvarVisitor::new(explicit_use_set_opt);
+    let mut visitor = DeclvarVisitor::new(explicit_use_set_opt, capture_debugger_vars);
 
     for p in params {
         if let Just(e) = get_param_default_value(p) {
@@ -218,6 +225,7 @@ pub fn from_ast<'arena>(
         |(_, default_value)| Maybe::from(default_value.as_ref().map(|x| &x.1)),
         Some(explicit_use_set),
         &body,
+        false,
     )?;
     Ok(decl_vars.collect())
 }
@@ -225,6 +233,7 @@ pub fn from_ast<'arena>(
 pub fn vars_from_ast(
     params: &[FunParam],
     body: &impl Node<AstParams<(), String>>,
+    capture_debugger_vars: bool,
 ) -> Result<IndexSet<String>, String> {
     let decl_vars = uls_from_ast(
         params,
@@ -232,6 +241,7 @@ pub fn vars_from_ast(
         |p| Maybe::from(p.expr.as_ref()), // get_param_default_value
         None,                             // explicit_use_set_opt
         body,
+        capture_debugger_vars,
     )?;
     Ok(decl_vars.collect())
 }

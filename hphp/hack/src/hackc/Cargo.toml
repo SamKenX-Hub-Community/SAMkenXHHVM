@@ -7,7 +7,7 @@ edition = "2021"
 
 [[bin]]
 name = "hackc"
-path = "hackc/hackc.rs"
+path = "cli/hackc.rs"
 
 [dependencies]
 aast_parser = { version = "0.0.0", path = "../parser/cargo/aast_parser" }
@@ -17,13 +17,13 @@ bc_to_ir = { version = "0.0.0", path = "ir/conversions/bc_to_ir" }
 bumpalo = { version = "3.11.1", features = ["collections"] }
 byte-unit = "4.0.14"
 bytecode_printer = { version = "0.0.0", path = "bytecode_printer" }
-clap = { version = "4.1.4", features = ["derive", "env", "string", "unicode", "wrap_help"] }
+clap = { version = "4.2.4", features = ["derive", "env", "string", "unicode", "wrap_help"] }
 compile = { version = "0.0.0", path = "compile/cargo/compile" }
 decl_parser = { version = "0.0.0", path = "../hackrs/decl_parser/cargo/decl_parser" }
 decl_provider = { version = "0.0.0", path = "decl_provider" }
 direct_decl_parser = { version = "0.0.0", path = "../parser/api/cargo/direct_decl_parser" }
 elab = { version = "0.0.0", path = "../elab" }
-env_logger = "0.7"
+env_logger = "0.10"
 facts_rust = { version = "0.0.0", path = "../facts/cargo/facts_rust" }
 ffi = { version = "0.0.0", path = "../utils/ffi" }
 file_provider = { version = "0.0.0", path = "../hackrs/file_provider/cargo/file_provider" }

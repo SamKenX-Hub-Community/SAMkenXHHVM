@@ -28,14 +28,14 @@ var _ = thrift.ZERO
 
 type SomeService interface {
     BounceMap(ctx context.Context, m included.SomeMap) (included.SomeMap, error)
-    BinaryKeyedMap(ctx context.Context, r []int64) (map[TBinary]int64, error)
+    BinaryKeyedMap(ctx context.Context, r []int64) (map[*TBinary]int64, error)
 }
 
 // Deprecated: Use SomeService instead.
 type SomeServiceClientInterface interface {
     thrift.ClientInterface
     BounceMap(m included.SomeMap) (included.SomeMap, error)
-    BinaryKeyedMap(r []int64) (map[TBinary]int64, error)
+    BinaryKeyedMap(r []int64) (map[*TBinary]int64, error)
 }
 
 type SomeServiceChannelClient struct {
@@ -127,7 +127,10 @@ func (c *SomeServiceChannelClient) BounceMap(ctx context.Context, m included.Som
     }
     out := newRespSomeServiceBounceMap()
     err := c.ch.Call(ctx, "bounce_map", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *SomeServiceClient) BounceMap(m included.SomeMap) (included.SomeMap, error) {
@@ -135,16 +138,19 @@ func (c *SomeServiceClient) BounceMap(m included.SomeMap) (included.SomeMap, err
 }
 
 
-func (c *SomeServiceChannelClient) BinaryKeyedMap(ctx context.Context, r []int64) (map[TBinary]int64, error) {
+func (c *SomeServiceChannelClient) BinaryKeyedMap(ctx context.Context, r []int64) (map[*TBinary]int64, error) {
     in := &reqSomeServiceBinaryKeyedMap{
         R: r,
     }
     out := newRespSomeServiceBinaryKeyedMap()
     err := c.ch.Call(ctx, "binary_keyed_map", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
-func (c *SomeServiceClient) BinaryKeyedMap(r []int64) (map[TBinary]int64, error) {
+func (c *SomeServiceClient) BinaryKeyedMap(r []int64) (map[*TBinary]int64, error) {
     return c.chClient.BinaryKeyedMap(nil, r)
 }
 
@@ -155,8 +161,11 @@ type reqSomeServiceBounceMap struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqSomeServiceBounceMap{}
 
+type SomeServiceBounceMapArgs = reqSomeServiceBounceMap
+
 func newReqSomeServiceBounceMap() *reqSomeServiceBounceMap {
-    return (&reqSomeServiceBounceMap{})
+    return (&reqSomeServiceBounceMap{}).
+        SetMNonCompat(included.NewSomeMap())
 }
 
 func (x *reqSomeServiceBounceMap) GetMNonCompat() included.SomeMap {
@@ -165,10 +174,15 @@ func (x *reqSomeServiceBounceMap) GetMNonCompat() included.SomeMap {
 
 func (x *reqSomeServiceBounceMap) GetM() included.SomeMap {
     if !x.IsSetM() {
-      return included.NewSomeMap()
+        return included.NewSomeMap()
     }
 
     return x.M
+}
+
+func (x *reqSomeServiceBounceMap) SetMNonCompat(value included.SomeMap) *reqSomeServiceBounceMap {
+    x.M = value
+    return x
 }
 
 func (x *reqSomeServiceBounceMap) SetM(value included.SomeMap) *reqSomeServiceBounceMap {
@@ -207,7 +221,7 @@ if err != nil {
     return err
 }
 
-    x.SetM(result)
+    x.SetMNonCompat(result)
     return nil
 }
 
@@ -236,6 +250,7 @@ func (x *reqSomeServiceBounceMapBuilder) Emit() *reqSomeServiceBounceMap {
     var objCopy reqSomeServiceBounceMap = *x.obj
     return &objCopy
 }
+
 func (x *reqSomeServiceBounceMap) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqSomeServiceBounceMap"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -292,14 +307,17 @@ func (x *reqSomeServiceBounceMap) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respSomeServiceBounceMap struct {
-    Value included.SomeMap `thrift:"value,0,required" json:"value" db:"value"`
+    Value included.SomeMap `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respSomeServiceBounceMap{}
+var _ thrift.WritableResult = &respSomeServiceBounceMap{}
 
 func newRespSomeServiceBounceMap() *respSomeServiceBounceMap {
-    return (&respSomeServiceBounceMap{})
+    return (&respSomeServiceBounceMap{}).
+        SetValueNonCompat(included.NewSomeMap())
 }
 
 func (x *respSomeServiceBounceMap) GetValueNonCompat() included.SomeMap {
@@ -308,10 +326,15 @@ func (x *respSomeServiceBounceMap) GetValueNonCompat() included.SomeMap {
 
 func (x *respSomeServiceBounceMap) GetValue() included.SomeMap {
     if !x.IsSetValue() {
-      return included.NewSomeMap()
+        return included.NewSomeMap()
     }
 
     return x.Value
+}
+
+func (x *respSomeServiceBounceMap) SetValueNonCompat(value included.SomeMap) *respSomeServiceBounceMap {
+    x.Value = value
+    return x
 }
 
 func (x *respSomeServiceBounceMap) SetValue(value included.SomeMap) *respSomeServiceBounceMap {
@@ -350,7 +373,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -379,6 +402,11 @@ func (x *respSomeServiceBounceMapBuilder) Emit() *respSomeServiceBounceMap {
     var objCopy respSomeServiceBounceMap = *x.obj
     return &objCopy
 }
+
+func (x *respSomeServiceBounceMap) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respSomeServiceBounceMap) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respSomeServiceBounceMap"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -435,14 +463,18 @@ func (x *respSomeServiceBounceMap) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqSomeServiceBinaryKeyedMap struct {
     R []int64 `thrift:"r,1" json:"r" db:"r"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqSomeServiceBinaryKeyedMap{}
 
+type SomeServiceBinaryKeyedMapArgs = reqSomeServiceBinaryKeyedMap
+
 func newReqSomeServiceBinaryKeyedMap() *reqSomeServiceBinaryKeyedMap {
-    return (&reqSomeServiceBinaryKeyedMap{})
+    return (&reqSomeServiceBinaryKeyedMap{}).
+        SetRNonCompat(make([]int64, 0))
 }
 
 func (x *reqSomeServiceBinaryKeyedMap) GetRNonCompat() []int64 {
@@ -451,10 +483,15 @@ func (x *reqSomeServiceBinaryKeyedMap) GetRNonCompat() []int64 {
 
 func (x *reqSomeServiceBinaryKeyedMap) GetR() []int64 {
     if !x.IsSetR() {
-      return nil
+        return make([]int64, 0)
     }
 
     return x.R
+}
+
+func (x *reqSomeServiceBinaryKeyedMap) SetRNonCompat(value []int64) *reqSomeServiceBinaryKeyedMap {
+    x.R = value
+    return x
 }
 
 func (x *reqSomeServiceBinaryKeyedMap) SetR(value []int64) *reqSomeServiceBinaryKeyedMap {
@@ -521,7 +558,7 @@ if err := p.ReadListEnd(); err != nil {
 }
 result := listResult
 
-    x.SetR(result)
+    x.SetRNonCompat(result)
     return nil
 }
 
@@ -550,6 +587,7 @@ func (x *reqSomeServiceBinaryKeyedMapBuilder) Emit() *reqSomeServiceBinaryKeyedM
     var objCopy reqSomeServiceBinaryKeyedMap = *x.obj
     return &objCopy
 }
+
 func (x *reqSomeServiceBinaryKeyedMap) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqSomeServiceBinaryKeyedMap"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -606,29 +644,37 @@ func (x *reqSomeServiceBinaryKeyedMap) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respSomeServiceBinaryKeyedMap struct {
-    Value map[TBinary]int64 `thrift:"value,0,required" json:"value" db:"value"`
+    Value map[*TBinary]int64 `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respSomeServiceBinaryKeyedMap{}
+var _ thrift.WritableResult = &respSomeServiceBinaryKeyedMap{}
 
 func newRespSomeServiceBinaryKeyedMap() *respSomeServiceBinaryKeyedMap {
-    return (&respSomeServiceBinaryKeyedMap{})
+    return (&respSomeServiceBinaryKeyedMap{}).
+        SetValueNonCompat(make(map[*TBinary]int64))
 }
 
-func (x *respSomeServiceBinaryKeyedMap) GetValueNonCompat() map[TBinary]int64 {
+func (x *respSomeServiceBinaryKeyedMap) GetValueNonCompat() map[*TBinary]int64 {
     return x.Value
 }
 
-func (x *respSomeServiceBinaryKeyedMap) GetValue() map[TBinary]int64 {
+func (x *respSomeServiceBinaryKeyedMap) GetValue() map[*TBinary]int64 {
     if !x.IsSetValue() {
-      return nil
+        return make(map[*TBinary]int64)
     }
 
     return x.Value
 }
 
-func (x *respSomeServiceBinaryKeyedMap) SetValue(value map[TBinary]int64) *respSomeServiceBinaryKeyedMap {
+func (x *respSomeServiceBinaryKeyedMap) SetValueNonCompat(value map[*TBinary]int64) *respSomeServiceBinaryKeyedMap {
+    x.Value = value
+    return x
+}
+
+func (x *respSomeServiceBinaryKeyedMap) SetValue(value map[*TBinary]int64) *respSomeServiceBinaryKeyedMap {
     x.Value = value
     return x
 }
@@ -682,15 +728,15 @@ if err != nil {
     return thrift.PrependError("error reading map begin: ", err)
 }
 
-mapResult := make(map[TBinary]int64, size)
+mapResult := make(map[*TBinary]int64, size)
 for i := 0; i < size; i++ {
-    var key TBinary
+    var key *TBinary
     {
         result, err := ReadTBinary(p)
 if err != nil {
     return err
 }
-        key = result
+        key = &result
     }
 
     var value int64
@@ -710,7 +756,7 @@ if err := p.ReadMapEnd(); err != nil {
 }
 result := mapResult
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -730,7 +776,7 @@ func newRespSomeServiceBinaryKeyedMapBuilder() *respSomeServiceBinaryKeyedMapBui
     }
 }
 
-func (x *respSomeServiceBinaryKeyedMapBuilder) Value(value map[TBinary]int64) *respSomeServiceBinaryKeyedMapBuilder {
+func (x *respSomeServiceBinaryKeyedMapBuilder) Value(value map[*TBinary]int64) *respSomeServiceBinaryKeyedMapBuilder {
     x.obj.Value = value
     return x
 }
@@ -739,6 +785,11 @@ func (x *respSomeServiceBinaryKeyedMapBuilder) Emit() *respSomeServiceBinaryKeye
     var objCopy respSomeServiceBinaryKeyedMap = *x.obj
     return &objCopy
 }
+
+func (x *respSomeServiceBinaryKeyedMap) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respSomeServiceBinaryKeyedMap) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respSomeServiceBinaryKeyedMap"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -795,6 +846,7 @@ func (x *respSomeServiceBinaryKeyedMap) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type SomeServiceProcessor struct {
@@ -861,9 +913,11 @@ func (p *procFuncSomeServiceBounceMap) Read(iprot thrift.Protocol) (thrift.Struc
 func (p *procFuncSomeServiceBounceMap) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("BounceMap", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -882,13 +936,13 @@ func (p *procFuncSomeServiceBounceMap) Write(seqId int32, result thrift.Writable
 func (p *procFuncSomeServiceBounceMap) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqSomeServiceBounceMap)
     result := newRespSomeServiceBounceMap()
-    if retval, err := p.handler.BounceMap(args.M); err != nil {
+    retval, err := p.handler.BounceMap(args.M)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing BounceMap: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -911,9 +965,11 @@ func (p *procFuncSomeServiceBinaryKeyedMap) Read(iprot thrift.Protocol) (thrift.
 func (p *procFuncSomeServiceBinaryKeyedMap) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("BinaryKeyedMap", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -932,13 +988,13 @@ func (p *procFuncSomeServiceBinaryKeyedMap) Write(seqId int32, result thrift.Wri
 func (p *procFuncSomeServiceBinaryKeyedMap) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqSomeServiceBinaryKeyedMap)
     result := newRespSomeServiceBinaryKeyedMap()
-    if retval, err := p.handler.BinaryKeyedMap(args.R); err != nil {
+    retval, err := p.handler.BinaryKeyedMap(args.R)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing BinaryKeyedMap: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 

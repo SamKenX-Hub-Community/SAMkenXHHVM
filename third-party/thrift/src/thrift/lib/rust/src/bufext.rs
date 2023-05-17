@@ -26,9 +26,6 @@ use bytes::BytesMut;
 use crate::varint;
 
 pub trait BufExt: Buf {
-    /// Reset buffer back to the beginning.
-    fn reset(self) -> Self;
-
     /// Copy `len` Bytes from this (and advance the position), or reuse them from the underlying
     /// buffer if possible.
     fn copy_or_reuse_bytes(&mut self, len: usize) -> Bytes {
@@ -37,11 +34,9 @@ pub trait BufExt: Buf {
     }
 }
 
-impl BufExt for Cursor<Bytes> {
-    fn reset(self) -> Self {
-        Cursor::new(self.into_inner())
-    }
+impl BufExt for Bytes {}
 
+impl BufExt for Cursor<Bytes> {
     // We can get a reference to the underlying Bytes here, and reuse that.
     fn copy_or_reuse_bytes(&mut self, len: usize) -> Bytes {
         let pos = self.position() as usize;
@@ -53,18 +48,9 @@ impl BufExt for Cursor<Bytes> {
     }
 }
 
-impl<T: AsRef<[u8]> + ?Sized> BufExt for Cursor<&T> {
-    fn reset(self) -> Self {
-        Cursor::new(self.into_inner())
-    }
-}
+impl<T: AsRef<[u8]> + ?Sized> BufExt for Cursor<&T> {}
 
-impl<T: BufExt, U: BufExt> BufExt for Chain<T, U> {
-    fn reset(self) -> Self {
-        let (a, b) = self.into_inner();
-        a.reset().chain(b.reset())
-    }
-}
+impl<T: BufExt, U: BufExt> BufExt for Chain<T, U> {}
 
 pub trait BufMutExt: BufMut {
     type Final: Send + 'static;
@@ -116,6 +102,12 @@ impl BufMutExt for SizeCounter {
 // Not implemented for AsRef<[u8]> as Bytes implements that
 pub struct DeserializeSource<B: BufExt>(pub(crate) B);
 
+impl<B: BufExt> DeserializeSource<B> {
+    pub fn new(b: B) -> Self {
+        DeserializeSource(b)
+    }
+}
+
 // These types will use a copying cursor
 macro_rules! impl_deser_as_ref_u8 {
     ( $($t:ty),* ) => {
@@ -153,38 +145,5 @@ impl From<&Bytes> for DeserializeSource<Cursor<Bytes>> {
     fn from(from: &Bytes) -> Self {
         // ok to clone Bytes, it just increments ref count
         Self(Cursor::new(from.clone()))
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_bytes_reset() {
-        let b = Bytes::from(b"hello, world".to_vec());
-        let mut c = Cursor::new(b);
-
-        assert_eq!(c.remaining(), 12);
-        assert_eq!(c.get_u8(), b'h');
-
-        c.advance(5);
-        assert_eq!(c.remaining(), 6);
-        assert_eq!(c.get_u8(), b' ');
-
-        let mut c = c.reset();
-        assert_eq!(c.remaining(), 12);
-        assert_eq!(c.get_u8(), b'h');
-    }
-
-    #[test]
-    fn test_empty_bytes_reset() {
-        let b = Bytes::from(Vec::new());
-        let c = Cursor::new(b);
-
-        assert_eq!(c.remaining(), 0);
-
-        let c = c.reset();
-        assert_eq!(c.remaining(), 0);
     }
 }

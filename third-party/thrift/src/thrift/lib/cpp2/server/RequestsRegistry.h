@@ -33,6 +33,7 @@ namespace thrift {
 
 class Cpp2RequestContext;
 class ResponseChannelRequest;
+class RequestsRegistry;
 
 namespace detail {
 
@@ -41,19 +42,30 @@ namespace detail {
 // interval for each bucket in the RecentRequestCounter.
 THRIFT_PLUGGABLE_FUNC_DECLARE(uint64_t, getCurrentServerTick);
 
+THRIFT_PLUGGABLE_FUNC_DECLARE(
+    std::unique_ptr<folly::WorkerProvider>,
+    createIOWorkerProvider,
+    folly::Executor*,
+    RequestsRegistry*);
 } // namespace detail
 
 // Helper class to track recently received request counts
 class RecentRequestCounter {
  public:
   static inline constexpr uint64_t kBuckets = 512ul;
-  using ArrivalCount = int32_t;
-  using ActiveCount = int32_t;
-  using Values = std::array<std::pair<ArrivalCount, ActiveCount>, kBuckets>;
+
+  struct RequestsCount {
+    int32_t arrivalCount;
+    int32_t activeCount;
+    int32_t overloadCount;
+  };
+  using Values = std::array<RequestsCount, kBuckets>;
 
   void increment();
   void decrement();
   Values get() const;
+
+  void incrementOverloadCount();
 
  private:
   uint64_t getCurrentBucket() const;
@@ -255,6 +267,7 @@ class RequestsRegistry {
   const RecentRequestCounter& getRequestCounter() const {
     return requestCounter_;
   }
+  RecentRequestCounter& getRequestCounter() { return requestCounter_; }
 
  private:
   void moveToFinishedList(DebugStub& stub);

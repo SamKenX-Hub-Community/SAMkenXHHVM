@@ -13,11 +13,9 @@ let popt
     ~auto_namespace_map
     ~enable_xhp_class_modifier
     ~disable_xhp_element_mangling
-    ~disable_enum_classes
     ~interpret_soft_types_as_like_types
     ~everything_sdt
     ~enable_strict_const_semantics =
-  let enable_enum_classes = not disable_enum_classes in
   let po = ParserOptions.default in
   let po =
     ParserOptions.with_disable_xhp_element_mangling
@@ -28,7 +26,6 @@ let popt
   let po =
     ParserOptions.with_enable_xhp_class_modifier po enable_xhp_class_modifier
   in
-  let po = ParserOptions.with_enable_enum_classes po enable_enum_classes in
   let po =
     ParserOptions.with_interpret_soft_types_as_like_types
       po
@@ -62,6 +59,7 @@ let init ~enable_strict_const_semantics popt : Provider_context.t =
       ~tcopt
       ~backend:Provider_backend.Shared_memory
       ~deps_mode:(Typing_deps_mode.InMemoryMode None)
+      ~package_info:Package.Info.empty
   in
 
   (* Push local stacks here so we don't include shared memory in our timing. *)
@@ -186,7 +184,6 @@ let () =
   let auto_namespace_map = ref [] in
   let enable_xhp_class_modifier = ref false in
   let disable_xhp_element_mangling = ref false in
-  let disable_enum_classes = ref false in
   let disallow_static_memoized = ref false in
   let interpret_soft_types_as_like_types = ref false in
   let everything_sdt = ref false in
@@ -210,9 +207,6 @@ let () =
       ( "--disable-xhp-element-mangling",
         Arg.Set disable_xhp_element_mangling,
         "." );
-      ( "--disable-enum-classes",
-        Arg.Set disable_enum_classes,
-        "Disable the enum classes extension." );
       ( "--disallow-static-memoized",
         Arg.Set disallow_static_memoized,
         " Disallow static memoized methods on non-final methods" );
@@ -291,7 +285,6 @@ let () =
       ignored_flag "--strict-value-equality";
       ignored_flag "--enable-sealed-subclasses";
       ignored_flag "--enable-sound-dynamic-type";
-      ignored_flag "--pessimise-builtins";
       ignored_arg "--explicit-consistent-constructors";
       ignored_arg "--require-types-class-consts";
       ignored_flag "--skip-tast-checks";
@@ -306,7 +299,6 @@ let () =
     let auto_namespace_map = !auto_namespace_map in
     let enable_xhp_class_modifier = !enable_xhp_class_modifier in
     let disable_xhp_element_mangling = !disable_xhp_element_mangling in
-    let disable_enum_classes = !disable_enum_classes in
     let interpret_soft_types_as_like_types =
       !interpret_soft_types_as_like_types
     in
@@ -320,7 +312,6 @@ let () =
         ~auto_namespace_map
         ~enable_xhp_class_modifier
         ~disable_xhp_element_mangling
-        ~disable_enum_classes
         ~interpret_soft_types_as_like_types
         ~everything_sdt
         ~enable_strict_const_semantics
@@ -372,8 +363,7 @@ let () =
       in
       (* Compute OCaml folded decls *)
       List.iter files ~f:(fun filename ->
-          Errors.run_in_context filename Errors.Decl (fun () ->
-              Decl.make_env ~sh:SharedMem.Uses ctx filename));
+          Decl.make_env ~sh:SharedMem.Uses ctx filename);
       (* Compute rupro folded decls *)
       let rupro_decls =
         match

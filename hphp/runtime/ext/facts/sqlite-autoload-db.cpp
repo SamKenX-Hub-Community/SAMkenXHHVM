@@ -256,6 +256,10 @@ void rebuildIndices(SQLiteTxn& txn) {
   // type_attributes
   txn.exec(
       "CREATE INDEX IF NOT EXISTS "
+      "type_attributes__attribute_name__attribute_value"
+      " ON type_attributes (attribute_name, attribute_value)");
+  txn.exec(
+      "CREATE INDEX IF NOT EXISTS "
       "type_attributes__attribute_name__typeid__attribute_position"
       " ON type_attributes (attribute_name, typeid, attribute_position)");
 
@@ -690,7 +694,9 @@ struct SQLiteAutoloadDBImpl final : public SQLiteAutoloadDB {
       XLOGF(INFO, "Trying to open SQLite DB at {}", dbData.m_path.native());
       auto txn = db.begin();
       createSchema(txn);
-      rebuildIndices(txn);
+      if (!db.isReadOnly()) {
+        rebuildIndices(txn);
+      }
       db.setBusyTimeout(60'000);
       txn.commit();
       XLOGF(INFO, "Connected to SQLite DB at {}", dbData.m_path.native());

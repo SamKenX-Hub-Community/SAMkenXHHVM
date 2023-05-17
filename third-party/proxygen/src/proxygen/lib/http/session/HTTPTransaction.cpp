@@ -560,7 +560,7 @@ void HTTPTransaction::markIngressComplete() {
 void HTTPTransaction::markEgressComplete() {
   VLOG(4) << "Marking egress complete on " << *this;
   auto pendingBytes = getOutstandingEgressBodyBytes();
-  if (pendingBytes && isEnqueued()) {
+  if (pendingBytes) {
     int64_t deferredEgressBodyBytes = folly::to<int64_t>(pendingBytes);
     transport_.notifyEgressBodyBuffered(-deferredEgressBodyBytes);
   }
@@ -1048,9 +1048,7 @@ void HTTPTransaction::sendBody(std::unique_ptr<folly::IOBuf> body) {
           << "Sent body longer than chunk header ";
     }
     deferredEgressBody_.append(std::move(body));
-    if (isEnqueued()) {
-      transport_.notifyEgressBodyBuffered(bodyLen);
-    }
+    transport_.notifyEgressBodyBuffered(bodyLen);
   }
   notifyTransportPendingEgress();
 }
@@ -1066,10 +1064,8 @@ bool HTTPTransaction::addBufferMeta() noexcept {
   auto bufferMetaLen = *expectedResponseLength_;
   deferredBufferMeta_.length = bufferMetaLen;
   actualResponseLength_ = bufferMetaLen;
+  transport_.notifyEgressBodyBuffered(bufferMetaLen);
 
-  if (isEnqueued()) {
-    transport_.notifyEgressBodyBuffered(bufferMetaLen);
-  }
   notifyTransportPendingEgress();
   return true;
 }
@@ -1559,13 +1555,9 @@ void HTTPTransaction::notifyTransportPendingEgress() {
       // Insert into the queue and let the session know we've got something
       egressQueue_.signalPendingEgress(queueHandle_);
       transport_.notifyPendingEgress();
-      transport_.notifyEgressBodyBuffered(getOutstandingEgressBodyBytes());
     }
   } else if (isEnqueued()) {
     // Nothing to send, or not allowed to send right now.
-    int64_t deferredEgressBodyBytes =
-        folly::to<int64_t>(getOutstandingEgressBodyBytes());
-    transport_.notifyEgressBodyBuffered(-deferredEgressBodyBytes);
     egressQueue_.clearPendingEgress(queueHandle_);
   }
   updateHandlerPauseState();
@@ -1597,6 +1589,11 @@ void HTTPTransaction::updateHandlerPauseState() {
 
   if (handler_ && handlerShouldBePaused != handlerEgressPaused_) {
     if (handlerShouldBePaused) {
+      if (canSendHeaders()) {
+        VLOG(4) << "txn hasn't egressed headers, not updating pause state "
+                << *this;
+        return;
+      }
       handlerEgressPaused_ = true;
       VLOG(4) << "egress paused txn=" << *this;
       handler_->onEgressPaused();
@@ -1753,10 +1750,10 @@ void HTTPTransaction::updateAndSendPriority(
   transport_.sendPriority(this, priority_);
 }
 
-void HTTPTransaction::updateAndSendPriority(uint8_t urgency, bool incremental) {
-  urgency = HTTPMessage::normalizePriority((int8_t)urgency);
+void HTTPTransaction::updateAndSendPriority(HTTPPriority pri) {
+  pri.urgency = HTTPMessage::normalizePriority((int8_t)pri.urgency);
   // Note we no longer want to play with the egressQueue_ with the new API.
-  transport_.changePriority(this, HTTPPriority(urgency, incremental));
+  transport_.changePriority(this, pri);
 }
 
 void HTTPTransaction::onPriorityUpdate(const http2::PriorityUpdate& priority) {

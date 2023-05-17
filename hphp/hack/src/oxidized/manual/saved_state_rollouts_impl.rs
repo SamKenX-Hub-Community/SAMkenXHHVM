@@ -11,7 +11,7 @@ use crate::gen::saved_state_rollouts::SavedStateRollouts;
 
 impl Default for SavedStateRollouts {
     fn default() -> Self {
-        Self::make(isize::MIN, None, |_| Ok(false)).expect("default had errors")
+        Self::make(isize::MIN, false, None, |_| Ok(false)).expect("default had errors")
     }
 }
 
@@ -41,6 +41,7 @@ impl Flag {
             Self::DummyOne => 0,
             Self::DummyTwo => 1,
             Self::DummyThree => 2,
+            Self::NoAncestorEdges => 3,
         }
     }
 
@@ -49,6 +50,7 @@ impl Flag {
             Self::DummyOne => "dummy_one",
             Self::DummyTwo => "dummy_two",
             Self::DummyThree => "dummy_three",
+            Self::NoAncestorEdges => "no_ancestor_edges",
         }
     }
 }
@@ -56,6 +58,7 @@ impl Flag {
 impl SavedStateRollouts {
     pub fn make(
         current_rolled_out_flag_idx: isize,
+        deactivate_saved_state_rollout: bool,
         force_flag_value: Option<&str>,
         mut get_default: impl FnMut(&str) -> Result<bool, std::str::ParseBoolError>,
     ) -> Result<Self, RolloutsError> {
@@ -67,7 +70,13 @@ impl SavedStateRollouts {
             match current_rolled_out_flag_idx.cmp(&i) {
                 Ordering::Equal => match force_prod_or_candidate.rollout_flag_value() {
                     Some(b) => Ok(b),
-                    None => get_default(flag_name),
+                    None => {
+                        if deactivate_saved_state_rollout {
+                            Ok(false)
+                        } else {
+                            get_default(flag_name)
+                        }
+                    }
                 },
                 Ordering::Less => {
                     // This flag will be rolled out next, set to false unless forced to true.
@@ -80,9 +89,10 @@ impl SavedStateRollouts {
             }
         };
         Ok(Self {
-            one: get_flag_value(Flag::DummyOne)?,
-            two: get_flag_value(Flag::DummyTwo)?,
-            three: get_flag_value(Flag::DummyThree)?,
+            dummy_one: get_flag_value(Flag::DummyOne)?,
+            dummy_two: get_flag_value(Flag::DummyTwo)?,
+            dummy_three: get_flag_value(Flag::DummyThree)?,
+            no_ancestor_edges: get_flag_value(Flag::NoAncestorEdges)?,
         })
     }
 }

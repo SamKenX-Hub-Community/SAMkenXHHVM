@@ -3,10 +3,10 @@ from . import base
 import hhvm_lldb.utils as utils
 import hhvm_lldb.sizeof as sizeof
 
-class IdxCommandTestCase(base.LLDBTestBase):
+class IdxCommandTestCase(base.TestHHVMBinary):
 
     def setUp(self):
-        super().setUp(file = "quick/properties2.php", interp=True)
+        super().setUp(test_file="quick/properties2.php", interp=True)
 
     def test_sizeof_helper_indexed_string_map(self):
         self.run_commands(["b newObjImpl", "continue", "thread step-out"])

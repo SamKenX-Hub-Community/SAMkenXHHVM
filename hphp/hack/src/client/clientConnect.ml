@@ -30,7 +30,7 @@ type env = {
   watchman_debug_logging: bool;
   log_inference_constraints: bool;
   remote: bool;
-  progress_callback: (string option -> unit) option;
+  progress_callback: string option -> unit;
   do_post_handoff_handshake: bool;
   ignore_hh_version: bool;
   save_64bit: string option;
@@ -52,61 +52,18 @@ type conn = {
   t_sent_connection_type: float;
   channels: Timeout.in_channel * Out_channel.t;
   server_specific_files: ServerCommandTypes.server_specific_files;
-  conn_progress_callback: (string option -> unit) option;
+  conn_progress_callback: string option -> unit;
   conn_root: Path.t;
   conn_deadline: float option;
   from: string;
 }
 
-let tty_progress_reporter () =
-  let angery_reaccs_only =
-    Tty.supports_emoji () && ClientMessages.angery_reaccs_only ()
-  in
-  fun (status : string option) : unit ->
-    if Tty.spinner_used () then Tty.print_clear_line stderr;
-    match status with
-    | None -> ()
-    | Some s ->
-      Tty.eprintf
-        "hh_server is busy: %s %s%!"
-        s
-        (Tty.spinner ~angery_reaccs_only ())
-
-(** What is the latest progress message written by the server into a file?
-We store this in a mutable variable, so we can know whether it's changed and hence whether
-to display the warning banner. *)
-let latest_server_progress : ServerProgress.t ref =
-  ref ServerProgress.{ message = "connecting"; timestamp = 0.; pid = 0 }
-
-(** This reads from the progress file and assigns into mutable variable "latest_status_progress",
-and returns whether there was new status. *)
-let check_progress () : bool =
-  let server_progress = ServerProgress.read () in
-  if
-    not
-      (Float.equal
-         server_progress.ServerProgress.timestamp
-         !latest_server_progress.ServerProgress.timestamp)
-  then begin
-    log
-      "check_progress: [%s] %s"
-      (Utils.timestring server_progress.ServerProgress.timestamp)
-      server_progress.ServerProgress.message;
-    latest_server_progress := server_progress;
-    true
-  end else
-    false
-
-let show_progress (progress_callback : string option -> unit) : unit =
-  let (_any_changes : bool) = check_progress () in
-  let message = !latest_server_progress.ServerProgress.message in
-  (* We always show progress, even if there were no changes, just so the user
-     can see the spinner keep turning around. It looks better that way for things
-     like "loading saved-state" which would otherwise look stuck for 30s. *)
-  progress_callback (Some ("[" ^ message ^ "]"));
+let read_and_show_progress (progress_callback : string option -> unit) : unit =
+  let { ServerProgress.message; _ } = ServerProgress.read () in
+  progress_callback (Some message);
   ()
 
-let check_for_deadline deadline_opt =
+let check_for_deadline progress_callback deadline_opt =
   let now = Unix.time () in
   match deadline_opt with
   | Some deadline when Float.(now > deadline) ->
@@ -114,6 +71,8 @@ let check_for_deadline deadline_opt =
       "check_for_deadline expired: %s > %s"
       (Utils.timestring now)
       (Utils.timestring deadline);
+    (* must hide the spinner prior to printing output or exiting *)
+    progress_callback None;
     Printf.eprintf "\nError: hh_client hit timeout, giving up!\n%!";
     raise Exit_status.(Exit_with Out_of_time)
   | _ -> ()
@@ -126,9 +85,9 @@ let rec wait_for_server_message
     ~(ic : Timeout.in_channel)
     ~(deadline : float option)
     ~(server_specific_files : ServerCommandTypes.server_specific_files)
-    ~(progress_callback : (string option -> unit) option)
+    ~(progress_callback : string option -> unit)
     ~(root : Path.t) : _ ServerCommandTypes.message_type Lwt.t =
-  check_for_deadline deadline;
+  check_for_deadline progress_callback deadline;
   let%lwt (readable, _, _) =
     Lwt_utils.select
       [Timeout.descr_of_in_channel ic]
@@ -137,7 +96,7 @@ let rec wait_for_server_message
       1.0
   in
   if List.is_empty readable then (
-    Option.iter progress_callback ~f:show_progress;
+    read_and_show_progress progress_callback;
     wait_for_server_message
       ~connection_log_id
       ~expected_message
@@ -172,14 +131,14 @@ let rec wait_for_server_message
           ~connection_log_id
           "wait_for_server_message: got expected %s"
           (ServerCommandTypesUtils.debug_describe_message_type msg);
-        Option.iter progress_callback ~f:(fun callback -> callback None);
+        progress_callback None;
         Lwt.return msg
       ) else (
         log
           ~connection_log_id
           "wait_for_server_message: didn't want %s"
           (ServerCommandTypesUtils.debug_describe_message_type msg);
-        if not is_ping then Option.iter progress_callback ~f:show_progress;
+        if not is_ping then read_and_show_progress progress_callback;
         wait_for_server_message
           ~connection_log_id
           ~expected_message
@@ -193,23 +152,15 @@ let rec wait_for_server_message
     | (End_of_file | Sys_error _ | M.Monitor_failed_to_handoff) as exn ->
       let e = Exception.wrap exn in
       let finale_data =
-        Exit.get_finale_data
+        Exit_status.get_finale_data
           server_specific_files.ServerCommandTypes.server_finale_file
       in
       let client_exn = Exception.get_ctor_string e in
       let client_stack =
         e |> Exception.get_backtrace_string |> Exception.clean_stack
       in
-      (* log to logfile *)
-      log
-        ~connection_log_id
-        "SERVER_HUNG_UP [%s]\nfinale_data: %s\n%s"
-        client_exn
-        (Option.value_map
-           finale_data
-           ~f:Exit.show_finale_data
-           ~default:"[none]")
-        client_stack;
+      (* must hide the spinner prior to printing output or exiting *)
+      progress_callback None;
       (* stderr *)
       let msg =
         match (exn, finale_data) with
@@ -219,37 +170,35 @@ let rec wait_for_server_message
         | (_, Some finale_data) ->
           Printf.sprintf
             "Hack server disconnected suddenly [%s]\n%s"
-            (Exit_status.show finale_data.Exit.exit_status)
-            (Option.value ~default:"" finale_data.Exit.msg)
+            (Exit_status.show finale_data.Exit_status.exit_status)
+            (Option.value ~default:"" finale_data.Exit_status.msg)
       in
       Printf.eprintf "%s\n" msg;
-      (* spinner *)
-      Option.iter progress_callback ~f:(fun callback -> callback None);
       (* exception, caught by hh_client.ml and logged.
          In most cases we report that find_hh.sh should simply retry the failed command.
          There are only two cases where we say it shouldn't. *)
-      let underlying_exit_status =
-        Option.map finale_data ~f:(fun d -> d.Exit.exit_status)
+      let server_exit_status =
+        Option.map finale_data ~f:(fun d -> d.Exit_status.exit_status)
       in
       let external_exit_status =
-        match underlying_exit_status with
+        match server_exit_status with
         | Some
             Exit_status.(
               Failed_to_load_should_abort | Server_non_opt_build_mode) ->
-          Exit_status.Server_hung_up_should_abort
-        | _ -> Exit_status.Server_hung_up_should_retry
+          Exit_status.Server_hung_up_should_abort finale_data
+        | _ -> Exit_status.Server_hung_up_should_retry finale_data
       in
       (* log to telemetry *)
       HackEventLogger.server_hung_up
         ~external_exit_status
-        ~underlying_exit_status
+        ~server_exit_status
         ~client_exn
         ~client_stack
         ~server_stack:
           (Option.map
              finale_data
-             ~f:(fun { Exit.stack = Utils.Callstack stack; _ } -> stack))
-        ~server_msg:(Option.bind finale_data ~f:(fun d -> d.Exit.msg));
+             ~f:(fun { Exit_status.stack = Utils.Callstack stack; _ } -> stack))
+        ~server_msg:(Option.bind finale_data ~f:(fun d -> d.Exit_status.msg));
       raise (Exit_status.Exit_with external_exit_status)
 
 let wait_for_server_hello
@@ -257,7 +206,7 @@ let wait_for_server_hello
     (ic : Timeout.in_channel)
     (deadline : float option)
     (server_specific_files : ServerCommandTypes.server_specific_files)
-    (progress_callback : (string option -> unit) option)
+    (progress_callback : string option -> unit)
     (root : Path.t) : unit Lwt.t =
   let%lwt (_ : 'a ServerCommandTypes.message_type) =
     wait_for_server_message
@@ -273,7 +222,8 @@ let wait_for_server_hello
 
 let rec connect ?(allow_macos_hack = true) (env : env) (start_time : float) :
     conn Lwt.t =
-  check_for_deadline env.deadline;
+  env.progress_callback (Some "connecting");
+  check_for_deadline env.progress_callback env.deadline;
   let handoff_options =
     {
       MonitorRpc.force_dormant_start = env.force_dormant_start;
@@ -360,6 +310,8 @@ let rec connect ?(allow_macos_hack = true) (env : env) (start_time : float) :
         For longer startup times, a sufficient (if not exactly clean) workaround
         is simply to have the client re-establish a connection.
       *)
+      (* must hide the spinner prior to printing output or exiting *)
+      env.progress_callback None;
       Printf.eprintf
         "Server connection took over %.1f seconds. Refreshing...\n"
         threshold;
@@ -370,7 +322,8 @@ let rec connect ?(allow_macos_hack = true) (env : env) (start_time : float) :
 
       (* allow_macos_hack:false is a defensive measure against infinite connection loops *)
       connect ~allow_macos_hack:false env start_time
-    ) else
+    ) else (
+      env.progress_callback (Some "connected");
       Lwt.return
         {
           connection_log_id = Connection_tracker.log_id tracker;
@@ -385,7 +338,10 @@ let rec connect ?(allow_macos_hack = true) (env : env) (start_time : float) :
           conn_deadline = env.deadline;
           from = env.from;
         }
+    )
   | Error e ->
+    (* must hide the spinner prior to printing output or exiting *)
+    env.progress_callback None;
     (match e with
     | MonitorUtils.Server_died
     | MonitorUtils.(Connect_to_monitor_failure { server_exists = true; _ }) ->

@@ -13,8 +13,6 @@ open Integration_test_base_types
 open Reordered_argument_collections
 open ServerCommandTypes
 open SearchServiceRunner
-open Coverage_level
-open Coverage_level_defs
 open Int.Replace_polymorphic_compare
 
 exception Integration_test_failure
@@ -37,11 +35,12 @@ let () = Hh_logger.Level.set_min_level Hh_logger.Level.Off
 let server_config = ServerEnvBuild.default_genv.ServerEnv.config
 
 let global_opts =
-  GlobalOptions.make
+  GlobalOptions.set
+    ~tco_num_local_workers:1
     ~tco_saved_state:GlobalOptions.default_saved_state
     ~po_disable_xhp_element_mangling:false
     ~po_deregister_php_stdlib:true
-    ()
+    GlobalOptions.default
 
 let server_config = ServerConfig.set_tc_options server_config global_opts
 
@@ -159,20 +158,20 @@ let run_loop_once :
   List.iter disk_changes ~f:(fun (path, contents) -> TestDisk.set path contents);
 
   let did_read_disk_changes_ref = ref false in
-  let notifier () =
-    if not !did_read_disk_changes_ref then (
-      did_read_disk_changes_ref := true;
-      SSet.of_list (List.map disk_changes ~f:fst)
-    ) else
-      SSet.empty
+  let get_changes_sync () =
+    ServerNotifier.SyncChanges
+      (if not !did_read_disk_changes_ref then (
+        did_read_disk_changes_ref := true;
+        SSet.of_list (List.map disk_changes ~f:fst)
+      ) else
+        SSet.empty)
   in
+  let get_changes_async () = get_changes_sync () in
   let genv =
     {
       !genv with
-      ServerEnv.notifier_async =
-        (fun () ->
-          ServerNotifierTypes.Notifier_synchronous_changes (notifier ()));
-      ServerEnv.notifier;
+      ServerEnv.notifier =
+        ServerNotifier.init_mock ~get_changes_sync ~get_changes_async;
     }
   in
   (* Always pick up disk changes in tests immediately *)
@@ -274,9 +273,7 @@ let connect_persistent_client env =
 let assert_errors_in_phase
     (env : ServerEnv.env) (expected_count : int) (phase : Errors.phase) :
     ServerEnv.env =
-  let all_phases =
-    [Errors.Parsing; Errors.Decl; Errors.Naming; Errors.Typing; Errors.Init]
-  in
+  let all_phases = [Errors.Naming; Errors.Typing] in
   let errors_in_phases =
     List.map
       ~f:(fun (phase : Errors.phase) ->
@@ -386,28 +383,10 @@ let close_file ?(ignore_response = false) env name =
   (env, loop_output)
 
 let wait env =
-  (* We simulate waiting one second since last command by manipulating
+  (* We simulate waiting a while since last command by manipulating
    * last_command_time. Will not work on timers that compare against other
    * counters. *)
-  ServerEnv.{ env with last_command_time = env.last_command_time -. 1.0 }
-
-let coverage_levels env filename =
-  let file_input = ServerCommandTypes.FileName filename in
-  run_loop_once
-    env
-    {
-      default_loop_input with
-      persistent_client_request =
-        Some (Request (COVERAGE_LEVELS (filename, file_input)));
-    }
-
-let coverage_counts env contents =
-  run_loop_once
-    env
-    {
-      default_loop_input with
-      persistent_client_request = Some (Request (COVERAGE_COUNTS contents));
-    }
+  ServerEnv.{ env with last_command_time = env.last_command_time -. 60.0 }
 
 let autocomplete env contents =
   run_loop_once
@@ -469,12 +448,6 @@ let start_initial_full_check env =
      and return the number of rechecked non-dummy files. *)
   assert (total_rechecked_count >= 1);
   (env, total_rechecked_count - 1)
-
-let assert_no_diagnostics loop_output =
-  match loop_output.push_messages with
-  | DIAGNOSTIC _ :: _ -> fail "Did not expect to receive push diagnostics."
-  | NEW_CLIENT_CONNECTED :: _ -> fail "Unexpected push message"
-  | _ -> ()
 
 let assert_has_diagnostics loop_output =
   match
@@ -768,6 +741,17 @@ let get_diagnostics loop_output : diagnostic_errors =
          (SMap.union ~combine:(fun _ err _ ->
               (* Only take the most recent diagnostic per file *) Some err))
 
+let assert_no_diagnostics loop_output =
+  match loop_output.push_messages with
+  | DIAGNOSTIC _ :: _ ->
+    let diagnostics = get_diagnostics loop_output in
+    let diagnostics_as_string = diagnostics_to_string diagnostics in
+    fail
+      ("Did not expect to receive push diagnostics. Got:\n"
+      ^ diagnostics_as_string)
+  | NEW_CLIENT_CONNECTED :: _ -> fail "Unexpected push message"
+  | _ -> ()
+
 let assert_diagnostics loop_output (expected : error_messages_per_file) =
   let diagnostics = get_diagnostics loop_output in
   let diagnostics_as_strings = diagnostics_to_strings diagnostics in
@@ -792,33 +776,6 @@ let list_to_string l =
   List.iter l ~f:(Printf.bprintf buf "%s ");
   Buffer.contents buf
 
-let coverage_levels_to_str_helper (pos, cl) =
-  let cl_str = string_of_level cl in
-  let interval = Pos.string pos in
-  interval ^ " " ^ cl_str
-
-let assert_coverage_levels loop_output expected =
-  let (results, counts) =
-    match loop_output.persistent_client_response with
-    | Some res -> res
-    | _ -> fail "Expected coverage levels response"
-  in
-  let strings_of_stats =
-    [
-      "checked: " ^ string_of_int counts.checked;
-      "partial: " ^ string_of_int counts.partial;
-      "unchecked: " ^ string_of_int counts.unchecked;
-    ]
-  in
-  let results_as_string =
-    List.map results ~f:coverage_levels_to_str_helper
-    |> List.sort ~compare:String.compare
-    |> List.append strings_of_stats
-    |> list_to_string
-  in
-  let expected_as_string = list_to_string expected in
-  assertEqual expected_as_string results_as_string
-
 let assert_autocomplete loop_output expected =
   let results =
     match loop_output.persistent_client_response with
@@ -826,7 +783,7 @@ let assert_autocomplete loop_output expected =
     | _ -> fail "Expected autocomplete response"
   in
   let results =
-    results |> List.map ~f:(fun x -> x.AutocompleteTypes.res_name)
+    results |> List.map ~f:(fun x -> x.AutocompleteTypes.res_label)
   in
   (* The autocomplete results out of hack are unsorted *)
   let results_as_string =
@@ -844,7 +801,7 @@ let assert_autocomplete_does_not_contain loop_output not_expected =
     | _ -> fail "Expected autocomplete response"
   in
   let results =
-    List.map results ~f:(fun x -> x.AutocompleteTypes.res_name) |> SSet.of_list
+    List.map results ~f:(fun x -> x.AutocompleteTypes.res_label) |> SSet.of_list
   in
   let not_expected = SSet.of_list not_expected in
   let occured = SSet.inter results not_expected in
@@ -864,52 +821,9 @@ let assert_ide_autocomplete loop_output expected =
   in
   let results =
     List.map results.AutocompleteTypes.completions ~f:(fun x ->
-        x.AutocompleteTypes.res_name)
+        x.AutocompleteTypes.res_label)
   in
   let results_as_string = list_to_string results in
-  let expected_as_string = list_to_string expected in
-  assertEqual expected_as_string results_as_string
-
-let smap_to_str_list (f : 'a -> string) (m : 'a SMap.t) =
-  (m |> SMap.ordered_keys |> List.map) ~f:(fun s ->
-      s ^ "< " ^ (SMap.find m s |> f) ^ ">")
-
-let level_stats_to_str (ls : level_stats) =
-  let lvls =
-    [Ide_api_types.Checked; Ide_api_types.Partial; Ide_api_types.Unchecked]
-  in
-  let str_list =
-    List.map lvls ~f:(fun lvl ->
-        string_of_level lvl ^ "=" ^ string_of_int (CLMap.find lvl ls).count)
-  in
-  list_to_string str_list
-
-let rec trie_to_string (base : string) (f : 'a -> string) (t : 'a trie) =
-  match t with
-  | Leaf a -> base ^ "( " ^ f a ^ ")"
-  | Node (_, smap_of_tr) ->
-    (*TODO: figure out why the first of the pair is duplicated*)
-    List.map (SMap.ordered_keys smap_of_tr) ~f:(fun k ->
-        trie_to_string (base ^ "/" ^ k) f (SMap.find smap_of_tr k))
-    |> list_to_string
-
-let assert_coverage_counts loop_output expected =
-  let resOpt =
-    match loop_output.persistent_client_response with
-    | Some res -> res
-    | None -> fail "Expected coverage count response"
-  in
-  let results =
-    match resOpt with
-    | Some res -> res
-    | None -> fail "Expected some coverage count response"
-  in
-  let results_as_string =
-    trie_to_string
-      ""
-      (fun x -> x |> smap_to_str_list level_stats_to_str |> list_to_string)
-      results
-  in
   let expected_as_string = list_to_string expected in
   assertEqual expected_as_string results_as_string
 
@@ -972,17 +886,17 @@ let assert_ide_find_refs loop_output expected_name expected =
   let expected_as_string = list_to_string expected in
   assertEqual expected_as_string results_as_string
 
-let assert_refactor loop_output expected =
+let assert_rename loop_output expected =
   let results = assert_response loop_output in
-  (* We don't have any (better than JSON) human-readable format for refactor results,
+  (* We don't have any (better than JSON) human-readable format for rename results,
    * and I'm too lazy to write it. Tests will have to compare JSON outputs for now. *)
-  let results_as_string = ClientRefactor.patches_to_json_string results in
+  let results_as_string = ClientRename.patches_to_json_string results in
   assertEqual expected results_as_string
 
-let assert_ide_refactor loop_output expected =
+let assert_ide_rename loop_output expected =
   let results = assert_response loop_output in
   let results = Result.ok_or_failwith results in
-  let results_as_string = ClientRefactor.patches_to_json_string results in
+  let results_as_string = ClientRename.patches_to_json_string results in
   assertEqual expected results_as_string
 
 let assert_needs_recheck env x =

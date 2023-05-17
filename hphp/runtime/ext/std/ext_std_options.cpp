@@ -755,8 +755,7 @@ static bool HHVM_FUNCTION(hphp_memory_stop_interval) {
 const StaticString s_srv("srv"), s_cli("cli");
 
 String HHVM_FUNCTION(php_sapi_name) {
-  return RuntimeOption::ServerExecutionMode() && !is_cli_server_mode()
-    ? s_srv : s_cli;
+  return is_any_cli_mode() ? s_cli : s_srv;
 }
 
 #ifdef _WIN32
@@ -1163,15 +1162,6 @@ void StandardExtension::initOptions() {
   HHVM_FE(set_pre_timeout_handler);
   HHVM_FE(sys_get_temp_dir);
   HHVM_FE(version_compare);
-
-  HHVM_RC_INT(INFO_GENERAL, 1 << 0);
-  HHVM_RC_INT(INFO_CREDITS, 1 << 0);
-  HHVM_RC_INT(INFO_CONFIGURATION, 1 << 0);
-  HHVM_RC_INT(INFO_MODULES, 1 << 0);
-  HHVM_RC_INT(INFO_ENVIRONMENT, 1 << 0);
-  HHVM_RC_INT(INFO_VARIABLES, 1 << 0);
-  HHVM_RC_INT(INFO_LICENSE, 1 << 0);
-  HHVM_RC_INT(INFO_ALL, 0x7FFFFFFF);
 
   loadSystemlib("std_options");
 }

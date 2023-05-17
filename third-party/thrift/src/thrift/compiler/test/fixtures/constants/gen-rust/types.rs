@@ -451,10 +451,6 @@ where
     }
 }
 
-
-
-
-
 #[allow(clippy::derivable_impls)]
 impl ::std::default::Default for self::Internship {
     fn default() -> Self {
@@ -566,6 +562,37 @@ where
 }
 
 
+impl ::fbthrift::metadata::ThriftAnnotations for Internship {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            2 => {
+            },
+            3 => {
+            },
+            4 => {
+            },
+            5 => {
+            },
+            _ => {}
+        }
+
+        None
+    }
+}
+
+
 #[allow(clippy::derivable_impls)]
 impl ::std::default::Default for self::Range {
     fn default() -> Self {
@@ -644,6 +671,31 @@ where
 }
 
 
+impl ::fbthrift::metadata::ThriftAnnotations for Range {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            2 => {
+            },
+            _ => {}
+        }
+
+        None
+    }
+}
+
+
 #[allow(clippy::derivable_impls)]
 impl ::std::default::Default for self::struct1 {
     fn default() -> Self {
@@ -718,6 +770,31 @@ where
             b: field_b.unwrap_or_else(|| "<uninitialized>".to_owned()),
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         })
+    }
+}
+
+
+impl ::fbthrift::metadata::ThriftAnnotations for struct1 {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            2 => {
+            },
+            _ => {}
+        }
+
+        None
     }
 }
 
@@ -818,6 +895,35 @@ where
 }
 
 
+impl ::fbthrift::metadata::ThriftAnnotations for struct2 {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            2 => {
+            },
+            3 => {
+            },
+            4 => {
+            },
+            _ => {}
+        }
+
+        None
+    }
+}
+
+
 #[allow(clippy::derivable_impls)]
 impl ::std::default::Default for self::struct3 {
     fn default() -> Self {
@@ -901,6 +1007,33 @@ where
             c: field_c.unwrap_or_default(),
             _dot_dot_Default_default: self::dot_dot::OtherFields(()),
         })
+    }
+}
+
+
+impl ::fbthrift::metadata::ThriftAnnotations for struct3 {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            2 => {
+            },
+            3 => {
+            },
+            _ => {}
+        }
+
+        None
     }
 }
 
@@ -996,6 +1129,33 @@ where
 }
 
 
+impl ::fbthrift::metadata::ThriftAnnotations for struct4 {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            2 => {
+            },
+            3 => {
+            },
+            _ => {}
+        }
+
+        None
+    }
+}
+
+
 
 impl ::std::default::Default for union1 {
     fn default() -> Self {
@@ -1056,20 +1216,41 @@ where
                     alt = ::std::option::Option::Some(Self::d(::fbthrift::Deserialize::read(p)?));
                 }
                 (fty, _, false) => p.skip(fty)?,
-                (badty, badid, true) => return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ApplicationException::new(
-                    ::fbthrift::ApplicationExceptionErrorCode::ProtocolError,
-                    format!(
-                        "unwanted extra union {} field ty {:?} id {}",
-                        "union1",
-                        badty,
-                        badid,
-                    ),
+                (badty, badid, true) => return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ProtocolError::UnwantedExtraUnionField(
+                    "union1".to_string(),
+                    badty,
+                    badid,
                 ))),
             }
             p.read_field_end()?;
         }
         p.read_struct_end()?;
         ::std::result::Result::Ok(alt.unwrap_or_default())
+    }
+}
+
+
+impl ::fbthrift::metadata::ThriftAnnotations for union1 {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            2 => {
+            },
+            _ => {}
+        }
+
+        None
     }
 }
 
@@ -1153,20 +1334,45 @@ where
                     alt = ::std::option::Option::Some(Self::u(::fbthrift::Deserialize::read(p)?));
                 }
                 (fty, _, false) => p.skip(fty)?,
-                (badty, badid, true) => return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ApplicationException::new(
-                    ::fbthrift::ApplicationExceptionErrorCode::ProtocolError,
-                    format!(
-                        "unwanted extra union {} field ty {:?} id {}",
-                        "union2",
-                        badty,
-                        badid,
-                    ),
+                (badty, badid, true) => return ::std::result::Result::Err(::std::convert::From::from(::fbthrift::ProtocolError::UnwantedExtraUnionField(
+                    "union2".to_string(),
+                    badty,
+                    badid,
                 ))),
             }
             p.read_field_end()?;
         }
         p.read_struct_end()?;
         ::std::result::Result::Ok(alt.unwrap_or_default())
+    }
+}
+
+
+impl ::fbthrift::metadata::ThriftAnnotations for union2 {
+    fn get_structured_annotation<T: Sized + 'static>() -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        None
+    }
+
+    fn get_field_structured_annotation<T: Sized + 'static>(field_id: i16) -> ::std::option::Option<T> {
+        #[allow(unused_variables)]
+        let type_id = ::std::any::TypeId::of::<T>();
+
+        match field_id {
+            1 => {
+            },
+            2 => {
+            },
+            3 => {
+            },
+            4 => {
+            },
+            _ => {}
+        }
+
+        None
     }
 }
 

@@ -851,7 +851,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.ping";
+                SERVICE_METHOD_NAME = "MyService.ping";
             }
             let args = self::Args_MyService_ping {
                 _phantom: ::std::marker::PhantomData,
@@ -866,8 +866,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.ping"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.ping"));
 
             async move {
                 let reply_env = call.await?;
@@ -883,7 +883,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.ping"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.ping"))
             .boxed()
         }
 
@@ -897,7 +897,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.getRandomData";
+                SERVICE_METHOD_NAME = "MyService.getRandomData";
             }
             let args = self::Args_MyService_getRandomData {
                 _phantom: ::std::marker::PhantomData,
@@ -912,8 +912,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.getRandomData"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.getRandomData"));
 
             async move {
                 let reply_env = call.await?;
@@ -929,7 +929,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.getRandomData"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.getRandomData"))
             .boxed()
         }
 
@@ -944,7 +944,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.hasDataById";
+                SERVICE_METHOD_NAME = "MyService.hasDataById";
             }
             let args = self::Args_MyService_hasDataById {
                 id: arg_id,
@@ -960,8 +960,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.hasDataById"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.hasDataById"));
 
             async move {
                 let reply_env = call.await?;
@@ -977,7 +977,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.hasDataById"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.hasDataById"))
             .boxed()
         }
 
@@ -992,7 +992,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.getDataById";
+                SERVICE_METHOD_NAME = "MyService.getDataById";
             }
             let args = self::Args_MyService_getDataById {
                 id: arg_id,
@@ -1008,8 +1008,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.getDataById"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.getDataById"));
 
             async move {
                 let reply_env = call.await?;
@@ -1025,7 +1025,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.getDataById"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.getDataById"))
             .boxed()
         }
 
@@ -1041,7 +1041,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.putDataById";
+                SERVICE_METHOD_NAME = "MyService.putDataById";
             }
             let args = self::Args_MyService_putDataById {
                 id: arg_id,
@@ -1058,8 +1058,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.putDataById"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.putDataById"));
 
             async move {
                 let reply_env = call.await?;
@@ -1075,7 +1075,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.putDataById"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.putDataById"))
             .boxed()
         }
 
@@ -1091,7 +1091,7 @@ pub mod client {
 
             const_cstr! {
                 SERVICE_NAME = "MyService";
-                METHOD_NAME = "MyService.lobDataById";
+                SERVICE_METHOD_NAME = "MyService.lobDataById";
             }
             let args = self::Args_MyService_lobDataById {
                 id: arg_id,
@@ -1108,8 +1108,8 @@ pub mod client {
             };
 
             let call = transport
-                .call(SERVICE_NAME.as_cstr(), METHOD_NAME.as_cstr(), request_env, rpc_options)
-                .instrument(::tracing::trace_span!("call", function = "MyService.lobDataById"));
+                .call(SERVICE_NAME.as_cstr(), SERVICE_METHOD_NAME.as_cstr(), request_env, rpc_options)
+                .instrument(::tracing::trace_span!("call", method = "MyService.lobDataById"));
 
             async move {
                 let reply_env = call.await?;
@@ -1125,7 +1125,7 @@ pub mod client {
                 };
                 res
             }
-            .instrument(::tracing::info_span!("MyService.lobDataById"))
+            .instrument(::tracing::info_span!("stream", method = "MyService.lobDataById"))
             .boxed()
         }
     }
@@ -1852,7 +1852,7 @@ pub mod mock {
         }
     }
 
-    mod r#impl {
+    pub mod r#impl {
         pub mod my_service {
 
             pub struct ping<'mock> {
@@ -1866,7 +1866,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> ping<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|| panic!(
                             "{}::{} is not mocked",
@@ -1911,7 +1911,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> getRandomData<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|| panic!(
                             "{}::{} is not mocked",
@@ -1956,7 +1956,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> hasDataById<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i64| panic!(
                             "{}::{} is not mocked",
@@ -2001,7 +2001,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> getDataById<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i64| panic!(
                             "{}::{} is not mocked",
@@ -2046,7 +2046,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> putDataById<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i64, _: ::std::string::String| panic!(
                             "{}::{} is not mocked",
@@ -2091,7 +2091,7 @@ pub mod mock {
 
             #[allow(clippy::redundant_closure)]
             impl<'mock> lobDataById<'mock> {
-                pub fn unimplemented() -> Self {
+                pub(crate) fn unimplemented() -> Self {
                     Self {
                         closure: ::std::sync::Mutex::new(::std::boxed::Box::new(|_: ::std::primitive::i64, _: ::std::string::String| panic!(
                             "{}::{} is not mocked",

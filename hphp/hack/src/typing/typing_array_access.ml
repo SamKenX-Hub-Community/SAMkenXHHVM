@@ -28,7 +28,7 @@ let mk_ty_mismatch_res ty_have ty_expect =
 let err_witness env p = Env.fresh_type_error env p
 
 let error_array env p ty =
-  Errors.add_typing_error
+  Typing_error_utils.add_typing_error
     Typing_error.(
       with_code ~code:Error_code.IndexTypeMismatch
       @@ primary
@@ -41,7 +41,7 @@ let error_array env p ty =
            })
 
 let error_const_mutation env p ty =
-  Errors.add_typing_error
+  Typing_error_utils.add_typing_error
     Typing_error.(
       primary
       @@ Primary.Const_mutation
@@ -54,7 +54,7 @@ let error_const_mutation env p ty =
 
 let error_assign_array_append env p ty =
   if not (TUtils.is_tyvar_error env ty) then
-    Errors.add_typing_error
+    Typing_error_utils.add_typing_error
       Typing_error.(
         primary
         @@ Primary.Array_append
@@ -126,7 +126,7 @@ let widen_for_array_get ~lhs_of_null_coalesce ~expr_pos index_expr env ty =
     | _ -> ((env, None), None)
   end
   (* Whatever the lower bound, construct an open, singleton shape type. *)
-  | (r, Tshape (_, fdm)) -> begin
+  | (r, Tshape (_, _, fdm)) -> begin
     match TUtils.shape_field_name env index_expr with
     | None -> ((env, None), None)
     | Some field ->
@@ -144,7 +144,7 @@ let widen_for_array_get ~lhs_of_null_coalesce ~expr_pos index_expr env ty =
             { sft_optional = lhs_of_null_coalesce; sft_ty = element_ty }
             TShapeMap.empty
         in
-        let upper_shape_ty = mk (r, Tshape (Open_shape, upper_fdm)) in
+        let upper_shape_ty = MakeType.open_shape r upper_fdm in
         ((env, None), Some upper_shape_ty))
   end
   | _ -> ((env, None), None)
@@ -211,7 +211,9 @@ let check_arraykey_index error env pos container_ty index_ty =
       | None -> (Ok index_ty, None)
       | Some _ -> (Error (index_ty, ty_arraykey), None)
     in
-    Option.(iter ~f:Errors.add_typing_error @@ merge e1 e2 ~f:Typing_error.both);
+    Option.(
+      iter ~f:Typing_error_utils.add_typing_error
+      @@ merge e1 e2 ~f:Typing_error.both);
     (env, ty_mismatch)
   ) else
     (env, Ok index_ty)
@@ -262,7 +264,7 @@ let pessimise_type env ty =
   Typing_union.union env ty (Typing_make_type.dynamic (get_reason ty))
 
 let maybe_pessimise_type env ty =
-  if TypecheckerOptions.pessimise_builtins (Env.get_tcopt env) then
+  if TypecheckerOptions.enable_sound_dynamic (Env.get_tcopt env) then
     pessimise_type env ty
   else
     (env, ty)
@@ -282,16 +284,10 @@ let pessimised_tup_assign p env arg_ty =
            @@ Primary.Internal_error
                 { pos = p; msg = "Subtype of fresh type variable" })
   in
-  Option.iter ~f:Errors.add_typing_error ty_err_opt;
+  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
   let (env, ty_err_opt) = Typing_solver.close_tyvars_and_solve env in
-  Option.iter ~f:Errors.add_typing_error ty_err_opt;
+  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
   (env, ty)
-
-(* Assignment into a pessimised vec or dict should behave as though it has type
-   forall T1 T2. vec<T1> -> idx -> ~T2 -> vec<T1|T2> *)
-let pessimised_vec_dict_assign p env vec_ty arg_ty =
-  let (env, ty) = pessimised_tup_assign p env arg_ty in
-  Typing_union.union env vec_ty ty
 
 (* Typing of array-get like expressions; [ty1] is the type of the expression
    into which we are indexing (the 'collection'), [e2] is the index expression
@@ -323,7 +319,7 @@ let rec array_get
       array_pos
       ty1
   in
-  Option.iter ~f:Errors.add_typing_error ty_err1;
+  Option.iter ~f:Typing_error_utils.add_typing_error ty_err1;
   GenericRules.apply_rules_with_index_value_ty_mismatches
     ~ignore_type_structure:true
     env
@@ -340,7 +336,7 @@ let rec array_get
        * a collection with omitted type parameters, we can continue to error and
        * give a more useful error message. *)
       let arity_error (_, name) =
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Array_get_arity
@@ -385,7 +381,7 @@ let rec array_get
               in
               (env, MakeType.keyed_container Reason.none ty2 nothing)
           in
-          Errors.add_typing_error
+          Typing_error_utils.add_typing_error
             Typing_error.(
               primary
               @@ Primary.Null_container
@@ -435,7 +431,7 @@ let rec array_get
           Typing_utils.supports_dynamic env ty2
           @@ Some (Typing_error.Reasons_callback.unify_error_at expr_pos)
         in
-        Option.iter ~f:Errors.add_typing_error idx_ty_err_opt;
+        Option.iter ~f:Typing_error_utils.add_typing_error idx_ty_err_opt;
         let idx_err_res = mk_ty_mismatch_res ty2 tv idx_ty_err_opt in
         (env, (ty1, dflt_arr_res, idx_err_res))
       in
@@ -445,7 +441,11 @@ let rec array_get
              || String.equal cn SN.Collections.cVec ->
         let (env, ty) =
           match argl with
-          | [ty] -> maybe_pessimise_type env ty
+          | [ty] ->
+            if String.equal cn SN.Collections.cVector then
+              maybe_pessimise_type env ty
+            else
+              (env, ty)
           | _ ->
             arity_error id;
             err_witness env expr_pos
@@ -455,14 +455,14 @@ let rec array_get
         let ((env, ty_err_opt), idx_err_res) =
           type_index env expr_pos ty2 ty1 (Reason.index_class cn)
         in
-        Option.iter ty_err_opt ~f:Errors.add_typing_error;
+        Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
         (env, (ty, dflt_arr_res, idx_err_res))
       | Tclass (((_, cn) as id), _, argl)
         when cn = SN.Collections.cMap
              || cn = SN.Collections.cDict
              || cn = SN.Collections.cKeyset ->
         if cn = SN.Collections.cKeyset && is_lvalue then (
-          Errors.add_typing_error
+          Typing_error_utils.add_typing_error
             Typing_error.(
               primary
               @@ Primary.Keyset_set
@@ -472,8 +472,8 @@ let rec array_get
         ) else
           let (k, (env, v)) =
             match argl with
-            | [t] when String.equal cn SN.Collections.cKeyset ->
-              (t, maybe_pessimise_type env t)
+            | [t] when String.equal cn SN.Collections.cKeyset -> (t, (env, t))
+            | [k; v] when String.equal cn SN.Collections.cDict -> (k, (env, v))
             | [k; v] when String.( <> ) cn SN.Collections.cKeyset ->
               (k, maybe_pessimise_type env v)
             | _ ->
@@ -501,7 +501,7 @@ let rec array_get
               let (env, res) = check_arraykey_index_read env expr_pos ty1 ty2 in
               ((env, None), res)
           in
-          Option.iter ty_err_opt ~f:Errors.add_typing_error;
+          Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
           (env, (v, dflt_arr_res, idx_err_res))
       (* Certain container/collection types are intended to be immutable/const,
        * thus they should never appear as a lvalue when indexing i.e.
@@ -547,7 +547,7 @@ let rec array_get
         let ((env, ty_err1), idx_err_res) =
           type_index env expr_pos ty2 ty1 (Reason.index_class cn)
         in
-        Option.iter ty_err1 ~f:Errors.add_typing_error;
+        Option.iter ty_err1 ~f:Typing_error_utils.add_typing_error;
         (env, (ty, dflt_arr_res, idx_err_res))
       | Tclass ((_, cn), _, tys)
         when is_lvalue
@@ -580,7 +580,7 @@ let rec array_get
         let ((env, ty_err1), idx_err_res) =
           type_index env expr_pos ty2 ty1 Reason.index_array
         in
-        Option.iter ty_err1 ~f:Errors.add_typing_error;
+        Option.iter ty_err1 ~f:Typing_error_utils.add_typing_error;
         (env, (ty, dflt_arr_res, idx_err_res))
       | Ttuple tyl ->
         (* requires integer literal *)
@@ -590,7 +590,7 @@ let rec array_get
           (match Option.bind idx ~f:(List.nth tyl) with
           | Some nth -> (env, (nth, dflt_arr_res, Ok ty2))
           | None ->
-            Errors.add_typing_error
+            Typing_error_utils.add_typing_error
               Typing_error.(
                 primary
                 @@ Primary.Generic_unify
@@ -601,7 +601,7 @@ let rec array_get
             let (env, ty) = err_witness env p in
             (env, (ty, dflt_arr_res, Ok ty2)))
         | (_, p, _) ->
-          Errors.add_typing_error
+          Typing_error_utils.add_typing_error
             Typing_error.(
               primary
               @@ Primary.Generic_unify
@@ -628,7 +628,7 @@ let rec array_get
           (match Option.bind ~f:(List.nth [ty_fst; ty_snd]) idx with
           | Some nth -> (env, (nth, dflt_arr_res, Ok ty2))
           | None ->
-            Errors.add_typing_error
+            Typing_error_utils.add_typing_error
               Typing_error.(
                 primary
                 @@ Primary.Generic_unify
@@ -639,7 +639,7 @@ let rec array_get
             let (env, ty) = err_witness env p in
             (env, (ty, dflt_arr_res, Ok ty2)))
         | (_, p, _) ->
-          Errors.add_typing_error
+          Typing_error_utils.add_typing_error
             Typing_error.(
               primary
               @@ Primary.Generic_unify
@@ -649,7 +649,7 @@ let rec array_get
                    });
           let (env, ty) = err_witness env p in
           (env, (ty, dflt_arr_res, Error (ty2, MakeType.int Reason.none))))
-      | Tshape (_, fdm) ->
+      | Tshape (_, _, fdm) ->
         let (_, p, _) = e2 in
         begin
           match TUtils.shape_field_name env e2 with
@@ -679,7 +679,7 @@ let rec array_get
             else begin
               match TShapeMap.find_opt field fdm with
               | None ->
-                Errors.add_typing_error
+                Typing_error_utils.add_typing_error
                   Typing_error.(
                     primary
                     @@ Primary.Undefined_field
@@ -697,7 +697,7 @@ let rec array_get
                       ~f:(fun x -> TShapeField.equal field x)
                       (TShapeMap.keys fdm)
                   in
-                  Errors.add_typing_error
+                  Typing_error_utils.add_typing_error
                     Typing_error.(
                       primary
                       @@ Primary.Array_get_with_optional_field
@@ -753,42 +753,19 @@ let rec array_get
               ~f:(fun (ty_have, ty_expect) -> Error (ty_have, ty_expect))
           in
           (env, (ty, err_res_arr, err_res_idx))
-      | Tnewtype (cid, _, bound) when String.equal cid SN.Classes.cSupportDyn ->
+      | Tnewtype (cid, _, _bound) when String.equal cid SN.Classes.cSupportDyn
+        ->
         (* We must be under_dynamic_assumptions because
-           apply_rules_with_index_value_ty_mismatches otherwise decends into the newtype *)
-        let ty = mk (r, Tintersection [MakeType.dynamic r; bound]) in
-        let (env, (ty, err_opt_arr, err_opt_idx)) =
-          array_get
-            ~array_pos
-            ~expr_pos
-            ~lhs_of_null_coalesce
-            is_lvalue
-            env
-            ty
-            e2
-            ty2
-        in
-        let err_res_idx =
-          Option.value_map
-            err_opt_idx
-            ~default:(Ok ty2)
-            ~f:(fun (ty_have, ty_expect) -> Error (ty_have, ty_expect))
-        in
-        let err_res_arr =
-          Option.value_map
-            err_opt_arr
-            ~default:dflt_arr_res
-            ~f:(fun (ty_have, ty_expect) -> Error (ty_have, ty_expect))
-        in
-        (env, (ty, err_res_arr, err_res_idx))
+           apply_rules_with_index_value_ty_mismatches otherwise descends into the newtype *)
+        got_dynamic ()
       | Tnewtype (ts, [ty], bound) -> begin
         match deref bound with
-        | (r, Tshape (shape_kind, fields))
+        | (r, Tshape (_, shape_kind, fields))
           when String.equal ts SN.FB.cTypeStructure ->
           let (env, fields) =
             Typing_structure.transform_shapemap env array_pos ty fields
           in
-          let ty = mk (r, Tshape (shape_kind, fields)) in
+          let ty = mk (r, Tshape (Missing_origin, shape_kind, fields)) in
           let (env, (ty, err_opt_arr, err_opt_idx)) =
             array_get
               ~array_pos
@@ -867,7 +844,7 @@ let rec array_get
           @@ Some
                (Typing_error.Reasons_callback.index_type_mismatch_at expr_pos)
         in
-        Option.iter ~f:Errors.add_typing_error arr_ty_err_opt;
+        Option.iter ~f:Typing_error_utils.add_typing_error arr_ty_err_opt;
         let arr_res = mk_ty_mismatch_res ty1 keyed_container arr_ty_err_opt in
         (env, (value, arr_res, Ok ty2)))
 
@@ -893,7 +870,7 @@ let widen_for_assign_array_append ~expr_pos env ty =
     ((env, None), Some ty)
   | _ -> ((env, None), None)
 
-let rec assign_array_append ~array_pos ~expr_pos ur env ty1 ty2 =
+let assign_array_append ~array_pos ~expr_pos ur env ty1 ty2 =
   let ((env, ty_err1), ty1) =
     Typing_solver.expand_type_and_narrow
       ~description_of_expected:"an array or collection"
@@ -902,7 +879,7 @@ let rec assign_array_append ~array_pos ~expr_pos ur env ty1 ty2 =
       array_pos
       ty1
   in
-  Option.iter ~f:Errors.add_typing_error ty_err1;
+  Option.iter ~f:Typing_error_utils.add_typing_error ty_err1;
   GenericRules.apply_rules_with_index_value_ty_mismatches
     env
     ty1
@@ -915,14 +892,13 @@ let rec assign_array_append ~array_pos ~expr_pos ur env ty1 ty2 =
           ty
         | _ -> ty1
       in
-      let dflt_arr_res = Ok ty1 in
       let got_dynamic () =
         let tv = Typing_make_type.dynamic (get_reason ty1) in
         let (env, val_ty_err_opt) =
           Typing_utils.supports_dynamic env ty2
           @@ Some (Typing_error.Reasons_callback.unify_error_at expr_pos)
         in
-        Option.iter ~f:Errors.add_typing_error val_ty_err_opt;
+        Option.iter ~f:Typing_error_utils.add_typing_error val_ty_err_opt;
         let val_err_res = mk_ty_mismatch_res ty2 tv val_ty_err_opt in
         (env, (ty1, Ok ty1, val_err_res))
       in
@@ -940,7 +916,7 @@ let rec assign_array_append ~array_pos ~expr_pos ur env ty1 ty2 =
             tv
             Typing_error.Callback.unify_error
         in
-        Option.iter ~f:Errors.add_typing_error val_ty_err_opt;
+        Option.iter ~f:Typing_error_utils.add_typing_error val_ty_err_opt;
         let val_err_res = mk_ty_mismatch_res ty2 tv val_ty_err_opt in
         (env, (ty1, Ok ty1, val_err_res))
       (* Handle the case where Vector or Set was used as a typehint
@@ -961,43 +937,17 @@ let rec assign_array_append ~array_pos ~expr_pos ur env ty1 ty2 =
         (env, (ty, Ok ty, val_err_res))
       | (r, Tclass (((_, n) as id), e, [tv]))
         when String.equal n SN.Collections.cVec ->
-        let (env, tv') =
-          if TypecheckerOptions.pessimise_builtins (Env.get_tcopt env) then
-            pessimised_vec_dict_assign expr_pos env tv ty2
-          else
-            Typing_union.union env tv ty2
-        in
+        let (env, tv') = Typing_union.union env tv ty2 in
         let ty = mk (r, Tclass (id, e, [tv'])) in
         (env, (ty, Ok ty, Ok ty2))
       | (r, Tclass (((_, n) as id), e, [tv]))
         when String.equal n SN.Collections.cKeyset ->
         let (env, err_res) = check_keyset_value env expr_pos ty1 ty2 in
         let (env, tk') =
-          let ak_t =
-            MakeType.arraykey (Reason.Rkey_value_collection_key expr_pos)
-          in
-          if
-            (* TODO: Remove the test for sound dynamic. It is never ok to put
-               dynamic as the key to a dict since the key must be a
-               subtype of arraykey. *)
-            Typing_env_types.(
-              TypecheckerOptions.enable_sound_dynamic env.genv.tcopt)
-            &&
-            match err_res with
-            | Ok _ -> not (Typing_utils.is_sub_type_for_union env ty2 ak_t)
-            | _ -> false
-          then
-            (* if there weren't any errors with the key then either it is dynamic
-               or a subtype of arraykey. If it's also a supertype of dynamic, then
-               set the keytype to arraykey, since that the only thing that hhvm won't
-               error on.
-            *)
-            if TypecheckerOptions.pessimise_builtins (Env.get_tcopt env) then
-              pessimised_vec_dict_assign expr_pos env tv ty2
-            else
-              (env, ak_t)
-          else
-            Typing_union.union env tv ty2
+          let r = Reason.Rkey_value_collection_key expr_pos in
+          let ak_t = MakeType.arraykey r in
+          let (env, ty2) = Typing_intersection.intersect env ~r ak_t ty2 in
+          Typing_union.union env tv ty2
         in
         let ty = mk (r, Tclass (id, e, [tk'])) in
         (env, (ty, Ok ty, err_res))
@@ -1030,7 +980,7 @@ let rec assign_array_append ~array_pos ~expr_pos ur env ty1 ty2 =
                 tv'
                 Typing_error.Callback.unify_error
             in
-            Option.iter ty_err_opt ~f:Errors.add_typing_error;
+            Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
             let ty_mismatch = mk_ty_mismatch_res ty2 tv ty_err_opt in
             (env, ty_mismatch)
         in
@@ -1045,27 +995,14 @@ let rec assign_array_append ~array_pos ~expr_pos ur env ty1 ty2 =
       | (_, Tprim Tnull)
         when Tast.is_under_dynamic_assumptions env.Typing_env_types.checked ->
         got_dynamic ()
-      | (r, Tnewtype (cid, _, bound))
+      | (_, Tnewtype (cid, _, _bound))
         when String.equal cid SN.Classes.cSupportDyn ->
         (* We must be under_dynamic_assumptions because
-           apply_rules_with_index_value_ty_mismatches otherwise decends into the newtype *)
-        let ty = mk (r, Tintersection [MakeType.dynamic r; bound]) in
-        let (env, (ty, err_opt_arr, err_opt_idx)) =
-          assign_array_append ~array_pos ~expr_pos ur env ty ty2
-        in
-        let err_res_idx =
-          Option.value_map
-            err_opt_idx
-            ~default:(Ok ty2)
-            ~f:(fun (ty_have, ty_expect) -> Error (ty_have, ty_expect))
-        in
-        let err_res_arr =
-          Option.value_map
-            err_opt_arr
-            ~default:dflt_arr_res
-            ~f:(fun (ty_have, ty_expect) -> Error (ty_have, ty_expect))
-        in
-        (env, (ty, err_res_arr, err_res_idx))
+           apply_rules_with_index_value_ty_mismatches otherwise descends into the newtype.
+           In this case we just accept the assignment because it's as though
+           we applied an implicit upcast to dynamic
+        *)
+        got_dynamic ()
       | ( _,
           ( Tnonnull | Tvec_or_dict _ | Toption _ | Tprim _ | Tvar _ | Tfun _
           | Tclass _ | Ttuple _ | Tshape _ | Tunion _ | Tintersection _
@@ -1103,8 +1040,8 @@ let widen_for_assign_array_get ~expr_pos index_expr env ty =
  * Return the new array type
  *)
 
-let rec assign_array_get
-    ~array_pos ~expr_pos ur env ty1 (key : Nast.expr) tkey ty2 =
+let assign_array_get ~array_pos ~expr_pos ur env ty1 (key : Nast.expr) tkey ty2
+    =
   Typing_log.(
     log_with_level env "typing" ~level:1 (fun () ->
         log_types
@@ -1123,14 +1060,16 @@ let rec assign_array_get
       array_pos
       ty1
   in
-  Option.iter ~f:Errors.add_typing_error ty_err1;
+  let preserve_supportdyn = TUtils.is_supportdyn env ty2 in
+  Option.iter ~f:Typing_error_utils.add_typing_error ty_err1;
   GenericRules.apply_rules_with_array_index_value_ty_mismatches
+    ~preserve_supportdyn
     env
     ety1
     (fun env ety1 ->
       let (r, ety1_) = deref ety1 in
       let arity_error (_, name) =
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Array_get_arity
@@ -1166,7 +1105,7 @@ let rec assign_array_get
         in
         let val_err_res = mk_ty_mismatch_res tkey tv ty_err2 in
         Option.(
-          iter ~f:Errors.add_typing_error
+          iter ~f:Typing_error_utils.add_typing_error
           @@ merge ty_err1 ty_err2 ~f:Typing_error.both);
         (env, (ety1, Ok ety1, idx_err_res, val_err_res))
       in
@@ -1196,7 +1135,7 @@ let rec assign_array_get
         in
         let err_res = mk_ty_mismatch_res ty2 tv ty_err2 in
         Option.(
-          iter ~f:Errors.add_typing_error
+          iter ~f:Typing_error_utils.add_typing_error
           @@ merge ty_err1 ty_err2 ~f:Typing_error.both);
         (env, (ety1, Ok ety1, idx_err, err_res))
       | Tclass (((_, cn) as id), e, argl)
@@ -1213,14 +1152,9 @@ let rec assign_array_get
         let ((env, ty_err1), idx_err) =
           type_index env expr_pos tkey tk (Reason.index_class cn)
         in
-        let (env, tv') =
-          if TypecheckerOptions.pessimise_builtins (Env.get_tcopt env) then
-            pessimised_vec_dict_assign expr_pos env tv ty2
-          else
-            Typing_union.union env tv ty2
-        in
+        let (env, tv') = Typing_union.union env tv ty2 in
         let ty = mk (r, Tclass (id, e, [tv'])) in
-        Option.iter ty_err1 ~f:Errors.add_typing_error;
+        Option.iter ty_err1 ~f:Typing_error_utils.add_typing_error;
         (env, (ty, Ok ty, idx_err, Ok ty2))
       | Tclass (((_, cn) as id), _, argl) when cn = SN.Collections.cMap ->
         let (env, idx_err1) =
@@ -1269,7 +1203,7 @@ let rec assign_array_get
         in
         let err_res = mk_ty_mismatch_res ty2 tv ty_err2 in
         Option.(
-          iter ~f:Errors.add_typing_error
+          iter ~f:Typing_error_utils.add_typing_error
           @@ merge ty_err1 ty_err2 ~f:Typing_error.both);
         (env, (ety1, Ok ety1, idx_err, err_res))
       | Tclass (((_, cn) as id), e, argl)
@@ -1290,29 +1224,21 @@ let rec assign_array_get
           let ak_t = MakeType.arraykey (Reason.Ridx_dict p) in
           match idx_err with
           | Ok _ ->
-            if TypecheckerOptions.pessimise_builtins (Env.get_tcopt env) then
-              pessimised_vec_dict_assign expr_pos env tk tkey
-            else
-              let (env, tkey_new) =
-                Typing_intersection.intersect
-                  env
-                  ~r:(Reason.Ridx_dict p)
-                  tkey
-                  ak_t
-              in
-              Typing_union.union env tk tkey_new
+            let (env, tkey_new) =
+              Typing_intersection.intersect
+                env
+                ~r:(Reason.Ridx_dict p)
+                tkey
+                ak_t
+            in
+            Typing_union.union env tk tkey_new
           | _ -> Typing_union.union env tk tkey
         in
-        let (env, tv') =
-          if TypecheckerOptions.pessimise_builtins (Env.get_tcopt env) then
-            pessimised_vec_dict_assign expr_pos env tv ty2
-          else
-            Typing_union.union env tv ty2
-        in
+        let (env, tv') = Typing_union.union env tv ty2 in
         let ty = mk (r, Tclass (id, e, [tk'; tv'])) in
         (env, (ty, Ok ty, idx_err, Ok ty2))
       | Tclass ((_, cn), _, _) when String.equal cn SN.Collections.cKeyset ->
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Keyset_set { pos = expr_pos; decl_pos = Reason.to_pos r });
@@ -1324,7 +1250,7 @@ let rec assign_array_get
       | Tclass ((_, cn), _, tys)
         when String.equal cn SN.Collections.cConstMap
              || String.equal cn SN.Collections.cImmMap ->
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Const_mutation
@@ -1340,7 +1266,7 @@ let rec assign_array_get
       | Tclass ((_, cn), _, tys)
         when String.equal cn SN.Collections.cConstVector
              || String.equal cn SN.Collections.cImmVector ->
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Const_mutation
@@ -1362,7 +1288,7 @@ let rec assign_array_get
         when String.equal cn SN.Collections.cKeyedContainer
              || String.equal cn SN.Collections.cAnyArray
              || String.equal cn SN.Collections.cPair ->
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Const_mutation
@@ -1377,21 +1303,8 @@ let rec assign_array_get
         let (env, idx_err) =
           check_arraykey_index_write env expr_pos ety1 tkey
         in
-        let (env, tk') =
-          match idx_err with
-          | Ok _ ->
-            if TypecheckerOptions.pessimise_builtins (Env.get_tcopt env) then
-              pessimised_vec_dict_assign expr_pos env tk tkey
-            else
-              Typing_union.union env tk tkey
-          | _ -> Typing_union.union env tk tkey
-        in
-        let (env, tv') =
-          if TypecheckerOptions.pessimise_builtins (Env.get_tcopt env) then
-            pessimised_vec_dict_assign expr_pos env tv ty2
-          else
-            Typing_union.union env tv ty2
-        in
+        let (env, tk') = Typing_union.union env tk tkey in
+        let (env, tv') = Typing_union.union env tv ty2 in
         let ty = mk (r, Tvec_or_dict (tk', tv')) in
         (env, (ty, Ok ty, idx_err, Ok ty2))
       | Tvar _ when TUtils.is_tyvar_error env ety1 ->
@@ -1425,13 +1338,13 @@ let rec assign_array_get
         in
         let err_res = mk_ty_mismatch_res ty2 tv ty_err2 in
         Option.(
-          iter ~f:Errors.add_typing_error
+          iter ~f:Typing_error_utils.add_typing_error
           @@ merge ty_err1 ty_err2 ~f:Typing_error.both);
         (env, (ety1, Ok ety1, idx_err, err_res))
       | Ttuple tyl ->
         let fail key_err reason =
           let (_, p, _) = key in
-          Errors.add_typing_error
+          Typing_error_utils.add_typing_error
             Typing_error.(
               primary
               @@ Primary.Generic_unify
@@ -1453,7 +1366,7 @@ let rec assign_array_get
           | _ ->
             fail (Error (tkey, MakeType.int Reason.none)) Reason.URtuple_access
         end
-      | Tshape (shape_kind, fdm) -> begin
+      | Tshape (_, shape_kind, fdm) -> begin
         match TUtils.shape_field_name env key with
         | None -> (env, (ety1, Ok ety1, Ok tkey, Ok ty2))
         | Some field ->
@@ -1461,35 +1374,17 @@ let rec assign_array_get
           let fdm' =
             TShapeMap.add field { sft_optional = false; sft_ty = ty2 } fdm
           in
-          let ty = mk (r, Tshape (shape_kind, fdm')) in
+          let ty = mk (r, Tshape (Missing_origin, shape_kind, fdm')) in
           (env, (ty, Ok ty, Ok tkey, Ok ty2))
       end
-      | Tnewtype (cid, _, bound) when String.equal cid SN.Classes.cSupportDyn ->
+      | Tnewtype (cid, _, _bound) when String.equal cid SN.Classes.cSupportDyn
+        ->
         (* We must be under_dynamic_assumptions because
-           apply_rules_with_index_value_ty_mismatches otherwise decends into the newtype *)
-        let ty = mk (r, Tintersection [MakeType.dynamic r; bound]) in
-        let (env, (ty, err_opt_arr, err_opt_tk, err_opt_idx)) =
-          assign_array_get ~array_pos ~expr_pos ur env ty key tkey ty2
-        in
-        let err_res_idx =
-          Option.value_map
-            err_opt_idx
-            ~default:(Ok ty2)
-            ~f:(fun (ty_have, ty_expect) -> Error (ty_have, ty_expect))
-        in
-        let err_res_tk =
-          Option.value_map
-            err_opt_tk
-            ~default:(Ok tkey)
-            ~f:(fun (ty_have, ty_expect) -> Error (ty_have, ty_expect))
-        in
-        let err_res_arr =
-          Option.value_map
-            err_opt_arr
-            ~default:(Ok ty1)
-            ~f:(fun (ty_have, ty_expect) -> Error (ty_have, ty_expect))
-        in
-        (env, (ty, err_res_arr, err_res_tk, err_res_idx))
+           apply_rules_with_index_value_ty_mismatches otherwise descends into the newtype.
+           In this case we just accept the assignment because it's as though
+           we applied an implicit upcast to dynamic
+        *)
+        (env, (ety1, Ok ety1, Ok tkey, Ok ty2))
       | Tunapplied_alias _ ->
         Typing_defs.error_Tunapplied_alias_in_illegal_context ()
       | Toption _
@@ -1505,7 +1400,7 @@ let rec assign_array_get
       | Tclass _
       | Taccess _
       | Tneg _ ->
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Array_access

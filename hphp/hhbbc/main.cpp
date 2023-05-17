@@ -206,11 +206,7 @@ void parse_options(int argc, char** argv) {
     std::exit(0);
   }
 
-  if (no_cores) {
-    struct rlimit rl{};
-    setrlimit(RLIMIT_CORE, &rl);
-  }
-
+  options.CoreDump = !no_cores;
   options.TraceFunctions = make_method_map(trace_fns);
 
   if (!options.profileMemory.empty()) {
@@ -285,6 +281,7 @@ RepoGlobalData get_global_data() {
   gd.SourceRootForFileBC = options.SourceRootForFileBC;
   gd.EmitBespokeTypeStructures = RO::EvalEmitBespokeTypeStructures;
   gd.ActiveDeployment = RO::EvalActiveDeployment;
+  gd.ModuleLevelTraits = RuntimeOption::EvalModuleLevelTraits;
 
   for (auto const& elm : RuntimeOption::ConstantFunctions) {
     auto const s = internal_serialize(tvAsCVarRef(elm.second));
@@ -543,6 +540,10 @@ void compile_repo() {
   sample.setStr("extern_worker_impl", client->implName());
   sample.setStr("extern_worker_session", client->session());
 
+  // Package Info must be read prior to load_repo as loading the repo
+  // destroys the repo file
+  auto const packageInfo = RepoFile::packageInfo();
+
   auto [inputs, config] = load_repo(*executor, *client, sample);
 
   RepoAutoloadMapBuilder autoload;
@@ -589,7 +590,7 @@ void compile_repo() {
   );
 
   trace_time timer{"finalizing repo", &sample};
-  repo.finish(get_global_data(), autoload);
+  repo.finish(get_global_data(), autoload, packageInfo);
 
   // Only log big builds.
   if (numUnits >= RO::EvalHHBBCMinUnitsToLog) {
@@ -605,6 +606,13 @@ void compile_repo() {
 void process_init(const Options& o,
                   const RepoGlobalData& gd,
                   bool fullInit) {
+  if (!o.CoreDump) {
+    struct rlimit rl{};
+    rl.rlim_cur = 0;
+    rl.rlim_max = 0;
+    setrlimit(RLIMIT_CORE, &rl);
+  }
+
   rds::local::init();
   SCOPE_FAIL { rds::local::fini(); };
 

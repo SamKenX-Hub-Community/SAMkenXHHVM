@@ -97,8 +97,12 @@ let emit
       experimental_features;
       parsing;
     } =
-  List.iter ~f:Errors.add_naming_error naming;
-  List.iter ~f:Errors.add_nast_check_error nast_check;
+  List.iter
+    ~f:(fun err -> Errors.add_error @@ Naming_error.to_user_error err)
+    naming;
+  List.iter
+    ~f:(fun err -> Errors.add_error @@ Nast_check_error.to_user_error err)
+    nast_check;
   List.iter
     ~f:(fun pos ->
       Errors.internal_error pos "Unexpected hint not present on legacy AST")
@@ -110,7 +114,9 @@ let emit
         "Malformed hint: expected Haccess (Happly ...) from ast_to_nast")
     malformed_accesses;
   List.iter ~f:emit_experimental_feature experimental_features;
-  List.iter ~f:Errors.add_parsing_error parsing
+  List.iter
+    ~f:(fun err -> Errors.add_error @@ Parsing_error.to_user_error err)
+    parsing
 
 (* Helper for constructing expression to be substituted for invalid expressions
    TODO[mjt] this probably belongs with the AAST defs

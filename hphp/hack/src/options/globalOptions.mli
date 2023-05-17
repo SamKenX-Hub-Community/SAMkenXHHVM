@@ -49,10 +49,6 @@ type t = {
      If the delegate fails to type check, the typing check service as a whole
      will fail. *)
   tco_num_local_workers: int option;
-  (* If the number of files to type check is fewer than this value, the files
-     will be type checked sequentially (in the master process). Otherwise,
-     the files will be type checked in parallel (in MultiWorker workers). *)
-  tco_parallel_type_checking_threshold: int;
   (* If set, typechecker workers will quit after they exceed this limit *)
   tco_max_typechecker_worker_memory_mb: int option;
   (* If set, defers class declarations after N lazy declarations; if not set,
@@ -71,6 +67,10 @@ type t = {
   tco_remote_check_id: string option;
   (* Dictates the number of remote type checking workers *)
   tco_num_remote_workers: int;
+  (* The capacity of the localization cache for large types *)
+  tco_locl_cache_capacity: int;
+  (* The number of nodes a type has to exceed to enter the localization cache *)
+  tco_locl_cache_node_threshold: int;
   so_remote_version_specifier: string option;
   (* Enables the reverse naming table to fall back to SQLite for queries. *)
   so_naming_sqlite_path: string option;
@@ -218,6 +218,8 @@ type t = {
   symbol_write_sym_hash_in: string option;
   (* Path to file containing units to exclude *)
   symbol_write_exclude_out: string option;
+  (* Path to file containing referenced files *)
+  symbol_write_referenced_out: string option;
   (* Generate symbols hash table *)
   symbol_write_sym_hash_out: bool;
   (* Flag to disallow HH\fun and HH\class_meth in constants and constant initializers *)
@@ -239,8 +241,6 @@ type t = {
   po_disable_xhp_element_mangling: bool;
   (* Disable `children (foo|bar+|pcdata)` declarations as they can be implemented without special syntax *)
   po_disable_xhp_children_declarations: bool;
-  (* Enable enum class syntax *)
-  po_enable_enum_classes: bool;
   (* Disable HH_IGNORE_ERROR comments, either raising an error if 1 or treating them as normal comments if 2. *)
   po_disable_hh_ignore_error: int;
   (* Enable features used to typecheck systemlib *)
@@ -259,6 +259,8 @@ type t = {
   tco_typecheck_sample_rate: float;
   (* Experimental implementation of a "sound" dynamic type *)
   tco_enable_sound_dynamic: bool;
+  (* Allow use of attribute <<__NoAutoDynamic>> *)
+  tco_enable_no_auto_dynamic: bool;
   (* Skip second check of method under dynamic assumptions *)
   tco_skip_check_under_dynamic: bool;
   (* Enable ifc on the specified list of path prefixes
@@ -267,8 +269,6 @@ type t = {
   tco_ifc_enabled: string list;
   (* Enable global access checker to check global writes and reads *)
   tco_global_access_check_enabled: bool;
-  (* Enables the enum supertyping extension *)
-  po_enable_enum_supertyping: bool;
   (* <<__Soft>> T -> ~T *)
   po_interpret_soft_types_as_like_types: bool;
   (* Restricts string concatenation and interpolation to arraykeys *)
@@ -306,8 +306,6 @@ type t = {
   tco_enforce_sealed_subclasses: bool;
   (* All classes are implcitly marked <<__SupportDynamicType>> *)
   tco_everything_sdt: bool;
-  (* All collections and Hack arrays are treated as containing ~T *)
-  tco_pessimise_builtins: bool;
   (* Raises an error when a classish is declared <<__ConsistentConstruct>> but lacks an
    * explicit constructor declaration. 0 does not raise, 1 raises for traits, 2 raises
    * for all classish *)
@@ -348,11 +346,13 @@ type t = {
   tco_tast_under_dynamic: bool;
   (* Use the Rust implementation of naming elaboration and NAST checks. *)
   tco_rust_elab: bool;
+  tco_ide_load_naming_table_on_disk: bool;
+      (** POC: @nzthomas - allow ClientIdeDaemon to grab any naming table from disk before trying Watchman / Manifold *)
 }
 [@@deriving eq, show]
 
-val make :
-  tco_saved_state:saved_state ->
+val set :
+  ?tco_saved_state:saved_state ->
   ?po_deregister_php_stdlib:bool ->
   ?po_disallow_toplevel_requires:bool ->
   ?tco_log_large_fanouts_threshold:int ->
@@ -360,7 +360,6 @@ val make :
   ?tco_experimental_features:SSet.t ->
   ?tco_migration_flags:SSet.t ->
   ?tco_num_local_workers:int ->
-  ?tco_parallel_type_checking_threshold:int ->
   ?tco_max_typechecker_worker_memory_mb:int ->
   ?tco_defer_class_declaration_threshold:int ->
   ?tco_prefetch_deferred_files:bool ->
@@ -369,9 +368,12 @@ val make :
   ?tco_remote_worker_key:string ->
   ?tco_remote_check_id:string ->
   ?tco_num_remote_workers:int ->
+  ?tco_locl_cache_capacity:int ->
+  ?tco_locl_cache_node_threshold:int ->
   ?so_remote_version_specifier:string ->
   ?so_naming_sqlite_path:string ->
   ?po_auto_namespace_map:(string * string) list ->
+  ?po_codegen:bool ->
   ?tco_language_feature_logging:bool ->
   ?tco_timeout:int ->
   ?tco_disallow_invalid_arraykey:bool ->
@@ -426,6 +428,7 @@ val make :
   ?symbol_write_include_hhi:bool ->
   ?symbol_write_sym_hash_in:string ->
   ?symbol_write_exclude_out:string ->
+  ?symbol_write_referenced_out:string ->
   ?symbol_write_sym_hash_out:bool ->
   ?po_disallow_func_ptrs_in_constants:bool ->
   ?tco_error_php_lambdas:bool ->
@@ -433,7 +436,6 @@ val make :
   ?po_enable_xhp_class_modifier:bool ->
   ?po_disable_xhp_element_mangling:bool ->
   ?po_disable_xhp_children_declarations:bool ->
-  ?po_enable_enum_classes:bool ->
   ?po_disable_hh_ignore_error:int ->
   ?po_allow_unstable_features:bool ->
   ?tco_is_systemlib:bool ->
@@ -442,10 +444,10 @@ val make :
   ?tco_report_pos_from_reason:bool ->
   ?tco_typecheck_sample_rate:float ->
   ?tco_enable_sound_dynamic:bool ->
+  ?tco_enable_no_auto_dynamic:bool ->
   ?tco_skip_check_under_dynamic:bool ->
   ?tco_ifc_enabled:string list ->
   ?tco_global_access_check_enabled:bool ->
-  ?po_enable_enum_supertyping:bool ->
   ?po_interpret_soft_types_as_like_types:bool ->
   ?tco_enable_strict_string_concat_interp:bool ->
   ?tco_ignore_unsafe_cast:bool ->
@@ -462,7 +464,6 @@ val make :
   ?tco_strict_value_equality:bool ->
   ?tco_enforce_sealed_subclasses:bool ->
   ?tco_everything_sdt:bool ->
-  ?tco_pessimise_builtins:bool ->
   ?tco_explicit_consistent_constructors:int ->
   ?tco_require_types_class_consts:int ->
   ?tco_type_printer_fuel:int ->
@@ -481,7 +482,8 @@ val make :
   ?tco_ide_should_use_hack_64_distc:bool ->
   ?tco_tast_under_dynamic:bool ->
   ?tco_rust_elab:bool ->
-  unit ->
+  ?tco_ide_load_naming_table_on_disk:bool ->
+  t ->
   t
 
 val default : t

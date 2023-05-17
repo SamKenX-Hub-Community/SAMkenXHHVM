@@ -56,14 +56,14 @@ template <class Message>
 void setValueImpl(std::false_type, Message&, folly::IOBuf&&) {}
 
 template <typename Message>
-std::optional<std::string> getBucketIdImpl(std::true_type, Message& message) {
-  if (message.bucketId_ref()) {
-    return *message.bucketId_ref();
+std::optional<int64_t> getProductIdImpl(std::true_type, Message& message) {
+  if (message.productId_ref()) {
+    return *message.productId_ref();
   }
   return std::nullopt;
 }
 template <typename Message>
-std::optional<std::string> getBucketIdImpl(std::false_type, Message&) {
+std::optional<int64_t> getProductIdImpl(std::false_type, Message&) {
   return std::nullopt;
 }
 
@@ -184,9 +184,18 @@ class HasBucketIdTrait<
         decltype(std::declval<std::decay_t<Message>&>().bucketId_ref())>>
     : public std::true_type {};
 
+template <typename Message, typename = std::enable_if_t<true>>
+class HasProductIdTrait : public std::false_type {};
 template <typename Message>
-std::optional<std::string> getBucketId(Message& message) {
-  return detail::getBucketIdImpl(HasBucketIdTrait<Message>{}, message);
+class HasProductIdTrait<
+    Message,
+    std::void_t<
+        decltype(std::declval<std::decay_t<Message>&>().productId_ref())>>
+    : public std::true_type {};
+
+template <typename Message>
+std::optional<int64_t> getProductId(Message& message) {
+  return detail::getProductIdImpl(HasProductIdTrait<Message>{}, message);
 }
 
 template <typename Message, typename = std::enable_if_t<true>>

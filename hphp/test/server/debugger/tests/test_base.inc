@@ -2,7 +2,7 @@
 
 function init() {
   require __DIR__ . '/../../util/server_tests.inc';
-  ServerUtilServerTests::$LOG_ROOT = '/tmp/hphpd';
+  ServerUtilServerTests::$LOG_ROOT = ServerUtilServerTests::working_dir() . '/hphpd';
 }
 
 function startDebuggerClient($debugPort, $input_path, inout $pipes) {
@@ -11,7 +11,7 @@ function startDebuggerClient($debugPort, $input_path, inout $pipes) {
 
 
   $home = hphp_home().'/hphp/test/server/debugger';
-  $hhvm = PHP_BINARY;
+  $hhvm = HH\__internal\hhvm_binary();
   $host = ' -h localhost';
   $port = ' --debug-port '.$debugPort;
   $user = ' --user debugger';
@@ -65,10 +65,11 @@ function runTest($testName, $testController) {
     echo stream_get_contents($pipes[2]);
     stopServer($adminPort, $serverProc);
   } catch (Exception $e) {
-    error_log("Caught exception, test failed, pid=$pid");
+    error_log("Caught exception, test failed, pid=$pid, exn=\n".(string)$e);
     killChildren(posix_getpid());
     if ($serverProc) proc_close($serverProc);
     error_log('test failed');
+    exit(-1);
   }
 }
 

@@ -74,6 +74,8 @@ module WithToken (Token : TokenType) = struct
       | EnumClassEnumerator _ -> SyntaxKind.EnumClassEnumerator
       | AliasDeclaration _ -> SyntaxKind.AliasDeclaration
       | ContextAliasDeclaration _ -> SyntaxKind.ContextAliasDeclaration
+      | CaseTypeDeclaration _ -> SyntaxKind.CaseTypeDeclaration
+      | CaseTypeVariant _ -> SyntaxKind.CaseTypeVariant
       | PropertyDeclaration _ -> SyntaxKind.PropertyDeclaration
       | PropertyDeclarator _ -> SyntaxKind.PropertyDeclarator
       | NamespaceDeclaration _ -> SyntaxKind.NamespaceDeclaration
@@ -237,6 +239,7 @@ module WithToken (Token : TokenType) = struct
       | ModuleExports _ -> SyntaxKind.ModuleExports
       | ModuleImports _ -> SyntaxKind.ModuleImports
       | ModuleMembershipDeclaration _ -> SyntaxKind.ModuleMembershipDeclaration
+      | PackageExpression _ -> SyntaxKind.PackageExpression
 
     let kind node = to_kind (syntax node)
 
@@ -290,6 +293,10 @@ module WithToken (Token : TokenType) = struct
 
     let is_context_alias_declaration =
       has_kind SyntaxKind.ContextAliasDeclaration
+
+    let is_case_type_declaration = has_kind SyntaxKind.CaseTypeDeclaration
+
+    let is_case_type_variant = has_kind SyntaxKind.CaseTypeVariant
 
     let is_property_declaration = has_kind SyntaxKind.PropertyDeclaration
 
@@ -637,6 +644,8 @@ module WithToken (Token : TokenType) = struct
     let is_module_membership_declaration =
       has_kind SyntaxKind.ModuleMembershipDeclaration
 
+    let is_package_expression = has_kind SyntaxKind.PackageExpression
+
     let is_loop_statement node =
       is_for_statement node
       || is_foreach_statement node
@@ -911,6 +920,36 @@ module WithToken (Token : TokenType) = struct
         let acc = f acc ctx_alias_equal in
         let acc = f acc ctx_alias_context in
         let acc = f acc ctx_alias_semicolon in
+        acc
+      | CaseTypeDeclaration
+          {
+            case_type_attribute_spec;
+            case_type_modifiers;
+            case_type_case_keyword;
+            case_type_type_keyword;
+            case_type_name;
+            case_type_generic_parameter;
+            case_type_as;
+            case_type_bounds;
+            case_type_equal;
+            case_type_variants;
+            case_type_semicolon;
+          } ->
+        let acc = f acc case_type_attribute_spec in
+        let acc = f acc case_type_modifiers in
+        let acc = f acc case_type_case_keyword in
+        let acc = f acc case_type_type_keyword in
+        let acc = f acc case_type_name in
+        let acc = f acc case_type_generic_parameter in
+        let acc = f acc case_type_as in
+        let acc = f acc case_type_bounds in
+        let acc = f acc case_type_equal in
+        let acc = f acc case_type_variants in
+        let acc = f acc case_type_semicolon in
+        acc
+      | CaseTypeVariant { case_type_variant_bar; case_type_variant_type } ->
+        let acc = f acc case_type_variant_bar in
+        let acc = f acc case_type_variant_type in
         acc
       | PropertyDeclaration
           {
@@ -2476,6 +2515,11 @@ module WithToken (Token : TokenType) = struct
         let acc = f acc module_membership_declaration_name in
         let acc = f acc module_membership_declaration_semicolon in
         acc
+      | PackageExpression
+          { package_expression_keyword; package_expression_name } ->
+        let acc = f acc package_expression_keyword in
+        let acc = f acc package_expression_name in
+        acc
 
     (* The order that the children are returned in should match the order
        that they appear in the source text *)
@@ -2656,6 +2700,35 @@ module WithToken (Token : TokenType) = struct
           ctx_alias_context;
           ctx_alias_semicolon;
         ]
+      | CaseTypeDeclaration
+          {
+            case_type_attribute_spec;
+            case_type_modifiers;
+            case_type_case_keyword;
+            case_type_type_keyword;
+            case_type_name;
+            case_type_generic_parameter;
+            case_type_as;
+            case_type_bounds;
+            case_type_equal;
+            case_type_variants;
+            case_type_semicolon;
+          } ->
+        [
+          case_type_attribute_spec;
+          case_type_modifiers;
+          case_type_case_keyword;
+          case_type_type_keyword;
+          case_type_name;
+          case_type_generic_parameter;
+          case_type_as;
+          case_type_bounds;
+          case_type_equal;
+          case_type_variants;
+          case_type_semicolon;
+        ]
+      | CaseTypeVariant { case_type_variant_bar; case_type_variant_type } ->
+        [case_type_variant_bar; case_type_variant_type]
       | PropertyDeclaration
           {
             property_attribute_spec;
@@ -4121,6 +4194,9 @@ module WithToken (Token : TokenType) = struct
           module_membership_declaration_name;
           module_membership_declaration_semicolon;
         ]
+      | PackageExpression
+          { package_expression_keyword; package_expression_name } ->
+        [package_expression_keyword; package_expression_name]
 
     let children node = children_from_syntax node.syntax
 
@@ -4302,6 +4378,35 @@ module WithToken (Token : TokenType) = struct
           "ctx_alias_context";
           "ctx_alias_semicolon";
         ]
+      | CaseTypeDeclaration
+          {
+            case_type_attribute_spec;
+            case_type_modifiers;
+            case_type_case_keyword;
+            case_type_type_keyword;
+            case_type_name;
+            case_type_generic_parameter;
+            case_type_as;
+            case_type_bounds;
+            case_type_equal;
+            case_type_variants;
+            case_type_semicolon;
+          } ->
+        [
+          "case_type_attribute_spec";
+          "case_type_modifiers";
+          "case_type_case_keyword";
+          "case_type_type_keyword";
+          "case_type_name";
+          "case_type_generic_parameter";
+          "case_type_as";
+          "case_type_bounds";
+          "case_type_equal";
+          "case_type_variants";
+          "case_type_semicolon";
+        ]
+      | CaseTypeVariant { case_type_variant_bar; case_type_variant_type } ->
+        ["case_type_variant_bar"; "case_type_variant_type"]
       | PropertyDeclaration
           {
             property_attribute_spec;
@@ -5798,6 +5903,9 @@ module WithToken (Token : TokenType) = struct
           "module_membership_declaration_name";
           "module_membership_declaration_semicolon";
         ]
+      | PackageExpression
+          { package_expression_keyword; package_expression_name } ->
+        ["package_expression_keyword"; "package_expression_name"]
 
     let rec to_json_ ?(with_value = false) ?(ignore_missing = false) node =
       let open Hh_json in
@@ -6079,6 +6187,37 @@ module WithToken (Token : TokenType) = struct
             ctx_alias_context;
             ctx_alias_semicolon;
           }
+      | ( SyntaxKind.CaseTypeDeclaration,
+          [
+            case_type_attribute_spec;
+            case_type_modifiers;
+            case_type_case_keyword;
+            case_type_type_keyword;
+            case_type_name;
+            case_type_generic_parameter;
+            case_type_as;
+            case_type_bounds;
+            case_type_equal;
+            case_type_variants;
+            case_type_semicolon;
+          ] ) ->
+        CaseTypeDeclaration
+          {
+            case_type_attribute_spec;
+            case_type_modifiers;
+            case_type_case_keyword;
+            case_type_type_keyword;
+            case_type_name;
+            case_type_generic_parameter;
+            case_type_as;
+            case_type_bounds;
+            case_type_equal;
+            case_type_variants;
+            case_type_semicolon;
+          }
+      | ( SyntaxKind.CaseTypeVariant,
+          [case_type_variant_bar; case_type_variant_type] ) ->
+        CaseTypeVariant { case_type_variant_bar; case_type_variant_type }
       | ( SyntaxKind.PropertyDeclaration,
           [
             property_attribute_spec;
@@ -7695,6 +7834,10 @@ module WithToken (Token : TokenType) = struct
             module_membership_declaration_name;
             module_membership_declaration_semicolon;
           }
+      | ( SyntaxKind.PackageExpression,
+          [package_expression_keyword; package_expression_name] ) ->
+        PackageExpression
+          { package_expression_keyword; package_expression_name }
       | (SyntaxKind.Missing, []) -> Missing
       | (SyntaxKind.SyntaxList, items) -> SyntaxList items
       | _ ->
@@ -7986,6 +8129,44 @@ module WithToken (Token : TokenType) = struct
               ctx_alias_context;
               ctx_alias_semicolon;
             }
+        in
+        let value = ValueBuilder.value_from_syntax syntax in
+        make syntax value
+
+      let make_case_type_declaration
+          case_type_attribute_spec
+          case_type_modifiers
+          case_type_case_keyword
+          case_type_type_keyword
+          case_type_name
+          case_type_generic_parameter
+          case_type_as
+          case_type_bounds
+          case_type_equal
+          case_type_variants
+          case_type_semicolon =
+        let syntax =
+          CaseTypeDeclaration
+            {
+              case_type_attribute_spec;
+              case_type_modifiers;
+              case_type_case_keyword;
+              case_type_type_keyword;
+              case_type_name;
+              case_type_generic_parameter;
+              case_type_as;
+              case_type_bounds;
+              case_type_equal;
+              case_type_variants;
+              case_type_semicolon;
+            }
+        in
+        let value = ValueBuilder.value_from_syntax syntax in
+        make syntax value
+
+      let make_case_type_variant case_type_variant_bar case_type_variant_type =
+        let syntax =
+          CaseTypeVariant { case_type_variant_bar; case_type_variant_type }
         in
         let value = ValueBuilder.value_from_syntax syntax in
         make syntax value
@@ -10148,6 +10329,15 @@ module WithToken (Token : TokenType) = struct
               module_membership_declaration_name;
               module_membership_declaration_semicolon;
             }
+        in
+        let value = ValueBuilder.value_from_syntax syntax in
+        make syntax value
+
+      let make_package_expression
+          package_expression_keyword package_expression_name =
+        let syntax =
+          PackageExpression
+            { package_expression_keyword; package_expression_name }
         in
         let value = ValueBuilder.value_from_syntax syntax in
         make syntax value

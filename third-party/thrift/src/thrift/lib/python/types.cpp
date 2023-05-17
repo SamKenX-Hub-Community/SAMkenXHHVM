@@ -282,9 +282,9 @@ detail::OptionalThriftValue getIOBuf(
              : detail::OptionalThriftValue{};
 }
 
-void setIOBuf(void* object, const std::unique_ptr<folly::IOBuf> value) {
+void setIOBuf(void* object, const folly::IOBuf& value) {
   FOLLY_MAYBE_UNUSED static bool done = (do_import(), false);
-  const auto buf = create_IOBuf(value->clone());
+  const auto buf = create_IOBuf(value.clone());
   Py_INCREF(buf);
   UniquePyObjectPtr iobufObj{buf};
   if (!buf) {
@@ -373,6 +373,7 @@ void SetTypeInfo::read(
     if (PySet_Add(frozenset.get(), elem) == -1) {
       THRIFT_PY3_CHECK_ERROR();
     }
+    Py_DECREF(elem);
   }
   setPyObject(object, std::move(frozenset));
 }
@@ -430,6 +431,7 @@ void SetTypeInfo::consumeElem(
     _fbthrift_Py_SET_REFCNT(*pyObjPtr, currentRefCnt);
     THRIFT_PY3_CHECK_ERROR();
   }
+  Py_DECREF(elem);
   _fbthrift_Py_SET_REFCNT(*pyObjPtr, currentRefCnt);
 }
 

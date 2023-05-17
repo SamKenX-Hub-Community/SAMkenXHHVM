@@ -22,7 +22,6 @@ import static com.google.common.base.MoreObjects.ToStringHelper;
 @SwiftGenerated
 @com.facebook.swift.codec.ThriftStruct(value="defaultStruct", builder=DefaultStruct.Builder.class)
 public final class DefaultStruct implements com.facebook.thrift.payload.ThriftSerializable {
-
     @ThriftConstructor
     public DefaultStruct(
         @com.facebook.swift.codec.ThriftField(value=1, name="myLongDFset", requiredness=Requiredness.NONE) final long myLongDFset,
@@ -147,7 +146,6 @@ public final class DefaultStruct implements com.facebook.thrift.payload.ThriftSe
     }
     
     public static class Builder {
-    
         private long myLongDFset = 10L;
         private long myLongDF = 0L;
         private int portDFset = 3456;
@@ -1224,7 +1222,6 @@ public final class DefaultStruct implements com.facebook.thrift.payload.ThriftSe
         oprot.writeMapBegin(new TMap(TType.I32, TType.LIST, _iter0.size()));
         for (Map.Entry<Integer, List<test.fixtures.complex_struct.SimpleStruct>> _iter1 : _iter0.entrySet()) {
           oprot.writeI32(_iter1.getKey());
-          
           oprot.writeListBegin(new TList(TType.STRUCT, _iter1.getValue().size()));
         for (test.fixtures.complex_struct.SimpleStruct _iter2 : _iter1.getValue()) {
           _iter2.write0(oprot);
@@ -1262,7 +1259,6 @@ public final class DefaultStruct implements com.facebook.thrift.payload.ThriftSe
         oprot.writeMapBegin(new TMap(TType.STRING, TType.MAP, _iter0.size()));
         for (Map.Entry<String, Map<Integer, test.fixtures.complex_struct.MyEnum>> _iter1 : _iter0.entrySet()) {
           oprot.writeString(_iter1.getKey());
-          
           oprot.writeMapBegin(new TMap(TType.I32, TType.I32, _iter1.getValue().size()));
         for (Map.Entry<Integer, test.fixtures.complex_struct.MyEnum> _iter2 : _iter1.getValue().entrySet()) {
           oprot.writeI32(_iter2.getKey());

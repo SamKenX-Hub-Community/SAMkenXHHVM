@@ -56,13 +56,13 @@ class AnnotationStruct implements \IThriftSyncStruct, \IThriftStructMetadata, \I
   public static function getAllStructuredAnnotations()[write_props]: \TStructAnnotations {
     return shape(
       'struct' => dict[
-        '\thrift\annotation\Transitive' => \thrift\annotation\Transitive::fromShape(
+        '\facebook\thrift\annotation\Transitive' => \facebook\thrift\annotation\Transitive::fromShape(
           shape(
           )
         ),
-        '\thrift\annotation\hack\FieldWrapper' => \thrift\annotation\hack\FieldWrapper::fromShape(
+        '\facebook\thrift\annotation\hack\FieldWrapper' => \facebook\thrift\annotation\hack\FieldWrapper::fromShape(
           shape(
-            "name" => "\MyFieldWrapper",
+            "name" => "\\MyFieldWrapper",
           )
         ),
       ],
@@ -399,9 +399,9 @@ class MyNestedStruct implements \IThriftAsyncStruct, \IThriftStructMetadata, \IT
       'fields' => dict[
         'wrapped_field' => shape(
           'field' => dict[
-            '\thrift\annotation\hack\FieldWrapper' => \thrift\annotation\hack\FieldWrapper::fromShape(
+            '\facebook\thrift\annotation\hack\FieldWrapper' => \facebook\thrift\annotation\hack\FieldWrapper::fromShape(
               shape(
-                "name" => "\MyFieldWrapper",
+                "name" => "\\MyFieldWrapper",
               )
             ),
           ],
@@ -418,9 +418,9 @@ class MyNestedStruct implements \IThriftAsyncStruct, \IThriftStructMetadata, \IT
         ),
         'adapted_type' => shape(
           'field' => dict[
-            '\thrift\annotation\hack\Adapter' => \thrift\annotation\hack\Adapter::fromShape(
+            '\facebook\thrift\annotation\hack\Adapter' => \facebook\thrift\annotation\hack\Adapter::fromShape(
               shape(
-                "name" => "\MyAdapter",
+                "name" => "\\MyAdapter",
               )
             ),
           ],
@@ -965,9 +965,9 @@ class MyComplexStruct implements \IThriftAsyncStruct, \IThriftStructMetadata, \I
       'fields' => dict[
         'map_of_string_to_list_of_MyStruct' => shape(
           'field' => dict[
-            '\thrift\annotation\hack\FieldWrapper' => \thrift\annotation\hack\FieldWrapper::fromShape(
+            '\facebook\thrift\annotation\hack\FieldWrapper' => \facebook\thrift\annotation\hack\FieldWrapper::fromShape(
               shape(
-                "name" => "\MyFieldWrapper",
+                "name" => "\\MyFieldWrapper",
               )
             ),
           ],

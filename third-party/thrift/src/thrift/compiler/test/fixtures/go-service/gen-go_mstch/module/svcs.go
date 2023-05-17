@@ -23,7 +23,7 @@ var _ = thrift.ZERO
 type GetEntity interface {
     GetEntity(ctx context.Context, r *GetEntityRequest) (*GetEntityResponse, error)
     GetBool(ctx context.Context) (bool, error)
-    GetByte(ctx context.Context) (byte, error)
+    GetByte(ctx context.Context) (int8, error)
     GetI16(ctx context.Context) (int16, error)
     GetI32(ctx context.Context) (int32, error)
     GetI64(ctx context.Context) (int64, error)
@@ -41,7 +41,7 @@ type GetEntityClientInterface interface {
     thrift.ClientInterface
     GetEntity(r *GetEntityRequest) (*GetEntityResponse, error)
     GetBool() (bool, error)
-    GetByte() (byte, error)
+    GetByte() (int8, error)
     GetI16() (int16, error)
     GetI32() (int32, error)
     GetI64() (int64, error)
@@ -143,7 +143,10 @@ func (c *GetEntityChannelClient) GetEntity(ctx context.Context, r *GetEntityRequ
     }
     out := newRespGetEntityGetEntity()
     err := c.ch.Call(ctx, "getEntity", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *GetEntityClient) GetEntity(r *GetEntityRequest) (*GetEntityResponse, error) {
@@ -156,7 +159,10 @@ func (c *GetEntityChannelClient) GetBool(ctx context.Context) (bool, error) {
     }
     out := newRespGetEntityGetBool()
     err := c.ch.Call(ctx, "getBool", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *GetEntityClient) GetBool() (bool, error) {
@@ -164,15 +170,18 @@ func (c *GetEntityClient) GetBool() (bool, error) {
 }
 
 
-func (c *GetEntityChannelClient) GetByte(ctx context.Context) (byte, error) {
+func (c *GetEntityChannelClient) GetByte(ctx context.Context) (int8, error) {
     in := &reqGetEntityGetByte{
     }
     out := newRespGetEntityGetByte()
     err := c.ch.Call(ctx, "getByte", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
-func (c *GetEntityClient) GetByte() (byte, error) {
+func (c *GetEntityClient) GetByte() (int8, error) {
     return c.chClient.GetByte(nil)
 }
 
@@ -182,7 +191,10 @@ func (c *GetEntityChannelClient) GetI16(ctx context.Context) (int16, error) {
     }
     out := newRespGetEntityGetI16()
     err := c.ch.Call(ctx, "getI16", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *GetEntityClient) GetI16() (int16, error) {
@@ -195,7 +207,10 @@ func (c *GetEntityChannelClient) GetI32(ctx context.Context) (int32, error) {
     }
     out := newRespGetEntityGetI32()
     err := c.ch.Call(ctx, "getI32", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *GetEntityClient) GetI32() (int32, error) {
@@ -208,7 +223,10 @@ func (c *GetEntityChannelClient) GetI64(ctx context.Context) (int64, error) {
     }
     out := newRespGetEntityGetI64()
     err := c.ch.Call(ctx, "getI64", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *GetEntityClient) GetI64() (int64, error) {
@@ -221,7 +239,10 @@ func (c *GetEntityChannelClient) GetDouble(ctx context.Context) (float64, error)
     }
     out := newRespGetEntityGetDouble()
     err := c.ch.Call(ctx, "getDouble", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *GetEntityClient) GetDouble() (float64, error) {
@@ -234,7 +255,10 @@ func (c *GetEntityChannelClient) GetString(ctx context.Context) (string, error) 
     }
     out := newRespGetEntityGetString()
     err := c.ch.Call(ctx, "getString", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *GetEntityClient) GetString() (string, error) {
@@ -247,7 +271,10 @@ func (c *GetEntityChannelClient) GetBinary(ctx context.Context) ([]byte, error) 
     }
     out := newRespGetEntityGetBinary()
     err := c.ch.Call(ctx, "getBinary", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *GetEntityClient) GetBinary() ([]byte, error) {
@@ -260,7 +287,10 @@ func (c *GetEntityChannelClient) GetMap(ctx context.Context) (map[string]string,
     }
     out := newRespGetEntityGetMap()
     err := c.ch.Call(ctx, "getMap", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *GetEntityClient) GetMap() (map[string]string, error) {
@@ -273,7 +303,10 @@ func (c *GetEntityChannelClient) GetSet(ctx context.Context) ([]string, error) {
     }
     out := newRespGetEntityGetSet()
     err := c.ch.Call(ctx, "getSet", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *GetEntityClient) GetSet() ([]string, error) {
@@ -286,7 +319,10 @@ func (c *GetEntityChannelClient) GetList(ctx context.Context) ([]string, error) 
     }
     out := newRespGetEntityGetList()
     err := c.ch.Call(ctx, "getList", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *GetEntityClient) GetList() ([]string, error) {
@@ -302,7 +338,10 @@ func (c *GetEntityChannelClient) GetLegacyStuff(ctx context.Context, numPos int6
     }
     out := newRespGetEntityGetLegacyStuff()
     err := c.ch.Call(ctx, "getLegacyStuff", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *GetEntityClient) GetLegacyStuff(numPos int64, numNeg1 int64, numNeg2 int64) (int32, error) {
@@ -316,12 +355,12 @@ type reqGetEntityGetEntity struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqGetEntityGetEntity{}
 
-func newReqGetEntityGetEntity() *reqGetEntityGetEntity {
-    return (&reqGetEntityGetEntity{})
-}
+type GetEntityGetEntityArgs = reqGetEntityGetEntity
 
-// Deprecated: Use newReqGetEntityGetEntity().R instead.
-var reqGetEntityGetEntity_R_DEFAULT = newReqGetEntityGetEntity().R
+func newReqGetEntityGetEntity() *reqGetEntityGetEntity {
+    return (&reqGetEntityGetEntity{}).
+        SetRNonCompat(*NewGetEntityRequest())
+}
 
 func (x *reqGetEntityGetEntity) GetRNonCompat() *GetEntityRequest {
     return x.R
@@ -329,14 +368,19 @@ func (x *reqGetEntityGetEntity) GetRNonCompat() *GetEntityRequest {
 
 func (x *reqGetEntityGetEntity) GetR() *GetEntityRequest {
     if !x.IsSetR() {
-      return NewGetEntityRequest()
+        return NewGetEntityRequest()
     }
 
     return x.R
 }
 
-func (x *reqGetEntityGetEntity) SetR(value GetEntityRequest) *reqGetEntityGetEntity {
+func (x *reqGetEntityGetEntity) SetRNonCompat(value GetEntityRequest) *reqGetEntityGetEntity {
     x.R = &value
+    return x
+}
+
+func (x *reqGetEntityGetEntity) SetR(value *GetEntityRequest) *reqGetEntityGetEntity {
+    x.R = value
     return x
 }
 
@@ -371,8 +415,19 @@ if err != nil {
     return err
 }
 
-    x.SetR(result)
+    x.SetRNonCompat(result)
     return nil
+}
+
+// Deprecated: Use newReqGetEntityGetEntity().GetR() instead.
+var reqGetEntityGetEntity_R_DEFAULT = newReqGetEntityGetEntity().GetR()
+
+// Deprecated: Use newReqGetEntityGetEntity().GetR() instead.
+func (x *reqGetEntityGetEntity) DefaultGetR() *GetEntityRequest {
+    if !x.IsSetR() {
+        return NewGetEntityRequest()
+    }
+    return x.R
 }
 
 func (x *reqGetEntityGetEntity) String() string {
@@ -400,6 +455,7 @@ func (x *reqGetEntityGetEntityBuilder) Emit() *reqGetEntityGetEntity {
     var objCopy reqGetEntityGetEntity = *x.obj
     return &objCopy
 }
+
 func (x *reqGetEntityGetEntity) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqGetEntityGetEntity"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -456,18 +512,18 @@ func (x *reqGetEntityGetEntity) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respGetEntityGetEntity struct {
-    Value *GetEntityResponse `thrift:"value,0,required" json:"value" db:"value"`
+    Value *GetEntityResponse `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respGetEntityGetEntity{}
+var _ thrift.WritableResult = &respGetEntityGetEntity{}
 
 func newRespGetEntityGetEntity() *respGetEntityGetEntity {
-    return (&respGetEntityGetEntity{})
+    return (&respGetEntityGetEntity{}).
+        SetValueNonCompat(*NewGetEntityResponse())
 }
-
-// Deprecated: Use newRespGetEntityGetEntity().Value instead.
-var respGetEntityGetEntity_Value_DEFAULT = newRespGetEntityGetEntity().Value
 
 func (x *respGetEntityGetEntity) GetValueNonCompat() *GetEntityResponse {
     return x.Value
@@ -475,14 +531,19 @@ func (x *respGetEntityGetEntity) GetValueNonCompat() *GetEntityResponse {
 
 func (x *respGetEntityGetEntity) GetValue() *GetEntityResponse {
     if !x.IsSetValue() {
-      return NewGetEntityResponse()
+        return NewGetEntityResponse()
     }
 
     return x.Value
 }
 
-func (x *respGetEntityGetEntity) SetValue(value GetEntityResponse) *respGetEntityGetEntity {
+func (x *respGetEntityGetEntity) SetValueNonCompat(value GetEntityResponse) *respGetEntityGetEntity {
     x.Value = &value
+    return x
+}
+
+func (x *respGetEntityGetEntity) SetValue(value *GetEntityResponse) *respGetEntityGetEntity {
+    x.Value = value
     return x
 }
 
@@ -517,8 +578,19 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
+}
+
+// Deprecated: Use newRespGetEntityGetEntity().GetValue() instead.
+var respGetEntityGetEntity_Value_DEFAULT = newRespGetEntityGetEntity().GetValue()
+
+// Deprecated: Use newRespGetEntityGetEntity().GetValue() instead.
+func (x *respGetEntityGetEntity) DefaultGetValue() *GetEntityResponse {
+    if !x.IsSetValue() {
+        return NewGetEntityResponse()
+    }
+    return x.Value
 }
 
 func (x *respGetEntityGetEntity) String() string {
@@ -546,6 +618,11 @@ func (x *respGetEntityGetEntityBuilder) Emit() *respGetEntityGetEntity {
     var objCopy respGetEntityGetEntity = *x.obj
     return &objCopy
 }
+
+func (x *respGetEntityGetEntity) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respGetEntityGetEntity) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respGetEntityGetEntity"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -602,10 +679,13 @@ func (x *respGetEntityGetEntity) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqGetEntityGetBool struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqGetEntityGetBool{}
+
+type GetEntityGetBoolArgs = reqGetEntityGetBool
 
 func newReqGetEntityGetBool() *reqGetEntityGetBool {
     return (&reqGetEntityGetBool{})
@@ -631,6 +711,7 @@ func (x *reqGetEntityGetBoolBuilder) Emit() *reqGetEntityGetBool {
     var objCopy reqGetEntityGetBool = *x.obj
     return &objCopy
 }
+
 func (x *reqGetEntityGetBool) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqGetEntityGetBool"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -679,14 +760,17 @@ func (x *reqGetEntityGetBool) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respGetEntityGetBool struct {
-    Value bool `thrift:"value,0,required" json:"value" db:"value"`
+    Value bool `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respGetEntityGetBool{}
+var _ thrift.WritableResult = &respGetEntityGetBool{}
 
 func newRespGetEntityGetBool() *respGetEntityGetBool {
-    return (&respGetEntityGetBool{})
+    return (&respGetEntityGetBool{}).
+        SetValueNonCompat(false)
 }
 
 func (x *respGetEntityGetBool) GetValueNonCompat() bool {
@@ -697,11 +781,15 @@ func (x *respGetEntityGetBool) GetValue() bool {
     return x.Value
 }
 
-func (x *respGetEntityGetBool) SetValue(value bool) *respGetEntityGetBool {
+func (x *respGetEntityGetBool) SetValueNonCompat(value bool) *respGetEntityGetBool {
     x.Value = value
     return x
 }
 
+func (x *respGetEntityGetBool) SetValue(value bool) *respGetEntityGetBool {
+    x.Value = value
+    return x
+}
 
 func (x *respGetEntityGetBool) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.BOOL, 0); err != nil {
@@ -725,7 +813,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -754,6 +842,11 @@ func (x *respGetEntityGetBoolBuilder) Emit() *respGetEntityGetBool {
     var objCopy respGetEntityGetBool = *x.obj
     return &objCopy
 }
+
+func (x *respGetEntityGetBool) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respGetEntityGetBool) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respGetEntityGetBool"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -810,10 +903,13 @@ func (x *respGetEntityGetBool) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqGetEntityGetByte struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqGetEntityGetByte{}
+
+type GetEntityGetByteArgs = reqGetEntityGetByte
 
 func newReqGetEntityGetByte() *reqGetEntityGetByte {
     return (&reqGetEntityGetByte{})
@@ -839,6 +935,7 @@ func (x *reqGetEntityGetByteBuilder) Emit() *reqGetEntityGetByte {
     var objCopy reqGetEntityGetByte = *x.obj
     return &objCopy
 }
+
 func (x *reqGetEntityGetByte) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqGetEntityGetByte"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -887,29 +984,36 @@ func (x *reqGetEntityGetByte) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respGetEntityGetByte struct {
-    Value byte `thrift:"value,0,required" json:"value" db:"value"`
+    Value int8 `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respGetEntityGetByte{}
+var _ thrift.WritableResult = &respGetEntityGetByte{}
 
 func newRespGetEntityGetByte() *respGetEntityGetByte {
-    return (&respGetEntityGetByte{})
+    return (&respGetEntityGetByte{}).
+        SetValueNonCompat(0)
 }
 
-func (x *respGetEntityGetByte) GetValueNonCompat() byte {
+func (x *respGetEntityGetByte) GetValueNonCompat() int8 {
     return x.Value
 }
 
-func (x *respGetEntityGetByte) GetValue() byte {
+func (x *respGetEntityGetByte) GetValue() int8 {
     return x.Value
 }
 
-func (x *respGetEntityGetByte) SetValue(value byte) *respGetEntityGetByte {
+func (x *respGetEntityGetByte) SetValueNonCompat(value int8) *respGetEntityGetByte {
     x.Value = value
     return x
 }
 
+func (x *respGetEntityGetByte) SetValue(value int8) *respGetEntityGetByte {
+    x.Value = value
+    return x
+}
 
 func (x *respGetEntityGetByte) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.BYTE, 0); err != nil {
@@ -917,7 +1021,7 @@ func (x *respGetEntityGetByte) writeField0(p thrift.Protocol) error {  // Value
     }
 
     item := x.GetValueNonCompat()
-    if err := p.WriteByte(item); err != nil {
+    if err := p.WriteByte(byte(item)); err != nil {
     return err
 }
 
@@ -928,12 +1032,13 @@ func (x *respGetEntityGetByte) writeField0(p thrift.Protocol) error {  // Value
 }
 
 func (x *respGetEntityGetByte) readField0(p thrift.Protocol) error {  // Value
-    result, err := p.ReadByte()
+    resultByte, err := p.ReadByte()
+result := int8(resultByte)
 if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -953,7 +1058,7 @@ func newRespGetEntityGetByteBuilder() *respGetEntityGetByteBuilder {
     }
 }
 
-func (x *respGetEntityGetByteBuilder) Value(value byte) *respGetEntityGetByteBuilder {
+func (x *respGetEntityGetByteBuilder) Value(value int8) *respGetEntityGetByteBuilder {
     x.obj.Value = value
     return x
 }
@@ -962,6 +1067,11 @@ func (x *respGetEntityGetByteBuilder) Emit() *respGetEntityGetByte {
     var objCopy respGetEntityGetByte = *x.obj
     return &objCopy
 }
+
+func (x *respGetEntityGetByte) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respGetEntityGetByte) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respGetEntityGetByte"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1018,10 +1128,13 @@ func (x *respGetEntityGetByte) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqGetEntityGetI16 struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqGetEntityGetI16{}
+
+type GetEntityGetI16Args = reqGetEntityGetI16
 
 func newReqGetEntityGetI16() *reqGetEntityGetI16 {
     return (&reqGetEntityGetI16{})
@@ -1047,6 +1160,7 @@ func (x *reqGetEntityGetI16Builder) Emit() *reqGetEntityGetI16 {
     var objCopy reqGetEntityGetI16 = *x.obj
     return &objCopy
 }
+
 func (x *reqGetEntityGetI16) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqGetEntityGetI16"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1095,14 +1209,17 @@ func (x *reqGetEntityGetI16) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respGetEntityGetI16 struct {
-    Value int16 `thrift:"value,0,required" json:"value" db:"value"`
+    Value int16 `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respGetEntityGetI16{}
+var _ thrift.WritableResult = &respGetEntityGetI16{}
 
 func newRespGetEntityGetI16() *respGetEntityGetI16 {
-    return (&respGetEntityGetI16{})
+    return (&respGetEntityGetI16{}).
+        SetValueNonCompat(0)
 }
 
 func (x *respGetEntityGetI16) GetValueNonCompat() int16 {
@@ -1113,11 +1230,15 @@ func (x *respGetEntityGetI16) GetValue() int16 {
     return x.Value
 }
 
-func (x *respGetEntityGetI16) SetValue(value int16) *respGetEntityGetI16 {
+func (x *respGetEntityGetI16) SetValueNonCompat(value int16) *respGetEntityGetI16 {
     x.Value = value
     return x
 }
 
+func (x *respGetEntityGetI16) SetValue(value int16) *respGetEntityGetI16 {
+    x.Value = value
+    return x
+}
 
 func (x *respGetEntityGetI16) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.I16, 0); err != nil {
@@ -1141,7 +1262,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -1170,6 +1291,11 @@ func (x *respGetEntityGetI16Builder) Emit() *respGetEntityGetI16 {
     var objCopy respGetEntityGetI16 = *x.obj
     return &objCopy
 }
+
+func (x *respGetEntityGetI16) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respGetEntityGetI16) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respGetEntityGetI16"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1226,10 +1352,13 @@ func (x *respGetEntityGetI16) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqGetEntityGetI32 struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqGetEntityGetI32{}
+
+type GetEntityGetI32Args = reqGetEntityGetI32
 
 func newReqGetEntityGetI32() *reqGetEntityGetI32 {
     return (&reqGetEntityGetI32{})
@@ -1255,6 +1384,7 @@ func (x *reqGetEntityGetI32Builder) Emit() *reqGetEntityGetI32 {
     var objCopy reqGetEntityGetI32 = *x.obj
     return &objCopy
 }
+
 func (x *reqGetEntityGetI32) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqGetEntityGetI32"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1303,14 +1433,17 @@ func (x *reqGetEntityGetI32) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respGetEntityGetI32 struct {
-    Value int32 `thrift:"value,0,required" json:"value" db:"value"`
+    Value int32 `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respGetEntityGetI32{}
+var _ thrift.WritableResult = &respGetEntityGetI32{}
 
 func newRespGetEntityGetI32() *respGetEntityGetI32 {
-    return (&respGetEntityGetI32{})
+    return (&respGetEntityGetI32{}).
+        SetValueNonCompat(0)
 }
 
 func (x *respGetEntityGetI32) GetValueNonCompat() int32 {
@@ -1321,11 +1454,15 @@ func (x *respGetEntityGetI32) GetValue() int32 {
     return x.Value
 }
 
-func (x *respGetEntityGetI32) SetValue(value int32) *respGetEntityGetI32 {
+func (x *respGetEntityGetI32) SetValueNonCompat(value int32) *respGetEntityGetI32 {
     x.Value = value
     return x
 }
 
+func (x *respGetEntityGetI32) SetValue(value int32) *respGetEntityGetI32 {
+    x.Value = value
+    return x
+}
 
 func (x *respGetEntityGetI32) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.I32, 0); err != nil {
@@ -1349,7 +1486,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -1378,6 +1515,11 @@ func (x *respGetEntityGetI32Builder) Emit() *respGetEntityGetI32 {
     var objCopy respGetEntityGetI32 = *x.obj
     return &objCopy
 }
+
+func (x *respGetEntityGetI32) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respGetEntityGetI32) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respGetEntityGetI32"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1434,10 +1576,13 @@ func (x *respGetEntityGetI32) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqGetEntityGetI64 struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqGetEntityGetI64{}
+
+type GetEntityGetI64Args = reqGetEntityGetI64
 
 func newReqGetEntityGetI64() *reqGetEntityGetI64 {
     return (&reqGetEntityGetI64{})
@@ -1463,6 +1608,7 @@ func (x *reqGetEntityGetI64Builder) Emit() *reqGetEntityGetI64 {
     var objCopy reqGetEntityGetI64 = *x.obj
     return &objCopy
 }
+
 func (x *reqGetEntityGetI64) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqGetEntityGetI64"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1511,14 +1657,17 @@ func (x *reqGetEntityGetI64) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respGetEntityGetI64 struct {
-    Value int64 `thrift:"value,0,required" json:"value" db:"value"`
+    Value int64 `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respGetEntityGetI64{}
+var _ thrift.WritableResult = &respGetEntityGetI64{}
 
 func newRespGetEntityGetI64() *respGetEntityGetI64 {
-    return (&respGetEntityGetI64{})
+    return (&respGetEntityGetI64{}).
+        SetValueNonCompat(0)
 }
 
 func (x *respGetEntityGetI64) GetValueNonCompat() int64 {
@@ -1529,11 +1678,15 @@ func (x *respGetEntityGetI64) GetValue() int64 {
     return x.Value
 }
 
-func (x *respGetEntityGetI64) SetValue(value int64) *respGetEntityGetI64 {
+func (x *respGetEntityGetI64) SetValueNonCompat(value int64) *respGetEntityGetI64 {
     x.Value = value
     return x
 }
 
+func (x *respGetEntityGetI64) SetValue(value int64) *respGetEntityGetI64 {
+    x.Value = value
+    return x
+}
 
 func (x *respGetEntityGetI64) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.I64, 0); err != nil {
@@ -1557,7 +1710,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -1586,6 +1739,11 @@ func (x *respGetEntityGetI64Builder) Emit() *respGetEntityGetI64 {
     var objCopy respGetEntityGetI64 = *x.obj
     return &objCopy
 }
+
+func (x *respGetEntityGetI64) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respGetEntityGetI64) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respGetEntityGetI64"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1642,10 +1800,13 @@ func (x *respGetEntityGetI64) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqGetEntityGetDouble struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqGetEntityGetDouble{}
+
+type GetEntityGetDoubleArgs = reqGetEntityGetDouble
 
 func newReqGetEntityGetDouble() *reqGetEntityGetDouble {
     return (&reqGetEntityGetDouble{})
@@ -1671,6 +1832,7 @@ func (x *reqGetEntityGetDoubleBuilder) Emit() *reqGetEntityGetDouble {
     var objCopy reqGetEntityGetDouble = *x.obj
     return &objCopy
 }
+
 func (x *reqGetEntityGetDouble) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqGetEntityGetDouble"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1719,14 +1881,17 @@ func (x *reqGetEntityGetDouble) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respGetEntityGetDouble struct {
-    Value float64 `thrift:"value,0,required" json:"value" db:"value"`
+    Value float64 `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respGetEntityGetDouble{}
+var _ thrift.WritableResult = &respGetEntityGetDouble{}
 
 func newRespGetEntityGetDouble() *respGetEntityGetDouble {
-    return (&respGetEntityGetDouble{})
+    return (&respGetEntityGetDouble{}).
+        SetValueNonCompat(0.0)
 }
 
 func (x *respGetEntityGetDouble) GetValueNonCompat() float64 {
@@ -1737,11 +1902,15 @@ func (x *respGetEntityGetDouble) GetValue() float64 {
     return x.Value
 }
 
-func (x *respGetEntityGetDouble) SetValue(value float64) *respGetEntityGetDouble {
+func (x *respGetEntityGetDouble) SetValueNonCompat(value float64) *respGetEntityGetDouble {
     x.Value = value
     return x
 }
 
+func (x *respGetEntityGetDouble) SetValue(value float64) *respGetEntityGetDouble {
+    x.Value = value
+    return x
+}
 
 func (x *respGetEntityGetDouble) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.DOUBLE, 0); err != nil {
@@ -1765,7 +1934,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -1794,6 +1963,11 @@ func (x *respGetEntityGetDoubleBuilder) Emit() *respGetEntityGetDouble {
     var objCopy respGetEntityGetDouble = *x.obj
     return &objCopy
 }
+
+func (x *respGetEntityGetDouble) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respGetEntityGetDouble) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respGetEntityGetDouble"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1850,10 +2024,13 @@ func (x *respGetEntityGetDouble) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqGetEntityGetString struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqGetEntityGetString{}
+
+type GetEntityGetStringArgs = reqGetEntityGetString
 
 func newReqGetEntityGetString() *reqGetEntityGetString {
     return (&reqGetEntityGetString{})
@@ -1879,6 +2056,7 @@ func (x *reqGetEntityGetStringBuilder) Emit() *reqGetEntityGetString {
     var objCopy reqGetEntityGetString = *x.obj
     return &objCopy
 }
+
 func (x *reqGetEntityGetString) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqGetEntityGetString"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1927,14 +2105,17 @@ func (x *reqGetEntityGetString) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respGetEntityGetString struct {
-    Value string `thrift:"value,0,required" json:"value" db:"value"`
+    Value string `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respGetEntityGetString{}
+var _ thrift.WritableResult = &respGetEntityGetString{}
 
 func newRespGetEntityGetString() *respGetEntityGetString {
-    return (&respGetEntityGetString{})
+    return (&respGetEntityGetString{}).
+        SetValueNonCompat("")
 }
 
 func (x *respGetEntityGetString) GetValueNonCompat() string {
@@ -1945,11 +2126,15 @@ func (x *respGetEntityGetString) GetValue() string {
     return x.Value
 }
 
-func (x *respGetEntityGetString) SetValue(value string) *respGetEntityGetString {
+func (x *respGetEntityGetString) SetValueNonCompat(value string) *respGetEntityGetString {
     x.Value = value
     return x
 }
 
+func (x *respGetEntityGetString) SetValue(value string) *respGetEntityGetString {
+    x.Value = value
+    return x
+}
 
 func (x *respGetEntityGetString) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.STRING, 0); err != nil {
@@ -1973,7 +2158,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -2002,6 +2187,11 @@ func (x *respGetEntityGetStringBuilder) Emit() *respGetEntityGetString {
     var objCopy respGetEntityGetString = *x.obj
     return &objCopy
 }
+
+func (x *respGetEntityGetString) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respGetEntityGetString) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respGetEntityGetString"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2058,10 +2248,13 @@ func (x *respGetEntityGetString) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqGetEntityGetBinary struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqGetEntityGetBinary{}
+
+type GetEntityGetBinaryArgs = reqGetEntityGetBinary
 
 func newReqGetEntityGetBinary() *reqGetEntityGetBinary {
     return (&reqGetEntityGetBinary{})
@@ -2087,6 +2280,7 @@ func (x *reqGetEntityGetBinaryBuilder) Emit() *reqGetEntityGetBinary {
     var objCopy reqGetEntityGetBinary = *x.obj
     return &objCopy
 }
+
 func (x *reqGetEntityGetBinary) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqGetEntityGetBinary"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2135,14 +2329,17 @@ func (x *reqGetEntityGetBinary) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respGetEntityGetBinary struct {
-    Value []byte `thrift:"value,0,required" json:"value" db:"value"`
+    Value []byte `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respGetEntityGetBinary{}
+var _ thrift.WritableResult = &respGetEntityGetBinary{}
 
 func newRespGetEntityGetBinary() *respGetEntityGetBinary {
-    return (&respGetEntityGetBinary{})
+    return (&respGetEntityGetBinary{}).
+        SetValueNonCompat([]byte(""))
 }
 
 func (x *respGetEntityGetBinary) GetValueNonCompat() []byte {
@@ -2151,10 +2348,15 @@ func (x *respGetEntityGetBinary) GetValueNonCompat() []byte {
 
 func (x *respGetEntityGetBinary) GetValue() []byte {
     if !x.IsSetValue() {
-      return []byte("")
+        return []byte("")
     }
 
     return x.Value
+}
+
+func (x *respGetEntityGetBinary) SetValueNonCompat(value []byte) *respGetEntityGetBinary {
+    x.Value = value
+    return x
 }
 
 func (x *respGetEntityGetBinary) SetValue(value []byte) *respGetEntityGetBinary {
@@ -2192,7 +2394,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -2221,6 +2423,11 @@ func (x *respGetEntityGetBinaryBuilder) Emit() *respGetEntityGetBinary {
     var objCopy respGetEntityGetBinary = *x.obj
     return &objCopy
 }
+
+func (x *respGetEntityGetBinary) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respGetEntityGetBinary) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respGetEntityGetBinary"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2277,10 +2484,13 @@ func (x *respGetEntityGetBinary) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqGetEntityGetMap struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqGetEntityGetMap{}
+
+type GetEntityGetMapArgs = reqGetEntityGetMap
 
 func newReqGetEntityGetMap() *reqGetEntityGetMap {
     return (&reqGetEntityGetMap{})
@@ -2306,6 +2516,7 @@ func (x *reqGetEntityGetMapBuilder) Emit() *reqGetEntityGetMap {
     var objCopy reqGetEntityGetMap = *x.obj
     return &objCopy
 }
+
 func (x *reqGetEntityGetMap) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqGetEntityGetMap"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2354,14 +2565,17 @@ func (x *reqGetEntityGetMap) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respGetEntityGetMap struct {
-    Value map[string]string `thrift:"value,0,required" json:"value" db:"value"`
+    Value map[string]string `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respGetEntityGetMap{}
+var _ thrift.WritableResult = &respGetEntityGetMap{}
 
 func newRespGetEntityGetMap() *respGetEntityGetMap {
-    return (&respGetEntityGetMap{})
+    return (&respGetEntityGetMap{}).
+        SetValueNonCompat(make(map[string]string))
 }
 
 func (x *respGetEntityGetMap) GetValueNonCompat() map[string]string {
@@ -2370,10 +2584,15 @@ func (x *respGetEntityGetMap) GetValueNonCompat() map[string]string {
 
 func (x *respGetEntityGetMap) GetValue() map[string]string {
     if !x.IsSetValue() {
-      return nil
+        return make(map[string]string)
     }
 
     return x.Value
+}
+
+func (x *respGetEntityGetMap) SetValueNonCompat(value map[string]string) *respGetEntityGetMap {
+    x.Value = value
+    return x
 }
 
 func (x *respGetEntityGetMap) SetValue(value map[string]string) *respGetEntityGetMap {
@@ -2457,7 +2676,7 @@ if err := p.ReadMapEnd(); err != nil {
 }
 result := mapResult
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -2486,6 +2705,11 @@ func (x *respGetEntityGetMapBuilder) Emit() *respGetEntityGetMap {
     var objCopy respGetEntityGetMap = *x.obj
     return &objCopy
 }
+
+func (x *respGetEntityGetMap) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respGetEntityGetMap) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respGetEntityGetMap"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2542,10 +2766,13 @@ func (x *respGetEntityGetMap) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqGetEntityGetSet struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqGetEntityGetSet{}
+
+type GetEntityGetSetArgs = reqGetEntityGetSet
 
 func newReqGetEntityGetSet() *reqGetEntityGetSet {
     return (&reqGetEntityGetSet{})
@@ -2571,6 +2798,7 @@ func (x *reqGetEntityGetSetBuilder) Emit() *reqGetEntityGetSet {
     var objCopy reqGetEntityGetSet = *x.obj
     return &objCopy
 }
+
 func (x *reqGetEntityGetSet) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqGetEntityGetSet"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2619,14 +2847,17 @@ func (x *reqGetEntityGetSet) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respGetEntityGetSet struct {
-    Value []string `thrift:"value,0,required" json:"value" db:"value"`
+    Value []string `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respGetEntityGetSet{}
+var _ thrift.WritableResult = &respGetEntityGetSet{}
 
 func newRespGetEntityGetSet() *respGetEntityGetSet {
-    return (&respGetEntityGetSet{})
+    return (&respGetEntityGetSet{}).
+        SetValueNonCompat(make([]string, 0))
 }
 
 func (x *respGetEntityGetSet) GetValueNonCompat() []string {
@@ -2635,10 +2866,15 @@ func (x *respGetEntityGetSet) GetValueNonCompat() []string {
 
 func (x *respGetEntityGetSet) GetValue() []string {
     if !x.IsSetValue() {
-      return nil
+        return make([]string, 0)
     }
 
     return x.Value
+}
+
+func (x *respGetEntityGetSet) SetValueNonCompat(value []string) *respGetEntityGetSet {
+    x.Value = value
+    return x
 }
 
 func (x *respGetEntityGetSet) SetValue(value []string) *respGetEntityGetSet {
@@ -2705,7 +2941,7 @@ if err := p.ReadSetEnd(); err != nil {
 }
 result := setResult
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -2734,6 +2970,11 @@ func (x *respGetEntityGetSetBuilder) Emit() *respGetEntityGetSet {
     var objCopy respGetEntityGetSet = *x.obj
     return &objCopy
 }
+
+func (x *respGetEntityGetSet) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respGetEntityGetSet) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respGetEntityGetSet"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2790,10 +3031,13 @@ func (x *respGetEntityGetSet) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqGetEntityGetList struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqGetEntityGetList{}
+
+type GetEntityGetListArgs = reqGetEntityGetList
 
 func newReqGetEntityGetList() *reqGetEntityGetList {
     return (&reqGetEntityGetList{})
@@ -2819,6 +3063,7 @@ func (x *reqGetEntityGetListBuilder) Emit() *reqGetEntityGetList {
     var objCopy reqGetEntityGetList = *x.obj
     return &objCopy
 }
+
 func (x *reqGetEntityGetList) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqGetEntityGetList"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2867,14 +3112,17 @@ func (x *reqGetEntityGetList) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respGetEntityGetList struct {
-    Value []string `thrift:"value,0,required" json:"value" db:"value"`
+    Value []string `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respGetEntityGetList{}
+var _ thrift.WritableResult = &respGetEntityGetList{}
 
 func newRespGetEntityGetList() *respGetEntityGetList {
-    return (&respGetEntityGetList{})
+    return (&respGetEntityGetList{}).
+        SetValueNonCompat(make([]string, 0))
 }
 
 func (x *respGetEntityGetList) GetValueNonCompat() []string {
@@ -2883,10 +3131,15 @@ func (x *respGetEntityGetList) GetValueNonCompat() []string {
 
 func (x *respGetEntityGetList) GetValue() []string {
     if !x.IsSetValue() {
-      return nil
+        return make([]string, 0)
     }
 
     return x.Value
+}
+
+func (x *respGetEntityGetList) SetValueNonCompat(value []string) *respGetEntityGetList {
+    x.Value = value
+    return x
 }
 
 func (x *respGetEntityGetList) SetValue(value []string) *respGetEntityGetList {
@@ -2953,7 +3206,7 @@ if err := p.ReadListEnd(); err != nil {
 }
 result := listResult
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -2982,6 +3235,11 @@ func (x *respGetEntityGetListBuilder) Emit() *respGetEntityGetList {
     var objCopy respGetEntityGetList = *x.obj
     return &objCopy
 }
+
+func (x *respGetEntityGetList) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respGetEntityGetList) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respGetEntityGetList"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -3038,6 +3296,7 @@ func (x *respGetEntityGetList) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqGetEntityGetLegacyStuff struct {
     NumPos int64 `thrift:"numPos,1" json:"numPos" db:"numPos"`
     NumNeg1 int64 `thrift:"numNeg1,-1" json:"numNeg1" db:"numNeg1"`
@@ -3046,8 +3305,13 @@ type reqGetEntityGetLegacyStuff struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqGetEntityGetLegacyStuff{}
 
+type GetEntityGetLegacyStuffArgs = reqGetEntityGetLegacyStuff
+
 func newReqGetEntityGetLegacyStuff() *reqGetEntityGetLegacyStuff {
-    return (&reqGetEntityGetLegacyStuff{})
+    return (&reqGetEntityGetLegacyStuff{}).
+        SetNumPosNonCompat(0).
+        SetNumNeg1NonCompat(0).
+        SetNumNeg2NonCompat(0)
 }
 
 func (x *reqGetEntityGetLegacyStuff) GetNumPosNonCompat() int64 {
@@ -3074,8 +3338,18 @@ func (x *reqGetEntityGetLegacyStuff) GetNumNeg2() int64 {
     return x.NumNeg2
 }
 
+func (x *reqGetEntityGetLegacyStuff) SetNumPosNonCompat(value int64) *reqGetEntityGetLegacyStuff {
+    x.NumPos = value
+    return x
+}
+
 func (x *reqGetEntityGetLegacyStuff) SetNumPos(value int64) *reqGetEntityGetLegacyStuff {
     x.NumPos = value
+    return x
+}
+
+func (x *reqGetEntityGetLegacyStuff) SetNumNeg1NonCompat(value int64) *reqGetEntityGetLegacyStuff {
+    x.NumNeg1 = value
     return x
 }
 
@@ -3084,13 +3358,15 @@ func (x *reqGetEntityGetLegacyStuff) SetNumNeg1(value int64) *reqGetEntityGetLeg
     return x
 }
 
-func (x *reqGetEntityGetLegacyStuff) SetNumNeg2(value int64) *reqGetEntityGetLegacyStuff {
+func (x *reqGetEntityGetLegacyStuff) SetNumNeg2NonCompat(value int64) *reqGetEntityGetLegacyStuff {
     x.NumNeg2 = value
     return x
 }
 
-
-
+func (x *reqGetEntityGetLegacyStuff) SetNumNeg2(value int64) *reqGetEntityGetLegacyStuff {
+    x.NumNeg2 = value
+    return x
+}
 
 func (x *reqGetEntityGetLegacyStuff) writeField1(p thrift.Protocol) error {  // NumPos
     if err := p.WriteFieldBegin("numPos", thrift.I64, 1); err != nil {
@@ -3146,7 +3422,7 @@ if err != nil {
     return err
 }
 
-    x.SetNumPos(result)
+    x.SetNumPosNonCompat(result)
     return nil
 }
 
@@ -3156,7 +3432,7 @@ if err != nil {
     return err
 }
 
-    x.SetNumNeg1(result)
+    x.SetNumNeg1NonCompat(result)
     return nil
 }
 
@@ -3166,7 +3442,7 @@ if err != nil {
     return err
 }
 
-    x.SetNumNeg2(result)
+    x.SetNumNeg2NonCompat(result)
     return nil
 }
 
@@ -3205,6 +3481,7 @@ func (x *reqGetEntityGetLegacyStuffBuilder) Emit() *reqGetEntityGetLegacyStuff {
     var objCopy reqGetEntityGetLegacyStuff = *x.obj
     return &objCopy
 }
+
 func (x *reqGetEntityGetLegacyStuff) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqGetEntityGetLegacyStuff"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -3277,14 +3554,17 @@ func (x *reqGetEntityGetLegacyStuff) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respGetEntityGetLegacyStuff struct {
-    Value int32 `thrift:"value,0,required" json:"value" db:"value"`
+    Value int32 `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respGetEntityGetLegacyStuff{}
+var _ thrift.WritableResult = &respGetEntityGetLegacyStuff{}
 
 func newRespGetEntityGetLegacyStuff() *respGetEntityGetLegacyStuff {
-    return (&respGetEntityGetLegacyStuff{})
+    return (&respGetEntityGetLegacyStuff{}).
+        SetValueNonCompat(0)
 }
 
 func (x *respGetEntityGetLegacyStuff) GetValueNonCompat() int32 {
@@ -3295,11 +3575,15 @@ func (x *respGetEntityGetLegacyStuff) GetValue() int32 {
     return x.Value
 }
 
-func (x *respGetEntityGetLegacyStuff) SetValue(value int32) *respGetEntityGetLegacyStuff {
+func (x *respGetEntityGetLegacyStuff) SetValueNonCompat(value int32) *respGetEntityGetLegacyStuff {
     x.Value = value
     return x
 }
 
+func (x *respGetEntityGetLegacyStuff) SetValue(value int32) *respGetEntityGetLegacyStuff {
+    x.Value = value
+    return x
+}
 
 func (x *respGetEntityGetLegacyStuff) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.I32, 0); err != nil {
@@ -3323,7 +3607,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -3352,6 +3636,11 @@ func (x *respGetEntityGetLegacyStuffBuilder) Emit() *respGetEntityGetLegacyStuff
     var objCopy respGetEntityGetLegacyStuff = *x.obj
     return &objCopy
 }
+
+func (x *respGetEntityGetLegacyStuff) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respGetEntityGetLegacyStuff) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respGetEntityGetLegacyStuff"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -3408,6 +3697,7 @@ func (x *respGetEntityGetLegacyStuff) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type GetEntityProcessor struct {
@@ -3496,9 +3786,11 @@ func (p *procFuncGetEntityGetEntity) Read(iprot thrift.Protocol) (thrift.Struct,
 func (p *procFuncGetEntityGetEntity) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetEntity", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3517,13 +3809,13 @@ func (p *procFuncGetEntityGetEntity) Write(seqId int32, result thrift.WritableSt
 func (p *procFuncGetEntityGetEntity) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqGetEntityGetEntity)
     result := newRespGetEntityGetEntity()
-    if retval, err := p.handler.GetEntity(args.R); err != nil {
+    retval, err := p.handler.GetEntity(args.R)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetEntity: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -3546,9 +3838,11 @@ func (p *procFuncGetEntityGetBool) Read(iprot thrift.Protocol) (thrift.Struct, t
 func (p *procFuncGetEntityGetBool) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetBool", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3566,13 +3860,13 @@ func (p *procFuncGetEntityGetBool) Write(seqId int32, result thrift.WritableStru
 
 func (p *procFuncGetEntityGetBool) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespGetEntityGetBool()
-    if retval, err := p.handler.GetBool(); err != nil {
+    retval, err := p.handler.GetBool()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetBool: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -3595,9 +3889,11 @@ func (p *procFuncGetEntityGetByte) Read(iprot thrift.Protocol) (thrift.Struct, t
 func (p *procFuncGetEntityGetByte) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetByte", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3615,13 +3911,13 @@ func (p *procFuncGetEntityGetByte) Write(seqId int32, result thrift.WritableStru
 
 func (p *procFuncGetEntityGetByte) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespGetEntityGetByte()
-    if retval, err := p.handler.GetByte(); err != nil {
+    retval, err := p.handler.GetByte()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetByte: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -3644,9 +3940,11 @@ func (p *procFuncGetEntityGetI16) Read(iprot thrift.Protocol) (thrift.Struct, th
 func (p *procFuncGetEntityGetI16) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetI16", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3664,13 +3962,13 @@ func (p *procFuncGetEntityGetI16) Write(seqId int32, result thrift.WritableStruc
 
 func (p *procFuncGetEntityGetI16) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespGetEntityGetI16()
-    if retval, err := p.handler.GetI16(); err != nil {
+    retval, err := p.handler.GetI16()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetI16: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -3693,9 +3991,11 @@ func (p *procFuncGetEntityGetI32) Read(iprot thrift.Protocol) (thrift.Struct, th
 func (p *procFuncGetEntityGetI32) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetI32", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3713,13 +4013,13 @@ func (p *procFuncGetEntityGetI32) Write(seqId int32, result thrift.WritableStruc
 
 func (p *procFuncGetEntityGetI32) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespGetEntityGetI32()
-    if retval, err := p.handler.GetI32(); err != nil {
+    retval, err := p.handler.GetI32()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetI32: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -3742,9 +4042,11 @@ func (p *procFuncGetEntityGetI64) Read(iprot thrift.Protocol) (thrift.Struct, th
 func (p *procFuncGetEntityGetI64) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetI64", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3762,13 +4064,13 @@ func (p *procFuncGetEntityGetI64) Write(seqId int32, result thrift.WritableStruc
 
 func (p *procFuncGetEntityGetI64) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespGetEntityGetI64()
-    if retval, err := p.handler.GetI64(); err != nil {
+    retval, err := p.handler.GetI64()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetI64: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -3791,9 +4093,11 @@ func (p *procFuncGetEntityGetDouble) Read(iprot thrift.Protocol) (thrift.Struct,
 func (p *procFuncGetEntityGetDouble) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetDouble", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3811,13 +4115,13 @@ func (p *procFuncGetEntityGetDouble) Write(seqId int32, result thrift.WritableSt
 
 func (p *procFuncGetEntityGetDouble) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespGetEntityGetDouble()
-    if retval, err := p.handler.GetDouble(); err != nil {
+    retval, err := p.handler.GetDouble()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetDouble: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -3840,9 +4144,11 @@ func (p *procFuncGetEntityGetString) Read(iprot thrift.Protocol) (thrift.Struct,
 func (p *procFuncGetEntityGetString) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetString", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3860,13 +4166,13 @@ func (p *procFuncGetEntityGetString) Write(seqId int32, result thrift.WritableSt
 
 func (p *procFuncGetEntityGetString) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespGetEntityGetString()
-    if retval, err := p.handler.GetString(); err != nil {
+    retval, err := p.handler.GetString()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetString: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -3889,9 +4195,11 @@ func (p *procFuncGetEntityGetBinary) Read(iprot thrift.Protocol) (thrift.Struct,
 func (p *procFuncGetEntityGetBinary) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetBinary", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3909,13 +4217,13 @@ func (p *procFuncGetEntityGetBinary) Write(seqId int32, result thrift.WritableSt
 
 func (p *procFuncGetEntityGetBinary) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespGetEntityGetBinary()
-    if retval, err := p.handler.GetBinary(); err != nil {
+    retval, err := p.handler.GetBinary()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetBinary: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -3938,9 +4246,11 @@ func (p *procFuncGetEntityGetMap) Read(iprot thrift.Protocol) (thrift.Struct, th
 func (p *procFuncGetEntityGetMap) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetMap", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3958,13 +4268,13 @@ func (p *procFuncGetEntityGetMap) Write(seqId int32, result thrift.WritableStruc
 
 func (p *procFuncGetEntityGetMap) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespGetEntityGetMap()
-    if retval, err := p.handler.GetMap(); err != nil {
+    retval, err := p.handler.GetMap()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetMap: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -3987,9 +4297,11 @@ func (p *procFuncGetEntityGetSet) Read(iprot thrift.Protocol) (thrift.Struct, th
 func (p *procFuncGetEntityGetSet) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetSet", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -4007,13 +4319,13 @@ func (p *procFuncGetEntityGetSet) Write(seqId int32, result thrift.WritableStruc
 
 func (p *procFuncGetEntityGetSet) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespGetEntityGetSet()
-    if retval, err := p.handler.GetSet(); err != nil {
+    retval, err := p.handler.GetSet()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetSet: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -4036,9 +4348,11 @@ func (p *procFuncGetEntityGetList) Read(iprot thrift.Protocol) (thrift.Struct, t
 func (p *procFuncGetEntityGetList) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetList", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -4056,13 +4370,13 @@ func (p *procFuncGetEntityGetList) Write(seqId int32, result thrift.WritableStru
 
 func (p *procFuncGetEntityGetList) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespGetEntityGetList()
-    if retval, err := p.handler.GetList(); err != nil {
+    retval, err := p.handler.GetList()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetList: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -4085,9 +4399,11 @@ func (p *procFuncGetEntityGetLegacyStuff) Read(iprot thrift.Protocol) (thrift.St
 func (p *procFuncGetEntityGetLegacyStuff) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetLegacyStuff", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -4106,13 +4422,13 @@ func (p *procFuncGetEntityGetLegacyStuff) Write(seqId int32, result thrift.Writa
 func (p *procFuncGetEntityGetLegacyStuff) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqGetEntityGetLegacyStuff)
     result := newRespGetEntityGetLegacyStuff()
-    if retval, err := p.handler.GetLegacyStuff(args.NumPos, args.NumNeg1, args.NumNeg2); err != nil {
+    retval, err := p.handler.GetLegacyStuff(args.NumPos, args.NumNeg1, args.NumNeg2)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetLegacyStuff: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 

@@ -125,7 +125,10 @@ func (c *FinderChannelClient) ByPlate(ctx context.Context, plate Plate) (*Automo
     }
     out := newRespFinderByPlate()
     err := c.ch.Call(ctx, "byPlate", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *FinderClient) ByPlate(plate Plate) (*Automobile, error) {
@@ -139,7 +142,10 @@ func (c *FinderChannelClient) AliasByPlate(ctx context.Context, plate Plate) (*C
     }
     out := newRespFinderAliasByPlate()
     err := c.ch.Call(ctx, "aliasByPlate", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *FinderClient) AliasByPlate(plate Plate) (*Car, error) {
@@ -153,7 +159,10 @@ func (c *FinderChannelClient) PreviousPlate(ctx context.Context, plate Plate) (P
     }
     out := newRespFinderPreviousPlate()
     err := c.ch.Call(ctx, "previousPlate", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *FinderClient) PreviousPlate(plate Plate) (Plate, error) {
@@ -167,8 +176,11 @@ type reqFinderByPlate struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqFinderByPlate{}
 
+type FinderByPlateArgs = reqFinderByPlate
+
 func newReqFinderByPlate() *reqFinderByPlate {
-    return (&reqFinderByPlate{})
+    return (&reqFinderByPlate{}).
+        SetPlateNonCompat(NewPlate())
 }
 
 func (x *reqFinderByPlate) GetPlateNonCompat() Plate {
@@ -179,11 +191,15 @@ func (x *reqFinderByPlate) GetPlate() Plate {
     return x.Plate
 }
 
-func (x *reqFinderByPlate) SetPlate(value Plate) *reqFinderByPlate {
+func (x *reqFinderByPlate) SetPlateNonCompat(value Plate) *reqFinderByPlate {
     x.Plate = value
     return x
 }
 
+func (x *reqFinderByPlate) SetPlate(value Plate) *reqFinderByPlate {
+    x.Plate = value
+    return x
+}
 
 func (x *reqFinderByPlate) writeField1(p thrift.Protocol) error {  // Plate
     if err := p.WriteFieldBegin("plate", thrift.STRING, 1); err != nil {
@@ -208,7 +224,7 @@ if err != nil {
     return err
 }
 
-    x.SetPlate(result)
+    x.SetPlateNonCompat(result)
     return nil
 }
 
@@ -237,6 +253,7 @@ func (x *reqFinderByPlateBuilder) Emit() *reqFinderByPlate {
     var objCopy reqFinderByPlate = *x.obj
     return &objCopy
 }
+
 func (x *reqFinderByPlate) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqFinderByPlate"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -293,18 +310,18 @@ func (x *reqFinderByPlate) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respFinderByPlate struct {
-    Value *Automobile `thrift:"value,0,required" json:"value" db:"value"`
+    Value *Automobile `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respFinderByPlate{}
+var _ thrift.WritableResult = &respFinderByPlate{}
 
 func newRespFinderByPlate() *respFinderByPlate {
-    return (&respFinderByPlate{})
+    return (&respFinderByPlate{}).
+        SetValueNonCompat(*NewAutomobile())
 }
-
-// Deprecated: Use newRespFinderByPlate().Value instead.
-var respFinderByPlate_Value_DEFAULT = newRespFinderByPlate().Value
 
 func (x *respFinderByPlate) GetValueNonCompat() *Automobile {
     return x.Value
@@ -312,14 +329,19 @@ func (x *respFinderByPlate) GetValueNonCompat() *Automobile {
 
 func (x *respFinderByPlate) GetValue() *Automobile {
     if !x.IsSetValue() {
-      return NewAutomobile()
+        return NewAutomobile()
     }
 
     return x.Value
 }
 
-func (x *respFinderByPlate) SetValue(value Automobile) *respFinderByPlate {
+func (x *respFinderByPlate) SetValueNonCompat(value Automobile) *respFinderByPlate {
     x.Value = &value
+    return x
+}
+
+func (x *respFinderByPlate) SetValue(value *Automobile) *respFinderByPlate {
+    x.Value = value
     return x
 }
 
@@ -354,8 +376,19 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
+}
+
+// Deprecated: Use newRespFinderByPlate().GetValue() instead.
+var respFinderByPlate_Value_DEFAULT = newRespFinderByPlate().GetValue()
+
+// Deprecated: Use newRespFinderByPlate().GetValue() instead.
+func (x *respFinderByPlate) DefaultGetValue() *Automobile {
+    if !x.IsSetValue() {
+        return NewAutomobile()
+    }
+    return x.Value
 }
 
 func (x *respFinderByPlate) String() string {
@@ -383,6 +416,11 @@ func (x *respFinderByPlateBuilder) Emit() *respFinderByPlate {
     var objCopy respFinderByPlate = *x.obj
     return &objCopy
 }
+
+func (x *respFinderByPlate) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respFinderByPlate) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respFinderByPlate"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -439,14 +477,18 @@ func (x *respFinderByPlate) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqFinderAliasByPlate struct {
     Plate Plate `thrift:"plate,1" json:"plate" db:"plate"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqFinderAliasByPlate{}
 
+type FinderAliasByPlateArgs = reqFinderAliasByPlate
+
 func newReqFinderAliasByPlate() *reqFinderAliasByPlate {
-    return (&reqFinderAliasByPlate{})
+    return (&reqFinderAliasByPlate{}).
+        SetPlateNonCompat(NewPlate())
 }
 
 func (x *reqFinderAliasByPlate) GetPlateNonCompat() Plate {
@@ -457,11 +499,15 @@ func (x *reqFinderAliasByPlate) GetPlate() Plate {
     return x.Plate
 }
 
-func (x *reqFinderAliasByPlate) SetPlate(value Plate) *reqFinderAliasByPlate {
+func (x *reqFinderAliasByPlate) SetPlateNonCompat(value Plate) *reqFinderAliasByPlate {
     x.Plate = value
     return x
 }
 
+func (x *reqFinderAliasByPlate) SetPlate(value Plate) *reqFinderAliasByPlate {
+    x.Plate = value
+    return x
+}
 
 func (x *reqFinderAliasByPlate) writeField1(p thrift.Protocol) error {  // Plate
     if err := p.WriteFieldBegin("plate", thrift.STRING, 1); err != nil {
@@ -486,7 +532,7 @@ if err != nil {
     return err
 }
 
-    x.SetPlate(result)
+    x.SetPlateNonCompat(result)
     return nil
 }
 
@@ -515,6 +561,7 @@ func (x *reqFinderAliasByPlateBuilder) Emit() *reqFinderAliasByPlate {
     var objCopy reqFinderAliasByPlate = *x.obj
     return &objCopy
 }
+
 func (x *reqFinderAliasByPlate) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqFinderAliasByPlate"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -571,18 +618,18 @@ func (x *reqFinderAliasByPlate) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respFinderAliasByPlate struct {
-    Value *Car `thrift:"value,0,required" json:"value" db:"value"`
+    Value *Car `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respFinderAliasByPlate{}
+var _ thrift.WritableResult = &respFinderAliasByPlate{}
 
 func newRespFinderAliasByPlate() *respFinderAliasByPlate {
-    return (&respFinderAliasByPlate{})
+    return (&respFinderAliasByPlate{}).
+        SetValueNonCompat(*NewCar())
 }
-
-// Deprecated: Use newRespFinderAliasByPlate().Value instead.
-var respFinderAliasByPlate_Value_DEFAULT = newRespFinderAliasByPlate().Value
 
 func (x *respFinderAliasByPlate) GetValueNonCompat() *Car {
     return x.Value
@@ -590,14 +637,19 @@ func (x *respFinderAliasByPlate) GetValueNonCompat() *Car {
 
 func (x *respFinderAliasByPlate) GetValue() *Car {
     if !x.IsSetValue() {
-      return NewCar()
+        return NewCar()
     }
 
     return x.Value
 }
 
-func (x *respFinderAliasByPlate) SetValue(value Car) *respFinderAliasByPlate {
+func (x *respFinderAliasByPlate) SetValueNonCompat(value Car) *respFinderAliasByPlate {
     x.Value = &value
+    return x
+}
+
+func (x *respFinderAliasByPlate) SetValue(value *Car) *respFinderAliasByPlate {
+    x.Value = value
     return x
 }
 
@@ -632,8 +684,19 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
+}
+
+// Deprecated: Use newRespFinderAliasByPlate().GetValue() instead.
+var respFinderAliasByPlate_Value_DEFAULT = newRespFinderAliasByPlate().GetValue()
+
+// Deprecated: Use newRespFinderAliasByPlate().GetValue() instead.
+func (x *respFinderAliasByPlate) DefaultGetValue() *Car {
+    if !x.IsSetValue() {
+        return NewCar()
+    }
+    return x.Value
 }
 
 func (x *respFinderAliasByPlate) String() string {
@@ -661,6 +724,11 @@ func (x *respFinderAliasByPlateBuilder) Emit() *respFinderAliasByPlate {
     var objCopy respFinderAliasByPlate = *x.obj
     return &objCopy
 }
+
+func (x *respFinderAliasByPlate) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respFinderAliasByPlate) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respFinderAliasByPlate"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -717,14 +785,18 @@ func (x *respFinderAliasByPlate) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqFinderPreviousPlate struct {
     Plate Plate `thrift:"plate,1" json:"plate" db:"plate"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqFinderPreviousPlate{}
 
+type FinderPreviousPlateArgs = reqFinderPreviousPlate
+
 func newReqFinderPreviousPlate() *reqFinderPreviousPlate {
-    return (&reqFinderPreviousPlate{})
+    return (&reqFinderPreviousPlate{}).
+        SetPlateNonCompat(NewPlate())
 }
 
 func (x *reqFinderPreviousPlate) GetPlateNonCompat() Plate {
@@ -735,11 +807,15 @@ func (x *reqFinderPreviousPlate) GetPlate() Plate {
     return x.Plate
 }
 
-func (x *reqFinderPreviousPlate) SetPlate(value Plate) *reqFinderPreviousPlate {
+func (x *reqFinderPreviousPlate) SetPlateNonCompat(value Plate) *reqFinderPreviousPlate {
     x.Plate = value
     return x
 }
 
+func (x *reqFinderPreviousPlate) SetPlate(value Plate) *reqFinderPreviousPlate {
+    x.Plate = value
+    return x
+}
 
 func (x *reqFinderPreviousPlate) writeField1(p thrift.Protocol) error {  // Plate
     if err := p.WriteFieldBegin("plate", thrift.STRING, 1); err != nil {
@@ -764,7 +840,7 @@ if err != nil {
     return err
 }
 
-    x.SetPlate(result)
+    x.SetPlateNonCompat(result)
     return nil
 }
 
@@ -793,6 +869,7 @@ func (x *reqFinderPreviousPlateBuilder) Emit() *reqFinderPreviousPlate {
     var objCopy reqFinderPreviousPlate = *x.obj
     return &objCopy
 }
+
 func (x *reqFinderPreviousPlate) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqFinderPreviousPlate"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -849,14 +926,17 @@ func (x *reqFinderPreviousPlate) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respFinderPreviousPlate struct {
-    Value Plate `thrift:"value,0,required" json:"value" db:"value"`
+    Value Plate `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respFinderPreviousPlate{}
+var _ thrift.WritableResult = &respFinderPreviousPlate{}
 
 func newRespFinderPreviousPlate() *respFinderPreviousPlate {
-    return (&respFinderPreviousPlate{})
+    return (&respFinderPreviousPlate{}).
+        SetValueNonCompat(NewPlate())
 }
 
 func (x *respFinderPreviousPlate) GetValueNonCompat() Plate {
@@ -867,11 +947,15 @@ func (x *respFinderPreviousPlate) GetValue() Plate {
     return x.Value
 }
 
-func (x *respFinderPreviousPlate) SetValue(value Plate) *respFinderPreviousPlate {
+func (x *respFinderPreviousPlate) SetValueNonCompat(value Plate) *respFinderPreviousPlate {
     x.Value = value
     return x
 }
 
+func (x *respFinderPreviousPlate) SetValue(value Plate) *respFinderPreviousPlate {
+    x.Value = value
+    return x
+}
 
 func (x *respFinderPreviousPlate) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.STRING, 0); err != nil {
@@ -896,7 +980,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -925,6 +1009,11 @@ func (x *respFinderPreviousPlateBuilder) Emit() *respFinderPreviousPlate {
     var objCopy respFinderPreviousPlate = *x.obj
     return &objCopy
 }
+
+func (x *respFinderPreviousPlate) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respFinderPreviousPlate) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respFinderPreviousPlate"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -981,6 +1070,7 @@ func (x *respFinderPreviousPlate) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type FinderProcessor struct {
@@ -1049,9 +1139,11 @@ func (p *procFuncFinderByPlate) Read(iprot thrift.Protocol) (thrift.Struct, thri
 func (p *procFuncFinderByPlate) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("ByPlate", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -1070,13 +1162,13 @@ func (p *procFuncFinderByPlate) Write(seqId int32, result thrift.WritableStruct,
 func (p *procFuncFinderByPlate) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqFinderByPlate)
     result := newRespFinderByPlate()
-    if retval, err := p.handler.ByPlate(args.Plate); err != nil {
+    retval, err := p.handler.ByPlate(args.Plate)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing ByPlate: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -1099,9 +1191,11 @@ func (p *procFuncFinderAliasByPlate) Read(iprot thrift.Protocol) (thrift.Struct,
 func (p *procFuncFinderAliasByPlate) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("AliasByPlate", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -1120,13 +1214,13 @@ func (p *procFuncFinderAliasByPlate) Write(seqId int32, result thrift.WritableSt
 func (p *procFuncFinderAliasByPlate) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqFinderAliasByPlate)
     result := newRespFinderAliasByPlate()
-    if retval, err := p.handler.AliasByPlate(args.Plate); err != nil {
+    retval, err := p.handler.AliasByPlate(args.Plate)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing AliasByPlate: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -1149,9 +1243,11 @@ func (p *procFuncFinderPreviousPlate) Read(iprot thrift.Protocol) (thrift.Struct
 func (p *procFuncFinderPreviousPlate) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("PreviousPlate", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -1170,13 +1266,13 @@ func (p *procFuncFinderPreviousPlate) Write(seqId int32, result thrift.WritableS
 func (p *procFuncFinderPreviousPlate) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqFinderPreviousPlate)
     result := newRespFinderPreviousPlate()
-    if retval, err := p.handler.PreviousPlate(args.Plate); err != nil {
+    retval, err := p.handler.PreviousPlate(args.Plate)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing PreviousPlate: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 

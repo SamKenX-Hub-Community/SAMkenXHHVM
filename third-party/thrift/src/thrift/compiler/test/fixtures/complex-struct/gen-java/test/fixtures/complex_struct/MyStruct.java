@@ -22,7 +22,6 @@ import static com.google.common.base.MoreObjects.ToStringHelper;
 @SwiftGenerated
 @com.facebook.swift.codec.ThriftStruct(value="MyStruct", builder=MyStruct.Builder.class)
 public final class MyStruct implements com.facebook.thrift.payload.ThriftSerializable {
-
     @ThriftConstructor
     public MyStruct(
         @com.facebook.swift.codec.ThriftField(value=1, name="MyIntField", requiredness=Requiredness.NONE) final long myIntField,
@@ -117,7 +116,6 @@ public final class MyStruct implements com.facebook.thrift.payload.ThriftSeriali
     }
     
     public static class Builder {
-    
         private long myIntField = 0L;
         private String myStringField = null;
         private test.fixtures.complex_struct.MyDataItem myDataField = null;
@@ -1561,7 +1559,6 @@ public final class MyStruct implements com.facebook.thrift.payload.ThriftSeriali
           oprot.writeI32(_iter2);
         }
         oprot.writeListEnd();
-
           oprot.writeListBegin(new TList(TType.I32, _iter1.getValue().size()));
         for (int _iter2 : _iter1.getValue()) {
           oprot.writeI32(_iter2);

@@ -47,6 +47,7 @@
 #include "hphp/runtime/ext/facts/symbol-map.h"
 #include "hphp/runtime/ext/facts/symbol-types.h"
 #include "hphp/runtime/ext/facts/thread-factory.h"
+#include "hphp/runtime/vm/treadmill.h"
 #include "hphp/util/assertions.h"
 #include "hphp/util/hash-set.h"
 #include "hphp/util/logger.h"
@@ -502,7 +503,9 @@ struct FactsStoreImpl final
       std::shared_ptr<Watcher> watcher,
       Optional<std::filesystem::path> suppressionFilePath,
       hphp_hash_set<Symbol<SymKind::Type>> indexedMethodAttributes)
-      : m_updateExec{1, make_thread_factory("Autoload update")},
+      : m_updateExec{std::make_unique<folly::CPUThreadPoolExecutor>(
+            1,
+            make_thread_factory("Autoload update"))},
         m_root{std::move(root)},
         m_map{m_root, std::move(dbHandle), std::move(indexedMethodAttributes)},
         m_watcher{std::move(watcher)},
@@ -512,18 +515,15 @@ struct FactsStoreImpl final
       fs::path root,
       AutoloadDB::Handle dbHandle,
       hphp_hash_set<Symbol<SymKind::Type>> indexedMethodAttributes)
-      : m_updateExec{1, make_thread_factory("Autoload update")},
-        m_root{std::move(root)},
+      : m_root{std::move(root)},
         m_map{m_root, std::move(dbHandle), std::move(indexedMethodAttributes)} {
   }
 
   ~FactsStoreImpl() override {
-    m_closing = true;
     try {
-      m_updateFuture.wlock()->getFuture().wait();
+      close();
     } catch (...) {
-      // folly::Future::wait() might throw a FutureInvalid exception, but we're
-      // shutting down.
+      // Can't throw an exception outside of a destructor
     }
   }
 
@@ -532,11 +532,17 @@ struct FactsStoreImpl final
   FactsStoreImpl& operator=(const FactsStoreImpl&) = delete;
   FactsStoreImpl& operator=(FactsStoreImpl&&) noexcept = delete;
 
-  /**
-   * This AutoloadMap is capable of building itself.
-   */
-  bool isNative() const noexcept override {
-    return true;
+  void close() override {
+    m_closing = true;
+    auto updateFut = m_updateFuture.wlock();
+    try {
+      updateFut->getFuture().wait();
+    } catch (...) {
+      // folly::Future::wait() might throw a FutureInvalid exception, but we're
+      // shutting down.
+    }
+    *updateFut = {};
+    m_updateExec = {};
   }
 
   Holder getNativeHolder() noexcept override {
@@ -567,19 +573,6 @@ struct FactsStoreImpl final
     if (res.hasException()) {
       res.throwUnlessValue();
     }
-  }
-
-  Array getAllFiles() const override {
-    return logPerformance(__func__, [&]() {
-      auto allPaths = m_map.getAllPaths();
-      auto ret = VecInit{allPaths.size()};
-      for (auto const& path : std::move(allPaths)) {
-        fs::path p{path.get()->toCppString()};
-        assertx(p.is_relative());
-        ret.append(VarNR{String{(m_root / p).native()}}.tv());
-      }
-      return ret.toArray();
-    });
   }
 
   Variant getTypeName(const String& type) override {
@@ -903,17 +896,6 @@ struct FactsStoreImpl final
     });
   }
 
-  bool canHandleFailure() const override {
-    return false;
-  }
-
-  AutoloadMap::Result handleFailure(
-      KindOf UNUSED kind,
-      const String& UNUSED className,
-      const Variant& UNUSED err) const override {
-    return AutoloadMap::Result::Failure;
-  }
-
   /**
    * Update whenever a file in the filesystem changes.
    */
@@ -948,6 +930,10 @@ struct FactsStoreImpl final
     if (!m_watcher) {
       return {};
     }
+    if (m_closing) {
+      throw UpdateExc{
+          "Attempted to call FactsStoreImpl::update() while shutting down"};
+    }
     // Check if a suppression sentinel file exists
     if (m_suppressionFilePath) {
       auto suppressionFilePath = *m_suppressionFilePath;
@@ -979,7 +965,7 @@ struct FactsStoreImpl final
       auto start = std::chrono::steady_clock::now();
       *updateFuture = folly::splitFuture(
           updateFuture->getFuture()
-              .via(&m_updateExec)
+              .via(m_updateExec.get())
               .thenTry([this](const folly::Try<folly::Unit>&) {
                 m_queryingWatchman = false;
                 m_lastWatchmanQueryStart = std::chrono::steady_clock::now();
@@ -997,6 +983,9 @@ struct FactsStoreImpl final
                   StructuredLogEntry ent;
                   ent.setInt("sample_rate", rate);
                   ent.setInt("duration_ms", dur);
+                  ent.setInt(
+                      "is_eden",
+                      std::filesystem::exists(m_root / ".eden" / "root"));
                   if (!results.hasException()) {
                     auto& v = results.value();
                     ent.setInt("fresh", v.m_fresh);
@@ -1321,7 +1310,7 @@ struct FactsStoreImpl final
   std::atomic<std::chrono::steady_clock::time_point> m_lastWatchmanQueryStart{
       std::chrono::steady_clock::now()};
   std::atomic<bool> m_queryingWatchman{false};
-  folly::CPUThreadPoolExecutor m_updateExec;
+  std::unique_ptr<folly::CPUThreadPoolExecutor> m_updateExec;
 
   folly::Synchronized<folly::FutureSplitter<folly::Unit>> m_updateFuture{
       folly::splitFuture(folly::makeFuture())};

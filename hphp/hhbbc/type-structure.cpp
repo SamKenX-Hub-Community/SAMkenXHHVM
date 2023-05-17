@@ -82,6 +82,7 @@ bool kind_is_resolved(TS::Kind kind) {
     case TS::Kind::T_typeaccess:
     case TS::Kind::T_fun:
     case TS::Kind::T_reifiedtype:
+    case TS::Kind::T_union:
       return false;
   }
   always_assert(false);
@@ -261,6 +262,7 @@ struct ResolveCtx {
   Context ctx;
   const Index* index;
   Cache* cache;
+  const CollectedInfo* collect = nullptr;
   const php::Class* selfCls = nullptr;
   const php::Class* thisCls = nullptr;
   const GenericsMap* generics = nullptr;
@@ -441,6 +443,8 @@ Resolution resolve_fun(ResolveCtx& ctx, SArray ts) {
     .resolve(s_param_types, get_ts_param_types(ts), ctx, resolve_list)
     .resolve(s_variadic_type, get_ts_variadic_type_opt(ts), ctx, resolveBespoke)
     .optCopy(s_typevars, ts)
+    .optCopy(s_alias, ts)
+    .optCopy(s_case_type, ts)
     .finish();
 }
 
@@ -448,6 +452,8 @@ Resolution resolve_tuple(ResolveCtx& ctx, SArray ts) {
   return Builder::copy(ts, TS::Kind::T_tuple)
     .resolve(s_elem_types, get_ts_elem_types(ts), ctx, resolve_list)
     .optCopy(s_typevars, ts)
+    .optCopy(s_alias, ts)
+    .optCopy(s_case_type, ts)
     .finish();
 }
 
@@ -455,6 +461,8 @@ Resolution resolve_arraylike(ResolveCtx& ctx, TS::Kind kind, SArray ts) {
   return Builder::copy(ts, kind)
     .resolve(s_generic_types, get_ts_generic_types_opt(ts), ctx, resolve_list)
     .optCopy(s_typevars, ts)
+    .optCopy(s_alias, ts)
+    .optCopy(s_case_type, ts)
     .finish();
 }
 
@@ -507,8 +515,10 @@ Resolution resolve_shape(ResolveCtx& ctx, SArray ts) {
       auto const cls = name_to_cls_type(ctx, clsName);
       if (cls.is(BBottom)) return fails();
 
-      auto lookup = ctx.index->lookup_class_constant(
+      auto lookup = lookupClsConstant(
+        *ctx.index,
         ctx.ctx,
+        ctx.collect,
         cls,
         sval(cnsName)
       );
@@ -552,6 +562,8 @@ Resolution resolve_shape(ResolveCtx& ctx, SArray ts) {
   return Builder::copy(ts, TS::Kind::T_shape)
     .set(s_fields, b.finish())
     .optCopy(s_typevars, ts)
+    .optCopy(s_alias, ts)
+    .optCopy(s_case_type, ts)
     .finishTS();
 }
 
@@ -638,6 +650,8 @@ Resolution resolve_type_access(ResolveCtx& ctx, SArray ts) {
   return Builder::attach(
     resolve_type_access_list(ctx, clsType, get_ts_access_list(ts), 0)
   ).copyModifiers(ts)
+   .optCopy(s_alias, ts)
+   .optCopy(s_case_type, ts)
    .finish();
 }
 
@@ -655,6 +669,8 @@ Resolution resolve_unresolved(ResolveCtx& ctx, SArray ts) {
   if (clsName->isame(s_callable.get())) {
     return setKindAndName(TS::Kind::T_class, clsName)
       .optCopy(s_typevars, ts)
+      .optCopy(s_alias, ts)
+      .optCopy(s_case_type, ts)
       .finish();
   }
 
@@ -673,6 +689,8 @@ Resolution resolve_unresolved(ResolveCtx& ctx, SArray ts) {
       b.resolve(s_generic_types, get_ts_generic_types_opt(ts),
                 ctx, resolve_list)
         .optCopy(s_typevars, ts)
+        .optCopy(s_alias, ts)
+        .optCopy(s_case_type, ts)
         .finish();
   };
 
@@ -747,7 +765,8 @@ Resolution resolve_unresolved(ResolveCtx& ctx, SArray ts) {
       }();
 
       return Builder::attach(resolve(newCtx, toResolve))
-        .set(s_alias, make_tv<KindOfPersistentString>(clsName));
+        .set(typeAlias->caseType ? s_case_type : s_alias,
+             make_tv<KindOfPersistentString>(clsName));
     }();
 
     if (typevarTypes) {
@@ -767,7 +786,7 @@ Resolution resolve_unresolved(ResolveCtx& ctx, SArray ts) {
       ts->exists(s_generic_types)) {
     std::vector<std::string> typevars;
     folly::split(
-      ",",
+      ',',
       typeAlias->typeStructure[s_typevars].asCStrRef().data(),
       typevars
     );
@@ -794,6 +813,12 @@ Resolution resolve_unresolved(ResolveCtx& ctx, SArray ts) {
     return r;
   }
   return resolveTA();
+}
+
+Resolution resolve_union(ResolveCtx& ctx, SArray ts) {
+  return Builder::copy(ts, TS::Kind::T_union)
+    .resolve(s_union_types, get_ts_union_types(ts), ctx, resolve_list)
+    .finish();
 }
 
 Resolution resolve_impl(ResolveCtx& ctx, TS::Kind kind, SArray ts) {
@@ -824,6 +849,8 @@ Resolution resolve_impl(ResolveCtx& ctx, TS::Kind kind, SArray ts) {
       return resolve_type_access(ctx, ts);
     case TS::Kind::T_reifiedtype:
       return Resolution{ TDictN, false };
+    case TS::Kind::T_union:
+      return resolve_union(ctx, ts);
     case TS::Kind::T_int:
     case TS::Kind::T_bool:
     case TS::Kind::T_float:
@@ -879,6 +906,7 @@ Resolution resolve_type_structure(const ISS& env, SArray ts) {
   Cache cache;
   ResolveCtx ctx{env.ctx, &env.index, &cache};
   ctx.selfCls = env.ctx.cls;
+  ctx.collect = &env.collect;
   return resolveBespoke(ctx, ts);
 }
 
@@ -903,6 +931,7 @@ Resolution resolve_type_structure(const Index& index,
 }
 
 Resolution resolve_type_structure(const Index& index,
+                                  const CollectedInfo* collect,
                                   const php::TypeAlias& typeAlias) {
   auto const& preresolved = typeAlias.resolvedTypeStructure;
   if (!preresolved.isNull()) {
@@ -913,8 +942,10 @@ Resolution resolve_type_structure(const Index& index,
 
   Cache cache;
   ResolveCtx ctx{Context{}, &index, &cache};
+  ctx.collect = collect;
   return Builder::attach(resolve(ctx, typeAlias.typeStructure.get()))
-    .set(s_alias, make_tv<KindOfPersistentString>(typeAlias.name))
+    .set(typeAlias.caseType ? s_case_type : s_alias,
+         make_tv<KindOfPersistentString>(typeAlias.name))
     .finishTS();
 }
 

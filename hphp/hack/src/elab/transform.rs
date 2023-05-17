@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<a51e59411579a3e0c77c7bad8f31a752>>
+// @generated SignedSource<<ca9973b2ae1880e49d4a2b69762617cd>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -549,6 +549,7 @@ impl Transform for Expr_ {
             Expr_::ETSplice(ref mut __binding_0) => __binding_0.transform(env, pass),
             Expr_::EnumClassLabel(ref mut __binding_0) => __binding_0.transform(env, pass),
             Expr_::Hole(ref mut __binding_0) => __binding_0.transform(env, pass),
+            Expr_::Package(ref mut __binding_0) => __binding_0.transform(env, pass),
             _ => {}
         }
     }
@@ -568,6 +569,48 @@ impl Transform for HoleSource {
             HoleSource::UnsafeCast(ref mut __binding_0) => __binding_0.transform(env, pass),
             HoleSource::UnsafeNonnullCast => {}
             HoleSource::EnforcedCast(ref mut __binding_0) => __binding_0.transform(env, pass),
+        }
+    }
+}
+impl Transform for Binop {
+    fn transform(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        let mut in_pass = pass.clone();
+        if let Break(..) = pass.on_ty_binop_top_down(env, self) {
+            return;
+        }
+        self.traverse(env, pass);
+        in_pass.on_ty_binop_bottom_up(env, self);
+    }
+    fn traverse(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        match self {
+            Binop {
+                lhs: ref mut __binding_1,
+                rhs: ref mut __binding_2,
+                ..
+            } => {
+                {
+                    {
+                        let pass = &mut pass.clone();
+                        let mut in_pass = pass.clone();
+                        if let Break(..) = pass.on_fld_binop_lhs_top_down(env, __binding_1) {
+                            return;
+                        }
+                        __binding_1.transform(env, pass);
+                        in_pass.on_fld_binop_lhs_bottom_up(env, __binding_1);
+                    }
+                }
+                {
+                    {
+                        let pass = &mut pass.clone();
+                        let mut in_pass = pass.clone();
+                        if let Break(..) = pass.on_fld_binop_rhs_top_down(env, __binding_2) {
+                            return;
+                        }
+                        __binding_2.transform(env, pass);
+                        in_pass.on_fld_binop_rhs_bottom_up(env, __binding_2);
+                    }
+                }
+            }
         }
     }
 }
@@ -827,6 +870,26 @@ impl Transform for Fun_ {
                     __binding_11.transform(env, pass)
                 }
                 { __binding_12.transform(env, pass) }
+            }
+        }
+    }
+}
+impl Transform for CaptureLid {
+    fn transform(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        let mut in_pass = pass.clone();
+        if let Break(..) = pass.on_ty_capture_lid_top_down(env, self) {
+            return;
+        }
+        self.traverse(env, pass);
+        in_pass.on_ty_capture_lid_bottom_up(env, self);
+    }
+    fn traverse(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        match self {
+            CaptureLid(ref mut __binding_0, ref mut __binding_1) => {
+                {
+                    __binding_0.transform(env, pass)
+                }
+                { __binding_1.transform(env, pass) }
             }
         }
     }
@@ -1329,7 +1392,19 @@ impl Transform for ClassAbstractTypeconst {
                 {
                     __binding_1.transform(env, pass)
                 }
-                { __binding_2.transform(env, pass) }
+                {
+                    {
+                        let pass = &mut pass.clone();
+                        let mut in_pass = pass.clone();
+                        if let Break(..) =
+                            pass.on_fld_class_abstract_typeconst_default_top_down(env, __binding_2)
+                        {
+                            return;
+                        }
+                        __binding_2.transform(env, pass);
+                        in_pass.on_fld_class_abstract_typeconst_default_bottom_up(env, __binding_2);
+                    }
+                }
             }
         }
     }
@@ -1621,7 +1696,15 @@ impl Transform for Typedef {
                     __binding_4.transform(env, pass)
                 }
                 {
-                    __binding_5.transform(env, pass)
+                    {
+                        let pass = &mut pass.clone();
+                        let mut in_pass = pass.clone();
+                        if let Break(..) = pass.on_fld_typedef_kind_top_down(env, __binding_5) {
+                            return;
+                        }
+                        __binding_5.transform(env, pass);
+                        in_pass.on_fld_typedef_kind_bottom_up(env, __binding_5);
+                    }
                 }
                 {
                     __binding_6.transform(env, pass)
