@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<339e3edae4da3aaecdeb8d2588876da7>>
+// @generated SignedSource<<34283fead908923496826da156da450f>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -200,6 +200,38 @@ pub trait Pass {
         Continue(())
     }
     #[inline(always)]
+    fn on_ty_binop_top_down(&mut self, env: &Env, elem: &mut Binop<Ex, En>) -> ControlFlow<()> {
+        Continue(())
+    }
+    #[inline(always)]
+    fn on_ty_binop_bottom_up(&mut self, env: &Env, elem: &mut Binop<Ex, En>) -> ControlFlow<()> {
+        Continue(())
+    }
+    #[inline(always)]
+    fn on_fld_binop_lhs_top_down(&mut self, env: &Env, elem: &mut Expr<Ex, En>) -> ControlFlow<()> {
+        Continue(())
+    }
+    #[inline(always)]
+    fn on_fld_binop_lhs_bottom_up(
+        &mut self,
+        env: &Env,
+        elem: &mut Expr<Ex, En>,
+    ) -> ControlFlow<()> {
+        Continue(())
+    }
+    #[inline(always)]
+    fn on_fld_binop_rhs_top_down(&mut self, env: &Env, elem: &mut Expr<Ex, En>) -> ControlFlow<()> {
+        Continue(())
+    }
+    #[inline(always)]
+    fn on_fld_binop_rhs_bottom_up(
+        &mut self,
+        env: &Env,
+        elem: &mut Expr<Ex, En>,
+    ) -> ControlFlow<()> {
+        Continue(())
+    }
+    #[inline(always)]
     fn on_ty_class_get_expr_top_down(
         &mut self,
         env: &Env,
@@ -325,6 +357,22 @@ pub trait Pass {
     }
     #[inline(always)]
     fn on_fld_fun__ret_bottom_up(&mut self, env: &Env, elem: &mut TypeHint<Ex>) -> ControlFlow<()> {
+        Continue(())
+    }
+    #[inline(always)]
+    fn on_ty_capture_lid_top_down(
+        &mut self,
+        env: &Env,
+        elem: &mut CaptureLid<Ex>,
+    ) -> ControlFlow<()> {
+        Continue(())
+    }
+    #[inline(always)]
+    fn on_ty_capture_lid_bottom_up(
+        &mut self,
+        env: &Env,
+        elem: &mut CaptureLid<Ex>,
+    ) -> ControlFlow<()> {
         Continue(())
     }
     #[inline(always)]
@@ -632,6 +680,22 @@ pub trait Pass {
         Continue(())
     }
     #[inline(always)]
+    fn on_fld_class_abstract_typeconst_default_top_down(
+        &mut self,
+        env: &Env,
+        elem: &mut Option<Hint>,
+    ) -> ControlFlow<()> {
+        Continue(())
+    }
+    #[inline(always)]
+    fn on_fld_class_abstract_typeconst_default_bottom_up(
+        &mut self,
+        env: &Env,
+        elem: &mut Option<Hint>,
+    ) -> ControlFlow<()> {
+        Continue(())
+    }
+    #[inline(always)]
     fn on_ty_class_concrete_typeconst_top_down(
         &mut self,
         env: &Env,
@@ -765,6 +829,14 @@ pub trait Pass {
         env: &Env,
         elem: &mut Typedef<Ex, En>,
     ) -> ControlFlow<()> {
+        Continue(())
+    }
+    #[inline(always)]
+    fn on_fld_typedef_kind_top_down(&mut self, env: &Env, elem: &mut Hint) -> ControlFlow<()> {
+        Continue(())
+    }
+    #[inline(always)]
+    fn on_fld_typedef_kind_bottom_up(&mut self, env: &Env, elem: &mut Hint) -> ControlFlow<()> {
         Continue(())
     }
     #[inline(always)]
@@ -1268,6 +1340,44 @@ where
         self.snd.on_ty_hole_source_bottom_up(env, elem)
     }
     #[inline(always)]
+    fn on_ty_binop_top_down(&mut self, env: &Env, elem: &mut Binop<Ex, En>) -> ControlFlow<()> {
+        self.fst.on_ty_binop_top_down(env, elem)?;
+        self.snd.on_ty_binop_top_down(env, elem)
+    }
+    #[inline(always)]
+    fn on_ty_binop_bottom_up(&mut self, env: &Env, elem: &mut Binop<Ex, En>) -> ControlFlow<()> {
+        self.fst.on_ty_binop_bottom_up(env, elem)?;
+        self.snd.on_ty_binop_bottom_up(env, elem)
+    }
+    #[inline(always)]
+    fn on_fld_binop_lhs_top_down(&mut self, env: &Env, elem: &mut Expr<Ex, En>) -> ControlFlow<()> {
+        self.fst.on_fld_binop_lhs_top_down(env, elem)?;
+        self.snd.on_fld_binop_lhs_top_down(env, elem)
+    }
+    #[inline(always)]
+    fn on_fld_binop_lhs_bottom_up(
+        &mut self,
+        env: &Env,
+        elem: &mut Expr<Ex, En>,
+    ) -> ControlFlow<()> {
+        self.fst.on_fld_binop_lhs_bottom_up(env, elem)?;
+        self.snd.on_fld_binop_lhs_bottom_up(env, elem)
+    }
+    #[inline(always)]
+    fn on_fld_binop_rhs_top_down(&mut self, env: &Env, elem: &mut Expr<Ex, En>) -> ControlFlow<()> {
+        self.fst.on_fld_binop_rhs_top_down(env, elem)?;
+        self.snd.on_fld_binop_rhs_top_down(env, elem)
+    }
+    #[inline(always)]
+    fn on_fld_binop_rhs_bottom_up(
+        &mut self,
+        env: &Env,
+        elem: &mut Expr<Ex, En>,
+    ) -> ControlFlow<()> {
+        self.fst.on_fld_binop_rhs_bottom_up(env, elem)?;
+        self.snd.on_fld_binop_rhs_bottom_up(env, elem)
+    }
+    #[inline(always)]
     fn on_ty_class_get_expr_top_down(
         &mut self,
         env: &Env,
@@ -1416,6 +1526,24 @@ where
     fn on_fld_fun__ret_bottom_up(&mut self, env: &Env, elem: &mut TypeHint<Ex>) -> ControlFlow<()> {
         self.fst.on_fld_fun__ret_bottom_up(env, elem)?;
         self.snd.on_fld_fun__ret_bottom_up(env, elem)
+    }
+    #[inline(always)]
+    fn on_ty_capture_lid_top_down(
+        &mut self,
+        env: &Env,
+        elem: &mut CaptureLid<Ex>,
+    ) -> ControlFlow<()> {
+        self.fst.on_ty_capture_lid_top_down(env, elem)?;
+        self.snd.on_ty_capture_lid_top_down(env, elem)
+    }
+    #[inline(always)]
+    fn on_ty_capture_lid_bottom_up(
+        &mut self,
+        env: &Env,
+        elem: &mut CaptureLid<Ex>,
+    ) -> ControlFlow<()> {
+        self.fst.on_ty_capture_lid_bottom_up(env, elem)?;
+        self.snd.on_ty_capture_lid_bottom_up(env, elem)
     }
     #[inline(always)]
     fn on_ty_efun_top_down(&mut self, env: &Env, elem: &mut Efun<Ex, En>) -> ControlFlow<()> {
@@ -1769,6 +1897,28 @@ where
         self.snd.on_ty_class_abstract_typeconst_bottom_up(env, elem)
     }
     #[inline(always)]
+    fn on_fld_class_abstract_typeconst_default_top_down(
+        &mut self,
+        env: &Env,
+        elem: &mut Option<Hint>,
+    ) -> ControlFlow<()> {
+        self.fst
+            .on_fld_class_abstract_typeconst_default_top_down(env, elem)?;
+        self.snd
+            .on_fld_class_abstract_typeconst_default_top_down(env, elem)
+    }
+    #[inline(always)]
+    fn on_fld_class_abstract_typeconst_default_bottom_up(
+        &mut self,
+        env: &Env,
+        elem: &mut Option<Hint>,
+    ) -> ControlFlow<()> {
+        self.fst
+            .on_fld_class_abstract_typeconst_default_bottom_up(env, elem)?;
+        self.snd
+            .on_fld_class_abstract_typeconst_default_bottom_up(env, elem)
+    }
+    #[inline(always)]
     fn on_ty_class_concrete_typeconst_top_down(
         &mut self,
         env: &Env,
@@ -1923,6 +2073,16 @@ where
     ) -> ControlFlow<()> {
         self.fst.on_ty_typedef_bottom_up(env, elem)?;
         self.snd.on_ty_typedef_bottom_up(env, elem)
+    }
+    #[inline(always)]
+    fn on_fld_typedef_kind_top_down(&mut self, env: &Env, elem: &mut Hint) -> ControlFlow<()> {
+        self.fst.on_fld_typedef_kind_top_down(env, elem)?;
+        self.snd.on_fld_typedef_kind_top_down(env, elem)
+    }
+    #[inline(always)]
+    fn on_fld_typedef_kind_bottom_up(&mut self, env: &Env, elem: &mut Hint) -> ControlFlow<()> {
+        self.fst.on_fld_typedef_kind_bottom_up(env, elem)?;
+        self.snd.on_fld_typedef_kind_bottom_up(env, elem)
     }
     #[inline(always)]
     fn on_ty_gconst_top_down(&mut self, env: &Env, elem: &mut Gconst<Ex, En>) -> ControlFlow<()> {

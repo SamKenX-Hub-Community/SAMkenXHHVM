@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<7749df7d3484fae23cd88c213df5a692>>
+// @generated SignedSource<<8135d2dad7fab2c8755ab38de4c0c246>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -198,21 +198,22 @@ impl<'a> Node<'a> for ShallowClass<'a> {
                 uses: ref __binding_12,
                 xhp_attr_uses: ref __binding_13,
                 xhp_enum_values: ref __binding_14,
-                req_extends: ref __binding_15,
-                req_implements: ref __binding_16,
-                req_class: ref __binding_17,
-                implements: ref __binding_18,
-                support_dynamic_type: ref __binding_19,
-                consts: ref __binding_20,
-                typeconsts: ref __binding_21,
-                props: ref __binding_22,
-                sprops: ref __binding_23,
-                constructor: ref __binding_24,
-                static_methods: ref __binding_25,
-                methods: ref __binding_26,
-                user_attributes: ref __binding_27,
-                enum_type: ref __binding_28,
-                docs_url: ref __binding_29,
+                xhp_marked_empty: ref __binding_15,
+                req_extends: ref __binding_16,
+                req_implements: ref __binding_17,
+                req_class: ref __binding_18,
+                implements: ref __binding_19,
+                support_dynamic_type: ref __binding_20,
+                consts: ref __binding_21,
+                typeconsts: ref __binding_22,
+                props: ref __binding_23,
+                sprops: ref __binding_24,
+                constructor: ref __binding_25,
+                static_methods: ref __binding_26,
+                methods: ref __binding_27,
+                user_attributes: ref __binding_28,
+                enum_type: ref __binding_29,
+                docs_url: ref __binding_30,
             } => {
                 {
                     __binding_0.accept(v)
@@ -301,7 +302,10 @@ impl<'a> Node<'a> for ShallowClass<'a> {
                 {
                     __binding_28.accept(v)
                 }
-                { __binding_29.accept(v) }
+                {
+                    __binding_29.accept(v)
+                }
+                { __binding_30.accept(v) }
             }
         }
     }
@@ -328,6 +332,17 @@ impl<'a> Node<'a> for IfcFunDecl<'a> {
         match self {
             IfcFunDecl::FDPolicied(ref __binding_0) => __binding_0.accept(v),
             IfcFunDecl::FDInferFlows => {}
+        }
+    }
+}
+impl<'a> Node<'a> for TypeOrigin<'a> {
+    fn accept(&'a self, v: &mut dyn Visitor<'a>) {
+        v.visit_type_origin(self)
+    }
+    fn recurse(&'a self, v: &mut dyn Visitor<'a>) {
+        match self {
+            TypeOrigin::MissingOrigin => {}
+            TypeOrigin::FromAlias(ref __binding_0) => __binding_0.accept(v),
         }
     }
 }
@@ -652,6 +667,7 @@ impl<'a> Node<'a> for FunType<'a> {
                 ret: ref __binding_4,
                 flags: ref __binding_5,
                 ifc_decl: ref __binding_6,
+                cross_package: ref __binding_7,
             } => {
                 {
                     __binding_0.accept(v)
@@ -671,7 +687,10 @@ impl<'a> Node<'a> for FunType<'a> {
                 {
                     __binding_5.accept(v)
                 }
-                { __binding_6.accept(v) }
+                {
+                    __binding_6.accept(v)
+                }
+                { __binding_7.accept(v) }
             }
         }
     }
@@ -1042,6 +1061,7 @@ impl<'a> Node<'a> for T_<'a> {
             T_::Rpredicated(ref __binding_0) => __binding_0.accept(v),
             T_::Ris(ref __binding_0) => __binding_0.accept(v),
             T_::Ras(ref __binding_0) => __binding_0.accept(v),
+            T_::Requal(ref __binding_0) => __binding_0.accept(v),
             T_::RvarrayOrDarrayKey(ref __binding_0) => __binding_0.accept(v),
             T_::RvecOrDictKey(ref __binding_0) => __binding_0.accept(v),
             T_::Rusing(ref __binding_0) => __binding_0.accept(v),
@@ -1209,6 +1229,7 @@ impl<'a> Node<'a> for TypedefVisibility {
             TypedefVisibility::Transparent => {}
             TypedefVisibility::Opaque => {}
             TypedefVisibility::OpaqueModule => {}
+            TypedefVisibility::CaseType => {}
         }
     }
 }
@@ -1232,17 +1253,6 @@ impl<'a> Node<'a> for ClassConstKind {
         match self {
             ClassConstKind::CCAbstract(ref __binding_0) => __binding_0.accept(v),
             ClassConstKind::CCConcrete => {}
-        }
-    }
-}
-impl<'a> Node<'a> for ShapeKind {
-    fn accept(&'a self, v: &mut dyn Visitor<'a>) {
-        v.visit_shape_kind(self)
-    }
-    fn recurse(&'a self, v: &mut dyn Visitor<'a>) {
-        match self {
-            ShapeKind::ClosedShape => {}
-            ShapeKind::OpenShape => {}
         }
     }
 }

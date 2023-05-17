@@ -21,14 +21,14 @@ var _ = thrift.ZERO
 
 
 type C interface {
-    F(ctx context.Context) error
+    F(ctx context.Context) (error)
     Thing(ctx context.Context, a int32, b string, c []int32) (string, error)
 }
 
 // Deprecated: Use C instead.
 type CClientInterface interface {
     thrift.ClientInterface
-    F() error
+    F() (error)
     Thing(a int32, b string, c []int32) (string, error)
 }
 
@@ -115,15 +115,18 @@ func NewCThreadsafeClientFactory(t thrift.Transport, pf thrift.ProtocolFactory) 
 }
 
 
-func (c *CChannelClient) F(ctx context.Context) error {
+func (c *CChannelClient) F(ctx context.Context) (error) {
     in := &reqCF{
     }
     out := newRespCF()
     err := c.ch.Call(ctx, "f", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *CClient) F() error {
+func (c *CClient) F() (error) {
     return c.chClient.F(nil)
 }
 
@@ -136,7 +139,12 @@ func (c *CChannelClient) Thing(ctx context.Context, a int32, b string, c []int32
     }
     out := newRespCThing()
     err := c.ch.Call(ctx, "thing", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    } else if out.Bang != nil {
+        return out.Value, out.Bang
+    }
+    return out.Value, nil
 }
 
 func (c *CClient) Thing(a int32, b string, c []int32) (string, error) {
@@ -148,6 +156,8 @@ type reqCF struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqCF{}
+
+type CFArgs = reqCF
 
 func newReqCF() *reqCF {
     return (&reqCF{})
@@ -173,6 +183,7 @@ func (x *reqCFBuilder) Emit() *reqCF {
     var objCopy reqCF = *x.obj
     return &objCopy
 }
+
 func (x *reqCF) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqCF"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -221,10 +232,12 @@ func (x *reqCF) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respCF struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respCF{}
+var _ thrift.WritableResult = &respCF{}
 
 func newRespCF() *respCF {
     return (&respCF{})
@@ -250,6 +263,11 @@ func (x *respCFBuilder) Emit() *respCF {
     var objCopy respCF = *x.obj
     return &objCopy
 }
+
+func (x *respCF) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respCF) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respCF"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -298,6 +316,7 @@ func (x *respCF) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqCThing struct {
     A int32 `thrift:"a,1" json:"a" db:"a"`
     B string `thrift:"b,2" json:"b" db:"b"`
@@ -306,8 +325,13 @@ type reqCThing struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqCThing{}
 
+type CThingArgs = reqCThing
+
 func newReqCThing() *reqCThing {
-    return (&reqCThing{})
+    return (&reqCThing{}).
+        SetANonCompat(0).
+        SetBNonCompat("").
+        SetCNonCompat(make([]int32, 0))
 }
 
 func (x *reqCThing) GetANonCompat() int32 {
@@ -332,14 +356,24 @@ func (x *reqCThing) GetCNonCompat() []int32 {
 
 func (x *reqCThing) GetC() []int32 {
     if !x.IsSetC() {
-      return nil
+        return make([]int32, 0)
     }
 
     return x.C
 }
 
+func (x *reqCThing) SetANonCompat(value int32) *reqCThing {
+    x.A = value
+    return x
+}
+
 func (x *reqCThing) SetA(value int32) *reqCThing {
     x.A = value
+    return x
+}
+
+func (x *reqCThing) SetBNonCompat(value string) *reqCThing {
+    x.B = value
     return x
 }
 
@@ -348,12 +382,15 @@ func (x *reqCThing) SetB(value string) *reqCThing {
     return x
 }
 
-func (x *reqCThing) SetC(value []int32) *reqCThing {
+func (x *reqCThing) SetCNonCompat(value []int32) *reqCThing {
     x.C = value
     return x
 }
 
-
+func (x *reqCThing) SetC(value []int32) *reqCThing {
+    x.C = value
+    return x
+}
 
 func (x *reqCThing) IsSetC() bool {
     return x.C != nil
@@ -428,7 +465,7 @@ if err != nil {
     return err
 }
 
-    x.SetA(result)
+    x.SetANonCompat(result)
     return nil
 }
 
@@ -438,7 +475,7 @@ if err != nil {
     return err
 }
 
-    x.SetB(result)
+    x.SetBNonCompat(result)
     return nil
 }
 
@@ -466,7 +503,7 @@ if err := p.ReadSetEnd(); err != nil {
 }
 result := setResult
 
-    x.SetC(result)
+    x.SetCNonCompat(result)
     return nil
 }
 
@@ -505,6 +542,7 @@ func (x *reqCThingBuilder) Emit() *reqCThing {
     var objCopy reqCThing = *x.obj
     return &objCopy
 }
+
 func (x *reqCThing) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqCThing"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -577,14 +615,18 @@ func (x *reqCThing) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respCThing struct {
-    Value string `thrift:"value,0,required" json:"value" db:"value"`
+    Value string `thrift:"value,0" json:"value" db:"value"`
+    Bang *Bang `thrift:"bang,1,optional" json:"bang,omitempty" db:"bang"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respCThing{}
+var _ thrift.WritableResult = &respCThing{}
 
 func newRespCThing() *respCThing {
-    return (&respCThing{})
+    return (&respCThing{}).
+        SetValueNonCompat("")
 }
 
 func (x *respCThing) GetValueNonCompat() string {
@@ -595,11 +637,41 @@ func (x *respCThing) GetValue() string {
     return x.Value
 }
 
+func (x *respCThing) GetBangNonCompat() *Bang {
+    return x.Bang
+}
+
+func (x *respCThing) GetBang() *Bang {
+    if !x.IsSetBang() {
+        return NewBang()
+    }
+
+    return x.Bang
+}
+
+func (x *respCThing) SetValueNonCompat(value string) *respCThing {
+    x.Value = value
+    return x
+}
+
 func (x *respCThing) SetValue(value string) *respCThing {
     x.Value = value
     return x
 }
 
+func (x *respCThing) SetBangNonCompat(value Bang) *respCThing {
+    x.Bang = &value
+    return x
+}
+
+func (x *respCThing) SetBang(value *Bang) *respCThing {
+    x.Bang = value
+    return x
+}
+
+func (x *respCThing) IsSetBang() bool {
+    return x.Bang != nil
+}
 
 func (x *respCThing) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.STRING, 0); err != nil {
@@ -617,14 +689,56 @@ func (x *respCThing) writeField0(p thrift.Protocol) error {  // Value
     return nil
 }
 
+func (x *respCThing) writeField1(p thrift.Protocol) error {  // Bang
+    if !x.IsSetBang() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("bang", thrift.STRUCT, 1); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetBangNonCompat()
+    if err := item.Write(p); err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
 func (x *respCThing) readField0(p thrift.Protocol) error {  // Value
     result, err := p.ReadString()
 if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
+}
+
+func (x *respCThing) readField1(p thrift.Protocol) error {  // Bang
+    result := *NewBang()
+err := result.Read(p)
+if err != nil {
+    return err
+}
+
+    x.SetBangNonCompat(result)
+    return nil
+}
+
+// Deprecated: Use newRespCThing().GetBang() instead.
+var respCThing_Bang_DEFAULT = newRespCThing().GetBang()
+
+// Deprecated: Use newRespCThing().GetBang() instead.
+func (x *respCThing) DefaultGetBang() *Bang {
+    if !x.IsSetBang() {
+        return NewBang()
+    }
+    return x.Bang
 }
 
 func (x *respCThing) String() string {
@@ -648,16 +762,33 @@ func (x *respCThingBuilder) Value(value string) *respCThingBuilder {
     return x
 }
 
+func (x *respCThingBuilder) Bang(value *Bang) *respCThingBuilder {
+    x.obj.Bang = value
+    return x
+}
+
 func (x *respCThingBuilder) Emit() *respCThing {
     var objCopy respCThing = *x.obj
     return &objCopy
 }
+
+func (x *respCThing) Exception() thrift.WritableException {
+    if x.Bang != nil {
+        return x.Bang
+    }
+    return nil
+}
+
 func (x *respCThing) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respCThing"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
     }
 
     if err := x.writeField0(p); err != nil {
+        return err
+    }
+
+    if err := x.writeField1(p); err != nil {
         return err
     }
 
@@ -691,6 +822,10 @@ func (x *respCThing) Read(p thrift.Protocol) error {
             if err := x.readField0(p); err != nil {
                 return err
             }
+        case 1:  // bang
+            if err := x.readField1(p); err != nil {
+                return err
+            }
         default:
             if err := p.Skip(typ); err != nil {
                 return err
@@ -708,6 +843,7 @@ func (x *respCThing) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type CProcessor struct {
@@ -774,9 +910,11 @@ func (p *procFuncCF) Read(iprot thrift.Protocol) (thrift.Struct, thrift.Exceptio
 func (p *procFuncCF) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("F", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -794,10 +932,12 @@ func (p *procFuncCF) Write(seqId int32, result thrift.WritableStruct, oprot thri
 
 func (p *procFuncCF) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespCF()
-    if err := p.handler.F(); err != nil {
+    err := p.handler.F()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing F: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -820,9 +960,15 @@ func (p *procFuncCThing) Read(iprot thrift.Protocol) (thrift.Struct, thrift.Exce
 func (p *procFuncCThing) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch v := result.(type) {
+    case *Bang:
+        result = &respCThing{
+            Bang: v,
+        }
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Thing", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -841,13 +987,18 @@ func (p *procFuncCThing) Write(seqId int32, result thrift.WritableStruct, oprot 
 func (p *procFuncCThing) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqCThing)
     result := newRespCThing()
-    if retval, err := p.handler.Thing(args.A, args.B, args.C); err != nil {
-        x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Thing: " + err.Error(), err)
-        return x, x
-    } else {
-        result.Value = retval
+    retval, err := p.handler.Thing(args.A, args.B, args.C)
+    if err != nil {
+        switch v := err.(type) {
+        case *Bang:
+            result.Bang = v
+        default:
+            x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing doRaise: " + err.Error(), err)
+            return x, x
+        }
     }
 
+    result.Value = retval
     return result, nil
 }
 

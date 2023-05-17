@@ -21,25 +21,17 @@
 #include <folly/io/async/HHWheelTimer.h>
 #include <folly/io/async/ScopedEventBaseThread.h>
 #include <folly/synchronization/RelaxedAtomic.h>
+#include <thrift/conformance/stresstest/client/ClientConfig.h>
 #include <thrift/conformance/stresstest/client/ClientFactory.h>
+#include <thrift/conformance/stresstest/client/PoissonLoadGenerator.h>
 #include <thrift/conformance/stresstest/client/StressTestBase.h>
 #include <thrift/conformance/stresstest/if/gen-cpp2/StressTest.h>
-
-DECLARE_int64(runtime_s);
 
 namespace apache {
 namespace thrift {
 namespace stress {
 
 class ClientThread;
-
-struct ClientConfig {
-  uint64_t numClientThreads;
-  uint64_t numConnectionsPerThread;
-  uint64_t numClientsPerConnection;
-  bool continuous{false};
-  ClientConnectionConfig connConfig;
-};
 
 struct ClientThreadMemoryStats {
   void combine(const ClientThreadMemoryStats& other);
@@ -57,7 +49,6 @@ class ClientRunner {
   ~ClientRunner();
 
   void run(const StressTestBase* test);
-  void stop();
 
   ClientRpcStats getRpcStats() const;
   ClientThreadMemoryStats getMemoryStats() const;
@@ -68,6 +59,8 @@ class ClientRunner {
   bool started_{false};
   bool stopped_{false};
   bool continuous_{false};
+  bool useLoadGenerator_;
+  PoissonLoadGenerator loadGenerator_;
   std::vector<std::unique_ptr<ClientThread>> clientThreads_;
 };
 

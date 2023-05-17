@@ -161,7 +161,13 @@ impl<'a, R: Reason> ToOxidized<'a> for Ty_<R> {
                     let k = oxidize_shape_field_name(arena, *k, &v.field_name_pos);
                     shape_fields.insert_or_replace(TShapeField(k), v.to_oxidized(arena));
                 }
-                typing_defs::Ty_::Tshape(arena.alloc((*shape_kind, TShapeMap::from(shape_fields))))
+                let shape_kind = shape_kind.to_oxidized(arena);
+                let shape_origin = typing_defs::TypeOrigin::MissingOrigin;
+                typing_defs::Ty_::Tshape(arena.alloc((
+                    shape_origin,
+                    shape_kind,
+                    TShapeMap::from(shape_fields),
+                )))
             }
             Ty_::Tvar(ident) => typing_defs::Ty_::Tvar((*ident).into()),
             Ty_::Tgeneric(x) => typing_defs::Ty_::Tgeneric(x.to_oxidized(arena)),
@@ -257,6 +263,7 @@ impl<'a, R: Reason> ToOxidized<'a> for FunType<R, Ty<R>> {
             ret: self.ret.to_oxidized(arena),
             flags: self.flags,
             ifc_decl: self.ifc_decl.to_oxidized(arena),
+            cross_package: self.cross_package.to_oxidized(arena),
         })
     }
 }
@@ -469,6 +476,7 @@ impl<'a, R: Reason> ToOxidized<'a> for folded::FoldedClass<R> {
             consts,
             type_consts,
             xhp_enum_values,
+            xhp_marked_empty,
             constructor,
             deferred_init_members,
             req_ancestors,
@@ -507,6 +515,7 @@ impl<'a, R: Reason> ToOxidized<'a> for folded::FoldedClass<R> {
             consts: consts.to_oxidized(arena),
             typeconsts: type_consts.to_oxidized(arena),
             xhp_enum_values: xhp_enum_values.to_oxidized(arena),
+            xhp_marked_empty: *xhp_marked_empty,
             construct: constructor.to_oxidized(arena),
             need_init: self.has_concrete_constructor(),
             deferred_init_members: deferred_init_members.to_oxidized(arena),
@@ -677,6 +686,7 @@ impl<'a, R: Reason> ToOxidized<'a> for shallow::ClassDecl<R> {
             uses,
             xhp_attr_uses,
             xhp_enum_values,
+            xhp_marked_empty,
             req_extends,
             req_implements,
             req_class,
@@ -713,6 +723,7 @@ impl<'a, R: Reason> ToOxidized<'a> for shallow::ClassDecl<R> {
             uses: uses.to_oxidized(arena),
             xhp_attr_uses: xhp_attr_uses.to_oxidized(arena),
             xhp_enum_values: xhp_enum_values.to_oxidized(arena),
+            xhp_marked_empty: *xhp_marked_empty,
             req_extends: req_extends.to_oxidized(arena),
             req_implements: req_implements.to_oxidized(arena),
             req_class: req_class.to_oxidized(arena),

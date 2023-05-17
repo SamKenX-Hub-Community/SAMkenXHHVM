@@ -152,8 +152,11 @@ let get_files_with_stale_errors
     | None ->
       fun phase init f ->
         (* Looking at global files *)
-        Errors.fold_errors errors ~phase ~init ~f:(fun source error acc ->
-            f source error acc)
+        Errors.fold_errors
+          errors
+          ~phase
+          ~init
+          ~f:(fun source _phase error acc -> f source error acc)
     | Some files ->
       fun phase init f ->
         (* Looking only at subset of files *)
@@ -192,52 +195,53 @@ let push_errors env ~rechecked ~phase new_errors =
   let env = { env with diagnostic_pusher } in
   (env, time_errors_pushed)
 
-let erase_errors env = push_errors env Errors.empty
-
-let push_and_accumulate_errors :
-    env * Errors.t ->
-    rechecked:Relative_path.Set.t ->
-    Errors.t ->
-    phase:Errors.phase ->
-    env * Errors.t * seconds_since_epoch option =
- fun (env, errors_acc) ~rechecked new_errors ~phase ->
-  let (env, time_errors_pushed) =
-    push_errors env new_errors ~rechecked ~phase
-  in
+(** This function handles the three errors paradigms:
+* (1) env.errorl paradigm: it takes input [errors_acc], adds/updates/remove errors according to
+rechecked/new_errors/phase, and returns the updated list of all errors.
+* (2) persistent-connection paradigm: it sends error deltas over the persistent connection.
+* (3) errors-file: all [new_errors] are accumulated in errors.bin *)
+let push_and_accumulate_errors
+    ((env, errors_acc) : env * Errors.t)
+    ~(do_errors_file : bool)
+    ~(rechecked : Relative_path.Set.t)
+    (new_errors : Errors.t)
+    ~(phase : Errors.phase) : env * Errors.t * seconds_since_epoch option =
+  (* paradigm 1: env.errorl *)
   let errors =
     Errors.incremental_update ~old:errors_acc ~new_:new_errors ~rechecked phase
   in
+  (* paradigm 2: persistent-connection *)
+  let (env, time_errors_pushed) =
+    push_errors env new_errors ~rechecked ~phase
+  in
+  (* paradigm 3: errors-file *)
+  if do_errors_file then ServerProgress.ErrorsWrite.report new_errors;
+  (* return *)
   (env, errors, time_errors_pushed)
 
-(** Remove files which failed parsing from [defs_per_file] files and
-    discard any previous errors they had in [omitted_phases] *)
-let wont_do_failed_parsing
-    defs_per_file ~stop_at_errors ~omitted_phases env failed_parsing =
-  if stop_at_errors then
-    let (env, time_first_erased) =
-      List.fold
-        omitted_phases
-        ~init:(env, None)
-        ~f:(fun (env, time_first_erased) phase ->
-          let (env, time_erased) =
-            erase_errors env ~rechecked:failed_parsing ~phase
-          in
-          let time_first_erased =
-            Option.first_some time_first_erased time_erased
-          in
-          (env, time_first_erased))
-    in
-    let defs_per_file =
-      Relative_path.Set.filter defs_per_file ~f:(fun k ->
-          not
-          @@ Relative_path.(
-               Set.mem failed_parsing k && Set.mem env.editor_open_files k))
-    in
-    (env, defs_per_file, time_first_erased)
-  else
-    (env, defs_per_file, None)
+(** This pushes all [phase] errors in errors, that aren't in [files],
+to the errors-file. *)
+let push_errors_outside_files_to_errors_file
+    ?(phase : Errors.phase option)
+    (errors : Errors.t)
+    ~(files : Relative_path.Set.t) : unit =
+  let typing_errors_not_in_files_to_check =
+    errors
+    |> Errors.fold_errors
+         ~drop_fixmed:true
+         ?phase
+         ~init:[]
+         ~f:(fun path _phase error acc ->
+           if Relative_path.Set.mem files path then
+             acc
+           else
+             (path, error) :: acc)
+    |> Errors.from_file_error_list
+  in
+  ServerProgress.ErrorsWrite.report typing_errors_not_in_files_to_check;
+  ()
 
-let parsing genv env to_check cgroup_steps =
+let indexing genv env to_check cgroup_steps =
   let (ide_files, disk_files) =
     Relative_path.Set.partition
       (Relative_path.Set.mem env.editor_open_files)
@@ -265,20 +269,18 @@ let parsing genv env to_check cgroup_steps =
     MultiWorker.next genv.workers (Relative_path.Set.elements disk_files)
   in
   let ctx = Provider_utils.ctx_from_server_env env in
-  let (defs_per_file, errors, failed_parsing) =
+  let defs_per_file =
     CgroupProfiler.step_start_end cgroup_steps "parsing" @@ fun _cgroup_step ->
-    ( Direct_decl_service.go
-        ctx
-        genv.workers
-        ~ide_files
-        ~get_next
-        ~trace:true
-        ~cache_decls:
-          (* Not caching here, otherwise oldification done in redo_type_decl will
-             oldify the new version (and override the real old versions. *)
-          false,
-      Errors.empty,
-      Relative_path.Set.empty )
+    Direct_decl_service.go
+      ctx
+      genv.workers
+      ~ide_files
+      ~get_next
+      ~trace:true
+      ~cache_decls:
+        (* Not caching here, otherwise oldification done in redo_type_decl will
+           oldify the new version (and override the real old versions. *)
+        false
   in
 
   SearchServiceRunner.update_fileinfo_map
@@ -304,7 +306,7 @@ let parsing genv env to_check cgroup_steps =
     }
   in
 
-  (env, defs_per_file, errors, failed_parsing)
+  (env, defs_per_file)
 
 let get_interrupt_config genv env =
   MultiThreadedCall.{ handlers = env.interrupt_handlers genv; env }
@@ -320,18 +322,8 @@ module type CheckKindType = sig
      *     instead of reading from disk (duh)
      * - we parse IDE files in master process (to avoid passing env to the
      *     workers)
-     * - to make the IDE more responsive, we try to shortcut the typechecking at
-     *   the parsing level if there were parsing errors
   *)
-  val get_files_to_parse : ServerEnv.env -> Relative_path.Set.t * bool
-
-  (* files to parse, should we stop if there are parsing errors *)
-
-  val get_defs_to_redecl :
-    reparsed:Relative_path.Set.t ->
-    env:ServerEnv.env ->
-    ctx:Provider_context.t ->
-    Relative_path.Set.t
+  val get_files_to_parse : ServerEnv.env -> Relative_path.Set.t
 
   (* Which files to typecheck, based on results of declaration phase *)
   val get_defs_to_recheck :
@@ -362,21 +354,7 @@ end
 
 module FullCheckKind : CheckKindType = struct
   let get_files_to_parse env =
-    let files_to_parse =
-      Relative_path.Set.(env.ide_needs_parsing |> union env.disk_needs_parsing)
-    in
-    (files_to_parse, false)
-
-  let get_defs_to_redecl ~reparsed ~(env : env) ~ctx =
-    (* Besides the files that actually changed, we want to also redeclare
-     * those that have decl errors referring to files that were
-     * reparsed, since positions in those errors can be now stale *)
-    get_files_with_stale_errors
-      ~reparsed
-      ~filter:None
-      ~phases:[Errors.Decl]
-      ~errors:env.errorl
-      ~ctx
+    Relative_path.Set.(env.ide_needs_parsing |> union env.disk_needs_parsing)
 
   let get_defs_to_recheck
       ~reparsed
@@ -404,7 +382,7 @@ module FullCheckKind : CheckKindType = struct
       get_files_with_stale_errors
         ~reparsed
         ~filter:None
-        ~phases:[Errors.Decl; Errors.Typing]
+        ~phases:[Errors.Typing]
         ~errors:env.errorl
         ~ctx
     in
@@ -453,7 +431,7 @@ module FullCheckKind : CheckKindType = struct
 end
 
 module LazyCheckKind : CheckKindType = struct
-  let get_files_to_parse env = (env.ide_needs_parsing, true)
+  let get_files_to_parse env = env.ide_needs_parsing
 
   let some_ide_diagnosed_files env =
     Diagnostic_pusher.get_files_with_diagnostics env.diagnostic_pusher
@@ -462,16 +440,6 @@ module LazyCheckKind : CheckKindType = struct
   let is_ide_file env x =
     Relative_path.Set.mem (some_ide_diagnosed_files env) x
     || Relative_path.Set.mem env.editor_open_files x
-
-  let get_defs_to_redecl ~reparsed ~env ~ctx =
-    (* Same as FullCheckKind.get_defs_to_redecl, but we limit returned set only
-     * to files that are relevant to IDE *)
-    get_files_with_stale_errors
-      ~reparsed
-      ~filter:(Some (some_ide_diagnosed_files env))
-      ~phases:[Errors.Decl]
-      ~errors:env.errorl
-      ~ctx
 
   let get_defs_to_recheck
       ~reparsed
@@ -499,7 +467,7 @@ module LazyCheckKind : CheckKindType = struct
         ~ctx
         ~reparsed
         ~filter:(Some (some_ide_diagnosed_files env))
-        ~phases:[Errors.Decl; Errors.Typing]
+        ~phases:[Errors.Typing]
         ~errors:env.errorl
     in
     let to_recheck = Relative_path.Set.union to_recheck stale_errors in
@@ -546,7 +514,10 @@ module Make : functor (_ : CheckKindType) -> sig
     float ->
     check_reason:string ->
     CgroupProfiler.step_group ->
-    ServerEnv.env * CheckStats.t * Telemetry.t
+    ServerEnv.env
+    * CheckStats.t
+    * Telemetry.t
+    * MultiThreadedCall.cancel_reason option
 end =
 functor
   (CheckKind : CheckKindType)
@@ -572,64 +543,6 @@ functor
             ~f:(fun acc (_, cid, _) -> SSet.add acc cid)
       in
       SSet.union new_classes old_classes
-
-    let clear_failed_parsing env errors failed_parsing =
-      (* In most cases, set of files processed in a phase is a superset
-       * of files from previous phase - i.e if we run decl on file A, we'll also
-       * run its typing.
-       * In few cases we might choose not to run further stages for files that
-       * failed parsing (see ~stop_at_errors). We need to manually clear out
-       * error lists for those files. *)
-      Relative_path.Set.fold
-        failed_parsing
-        ~init:(env, errors)
-        ~f:(fun path acc ->
-          let path = Relative_path.Set.singleton path in
-          List.fold_left
-            Errors.[Naming; Decl; Typing]
-            ~init:acc
-            ~f:(fun acc phase ->
-              let (env, errors, _) =
-                push_and_accumulate_errors
-                  acc
-                  ~rechecked:path
-                  Errors.empty
-                  ~phase
-              in
-              (env, errors)))
-
-    type parsing_result = {
-      parse_errors: Errors.t;
-      failed_parsing: Relative_path.Set.t;
-      defs_per_file_parsed: FileInfo.t Relative_path.Map.t;
-      time_errors_pushed: seconds_since_epoch option;
-    }
-
-    let do_parsing
-        (genv : genv)
-        (env : env)
-        ~(errors : Errors.t)
-        ~(files_to_parse : Relative_path.Set.t)
-        ~(cgroup_steps : CgroupProfiler.step_group) :
-        ServerEnv.env * parsing_result =
-      let (env, defs_per_file_parsed, errorl, failed_parsing) =
-        parsing genv env files_to_parse cgroup_steps
-      in
-      let (env, errors, time_errors_pushed) =
-        push_and_accumulate_errors
-          (env, errors)
-          errorl
-          ~rechecked:files_to_parse
-          ~phase:Errors.Parsing
-      in
-      let (env, errors) = clear_failed_parsing env errors failed_parsing in
-      ( env,
-        {
-          parse_errors = errors;
-          failed_parsing;
-          defs_per_file_parsed;
-          time_errors_pushed;
-        } )
 
     type naming_result = {
       duplicate_name_errors: Errors.t;
@@ -717,9 +630,8 @@ functor
       let bucket_size = genv.local_config.SLC.type_decl_bucket_size in
       let ctx = Provider_utils.ctx_from_server_env env in
       let {
-        Decl_redecl_service.errors = _;
+        Decl_redecl_service.old_decl_missing_count;
         fanout = { Decl_redecl_service.changed; to_recheck = to_recheck_deps };
-        old_decl_missing_count;
       } =
         CgroupProfiler.step_start_end cgroup_steps "redecl"
         @@ fun _cgroup_step ->
@@ -745,6 +657,7 @@ functor
       needs_recheck: Relative_path.Set.t;
       total_rechecked_count: int;
       time_first_typing_error: seconds option;
+      cancel_reason: MultiThreadedCall.cancel_reason option;
     }
 
     let do_type_checking
@@ -756,7 +669,9 @@ functor
         ~(files_to_parse : Relative_path.Set.t)
         ~(lazy_check_later : Relative_path.Set.t)
         ~(check_reason : string)
-        ~(cgroup_steps : CgroupProfiler.step_group) : type_checking_result =
+        ~(cgroup_steps : CgroupProfiler.step_group)
+        ~(files_with_naming_errors : Relative_path.Set.t) : type_checking_result
+        =
       let telemetry = Telemetry.create () in
       if Relative_path.(Set.mem files_to_check default) then
         Hh_logger.log "WARNING: rechecking definition in a dummy file";
@@ -767,8 +682,25 @@ functor
       let longlived_workers =
         genv.local_config.ServerLocalConfig.longlived_workers
       in
+      let use_hh_distc_instead_of_hulk =
+        (* hh_distc and hh_server may behave inconsistently in the face of
+           duplicate name errors. Eventually we'll want to make duplicate
+           name errors a typing error and this check can go away. *)
+        phys_equal (Relative_path.Set.cardinal files_with_naming_errors) 0
+        && genv.ServerEnv.local_config
+             .ServerLocalConfig.use_hh_distc_instead_of_hulk
+      in
+      let hh_distc_fanout_threshold =
+        Some
+          genv.ServerEnv.local_config
+            .ServerLocalConfig.hh_distc_fanout_threshold
+      in
       let cgroup_typecheck_telemetry = ref None in
-      let (errorl', telemetry, env, cancelled, time_first_typing_error) =
+      let ( errorl',
+            telemetry,
+            env,
+            unfinished_and_reason,
+            time_first_typing_error ) =
         let ctx = Provider_utils.ctx_from_server_env env in
         CgroupProfiler.step_start_end
           cgroup_steps
@@ -784,6 +716,7 @@ functor
                     (diagnostic_pusher, time_first_typing_error);
                 } ),
               cancelled ) =
+          let root = Some (ServerArgs.root genv.ServerEnv.options) in
           Typing_check_service.go_with_interrupt
             ~diagnostic_pusher:env.ServerEnv.diagnostic_pusher
             ctx
@@ -791,9 +724,12 @@ functor
             env.typing_service.delegate_state
             telemetry
             (files_to_check |> Relative_path.Set.elements)
+            ~root
             ~interrupt
             ~memory_cap
             ~longlived_workers
+            ~use_hh_distc_instead_of_hulk
+            ~hh_distc_fanout_threshold
             ~check_info:
               (ServerCheckUtils.get_check_info
                  ~check_reason
@@ -826,6 +762,11 @@ functor
         Relative_path.Set.union env.needs_recheck lazy_check_later
       in
       (* Remove things that were cancelled from things we started rechecking... *)
+      let (cancelled, cancel_reason) =
+        match unfinished_and_reason with
+        | None -> ([], None)
+        | Some (unfinished, reason) -> (unfinished, Some reason)
+      in
       let (files_checked, needs_recheck) =
         List.fold
           cancelled
@@ -837,13 +778,16 @@ functor
       (* ... leaving only things that we actually checked, and which can be
        * removed from needs_recheck *)
       let needs_recheck = Relative_path.Set.diff needs_recheck files_checked in
+      (* Here we do errors paradigm (1) env.errorl: merge in typecheck results, to flow into [env.errorl].
+         As for paradigms (2) persistent-connection and (3) errors-file, they're handled
+         inside [Typing_check_service.go_with_interrupt] because they want to push errors
+         as soon as they're discovered. *)
       let errors =
-        Errors.(
-          incremental_update
-            ~old:errors
-            ~new_:errorl'
-            ~rechecked:files_checked
-            Typing)
+        Errors.incremental_update
+          ~old:errors
+          ~new_:errorl'
+          ~rechecked:files_checked
+          Errors.Typing
       in
       let (env, _future) : ServerEnv.env * string Future.t option =
         ServerRecheckCapture.update_after_recheck
@@ -861,6 +805,10 @@ functor
       in
 
       let total_rechecked_count = Relative_path.Set.cardinal files_checked in
+      (* TODO(ljw) I wish to prove the invariant (expressed in the type system) that
+         either [cancel_reason=None] or [env.disk_needs_parsing] and [env.need_recheck] are empty.
+         It's quite hard to reason about at the moment in the presence of lazy checks.
+         I'll revisit once they've been removed. *)
       {
         env;
         errors;
@@ -870,6 +818,7 @@ functor
         needs_recheck;
         total_rechecked_count;
         time_first_typing_error;
+        cancel_reason;
       }
 
     let quantile ~index ~count : Relative_path.Set.t -> Relative_path.Set.t =
@@ -922,13 +871,17 @@ functor
                   ~f:ServerEnv.Init_telemetry.get)
       in
       let time_first_error = None in
+      let do_errors_file =
+        genv.local_config.ServerLocalConfig.produce_streaming_errors
+        && CheckKind.is_full
+      in
       let env =
         if CheckKind.is_full then
           { env with full_check_status = Full_check_started }
         else
           env
       in
-      let (files_to_parse, stop_at_errors) = CheckKind.get_files_to_parse env in
+      let files_to_parse = CheckKind.get_files_to_parse env in
       (* We need to do naming phase for files that failed naming in a previous cycle.
        * "Failed_naming" comes from duplicate name errors; the idea is that a change
        * deletes one of the duplicates, well, this change should cause us to re-parse
@@ -980,17 +933,8 @@ functor
         Telemetry.duration telemetry ~key:"parse_start" ~start_time
       in
       let errors = env.errorl in
-      let ( env,
-            {
-              parse_errors = errors;
-              failed_parsing;
-              defs_per_file_parsed;
-              time_errors_pushed;
-            } ) =
-        do_parsing genv env ~errors ~files_to_parse ~cgroup_steps
-      in
-      let time_first_error =
-        Option.first_some time_first_error time_errors_pushed
+      let (env, defs_per_file_parsed) =
+        indexing genv env files_to_parse cgroup_steps
       in
 
       let hs = SharedMem.SMTelemetry.heap_size () in
@@ -1029,14 +973,17 @@ functor
         |> Telemetry.object_ ~key:"naming" ~value:naming_telemetry
       in
 
+      let rechecked =
+        defs_per_file_parsed
+        |> Relative_path.Map.keys
+        |> Relative_path.Set.of_list
+      in
       let (env, errors, time_errors_pushed) =
         push_and_accumulate_errors
           (env, errors)
           duplicate_name_errors
-          ~rechecked:
-            (defs_per_file_parsed
-            |> Relative_path.Map.keys
-            |> Relative_path.Set.of_list)
+          ~do_errors_file
+          ~rechecked
           ~phase:Errors.Naming
       in
       let time_first_error =
@@ -1044,6 +991,9 @@ functor
       in
 
       (* REDECL PHASE 1 ********************************************************)
+      (* The things we redecl `defs_per_file` come from the current content of
+         files changed `defs_per_files_parsed`, plus the previous content `add_old_decls`,
+         plus those that had duplicate names `failed_naming` *)
       ServerProgress.write "determining changes";
       let deptable_unlocked =
         Typing_deps.allow_dependency_table_reads env.deps_mode true
@@ -1051,9 +1001,6 @@ functor
 
       Hh_logger.log "(Recomputing type declarations in relation to naming)";
       (* failed_naming can be a superset of keys in defs_per_file - see comment in Naming_global.ndecl_file *)
-      let failed_decl =
-        CheckKind.get_defs_to_redecl ~reparsed:files_to_parse ~env ~ctx
-      in
       (* The term [defs_per_file] doesn't mean anything. It's just exactly the same as defs_per_file_parsed,
          that is a filename->FileInfo.t map of the files we just parsed,
          except it's just filename->FileInfo.names -- i.e. purely the names, without positions. *)
@@ -1066,13 +1013,6 @@ functor
           defs_per_file
           naming_table
           failed_naming
-      in
-      let defs_per_file =
-        ServerCheckUtils.extend_defs_per_file
-          genv
-          defs_per_file
-          naming_table
-          failed_decl
       in
       let defs_per_file = add_old_decls env.naming_table defs_per_file in
 
@@ -1189,6 +1129,8 @@ functor
       in
 
       (* TYPE CHECKING *********************************************************)
+      (* The things we recheck are those from the fanout `do_redecl().fanout` plus every file
+         whose error reasons were in changed files `get_defs_to_recheck`. *)
       let type_check_start_t = Unix.gettimeofday () in
       ServerProgress.write "typechecking";
 
@@ -1214,17 +1156,6 @@ functor
           (Relative_path.Set.cardinal files_to_check)
           errors
       in
-      let (env, files_to_check, time_erased_errors) =
-        wont_do_failed_parsing
-          files_to_check
-          ~stop_at_errors
-          ~omitted_phases:[Errors.Typing]
-          env
-          failed_parsing
-      in
-      let time_first_error =
-        Option.first_some time_first_error time_erased_errors
-      in
 
       ServerProgress.write
         "typechecking %d files"
@@ -1243,6 +1174,24 @@ functor
           files_to_check
       in
 
+      (* The errors file must accumulate ALL errors. The call below to [do_type_checking ~files_to_check]
+         will report all errors in [files_to_check] using the [Errors.Typing] phase.
+         But there might be other [Errors.Typing] errors in [env.errorl] from a previous round of typecheck,
+         but which aren't in the current fanout i.e. not in [files_to_check]. We must report those too.
+         It remains open for discussion whether the user-experience would be better to have these
+         not-in-fanout errors reported here before the typecheck starts, or later after the typecheck
+         has finished. We'll report them here for now. *)
+      if do_errors_file then begin
+        push_errors_outside_files_to_errors_file
+          errors
+          ~files:files_to_check
+          ~phase:Errors.Typing
+      end;
+      (* And what about the files in [files_to_check] which we were going to typecheck but then
+         the typecheck got interrupted  and they were returned from [do_typechecking] as [needs_recheck]?
+         Shouldn't we report those too into the errors-file? Well, there's no need to bother:
+         if there's anything in [needs_recheck] then the current errors-file will be marked as "incomplete"
+         and another round of ServerTypeCheck (hence another errors-file) will be created next. *)
       let to_recheck_count = Relative_path.Set.cardinal files_to_check in
       (* The intent of capturing the snapshot here is to increase the likelihood
           of the state-on-disk being the same as what the parser saw *)
@@ -1255,6 +1204,10 @@ functor
           ~parse_t
       in
       Hh_logger.log "Begin typechecking %d files." to_recheck_count;
+      if do_errors_file then
+        ServerProgress.ErrorsWrite.telemetry
+          (Telemetry.create ()
+          |> Telemetry.int_ ~key:"to_recheck_count" ~value:to_recheck_count);
 
       ServerCheckpoint.process_updates files_to_check;
 
@@ -1274,6 +1227,7 @@ functor
         needs_recheck;
         total_rechecked_count;
         time_first_typing_error;
+        cancel_reason;
       } =
         do_type_checking
           genv
@@ -1285,6 +1239,8 @@ functor
           ~lazy_check_later
           ~check_reason
           ~cgroup_steps
+          ~files_with_naming_errors:
+            (Errors.get_failed_files errors Errors.Naming)
       in
       let time_first_error =
         Option.first_some time_first_error time_first_typing_error
@@ -1351,6 +1307,16 @@ functor
         |> Telemetry.bool_
              ~key:"typecheck_longlived_workers"
              ~value:genv.local_config.ServerLocalConfig.longlived_workers
+        |> Telemetry.string_opt
+             ~key:"cancel_reason"
+             ~value:
+               (Option.map cancel_reason ~f:(fun r ->
+                    r.MultiThreadedCall.user_message))
+        |> Telemetry.string_opt
+             ~key:"cancel_details"
+             ~value:
+               (Option.map cancel_reason ~f:(fun r ->
+                    r.MultiThreadedCall.log_message))
       in
 
       (* INVALIDATE FILES (EXPERIMENTAL TYPES IN CODEGEN) **********************)
@@ -1433,7 +1399,8 @@ functor
 
       (* We might have completed a full check, which might mean that a rebase was
        * successfully processed. *)
-      ServerRevisionTracker.check_non_blocking env;
+      ServerRevisionTracker.check_non_blocking
+        ~is_full_check_done:ServerEnv.(is_full_check_done env.full_check_status);
       let telemetry =
         Telemetry.duration
           telemetry
@@ -1474,7 +1441,8 @@ functor
           total_rechecked_count;
           time_first_result = time_first_error;
         },
-        telemetry )
+        telemetry,
+        cancel_reason )
   end
 
 module FC = Make (FullCheckKind)
@@ -1509,7 +1477,7 @@ let type_check_unsafe genv env kind start_time profiling =
     let telemetry =
       Telemetry.duration telemetry ~key:"core_start" ~start_time
     in
-    let (env, stats, core_telemetry) =
+    let (env, stats, core_telemetry, cancel_reason) =
       LC.type_check_core genv env start_time ~check_reason profiling
     in
     let telemetry =
@@ -1522,7 +1490,7 @@ let type_check_unsafe genv env kind start_time profiling =
     in
     let stats = CheckStats.record_result_sent_ts stats t_sent_done in
     let telemetry = Telemetry.duration telemetry ~key:"sent_done" ~start_time in
-    (env, stats, telemetry)
+    (env, stats, telemetry, cancel_reason)
   | CheckKind.Full ->
     Hh_logger.log
       "Check kind: will bring hh_server to consistency with code changes, by checking whatever fanout is needed ('%s')"
@@ -1536,7 +1504,7 @@ let type_check_unsafe genv env kind start_time profiling =
       Telemetry.duration telemetry ~key:"core_start" ~start_time
     in
 
-    let (env, stats, core_telemetry) =
+    let (env, stats, core_telemetry, cancel_reason) =
       FC.type_check_core genv env start_time ~check_reason profiling
     in
 
@@ -1555,7 +1523,7 @@ let type_check_unsafe genv env kind start_time profiling =
     let telemetry =
       telemetry |> Telemetry.duration ~key:"sent_done" ~start_time
     in
-    (env, stats, telemetry)
+    (env, stats, telemetry, cancel_reason)
 
 let type_check :
     genv ->
@@ -1566,7 +1534,128 @@ let type_check :
     env * CheckStats.t * Telemetry.t =
  fun genv env kind start_time cgroup_steps ->
   ServerUtils.with_exit_on_exception @@ fun () ->
-  let type_check_result =
+  (*
+  (1) THE ENV MODEL FOR ERRORS...
+  env.{errorl, needs_recheck, disk_needs_parsing} are all persistent values that
+  might be adjusted as we go:
+  * disk_needs_parsing gets initialized in serverLazyInit, augmented in serverMain both
+    at the start of the loop and during watchman interrupts, and in serverTypeCheck it
+    gets reset to empty once we have computed files-to-parse and decls-to-refresh from it.
+    (files-to-recheck is computed from these two).
+  * needs_recheck gets augmented in serverTypeCheck from fanout/stale computation,
+    and gets discharged by the files we end up typechecking
+  * errorl starts out empty and it grows+shrinks during serverTypeCheck
+    through calls to "errorl = Errors.incremental_update ~errorl ~new_errors ~phase ~files_examined".
+    This will shrink those errors that had been in errorl before, and were in files_examined,
+    but are not in new_errors. It will replace others. It will grow others.
+    And it will leave remaining in errorl anything that was not touched by files_examined
+    or which came from a different phase.
+    To stress, say you have 10k errors and make a small change in one file,
+    it is very possible that those 10k other files are not checked and the bulk of errorl
+    just continues through a recheck loop. (However, we do gather every single file
+    mentioned in any of the *reasons* of those 10k files, and where those reasons intersect
+    with changed-files then that causes need to redecl and compute fanout, and also need
+    to recheck.)
+
+  (2) THE DIAGNOSTICS_PUSHER MODEL FOR ERRORS...
+  This is used for the persistent connection. It maintains its belief of what the persistent
+  client already knows, and pushes deltas. The less said about it, the better.
+
+  (3) THE STREAMING MODEL FOR ERRORS...
+  The errors-file grows monotonically: it has no "backsies", no way to remove an error
+  from it, short of deciding that the current errors-file is wrong and a new error-file must
+  be restarted.
+  * Hh_server, upon startup, must eventually produce an errors-file.
+  * Right here at the start of the type check, we restart the errors-file (because of the
+    potential that in the current typecheck we discover that some files no longer have errors).
+  * The typecheck fulfills the contract that every single error must be reported to the errors-file.
+    Not just newly discovered errors. Every error, even those from files that do not get rechecked.
+  * Right here at the end of the type check, if the type check was complete then we need to report
+    this fact right away in the errors-file so that the client "hh check" can finish "No errors!".
+    But if it was not complete (e.g. it got interrupted by watchman) then there is no need to finish
+    for the sake of the client: there will be an immediate next round of
+    ServerMain.recheck_until_no_changes_left, and it will call us again, and the errors-file
+    will be restarted on that next round, and the act of restarting will close the current errors-file.
+
+  How do we guarantee that hh_server produces an errors-file upon startup?
+  It boils down to ServerInitCommon.defer_or_do_type_check, called as the final step of both
+  full init and saved-state init. Its design is to defer an initial typecheck
+  to the first round of [ServerTypeCheck.type_check] (i.e. us!) which it causes
+  to happen after its (synchronous, non-interruptible) init has finished. It does
+  this so that clients will be able to connect as soon as init has finished, and
+  observe/interrupt the deferred typecheck. It does this by setting
+  [env.full_check_status=Full_check_started], so that when ServerMain first enters
+  its main loop and calls [serve_one_iteration] for the first time, it will believe
+  that a full check is needed and hence call [ServerTypeCheck.type_check]. No matter
+  if we did a perfect saved-state-load so that [env.disk_needs_parsing] is empty,
+  no matter if we did a full init and [env.needs_recheck] contains every file in the
+  project, no matter what init path, the start of ServerMain main loop will always
+  start by calling [ServerTypeCheck.type_check]. And it's at this moment, right here,
+  that we'll lay down the first errors file.
+  *)
+  let ignore_hh_version = ServerArgs.ignore_hh_version genv.ServerEnv.options in
+  (* Restart the errors-file at the start of type_check. *)
+  if CheckKind.is_full_check kind then
+    ServerProgress.ErrorsWrite.new_empty_file
+      ~ignore_hh_version
+      ~clock:env.clock
+      ~cancel_reason:env.why_needs_server_type_check;
+
+  (* This is the main typecheck function. Its contract is to
+     (1) tweak env.errorl as needed based on what was rechecked , (2) write every single error to errors-file. *)
+  let (env, stats, telemetry, cancel_reason) =
     type_check_unsafe genv env kind start_time cgroup_steps
   in
-  type_check_result
+
+  (* If the typecheck completed, them mark the errors-file as complete.
+     A "completed" typecheck means (1) all the [env.needs_recheck] files
+     were indeed typechecked, i.e. not interrupted and cancelled by an
+     interrupt handler like watchman; (2) watchman interrupt didn't
+     insert any [env.disk_needs_parsing] files.
+     Because we mark the errors-file as complete, anyone tailing it will
+     know that they can finish their tailing.
+
+     For incomplete typechecks, we don't do anything here. Necessarily ServerMain
+     will do another round of [ServerTypeCheck.type_check] (i.e. us) shortly,
+     and then next round will call [ServerProgress.ErrorsWrite.new_empty_file]
+     which will put a "restarted" sentinel at the end of the current file as
+     well as starting a new file. Indeed it's *better* to place the "restarted"
+     sentinel at that future time rather than now, because it'll have a more
+     up-to-date watchclock at that time. *)
+  let is_complete =
+    Relative_path.Set.is_empty env.needs_recheck
+    && Relative_path.Set.is_empty env.disk_needs_parsing
+  in
+  if CheckKind.is_full_check kind && is_complete then
+    ServerProgress.ErrorsWrite.complete telemetry;
+
+  (* If this was a full check, store in [env] whether+why it got interrupted+cancelled. *)
+  let env =
+    if CheckKind.is_full_check kind then
+      match cancel_reason with
+      | Some { MultiThreadedCall.user_message; log_message; timestamp = _ } ->
+        {
+          env with
+          ServerEnv.why_needs_server_type_check = (user_message, log_message);
+        }
+      | None when not is_complete ->
+        (* The typecheck wasn't interrupted, but there are still items to check.
+           This is a weird situation, and one that hopefully won't exist.
+           Once lazy checks have been eliminated, we'll revisit the TODO
+           on this subject at the end of [do_type_checking], and see if we can
+           eliminate this path throgh the typesystem.
+
+           Until that time, what now should we put as the value for [env.why_needs_server_type_check]?
+           Well, the existing value in [env] said why it needed a type check earlier, and it still needs
+           that same type check to be completed, so it is a plausible answer! *)
+        env
+      | None ->
+        {
+          env with
+          ServerEnv.why_needs_server_type_check = ("Type check is complete", "");
+        }
+    else
+      env
+  in
+
+  (env, stats, telemetry)

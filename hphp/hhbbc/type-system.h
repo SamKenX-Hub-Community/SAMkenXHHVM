@@ -23,11 +23,13 @@
 #include "hphp/util/low-ptr.h"
 
 #include "hphp/runtime/base/repo-auth-type.h"
+#include "hphp/runtime/base/string-data.h"
+
+#include "hphp/runtime/vm/type-constraint.h"
 
 #include "hphp/hhbbc/type-system-bits.h"
 
 #include "hphp/hhbbc/array-like-map.h"
-#include "hphp/hhbbc/index.h"
 #include "hphp/hhbbc/misc.h"
 
 //////////////////////////////////////////////////////////////////////
@@ -168,9 +170,18 @@
 
 //////////////////////////////////////////////////////////////////////
 
-namespace HPHP::HHBBC {
+namespace HPHP {
 
+//////////////////////////////////////////////////////////////////////
+
+namespace HHBBC {
+
+struct Context;
+struct Index;
 struct Type;
+
+namespace res { struct Class; };
+namespace php { struct Class; };
 
 #define DATATAGS                                                \
   DT(Str, SString, sval)                                        \
@@ -232,41 +243,22 @@ enum class DataTag : uint8_t {
 struct DCls {
   using IsectSet = std::vector<res::Class>;
 
-  static DCls MakeExact(res::Class cls, bool nonReg) {
-    return DCls{
-      nonReg ? PtrTag::ExactNonReg : PtrTag::Exact,
-      (void*)cls.toOpaque()
-    };
-  }
-  static DCls MakeSub(res::Class cls, bool nonReg) {
-    return DCls{
-      nonReg ? PtrTag::SubNonReg : PtrTag::Sub,
-      (void*)cls.toOpaque()
-    };
-  }
-  static DCls MakeIsect(IsectSet isect, bool nonReg) {
-    auto w = new IsectWrapper{std::move(isect)};
-    return DCls{nonReg ? PtrTag::IsectNonReg : PtrTag::Isect, (void*)w};
-  }
+  DCls() : DCls{PtrTag::Exact, nullptr} {}
+
+  static DCls MakeExact(res::Class cls, bool nonReg);
+  static DCls MakeSub(res::Class cls, bool nonReg);
+  static DCls MakeIsect(IsectSet isect, bool nonReg);
 
   // Need to implement these manually so we do proper ref-counting on
   // the IsectWrapper (if available).
-  DCls(const DCls& o) : val{o.val}
-  { if (isIsect()) rawIsect()->acquire(); }
+  DCls(const DCls&);
   DCls(DCls&& o) noexcept : val{std::move(o.val)}
   { o.val.set(PtrTag::Exact, nullptr); }
 
-  DCls& operator=(const DCls& o) {
-    if (this == &o) return *this;
-    auto const i = isIsect() ? rawIsect() : nullptr;
-    if (o.isIsect()) o.rawIsect()->acquire();
-    val = o.val;
-    if (i) i->release();
-    return *this;
-  }
+  DCls& operator=(const DCls&);
   DCls& operator=(DCls&& o) { val.swap(o.val); return *this; }
 
-  ~DCls() { if (isIsect()) rawIsect()->release(); }
+  ~DCls();
 
   bool isExact() const {
     return
@@ -284,13 +276,7 @@ struct DCls {
       val.tag() == PtrTag::SubCtxNonReg;
   }
 
-  bool isIsect() const {
-    return
-      val.tag() == PtrTag::Isect ||
-      val.tag() == PtrTag::IsectCtx ||
-      val.tag() == PtrTag::IsectNonReg ||
-      val.tag() == PtrTag::IsectCtxNonReg;
-  }
+  bool isIsect() const { return tagIsIsect(val.tag()); }
 
   bool containsNonRegular() const {
     switch (val.tag()) {
@@ -315,11 +301,7 @@ struct DCls {
   // Obtain the res::Class this DCls represents. Only valid if
   // !isSect(), as that cannot be completely represented by any single
   // res::Class.
-  res::Class cls() const {
-    assertx(!isIsect());
-    assertx(val.ptr());
-    return res::Class::fromOpaque((uintptr_t)val.ptr());
-  }
+  res::Class cls() const;
 
   // Obtain a res::Class which is a super-type of what this DCls
   // represents. That is, it may be larger than the "actual"
@@ -328,11 +310,9 @@ struct DCls {
   // of them is valid, as we're a subclass of all of them). We use the
   // first class in the list, which in canonical order is the
   // smallest.
-  res::Class smallestCls() const {
-    return isIsect() ? isect().front() : cls();
-  }
+  res::Class smallestCls() const;
 
-  const IsectSet& isect() const { return rawIsect()->isects; }
+  const IsectSet& isect() const;
 
   bool isCtx() const {
     switch (val.tag()) {
@@ -358,25 +338,12 @@ struct DCls {
     val.set(ctx ? addCtx(val.tag()) : removeCtx(val.tag()), val.ptr());
   }
 
-  bool same(const DCls& o, bool checkCtx = true) const {
-    if (checkCtx) {
-      if (val.tag() != o.val.tag()) return false;
-    } else {
-      if (removeCtx(val.tag()) != removeCtx(o.val.tag())) return false;
-    }
+  void setCls(res::Class cls);
 
-    if (!isIsect()) return cls().same(o.cls());
-    auto const& isect1 = isect();
-    auto const& isect2 = o.isect();
-    if (&isect1 == &isect2) return true;
-    if (isect1.size() != isect2.size()) return false;
+  bool same(const DCls& o, bool checkCtx = true) const;
 
-    return std::equal(
-      begin(isect1), end(isect1),
-      begin(isect2), end(isect2),
-      [] (res::Class c1, res::Class c2) { return c1.same(c2); }
-    );
-  }
+  void serde(BlobEncoder&) const;
+  void serde(BlobDecoder&);
 
 private:
   // To keep size down, we encode everything into a single
@@ -400,6 +367,14 @@ private:
   CompactTaggedPtr<void, PtrTag> val;
 
   DCls(PtrTag t, void* p) : val{t, p} {}
+
+  static bool tagIsIsect(PtrTag t) {
+    return
+      t == PtrTag::Isect ||
+      t == PtrTag::IsectCtx ||
+      t == PtrTag::IsectNonReg ||
+      t == PtrTag::IsectCtxNonReg;
+  }
 
   static PtrTag addCtx(PtrTag t) {
     switch (t) {
@@ -439,52 +414,19 @@ private:
     not_reached();
   }
 
-  // We ref-count the IsectSet, so multiple copies of a DCls can share
-  // it. This is basically copy_ptr, but we can't use that easily with
-  // our CompactTaggedPtr representation.
-  struct IsectWrapper {
-    IsectSet isects;
-    std::atomic<uint32_t> refcount{1};
-    void acquire() { refcount.fetch_add(1, std::memory_order_relaxed); }
-    void release() {
-      if (refcount.fetch_sub(1, std::memory_order_relaxed) == 1) {
-        delete this;
-      }
-    }
-  };
-
-  IsectWrapper* rawIsect() const {
-    assertx(isIsect());
-    assertx(val.ptr());
-    return (IsectWrapper*)val.ptr();
-  }
+  struct IsectWrapper;
+  IsectWrapper* rawIsect() const;
 };
 
 //////////////////////////////////////////////////////////////////////
 
-/*
- * Information about a wait handle (sub-class of HH\\Awaitable) carry a
- * type that awaiting the wait handle will produce.
- */
-template <typename T = Type>
-struct DWaitHandleT {
-  // Strictly speaking, we know that cls is HH\\Awaitable, but keeping
-  // it around lets us demote to a DCls without having the Index
-  // available.
-  DWaitHandleT(DCls cls, T inner)
-    : cls{std::move(cls)}
-    , inner{std::move(inner)} {}
-  DCls cls;
-  T inner;
-};
-using DWaitHandle = DWaitHandleT<>;
-
+struct DWaitHandle;
 struct DArrLikePacked;
 struct DArrLikePackedN;
 struct DArrLikeMap;
 struct DArrLikeMapN;
-struct ArrKey;
 struct IterTypes;
+struct COWer;
 
 //////////////////////////////////////////////////////////////////////
 
@@ -550,6 +492,37 @@ struct Type {
   ~Type() {
     if (LIKELY(m_dataTag == DataTag::None)) return;
     destroyData();
+  }
+
+  template <typename SerDe> void serde(SerDe& sd) {
+    ScopedStringDataIndexer _;
+    if constexpr (SerDe::deserializing) {
+      if (UNLIKELY(m_dataTag != DataTag::None)) destroyData();
+      sd(m_raw);
+      switch (m_dataTag) {
+        case DataTag::None: break;
+        #define DT(tag_name,type,name)            \
+          case DataTag::tag_name: {               \
+            type t;                               \
+            sd(t);                                \
+            new (&m_data.name) type{std::move(t)};\
+            break;                                \
+          }
+        DATATAGS
+        #undef DT
+      }
+      assertx(checkInvariants());
+    } else {
+      assertx(checkInvariants());
+      sd(m_raw);
+      switch (m_dataTag) {
+        case DataTag::None: break;
+        #define DT(tag_name,type,name) \
+          case DataTag::tag_name: sd(m_data.name); break;
+        DATATAGS
+        #undef DT
+      }
+    }
   }
 
   /*
@@ -639,6 +612,7 @@ private:
   friend ArrayCat categorize_array(const Type& t);
   friend CompactVector<LSString> get_string_keys(const Type& t);
   friend Type wait_handle(const Index&, Type);
+  friend Type wait_handle_unresolved(Type);
   friend bool is_specialized_wait_handle(const Type&);
   friend bool is_specialized_array_like(const Type&);
   friend bool is_specialized_array_like_arrval(const Type&);
@@ -753,6 +727,16 @@ private:
   friend Type toobj(const Type&);
   friend Type objcls(const Type&);
 
+  friend struct WaitHandleCOWer;
+  friend struct ArrLikePackedNCOWer;
+  friend struct ArrLikePackedCOWer;
+  friend struct ArrLikeMapNCOWer;
+  friend struct ArrLikeMapCOWer;
+
+  friend Type resolve_classes(const Index&, Type);
+  friend void resolve_classes_impl(const Index&, const Type&, COWer&);
+
+
   // These have to be defined here but are not meant to be used
   // outside of type-system.cpp
   friend Type isectObjInternal(DCls::IsectSet);
@@ -840,6 +824,7 @@ struct MapElem {
   Type val;
   TriBool keyStaticness;
 
+  MapElem() = default;
   MapElem(Type val, TriBool keyStaticness)
     : val{std::move(val)}, keyStaticness{keyStaticness} {}
 
@@ -867,23 +852,50 @@ struct MapElem {
   static MapElem CStrKey(Type val) {
     return MapElem{std::move(val), TriBool::No};
   }
+
+  template <typename SerDe> void serde(SerDe& sd) {
+    sd(val)(keyStaticness);
+  }
 };
 
 //////////////////////////////////////////////////////////////////////
 
+/*
+ * Information about a wait handle (sub-class of HH\\Awaitable) carry a
+ * type that awaiting the wait handle will produce.
+ */
+struct DWaitHandle {
+  DWaitHandle() = default;
+  // Strictly speaking, we know that cls is HH\\Awaitable, but keeping
+  // it around lets us demote to a DCls without having the Index
+  // available.
+  DWaitHandle(DCls cls, Type inner)
+    : cls{std::move(cls)}
+    , inner{std::move(inner)} {}
+  DCls cls;
+  Type inner;
+
+  void serde(BlobEncoder&) const;
+  void serde(BlobDecoder&);
+};
+
 struct DArrLikePacked {
+  DArrLikePacked() = default;
   explicit DArrLikePacked(std::vector<Type> elems)
     : elems(std::move(elems)) {}
-
   std::vector<Type> elems;
+  template <typename SerDe> void serde(SerDe& sd) { sd(elems); }
 };
 
 struct DArrLikePackedN {
+  DArrLikePackedN() = default;
   explicit DArrLikePackedN(Type t) : type(std::move(t)) {}
   Type type;
+  template <typename SerDe> void serde(SerDe& sd) { sd(type); }
 };
 
 struct DArrLikeMap {
+  DArrLikeMap() = default;
   explicit DArrLikeMap(MapElems map, Type optKey, Type optVal)
     : map(std::move(map))
     , optKey(std::move(optKey))
@@ -896,17 +908,22 @@ struct DArrLikeMap {
   // none.
   Type optKey;
   Type optVal;
+  template <typename SerDe> void serde(SerDe& sd) {
+    sd(map)(optKey)(optVal);
+  }
 };
 
 // DArrLikePackedN and DArrLikeMapN do not need the LegacyMark because they
 // cannot be converted to a TypedValue
 struct DArrLikeMapN {
+  DArrLikeMapN() = default;
   explicit DArrLikeMapN(Type key, Type val)
     : key(std::move(key))
     , val(std::move(val))
   {}
   Type key;
   Type val;
+  template <typename SerDe> void serde(SerDe& sd) { sd(key)(val); }
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -921,6 +938,12 @@ HHBBC_TYPE_PREDEFINED(X)
  * Return WaitH<T> for a type t.
  */
 Type wait_handle(const Index&, Type t);
+
+/*
+ * Like wait_handle, but does not resolve the wait handle class (so
+ * does not require an Index).
+ */
+Type wait_handle_unresolved(Type t);
 
 /*
  * Return T from a WaitH<T>.
@@ -1461,8 +1484,7 @@ Type loosen_to_datatype(Type t);
 Type remove_uninit(Type t);
 
 /*
- * If t is not a TCell, returns TInitCell. Otherwise, if t contains
- * TUninit, return union_of(remove_uninit(t), TInitCell).
+ * If t contains TUninit, return union_of(remove_uninit(t), TInitNull).
  */
 Type to_cell(Type t);
 
@@ -1478,6 +1500,15 @@ Type add_nonemptiness(Type t);
  */
 Type assert_emptiness(Type);
 Type assert_nonemptiness(Type);
+
+/*
+ * Convert any unresolved classes/objects within the type (including
+ * nested types) into their resolved equivalents (using the provided
+ * Index). Some classes/objects will always be unresolved and will
+ * remain so. If any class/object resolves into a non-existent type,
+ * it will be removed from the type (which may produce a Bottom).
+ */
+Type resolve_classes(const Index&, Type);
 
 /*
  * If t is definitely an array with a known size, return
@@ -1588,16 +1619,17 @@ bool compare_might_raise(const Type& t1, const Type& t2);
  */
 std::pair<Type, Promotion> promote_classlike_to_key(Type);
 
-/*
- * Given a type, adjust the type for the given type-constraint. If there's no
- * type-constraint, or if property type-hints aren't being enforced, then return
- * the type as is. This might return TBottom if the type is not compatible with
- * the type-hint.
- */
-Type adjust_type_for_prop(const Index& index,
-                          const php::Class& propCls,
-                          const TypeConstraint* tc,
-                          const Type& ty);
+//////////////////////////////////////////////////////////////////////
+
+}
+
+//////////////////////////////////////////////////////////////////////
+
+MAKE_COPY_PTR_BLOB_SERDE_HELPER(HHBBC::DWaitHandle);
+MAKE_COPY_PTR_BLOB_SERDE_HELPER(HHBBC::DArrLikePacked);
+MAKE_COPY_PTR_BLOB_SERDE_HELPER(HHBBC::DArrLikePackedN);
+MAKE_COPY_PTR_BLOB_SERDE_HELPER(HHBBC::DArrLikeMap);
+MAKE_COPY_PTR_BLOB_SERDE_HELPER(HHBBC::DArrLikeMapN);
 
 //////////////////////////////////////////////////////////////////////
 

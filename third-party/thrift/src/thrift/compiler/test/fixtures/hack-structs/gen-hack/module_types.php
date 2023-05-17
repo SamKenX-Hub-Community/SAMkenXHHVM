@@ -81,7 +81,12 @@ class MyStruct implements \IThriftSyncStruct, \IThriftStructMetadata {
 
   public static function getAllStructuredAnnotations()[write_props]: \TStructAnnotations {
     return shape(
-      'struct' => dict[],
+      'struct' => dict[
+        '\facebook\thrift\annotation\hack\StructTrait' => \facebook\thrift\annotation\hack\StructTrait::fromShape(
+          shape(
+          )
+        ),
+      ],
       'fields' => dict[
       ],
     );
@@ -168,7 +173,12 @@ class MySecondStruct implements \IThriftSyncStruct, \IThriftStructMetadata {
 
   public static function getAllStructuredAnnotations()[write_props]: \TStructAnnotations {
     return shape(
-      'struct' => dict[],
+      'struct' => dict[
+        '\facebook\thrift\annotation\hack\StructTrait' => \facebook\thrift\annotation\hack\StructTrait::fromShape(
+          shape(
+          )
+        ),
+      ],
       'fields' => dict[
       ],
     );
@@ -187,7 +197,7 @@ class MySecondStruct implements \IThriftSyncStruct, \IThriftStructMetadata {
 class MyThirdStruct implements \IThriftSyncStruct, \IThriftStructMetadata {
   use \ThriftSerializationTrait;
 
-  use CustomTraitName;
+  use \CustomTraitName;
 
   const \ThriftStructTypes::TSpec SPEC = dict[
     1 => shape(
@@ -255,7 +265,13 @@ class MyThirdStruct implements \IThriftSyncStruct, \IThriftStructMetadata {
 
   public static function getAllStructuredAnnotations()[write_props]: \TStructAnnotations {
     return shape(
-      'struct' => dict[],
+      'struct' => dict[
+        '\facebook\thrift\annotation\hack\StructTrait' => \facebook\thrift\annotation\hack\StructTrait::fromShape(
+          shape(
+            "name" => "\\CustomTraitName",
+          )
+        ),
+      ],
       'fields' => dict[
       ],
     );
@@ -343,7 +359,7 @@ class MyFourthStruct implements \IThriftSyncStruct, \IThriftStructMetadata {
   public static function getAllStructuredAnnotations()[write_props]: \TStructAnnotations {
     return shape(
       'struct' => dict[
-        '\thrift\annotation\hack\StructTrait' => \thrift\annotation\hack\StructTrait::fromShape(
+        '\facebook\thrift\annotation\hack\StructTrait' => \facebook\thrift\annotation\hack\StructTrait::fromShape(
           shape(
           )
         ),
@@ -366,7 +382,7 @@ class MyFourthStruct implements \IThriftSyncStruct, \IThriftStructMetadata {
 class MyFifthStruct implements \IThriftSyncStruct, \IThriftStructMetadata {
   use \ThriftSerializationTrait;
 
-  use CustomTraitName;
+  use \CustomTraitName;
 
   const \ThriftStructTypes::TSpec SPEC = dict[
     1 => shape(
@@ -435,9 +451,9 @@ class MyFifthStruct implements \IThriftSyncStruct, \IThriftStructMetadata {
   public static function getAllStructuredAnnotations()[write_props]: \TStructAnnotations {
     return shape(
       'struct' => dict[
-        '\thrift\annotation\hack\StructTrait' => \thrift\annotation\hack\StructTrait::fromShape(
+        '\facebook\thrift\annotation\hack\StructTrait' => \facebook\thrift\annotation\hack\StructTrait::fromShape(
           shape(
-            "name" => "CustomTraitName",
+            "name" => "\\CustomTraitName",
           )
         ),
       ],
@@ -523,7 +539,12 @@ trait MySixthStructTrait implements \IThriftSyncStruct, \IThriftStructMetadata {
 
   public static function getAllStructuredAnnotations()[write_props]: \TStructAnnotations {
     return shape(
-      'struct' => dict[],
+      'struct' => dict[
+        '\facebook\thrift\annotation\hack\StructAsTrait' => \facebook\thrift\annotation\hack\StructAsTrait::fromShape(
+          shape(
+          )
+        ),
+      ],
       'fields' => dict[
       ],
     );
@@ -607,7 +628,7 @@ trait MySeventhStructTrait implements \IThriftSyncStruct, \IThriftStructMetadata
   public static function getAllStructuredAnnotations()[write_props]: \TStructAnnotations {
     return shape(
       'struct' => dict[
-        '\thrift\annotation\hack\StructAsTrait' => \thrift\annotation\hack\StructAsTrait::fromShape(
+        '\facebook\thrift\annotation\hack\StructAsTrait' => \facebook\thrift\annotation\hack\StructAsTrait::fromShape(
           shape(
           )
         ),

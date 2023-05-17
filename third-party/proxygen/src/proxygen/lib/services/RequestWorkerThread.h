@@ -9,8 +9,8 @@
 #pragma once
 
 #include <cstdint>
+#include <folly/io/async/EventBase.h>
 #include <map>
-#include <proxygen/lib/services/WorkerThread.h>
 #include <wangle/acceptor/LoadShedConfiguration.h>
 
 namespace proxygen {
@@ -19,10 +19,10 @@ class Service;
 class ServiceWorker;
 
 /**
- * RequestWorkerThread extends WorkerThread, and also contains a list of
- * ServiceWorkers running in this thread.
+ * RequestWorkerThread intended to be used with a folly::Executor, and also
+ * contains a list of ServiceWorkers running in this thread.
  */
-class RequestWorkerThread : public WorkerThread {
+class RequestWorkerThread {
  public:
   class FinishCallback {
    public:
@@ -41,12 +41,9 @@ class RequestWorkerThread : public WorkerThread {
    */
   RequestWorkerThread(FinishCallback& callback,
                       uint8_t threadId,
-                      const std::string& evbName = std::string());
+                      folly::EventBase* evb);
 
-  /**
-   * Reset the underlying event base prior to WorkerThread destruction.
-   */
-  ~RequestWorkerThread() override;
+  ~RequestWorkerThread();
 
   /**
    * Return a unique 64bit identifier.
@@ -59,10 +56,7 @@ class RequestWorkerThread : public WorkerThread {
   uint8_t getWorkerId() const;
 
   static RequestWorkerThread* getRequestWorkerThread() {
-    RequestWorkerThread* self = dynamic_cast<RequestWorkerThread*>(
-        WorkerThread::getCurrentWorkerThread());
-    CHECK_NOTNULL(self);
-    return self;
+    return currentRequestWorker_;
   }
 
   /**
@@ -105,10 +99,16 @@ class RequestWorkerThread : public WorkerThread {
    */
   void flushStats();
 
- private:
-  void setup() override;
-  void cleanup() override;
+  void forceStop();
 
+  folly::EventBase* getEventBase() {
+    return evb_;
+  }
+
+  void setup();
+  void cleanup();
+
+ private:
   // The next request id within this thread. The id has its highest byte set to
   // the thread id, so is unique across the process.
   uint64_t nextRequestId_;
@@ -122,6 +122,11 @@ class RequestWorkerThread : public WorkerThread {
   std::shared_ptr<const wangle::LoadShedConfiguration> loadShedConfig_{nullptr};
 
   FinishCallback& callback_;
+  folly::EventBase* evb_{nullptr};
+
+  static thread_local RequestWorkerThread* currentRequestWorker_;
+
+  std::atomic_bool forceStopped_{false};
 };
 
 } // namespace proxygen

@@ -297,11 +297,6 @@ void HttpRequestHandler::handleRequest(Transport *transport) {
   string path = reqURI.path().data();
   string absPath = reqURI.absolutePath().data();
 
-  // determine whether we can use a precompressed response
-  // (the cache stores compressed values using gzip)
-  bool acceptsPrecompressed = transport->acceptEncoding("gzip");
-
-  const char *data; int len;
   const char *ext = reqURI.ext();
 
   if (reqURI.forbidden()) {
@@ -323,25 +318,21 @@ void HttpRequestHandler::handleRequest(Transport *transport) {
 
   // If this is not a php file, check the static content cache
   if (treatAsContent) {
-    bool compressed = acceptsPrecompressed;
+    // bool compressed = acceptsPrecompressed;
     // check against static content cache
-    if (StaticContentCache::TheCache.find(path, data, len, compressed)) {
-      ScopedMem decompressed_data;
-      // (qigao) not calling stat at this point because the timestamp of
-      // local cache file is not valuable, maybe misleading. This way
-      // the Last-Modified header will not show in response.
-      // stat(RuntimeOption::FileCache.c_str(), &st);
-      if (!acceptsPrecompressed && compressed) {
-        data = gzdecode(data, len);
-        if (data == nullptr) {
-          raise_fatal_error("cannot unzip compressed data");
-        }
-        decompressed_data = const_cast<char*>(data);
-        compressed = false;
+    if (StaticContentCache::TheFileCache) {
+      auto content = StaticContentCache::TheFileCache->content(path);
+      if (content) {
+        ScopedMem decompressed_data;
+        // (qigao) not calling stat at this point because the timestamp of
+        // local cache file is not valuable, maybe misleading. This way
+        // the Last-Modified header will not show in response.
+        // stat(RuntimeOption::FileCache.c_str(), &st);
+        sendStaticContent(transport, content->buffer, content->size, 0, false,
+                          path, ext);
+        ServerStats::LogPage(path, 200);
+        return;
       }
-      sendStaticContent(transport, data, len, 0, compressed, path, ext);
-      ServerStats::LogPage(path, 200);
-      return;
     }
 
     if (RuntimeOption::EnableStaticContentFromDisk) {
@@ -541,7 +532,6 @@ bool HttpRequestHandler::executePHPRequest(Transport *transport,
     StructuredLog::recordRequestGlobals(*entry);
     tl_heap->recordStats(*entry);
     entry->setInt("uptime", HHVM_FN(server_uptime)());
-    entry->setInt("rss", ProcStatus::adjustedRssKb());
   }
   HardwareCounter::UpdateServiceData(transport->getCpuTime(),
                                      transport->getWallTime(),
@@ -549,7 +539,6 @@ bool HttpRequestHandler::executePHPRequest(Transport *transport,
                                      false /*psp*/);
   if (entry) {
     StructuredLog::log("hhvm_request_perf", *entry);
-    transport->resetStructuredLogEntry();
   }
 
   transport->onSendEnd();
@@ -557,10 +546,25 @@ bool HttpRequestHandler::executePHPRequest(Transport *transport,
   Eval::Debugger::InterruptPSPEnded(transport->getUrl());
 
   if (RuntimeOption::EvalProfileHWStructLog) {
-    // This step must be done before globals are torn down in hphp_context_exit.
-    entry = transport->createStructuredLogEntry();
-    StructuredLog::recordRequestGlobals(*entry);
+    // We now reuse the same entry created previously for non-psp, with updates
+    // on certain metrics (memory and hardware counters).
+    entry->setInt("response_code", transport->getResponseCode());
+    tl_heap->recordStats(*entry);
+    entry->setInt("uptime", HHVM_FN(server_uptime)());
+    entry->setInt("rss", ProcStatus::adjustedRssKb());
+    if (use_lowptr) {
+      entry->setInt("low_mem", alloc::getLowMapped());
+    }
   }
+  HardwareCounter::UpdateServiceData(transport->getCpuTime(),
+                                     transport->getWallTime(),
+                                     entry,
+                                     true /*psp*/);
+  if (entry) {
+    StructuredLog::log("hhvm_request_perf", *entry);
+    transport->resetStructuredLogEntry();
+  }
+
   hphp_context_exit();
   ServerStats::LogPage(file, code);
   return ret;

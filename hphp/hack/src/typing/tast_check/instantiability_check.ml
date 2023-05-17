@@ -9,7 +9,6 @@
 
 open Hh_prelude
 open Aast
-module ShapeMap = Ast_defs.ShapeMap
 module SN = Naming_special_names
 module Cls = Decl_provider.Class
 
@@ -42,7 +41,7 @@ let rec validate_classname (pos, hint) =
   | Aast.Hshape _
   | Aast.Hfun_context _
   | Aast.Hvar _ ->
-    Errors.add_typing_error
+    Typing_error_utils.add_typing_error
       Typing_error.(primary @@ Primary.Invalid_classname pos)
 
 let rec check_hint env (pos, hint) =
@@ -71,7 +70,7 @@ let rec check_hint env (pos, hint) =
                    reason_ty_opt = None;
                  })
         in
-        Errors.add_typing_error err
+        Typing_error_utils.add_typing_error err
       | _ -> ()
     end;
     if String.equal class_id SN.Classes.cClassname then

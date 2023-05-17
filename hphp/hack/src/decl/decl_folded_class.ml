@@ -646,7 +646,10 @@ let typeconst_fold
         ttc_synthesized = false;
         ttc_name = stc.stc_name;
         ttc_kind =
-          maybe_add_supportdyn_bound ctx (fst stc.stc_name) stc.stc_kind;
+          (if stc.stc_is_ctx then
+            stc.stc_kind
+          else
+            maybe_add_supportdyn_bound ctx (fst stc.stc_name) stc.stc_kind);
         ttc_origin = c_name;
         ttc_enforceable = enforceable;
         ttc_reifiable = reifiable;
@@ -1030,6 +1033,7 @@ and class_decl
       dc_sealed_whitelist = sealed_whitelist;
       dc_xhp_attr_deps = xhp_attr_deps;
       dc_xhp_enum_values = c.sc_xhp_enum_values;
+      dc_xhp_marked_empty = c.sc_xhp_marked_empty;
       dc_req_ancestors = req_ancestors;
       dc_req_ancestors_extends = req_ancestors_extends;
       dc_req_class_ancestors = req_class_ancestors;

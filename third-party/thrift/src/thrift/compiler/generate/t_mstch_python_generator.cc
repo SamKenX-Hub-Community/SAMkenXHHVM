@@ -840,7 +840,10 @@ class python_mstch_enum : public mstch_enum {
         });
   }
 
-  mstch::node has_flags() { return enum_->has_annotation("py3.flags"); }
+  mstch::node has_flags() {
+    return enum_->has_annotation("py3.flags") ||
+        enum_->find_structured_annotation_or_null(kPythonFlagsUri);
+  }
 
   mstch::node legacy_api() {
     return ::apache::thrift::compiler::generate_legacy_api(*enum_);
@@ -887,7 +890,14 @@ class enum_member_union_field_names_validator : virtual public validator {
 
  private:
   void validate(const t_named* node, const std::string& name) {
-    const auto& pyname = node->get_annotation("py3.name", &name);
+    auto pyname = node->get_annotation("py3.name", &name);
+    if (const t_const* annot =
+            node->find_structured_annotation_or_null(kPythonNameUri)) {
+      if (auto annotation_name =
+              annot->get_value_from_structured_annotation_or_null("name")) {
+        pyname = annotation_name->get_string();
+      }
+    }
     if (pyname == "name" || pyname == "value") {
       report_error(
           *node,
@@ -1010,7 +1020,6 @@ class python_mstch_const_value : public mstch_const_value {
     register_methods(
         this,
         {
-            {"value:py3_string_value", &python_mstch_const_value::string_value},
             {"value:py3_enum_value_name",
              &python_mstch_const_value::py3_enum_value_name},
             {"value:py3_binary?", &python_mstch_const_value::is_binary},
@@ -1064,37 +1073,6 @@ class python_mstch_const_value : public mstch_const_value {
       return py3::get_py3_name(*const_value_->get_enum_value());
     }
     return mstch::node();
-  }
-
-  mstch::node string_value() {
-    if (type_ != cv::CV_STRING) {
-      return mstch::node();
-    }
-    std::string string_val = const_value_->get_string();
-    if (string_val.find('\n') == std::string::npos) {
-      if (string_val.find('"') == std::string::npos) {
-        return "\"" + string_val + "\"";
-      }
-      if (string_val.find('\'') == std::string::npos) {
-        return "'" + string_val + "'";
-      }
-    }
-    const auto& front = string_val.front();
-    const auto& back = string_val.back();
-
-    if (front != '"' && back != '"') {
-      return "\"\"\"" + string_val + "\"\"\"";
-    }
-    if (front != '\'' && back != '\'') {
-      return "'''" + string_val + "'''";
-    }
-    if (front == '"') { // and back = '\''
-      string_val.pop_back(); // remove the last '\''
-      return "'''" + string_val + "'''\"'\"";
-    }
-    // the only possible case left: back = '"' and front = '\''
-    string_val.pop_back(); // remove the last '"'
-    return "\"\"\"" + string_val + "\"\"\"'\"'";
   }
 
   mstch::node list_elem_type() {

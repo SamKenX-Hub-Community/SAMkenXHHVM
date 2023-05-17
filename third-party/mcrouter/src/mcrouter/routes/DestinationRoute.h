@@ -17,6 +17,7 @@
 #include "mcrouter/AsyncLog.h"
 #include "mcrouter/AsyncWriter.h"
 #include "mcrouter/CarbonRouterInstanceBase.h"
+#include "mcrouter/McInvalidationUtils.h"
 #include "mcrouter/McReqUtil.h"
 #include "mcrouter/McrouterFiberContext.h"
 #include "mcrouter/McrouterLogFailure.h"
@@ -101,8 +102,22 @@ class DestinationRoute {
   }
 
   memcache::McDeleteReply route(const memcache::McDeleteRequest& req) const {
+    auto& axonCtx = fiber_local<RouterInfo>::getAxonCtx();
+    auto bucketId = fiber_local<RouterInfo>::getBucketId();
+    // Axon invalidation only enabled when request is bucketized
+    if (UNLIKELY(bucketId && axonCtx && axonCtx->allDelete)) {
+      auto finalReq = addDeleteRequestSource(
+          req, memcache::McDeleteRequestSource::FAILED_INVALIDATION);
+      // Make sure bucket id is set in request
+      finalReq.bucketId_ref() = *bucketId;
+      spool(finalReq, axonCtx, bucketId);
+      auto reply = createReply(DefaultReply, finalReq);
+      reply.setDestination(destination_->accessPoint());
+      return reply;
+    }
     auto reply = routeWithDestination(req);
-    if (isFailoverErrorResult(*reply.result_ref()) && spool(req)) {
+    if (isFailoverErrorResult(*reply.result_ref()) &&
+        spool(req, axonCtx, bucketId)) {
       reply = createReply(DefaultReply, req);
       reply.setDestination(destination_->accessPoint());
     }
@@ -210,6 +225,11 @@ class DestinationRoute {
       Args&&... args) const {
     auto now = nowUs();
     auto reply = createReply<Request>(std::forward<Args>(args)...);
+    auto bucketIdOptional = bucketIdOpt();
+    std::string_view bucketId;
+    if (bucketIdOptional.has_value()) {
+      bucketId = *bucketIdOptional;
+    }
     RpcStatsContext rpcContext;
     ctx.onBeforeRequestSent(
         poolName_,
@@ -217,7 +237,8 @@ class DestinationRoute {
         folly::StringPiece(),
         req,
         fiber_local<RouterInfo>::getRequestClass(),
-        now);
+        now,
+        bucketId);
     ctx.onReplyReceived(
         poolName_,
         std::optional<size_t>(indexInPool_),
@@ -231,7 +252,8 @@ class DestinationRoute {
         poolStatIndex_,
         rpcContext,
         fiber_local<RouterInfo>::getNetworkTransportTimeUs(),
-        fiber_local<RouterInfo>::getExtraDataCallbacks());
+        fiber_local<RouterInfo>::getExtraDataCallbacks(),
+        bucketId);
     return reply;
   }
 
@@ -240,13 +262,14 @@ class DestinationRoute {
       const Request& req,
       ProxyRequestContextWithInfo<RouterInfo>& ctx) const {
     DestinationRequestCtx dctx(nowUs());
-    folly::Optional<Request> newReq;
+    std::optional<Request> newReq;
     folly::StringPiece strippedRoutingPrefix;
     if (!keepRoutingPrefix_ && !req.key_ref()->routingPrefix().empty()) {
       newReq.emplace(req);
       newReq->key_ref()->stripRoutingPrefix();
       strippedRoutingPrefix = req.key_ref()->routingPrefix();
     }
+    maybeAddBucketId(newReq, req);
 
     uint64_t remainingDeadlineTime = 0;
     uint64_t totalDestTimeout = 0;
@@ -285,13 +308,20 @@ class DestinationRoute {
     }
 
     const auto& reqToSend = newReq ? *newReq : req;
+    auto bucketIdOptional = getBucketId(reqToSend);
+    std::string_view bucketId;
+    if (bucketIdOptional.has_value()) {
+      bucketId = *bucketIdOptional;
+    }
+
     ctx.onBeforeRequestSent(
         poolName_,
         *destination_->accessPoint(),
         strippedRoutingPrefix,
         reqToSend,
         fiber_local<RouterInfo>::getRequestClass(),
-        dctx.startTime);
+        dctx.startTime,
+        bucketId);
     RpcStatsContext rpcContext;
     auto reply = destination_->send(reqToSend, dctx, timeout_, rpcContext);
     ctx.onReplyReceived(
@@ -307,7 +337,8 @@ class DestinationRoute {
         poolStatIndex_,
         rpcContext,
         fiber_local<RouterInfo>::getNetworkTransportTimeUs(),
-        fiber_local<RouterInfo>::getExtraDataCallbacks());
+        fiber_local<RouterInfo>::getExtraDataCallbacks(),
+        bucketId);
 
     fiber_local<RouterInfo>::incNetworkTransportTimeBy(
         dctx.endTime - dctx.startTime);
@@ -316,7 +347,38 @@ class DestinationRoute {
   }
 
   template <class Request>
-  FOLLY_NOINLINE bool spool(const Request& req) const {
+  typename std::
+      enable_if_t<facebook::memcache::HasBucketIdTrait<Request>::value, void>
+      maybeAddBucketId(
+          std::optional<Request>& newReq,
+          const Request& originalReq) const {
+    auto bucketIdOptional = bucketIdOpt();
+    if (LIKELY(!bucketIdOptional.has_value())) {
+      return;
+    }
+    auto bucketId = *bucketIdOptional;
+    if (UNLIKELY(!newReq.has_value())) {
+      newReq.emplace(originalReq);
+    }
+    newReq->bucketId_ref() = bucketId;
+  }
+
+  template <class Request>
+  typename std::
+      enable_if_t<!facebook::memcache::HasBucketIdTrait<Request>::value, void>
+      maybeAddBucketId(std::optional<Request>, const Request&) const {}
+
+  FOLLY_ERASE std::optional<std::string> bucketIdOpt() const {
+    auto bucketIdOptional = fiber_local<RouterInfo>::getBucketId();
+    std::optional<std::string> bucketId = std::nullopt;
+    if (bucketIdOptional.has_value()) {
+      bucketId = folly::to<std::string>(*bucketIdOptional);
+    }
+    return bucketId;
+  }
+
+  template <class Request>
+  FOLLY_NOINLINE bool spoolAsynclog(const Request& req) const {
     auto asynclogName = fiber_local<RouterInfo>::getAsynclogName();
     if (asynclogName.empty()) {
       return false;
@@ -355,6 +417,30 @@ class DestinationRoute {
       proxy->stats().increment(asynclog_requests_rate_stat);
     }
     return true;
+  }
+
+  template <class Request>
+  FOLLY_NOINLINE bool spool(
+      const Request& req,
+      const std::shared_ptr<AxonContext>& axonCtx,
+      const std::optional<uint64_t>& bucketId) const {
+    // return true if axonlog is enabled and appending to axon client succeed.
+    auto axonLogRes = bucketId && axonCtx &&
+        spoolAxonProxy(fiber_local<RouterInfo>::getSharedCtx()->proxy(),
+                       req,
+                       axonCtx,
+                       *bucketId);
+    // Try spool asynclog for mcreplay when:
+    // 1. Axon is not enabled
+    // 2. Axon is enabled, but isn't configured with fallback to Asynclog.
+    // 3. when fallback to asynclog is enabled, only attempt to spool asynclog
+    // if axon write is failed
+    bool asyncLogRes = false;
+    if (!axonCtx || !axonCtx->fallbackAsynclog || !axonLogRes) {
+      // return true if asyclog is enabled
+      asyncLogRes = spoolAsynclog(req);
+    }
+    return asyncLogRes || axonLogRes;
   }
 };
 

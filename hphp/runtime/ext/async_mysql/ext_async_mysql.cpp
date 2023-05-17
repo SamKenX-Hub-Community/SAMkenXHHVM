@@ -20,6 +20,7 @@
 #include <memory>
 #include <vector>
 
+#include <folly/Singleton.h>
 #include <folly/ssl/OpenSSLCertUtils.h>
 #include <squangle/mysql_client/AsyncHelpers.h>
 #include <squangle/mysql_client/ClientPool.h>
@@ -258,7 +259,7 @@ generateCertValidationCallback(
     const std::string& serverCertExtNames,
     const std::string& extensionValues) {
   std::vector<std::string> extNames;
-  folly::split(",", serverCertExtNames, extNames);
+  folly::split(',', serverCertExtNames, extNames);
   if (extensionValues.empty()) {
     return [extNames = std::move(extNames)] (
           X509* server_cert, const void* context, folly::StringPiece& errMsg) {
@@ -266,7 +267,7 @@ generateCertValidationCallback(
     };
   } else {
     std::vector<std::string> extValues;
-    folly::split(",", extensionValues, extValues);
+    folly::split(',', extensionValues, extValues);
     return [extNames = std::move(extNames), extValues = std::move(extValues)] (
           X509* server_cert, const void* context, folly::StringPiece& errMsg) {
         return serverCertValidationCallback(
@@ -1609,7 +1610,7 @@ void AsyncMysqlQueryResult::sweep() {
   m_query_result.reset();
 }
 
-Object AsyncMysqlQueryResult::newInstance(std::shared_ptr<am::Operation> op,
+Object AsyncMysqlQueryResult::newInstance(std::shared_ptr<am::FetchOperation> op,
                                           db::ClientPerfStats stats,
                                           am::QueryResult query_result,
                                           bool noIndexUsed) {
@@ -1619,7 +1620,7 @@ Object AsyncMysqlQueryResult::newInstance(std::shared_ptr<am::Operation> op,
   return ret;
 }
 
-void AsyncMysqlQueryResult::create(std::shared_ptr<am::Operation> op,
+void AsyncMysqlQueryResult::create(std::shared_ptr<am::FetchOperation> op,
                                    db::ClientPerfStats stats,
                                    am::QueryResult query_result,
                                    bool noIndexUsed) {
@@ -1648,6 +1649,15 @@ static int64_t HHVM_METHOD(AsyncMysqlQueryResult, numRows) {
 static Object HHVM_METHOD(AsyncMysqlQueryResult, vectorRows) {
   auto* data = Native::data<AsyncMysqlQueryResult>(this_);
   return data->buildRows(false /* as_maps */, false /* typed */);
+}
+
+static int64_t HHVM_METHOD(AsyncMysqlQueryResult, resultSizeBytes) {
+  auto* data = Native::data<AsyncMysqlQueryResult>(this_);
+  auto* fetchOp =  dynamic_cast<const am::FetchOperation*>(data->op());
+  if(fetchOp) {
+    return fetchOp->resultSize();
+  }
+  return -1;
 }
 
 static Object HHVM_METHOD(AsyncMysqlQueryResult, mapRows) {
@@ -2246,7 +2256,7 @@ static struct AsyncMysqlExtension final : Extension {
   // bump the version number and use a version guard in www:
   //   $ext = new ReflectionExtension("async_mysql");
   //   $version = (float) $ext->getVersion();
-  AsyncMysqlExtension() : Extension("async_mysql", "6.0") {}
+  AsyncMysqlExtension() : Extension("async_mysql", "7.0", NO_ONCALL_YET) {}
   void loadDecls() override {
     loadDeclsFrom("async_mysql");
     loadDeclsFrom("async_mysql_exceptions");
@@ -2392,6 +2402,7 @@ static struct AsyncMysqlExtension final : Extension {
     HHVM_ME(AsyncMysqlQueryResult, noIndexUsed);
     HHVM_ME(AsyncMysqlQueryResult, recvGtid);
     HHVM_ME(AsyncMysqlQueryResult, responseAttributes);
+    HHVM_ME(AsyncMysqlQueryResult, resultSizeBytes);
     Native::registerNativeDataInfo<AsyncMysqlQueryResult>(
       AsyncMysqlQueryResult::s_className.get(), Native::NDIFlags::NO_COPY);
 

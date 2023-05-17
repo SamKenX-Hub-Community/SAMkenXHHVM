@@ -52,6 +52,111 @@ using namespace facebook::memcache::mcrouter;
 
 namespace facebook {
 namespace memcache {
+namespace mcrouter {
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeAllAsyncRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeAllFastestRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeAllInitialRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeAllMajorityRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeAllSyncRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeBlackholeRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeDevNullRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeErrorRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeHashRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeHostIdRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeLatencyInjectionRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeLatestRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeLoadBalancerRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeLoggingRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeMigrateRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeMissFailoverRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeModifyKeyRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeOperationSelectorRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template facebook::memcache::MemcacheRouterInfo::RouteHandlePtr
+makeRandomRoute<facebook::memcache::MemcacheRouterInfo>(
+RouteHandleFactory<facebook::memcache::MemcacheRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template class ExtraRouteHandleProviderIf<facebook::memcache::MemcacheRouterInfo>;
+
+} // namespace mcrouter
+} // namespace memcache
+} // namespace facebook
+
+namespace facebook {
+namespace memcache {
 
 constexpr const char* MemcacheRouterInfo::name;
 
@@ -93,10 +198,9 @@ MemcacheRouterInfo::buildRouteMapWithProxy() {
   return RouteHandleFactoryMapWithProxy();
 }
 
-/* static */
-std::unique_ptr<ExtraRouteHandleProviderIf<MemcacheRouterInfo>>
-MemcacheRouterInfo::buildExtraProvider() {
-  return std::make_unique<McExtraRouteHandleProvider<MemcacheRouterInfo>>();
+/* static */ MemcacheRouterInfo::RouteHandleFactoryMapForWrapper
+MemcacheRouterInfo::buildRouteMapForWrapper() {
+  return RouteHandleFactoryMapForWrapper();
 }
 } // namespace memcache
 } // namespace facebook

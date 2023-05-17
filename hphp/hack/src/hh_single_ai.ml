@@ -164,7 +164,7 @@ let parse_options () =
 
   let root = Path.make "/" (* if none specified, we use this dummy *) in
   let tcopt =
-    GlobalOptions.make
+    GlobalOptions.set
       ~tco_saved_state:GlobalOptions.default_saved_state
       ~allowed_fixme_codes_strict:
         (Option.value !allowed_fixme_codes_strict ~default:ISet.empty)
@@ -175,7 +175,7 @@ let parse_options () =
       ~po_enable_xhp_class_modifier:!enable_xhp_class_modifier
       ~po_allowed_decl_fixme_codes:
         (Option.value !allowed_decl_fixme_codes ~default:ISet.empty)
-      ()
+      GlobalOptions.default
   in
   Errors.allowed_fixme_codes_strict :=
     GlobalOptions.allowed_fixme_codes_strict tcopt;
@@ -197,7 +197,7 @@ let parse_and_name ctx files_contents =
   Relative_path.Map.mapi files_contents ~f:(fun fn contents ->
       (* Get parse errors *)
       let _ =
-        Errors.run_in_context fn Errors.Parsing (fun () ->
+        Errors.run_in_context fn Errors.Typing (fun () ->
             let popt = Provider_context.get_tcopt ctx in
             let parsed_file =
               Full_fidelity_ast.defensive_program popt fn contents

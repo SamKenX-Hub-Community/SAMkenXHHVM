@@ -31,6 +31,7 @@
 #include "mcrouter/routes/LoadBalancerRoute.h"
 #include "mcrouter/routes/LoggingRoute.h"
 #include "mcrouter/routes/McExtraRouteHandleProvider.h"
+#include "mcrouter/routes/McRefillRoute.h"
 #include "mcrouter/routes/MigrateRouteFactory.h"
 #include "mcrouter/routes/MissFailoverRoute.h"
 #include "mcrouter/routes/ModifyExptimeRoute.h"
@@ -233,99 +234,10 @@ McrouterRouteHandlePtr makeWarmUpRoute(
     McRouteHandleFactory& factory,
     const folly::dynamic& json);
 
-MemcacheRouterInfo::RouteHandlePtr wrapAxonLogRoute(
-    MemcacheRouterInfo::RouteHandlePtr route,
-    ProxyBase& proxy,
-    const folly::dynamic& json) {
-  bool needAxonlog = false;
-  if (auto* jNeedAxonlog = json.get_ptr("axonlog")) {
-    needAxonlog = parseBool(*jNeedAxonlog, "axonlog");
-  }
-  if (needAxonlog) {
-    checkLogic(
-        makeAxonLogRoute, "AxonLogRoute is not implemented for this router");
-    return makeAxonLogRoute(std::move(route), proxy, json);
-  }
-  return route;
-}
-
-template <>
-std::shared_ptr<MemcacheRouterInfo::RouteHandleIf>
-McRouteHandleProvider<MemcacheRouterInfo>::bucketize(
-    std::shared_ptr<typename MemcacheRouterInfo::RouteHandleIf> route,
-    const folly::dynamic& json) {
-  bool bucketize = false;
-  if (auto* jNeedBucketization = json.get_ptr("bucketize")) {
-    bucketize = parseBool(*jNeedBucketization, "bucketize");
-  }
-  if (bucketize) {
-    return makeMcBucketRoute(std::move(route), json);
-  }
-  return route;
-}
-
 template <>
 std::unique_ptr<ExtraRouteHandleProviderIf<MemcacheRouterInfo>>
 McRouteHandleProvider<MemcacheRouterInfo>::buildExtraProvider() {
   return std::make_unique<McExtraRouteHandleProvider<MemcacheRouterInfo>>();
-}
-
-template <>
-std::shared_ptr<MemcacheRouterInfo::RouteHandleIf>
-McRouteHandleProvider<MemcacheRouterInfo>::createSRRoute(
-    RouteHandleFactory<MemcacheRouterInfo::RouteHandleIf>& factory,
-    const folly::dynamic& json,
-    const RouteHandleFactoryFuncWithProxy& factoryFunc) {
-  checkLogic(json.isObject(), "SRRoute should be object");
-  auto route = factoryFunc(factory, json, proxy_);
-  // Track the SRRoute created so that we can save it to SRRoute map later
-  auto srRoute = route;
-
-  if (auto maxOutstandingJson = json.get_ptr("max_outstanding")) {
-    auto v = parseInt(
-        *maxOutstandingJson,
-        "max_outstanding",
-        0,
-        std::numeric_limits<int64_t>::max());
-    if (v) {
-      route =
-          makeOutstandingLimitRoute<MemcacheRouterInfo>(std::move(route), v);
-    }
-  }
-
-  if (!(proxy_.router().opts().disable_shard_split_route)) {
-    if (auto jsplits = json.get_ptr("shard_splits")) {
-      route = makeShardSplitRoute<MemcacheRouterInfo>(
-          std::move(route), ShardSplitter(*jsplits));
-    }
-  }
-
-  bool needAsynclog = true;
-  if (auto* jNeedAsynclog = json.get_ptr("asynclog")) {
-    needAsynclog = parseBool(*jNeedAsynclog, "asynclog");
-  }
-  if (needAsynclog) {
-    folly::StringPiece asynclogName;
-    if (auto jAsynclogName = json.get_ptr("asynclog_name")) {
-      asynclogName = parseString(*jAsynclogName, "asynclog_name");
-    } else if (auto jServiceName = json.get_ptr("service_name")) {
-      asynclogName = parseString(*jServiceName, "service_name");
-    } else {
-      throwLogic(
-          "AsynclogRoute over SRRoute: 'service_name' property is missing");
-    }
-    route = createAsynclogRoute(std::move(route), asynclogName.toString());
-  }
-
-  route = wrapAxonLogRoute(std::move(route), proxy_, json);
-  route = bucketize(std::move(route), json);
-
-  if (auto jSRRouteName = json.get_ptr("service_name")) {
-    auto srRouteName = parseString(*jSRRouteName, "service_name");
-    srRoutes_.emplace(srRouteName, srRoute);
-  }
-
-  return route;
 }
 
 template <>
@@ -353,11 +265,15 @@ McRouteHandleProvider<MemcacheRouterInfo>::buildRouteMap() {
       {"HostIdRoute", &makeHostIdRoute<MemcacheRouterInfo>},
       {"LatencyInjectionRoute", &makeLatencyInjectionRoute<MemcacheRouterInfo>},
       {"L1L2CacheRoute", &makeL1L2CacheRoute<MemcacheRouterInfo>},
-      {"L1L2SizeSplitRoute", &makeL1L2SizeSplitRoute},
-      {"KeySplitRoute", &makeKeySplitRoute},
+      {"L1L2SizeSplitRoute", &makeL1L2SizeSplitRoute<MemcacheRouterInfo>},
+      {"KeySplitRoute", &makeKeySplitRoute<MemcacheRouterInfo>},
       {"LatestRoute", &makeLatestRoute<MemcacheRouterInfo>},
       {"LoadBalancerRoute", &makeLoadBalancerRoute<MemcacheRouterInfo>},
       {"LoggingRoute", &makeLoggingRoute<MemcacheRouterInfo>},
+      {"McRefillRoute",
+       [](McRouteHandleFactory& factory, const folly::dynamic& json) {
+         return makeMcRefillRoute<MemcacheRouterInfo>(factory, json);
+       }},
       {"MigrateRoute", &makeMigrateRoute<MemcacheRouterInfo>},
       {"MissFailoverRoute", &makeMissFailoverRoute<MemcacheRouterInfo>},
       {"ModifyKeyRoute", &makeModifyKeyRoute<MemcacheRouterInfo>},
@@ -391,6 +307,18 @@ McRouteHandleProvider<MemcacheRouterInfo>::buildRouteMapWithProxy() {
   RouteHandleFactoryMapWithProxy map{
       {"SRRoute", &makeSRRoute},
   };
+  return map;
+}
+
+template <>
+typename McRouteHandleProvider<
+    MemcacheRouterInfo>::RouteHandleFactoryMapForWrapper
+McRouteHandleProvider<MemcacheRouterInfo>::buildRouteMapForWrapper() {
+  RouteHandleFactoryMapForWrapper map{
+      {"AxonLogRoute",
+       [](RouteHandlePtr rh, ProxyBase& proxy, const folly::dynamic& json) {
+         return makeAxonLogRoute(std::move(rh), proxy, json);
+       }}};
   return map;
 }
 

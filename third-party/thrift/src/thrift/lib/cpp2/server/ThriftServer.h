@@ -151,6 +151,8 @@ class ThriftServerStopController final {
 class ThriftServer : public apache::thrift::BaseThriftServer,
                      public wangle::ServerBootstrap<Pipeline> {
  private:
+  void configureIOUring();
+
   //! SSL context
   std::optional<folly::observer::Observer<wangle::SSLContextConfig>>
       sslContextObserver_;
@@ -177,6 +179,7 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
   bool allowCheckUnimplementedExtraInterfaces_ = true;
 
   bool preferIoUring_ = false;
+  bool useDefaultIoUringExecutor_ = false;
 
   std::weak_ptr<folly::ShutdownSocketSet> wShutdownSocketSet_;
 
@@ -295,6 +298,7 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
  protected:
   folly::observer::CallbackHandle getSSLCallbackHandle();
   folly::observer::CallbackHandle setMaxRequestsCallbackHandle{};
+  folly::observer::CallbackHandle setMaxQpsCallbackHandle{};
 
  public:
   /**
@@ -504,7 +508,7 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
   using IOObserverFactory =
       folly::Function<std::shared_ptr<folly::ThreadPoolExecutor::Observer>(
           std::string, folly::WorkerProvider*) const>;
-  static void addIOThreadPoolObserver(IOObserverFactory factory);
+  static void addIOThreadPoolObserverFactory(IOObserverFactory factory);
 
   /**
    * Set the prefix for naming the worker threads. "Cpp2Worker" by default.
@@ -642,6 +646,10 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
   void setPreferIoUring(bool b) { preferIoUring_ = b; }
 
   bool preferIoUring() const { return preferIoUring_; }
+
+  void setUseDefaultIoUringExecutor(bool b) { useDefaultIoUringExecutor_ = b; }
+
+  bool useDefaultIoUringExecutor() const { return useDefaultIoUringExecutor_; }
 
   /**
    * Tells the thrift server to update ticket seeds with the contents of the

@@ -50,6 +50,111 @@
 using namespace facebook::memcache;
 using namespace facebook::memcache::mcrouter;
 
+namespace facebook {
+namespace memcache {
+namespace mcrouter {
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeAllAsyncRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeAllFastestRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeAllInitialRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeAllMajorityRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeAllSyncRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeBlackholeRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeDevNullRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeErrorRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeHashRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeHostIdRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeLatencyInjectionRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeLatestRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeLoadBalancerRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeLoggingRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeMigrateRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeMissFailoverRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeModifyKeyRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeOperationSelectorRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template carbon::test::CarbonTestRouterInfo::RouteHandlePtr
+makeRandomRoute<carbon::test::CarbonTestRouterInfo>(
+RouteHandleFactory<carbon::test::CarbonTestRouterInfo::RouteHandleIf>& factory,
+const folly::dynamic& json);
+
+extern template class ExtraRouteHandleProviderIf<carbon::test::CarbonTestRouterInfo>;
+
+} // namespace mcrouter
+} // namespace memcache
+} // namespace facebook
+
 namespace carbon {
 namespace test {
 
@@ -93,10 +198,9 @@ CarbonTestRouterInfo::buildRouteMapWithProxy() {
   return RouteHandleFactoryMapWithProxy();
 }
 
-/* static */
-std::unique_ptr<ExtraRouteHandleProviderIf<CarbonTestRouterInfo>>
-CarbonTestRouterInfo::buildExtraProvider() {
-  return std::make_unique<McExtraRouteHandleProvider<CarbonTestRouterInfo>>();
+/* static */ CarbonTestRouterInfo::RouteHandleFactoryMapForWrapper
+CarbonTestRouterInfo::buildRouteMapForWrapper() {
+  return RouteHandleFactoryMapForWrapper();
 }
 } // namespace test
 } // namespace carbon

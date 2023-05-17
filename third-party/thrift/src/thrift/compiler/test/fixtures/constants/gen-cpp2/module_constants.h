@@ -24,10 +24,7 @@ struct module_constants {
     return name_;
   }
 
-  static constexpr char const * const multi_line_string_ = R"__FBTHRIFT_STRL(This
-is a
-multi line string.
-)__FBTHRIFT_STRL";
+  static constexpr char const * const multi_line_string_ = "This\nis a\nmulti line string.\n";
   static constexpr char const * multi_line_string() {
     return multi_line_string_;
   }
@@ -142,7 +139,7 @@ multi line string.
     return backslash_;
   }
 
-  static constexpr char const * const escaped_a_ = "\x61";
+  static constexpr char const * const escaped_a_ = "a";
   static constexpr char const * escaped_a() {
     return escaped_a_;
   }

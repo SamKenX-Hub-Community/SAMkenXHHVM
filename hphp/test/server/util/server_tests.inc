@@ -14,6 +14,16 @@ abstract final class ServerUtilServerTests {
   }
 
   <<__Memoize>>
+  public static function working_dir() {
+    return sys_get_temp_dir();
+  }
+
+  <<__Memoize>>
+  public static function socket_dir() {
+    return getenv('HPHP_TEST_SOCKETDIR') ?? sys_get_temp_dir();
+  }
+
+  <<__Memoize>>
   public static function error_log_file() {
     return fopen(ServerUtilServerTests::$LOG_ROOT.'_test'.ServerUtilServerTests::test_run_id().".log", 'w');
   }
@@ -42,37 +52,38 @@ function dumpLogFilesToStdoutAndDie() {
   sleep(1);
   error_log('-------------------------------------------');
   error_log("Contents of '{$LOG_ROOT}_test$test_run_id.log'");
-  readfile("{$LOG_ROOT}_test$test_run_id.log");
+  @readfile("{$LOG_ROOT}_test$test_run_id.log");
   echo "\n";
   error_log('-------------------------------------------');
   error_log("Contents of '{$LOG_ROOT}_test_server$test_run_id.log'");
-  readfile("{$LOG_ROOT}_test_server$test_run_id.log");
+  @readfile("{$LOG_ROOT}_test_server$test_run_id.log");
   echo "\n";
   error_log('-------------------------------------------');
   error_log("Contents of '{$LOG_ROOT}_test_server_stdout$test_run_id.log'");
-  readfile("{$LOG_ROOT}_test_server_stdout$test_run_id.log");
+  @readfile("{$LOG_ROOT}_test_server_stdout$test_run_id.log");
   echo "\n";
   error_log('-------------------------------------------');
   error_log("Contents of '{$LOG_ROOT}_test_server_stderr$test_run_id.log'");
-  readfile("{$LOG_ROOT}_test_server_stderr$test_run_id.log");
+  @readfile("{$LOG_ROOT}_test_server_stderr$test_run_id.log");
   echo "\n";
   error_log('-------------------------------------------');
   error_log("Contents of '{$LOG_ROOT}_test_client$test_run_id.log'");
-  readfile("{$LOG_ROOT}_test_client$test_run_id.log");
+  @readfile("{$LOG_ROOT}_test_client$test_run_id.log");
   echo "\n";
   error_log('-------------------------------------------');
   error_log("Contents of '{$LOG_ROOT}_test_sandbox_access.log'");
-  readfile("{$LOG_ROOT}_test_sandbox_access.log");
+  @readfile("{$LOG_ROOT}_test_sandbox_access.log");
   echo "\n";
   error_log('-------------------------------------------');
   error_log("Contents of '{$LOG_ROOT}_curl$test_run_id.log'");
-  readfile("{$LOG_ROOT}_curl$test_run_id.log");
+  @readfile("{$LOG_ROOT}_curl$test_run_id.log");
   echo "\n";
   error_log('-------------------------------------------');
 
-  $log_data = file_get_contents("{$LOG_ROOT}_test_server$test_run_id.log");
+  $log_data = @file_get_contents("{$LOG_ROOT}_test_server$test_run_id.log");
   $hits = null;
   if (
+    $log_data !== false &&
     preg_match_with_matches(
       '#\nStack trace in ([a-zA-Z0-9._/-]+)\n#',
       $log_data,
@@ -135,7 +146,7 @@ function getServerCmd($serverPort, $adminPort, $debugPort, $home, $root,
   $sandboxHomeConfig = ' -vSandbox.Home='.$home;
   $serverId ??= $test_run_id;
 
-  $hhvm = PHP_BINARY;
+  $hhvm = HH\__internal\hhvm_binary();
 
   if (ini_get('hhvm.repo.authoritative')) {
     if (count(ServerUtilServerTests::$repo_builds) === 0) {
@@ -176,7 +187,7 @@ function getServerCmd($serverPort, $adminPort, $debugPort, $home, $root,
     ' -vServer.ExitOnBindFail=true' .
     ' --instance-id=' . $test_run_id .
     ' -vPageletServer.ThreadCount=5' .
-    ' -vPidFile=' . escapeshellarg(__SystemLib\hphp_test_tmppath('www.pid')) .
+    ' -vPidFile=' . escapeshellarg(sys_get_temp_dir().'/'.'www.pid') .
     $portConfig . $srcRootConfig .
     $includePathConfig . $sandboxHomeConfig . $adminPortConfig .
     $debugPortConfig . $jitConfig . ' ' . $customArgs .

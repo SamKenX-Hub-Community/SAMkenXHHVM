@@ -3,8 +3,9 @@
 function runTakeoverTest() {
 
   $pid = posix_getpid();
-  $takeoverFile = '/tmp/takeover.'.ServerUtilServerTests::test_run_id();
-  $serverProc = $serverPort = $adminPort = null;
+
+  $takeoverFile = ServerUtilServerTests::socket_dir() . '/hphp-takeover.' . ServerUtilServerTests::test_run_id();
+  $serverProc = $newServerProc = $serverPort = $adminPort = null;
   $debugPort = false;
   $serverHome = __DIR__.'/..';
   $serverRoot = __DIR__.'/../server_root';
@@ -58,12 +59,12 @@ function runTakeoverTest() {
     }
     stopServer($adminPort, $newServerProc);
   } catch (Exception $e) {
-    error_log("Caught exception, test failed, pid=$pid, exn=".$e->getMessage());
+    error_log("Caught exception, test failed, pid=$pid, exn=\n".(string)$e);
     killChildren($pid);
     if ($serverProc) proc_close($serverProc);
     if ($newServerProc) proc_close($newServerProc);
     error_log('test failed');
-    return;
+    exit(-1);
   }
   echo 'takeover successful';
 }
@@ -71,6 +72,6 @@ function runTakeoverTest() {
 <<__EntryPoint>>
 function main() {
   require __DIR__ . '/../../util/server_tests.inc';
-  ServerUtilServerTests::$LOG_ROOT = '/tmp/hhvm_server';
+  ServerUtilServerTests::$LOG_ROOT = ServerUtilServerTests::working_dir() . '/hhvm_server';
   runTakeoverTest();
 }

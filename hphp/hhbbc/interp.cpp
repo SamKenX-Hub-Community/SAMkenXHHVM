@@ -28,6 +28,7 @@
 #include "hphp/runtime/base/array-init.h"
 #include "hphp/runtime/base/array-iterator.h"
 #include "hphp/runtime/base/collections.h"
+#include "hphp/runtime/base/implicit-context.h"
 #include "hphp/runtime/base/static-string-table.h"
 #include "hphp/runtime/base/tv-arith.h"
 #include "hphp/runtime/base/tv-comparisons.h"
@@ -919,7 +920,7 @@ void clsCnsImpl(ISS& env, const Type& cls, const Type& name) {
     return;
   }
 
-  auto lookup = env.index.lookup_class_constant(env.ctx, cls, name);
+  auto lookup = lookupClsConstant(env, cls, name);
   if (lookup.found == TriBool::No || lookup.ty.is(BBottom)) {
     push(env, TBottom);
     unreachable(env);
@@ -1774,15 +1775,15 @@ bool isTypeHelper(ISS& env,
     return t;
   };
 
-  auto const pre = [&] (Type t) {
+  auto const taken = [&] (Type t) {
     return negate ? was_true(std::move(t)) : was_false(std::move(t));
   };
 
-  auto const post = [&] (Type t) {
+  auto const fallthrough = [&] (Type t) {
     return negate ? was_false(std::move(t)) : was_true(std::move(t));
   };
 
-  refineLocation(env, location, pre, jmp.target1, post);
+  refineLocation(env, location, taken, jmp.target1, fallthrough);
   return true;
 }
 
@@ -1802,7 +1803,7 @@ std::pair<Type, bool> memoizeImplRetType(ISS& env) {
         memoize_impl_name(env.ctx.func)
       );
     }
-    return env.index.resolve_func(env.ctx, memoize_impl_name(env.ctx.func));
+    return env.index.resolve_func(memoize_impl_name(env.ctx.func));
   }();
 
   // Infer the return type of the wrapped function, taking into account the
@@ -1879,9 +1880,9 @@ bool instanceOfJmpImpl(ISS& env,
   auto const result = [&] (Type t, bool pass) {
     return pass ? instTy : fail_implies_null ? TNull : t;
   };
-  auto const pre  = [&] (Type t) { return result(t, negate); };
-  auto const post = [&] (Type t) { return result(t, !negate); };
-  refineLocation(env, locId, pre, jmp.target1, post);
+  auto const taken  = [&] (Type t) { return result(t, negate); };
+  auto const fallthrough = [&] (Type t) { return result(t, !negate); };
+  refineLocation(env, locId, taken, jmp.target1, fallthrough);
   return true;
 }
 
@@ -1943,9 +1944,9 @@ bool isTypeStructCJmpImpl(ISS& env,
   auto const result = [&] (Type t, bool pass) {
     return pass ? instTy : fail_implies_null ? TNull : t;
   };
-  auto const pre  = [&] (Type t) { return result(t, negate); };
-  auto const post = [&] (Type t) { return result(t, !negate); };
-  refineLocation(env, locId, pre, jmp.target1, post);
+  auto const taken  = [&] (Type t) { return result(t, negate); };
+  auto const fallthrough = [&] (Type t) { return result(t, !negate); };
+  refineLocation(env, locId, taken, jmp.target1, fallthrough);
   return true;
 }
 
@@ -2136,7 +2137,7 @@ void in(ISS& env, const bc::VerifyImplicitContextState& /*op*/) {
       !providedCoeffects.canCall(RuntimeCoeffects::leak_safe_shallow())) {
     // If the current function cannot call zoned code, it cannot retrieve the
     // implicit context, so it is safe to kill the verify instruction.
-    return reduce(env, bc::Nop {});
+    return reduce(env);
   }
 }
 
@@ -2928,6 +2929,7 @@ void isTypeStructImpl(ISS& env, SArray inputTS) {
     case TypeStructure::Kind::T_resource:
     case TypeStructure::Kind::T_vec_or_dict:
     case TypeStructure::Kind::T_any_array:
+    case TypeStructure::Kind::T_union:
       // TODO(T29232862): implement
       return result(TBool);
     case TypeStructure::Kind::T_typeaccess:
@@ -3849,12 +3851,6 @@ void fcallKnownImpl(
     return;
   }
 
-  if (func.name()->isame(s_function_exists.get()) &&
-      (numArgs == 1 || numArgs == 2) &&
-      !fca.hasUnpack() && !fca.hasGenerics()) {
-    handle_function_exists(env, topT(env, numExtraInputs + numArgs - 1));
-  }
-
   for (auto i = uint32_t{0}; i < numExtraInputs; ++i) popC(env);
   if (fca.hasGenerics()) popC(env);
   if (fca.hasUnpack()) popC(env);
@@ -3894,7 +3890,7 @@ void fcallUnknownImpl(ISS& env,
 }
 
 void in(ISS& env, const bc::FCallFuncD& op) {
-  auto const rfunc = env.index.resolve_func(env.ctx, op.str2);
+  auto const rfunc = env.index.resolve_func(op.str2);
 
   if (op.fca.hasGenerics()) {
     auto const tsList = topC(env);
@@ -4133,7 +4129,7 @@ void fcallFuncStr(ISS& env, const bc::FCallFunc& op) {
     return fcallFuncUnknown(env, op);
   }
 
-  auto const rfunc = env.index.resolve_func(env.ctx, funcName);
+  auto const rfunc = env.index.resolve_func(funcName);
   if (!rfunc.mightCareAboutDynCalls()) {
     return reduce(env, bc::PopC {}, bc::FCallFuncD { op.fca, funcName });
   }
@@ -5066,7 +5062,7 @@ void in(ISS& env, const bc::VerifyParamType& op) {
   IgnoreUsedParams _{env};
 
   auto [newTy, remove, effectFree] =
-    env.index.verify_param_type(env.ctx, op.loc1, topC(env));
+    verify_param_type(env.index, env.ctx, op.loc1, topC(env));
 
   if (remove) return reduce(env);
   if (newTy.subtypeOf(BBottom)) unreachable(env);
@@ -5144,7 +5140,7 @@ void verifyRetImpl(ISS& env, const TCVec& tcs,
     stackT.couldBe(BInitNull) &&
     !stackT.subtypeOf(BInitNull);
   for (auto const& tc : tcs) {
-    auto const type = env.index.lookup_constraint(env.ctx, *tc, stackT);
+    auto const type = lookup_constraint(env.index, env.ctx, *tc, stackT);
     if (stackT.moreRefined(type.lower)) {
       refined = intersection_of(std::move(refined), stackT);
       continue;
@@ -5417,7 +5413,61 @@ void in(ISS& env, const bc::AwaitAll& op) {
 
 void in(ISS& env, const bc::SetImplicitContextByValue&) {
   popC(env);
-  push(env, Type{BObj | BInitNull});
+  push(env, TOptObj);
+}
+
+const StaticString
+  s_Memoize("__Memoize"),
+  s_MemoizeLSB("__MemoizeLSB");
+
+void in(ISS& env, const bc::CreateSpecialImplicitContext&) {
+  auto const memoKey = popC(env);
+  auto const type = popC(env);
+
+  if (!type.couldBe(BInt) || !memoKey.couldBe(BOptStr)) {
+    unreachable(env);
+    return push(env, TBottom);
+  }
+
+  if (type.subtypeOf(BInt) && memoKey.subtypeOf(BOptStr)) {
+    effect_free(env);
+  }
+
+  if (auto const v = tv(type); v && tvIsInt(*v)) {
+    switch (static_cast<ImplicitContext::State>(v->m_data.num)) {
+      case ImplicitContext::State::Value:
+        return push(env, TOptObj);
+      case ImplicitContext::State::SoftInaccessible: {
+        auto const sampleRate = [&] () -> uint32_t {
+          if (!memoKey.couldBe(BInitNull)) return 1;
+
+          auto const attrName = env.ctx.func->isMemoizeWrapperLSB
+            ? s_MemoizeLSB.get()
+            : s_Memoize.get();
+          auto const it = env.ctx.func->userAttributes.find(attrName);
+          if (it == env.ctx.func->userAttributes.end()) return 1;
+
+          uint32_t rate = 1;
+          assertx(tvIsVec(it->second));
+          IterateV(
+            it->second.m_data.parr,
+            [&](TypedValue elem) {
+              if (tvIsInt(elem)) {
+                rate = std::max<uint32_t>(rate, elem.m_data.num);
+              }
+            }
+          );
+          return rate;
+        }();
+        return push(env, sampleRate == 1 ? TObj : TOptObj);
+      }
+      case ImplicitContext::State::Inaccessible:
+      case ImplicitContext::State::SoftSet:
+        return push(env, TObj);
+    }
+  }
+
+  return push(env, TOptObj);
 }
 
 void in(ISS& env, const bc::Idx&) {
@@ -5589,7 +5639,7 @@ void in(ISS& env, const bc::InitProp& op) {
       [&] (const TypeConstraint& tc) -> std::pair<Type, bool> {
       assertx(tc.validForProp());
       if (RO::EvalCheckPropTypeHints == 0) return { t, true };
-      auto const lookup = env.index.lookup_constraint(env.ctx, tc, t);
+      auto const lookup = lookup_constraint(env.index, env.ctx, tc, t);
       if (t.moreRefined(lookup.lower)) return { t, true };
       if (RO::EvalClassStringHintNotices) return { t, false };
       if (!t.couldBe(lookup.upper)) return { t, false };

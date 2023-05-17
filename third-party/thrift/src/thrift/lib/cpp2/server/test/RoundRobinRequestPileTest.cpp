@@ -105,7 +105,7 @@ getScopeFunc() {
 }
 
 void checkResult(RoundRobinRequestPile& pile, int pri, int bucket) {
-  auto [req, _] = pile.dequeue();
+  auto req = pile.dequeue();
   auto ctx = req->requestContext();
 
   auto headers = ctx->getHeaders();
@@ -154,7 +154,7 @@ TEST(RoundRobinRequestPileTest, NormalCases) {
   check(0, 1);
   check(0, 0);
 
-  auto [req1, _1] = pile.dequeue();
+  auto req1 = pile.dequeue();
   EXPECT_EQ(req1, std::nullopt);
 
   pile.enqueue(getRequest(0, 0));
@@ -175,7 +175,7 @@ TEST(RoundRobinRequestPileTest, NormalCases) {
   check(2, 1);
   check(2, 0);
 
-  auto [req2, _2] = pile.dequeue();
+  auto req2 = pile.dequeue();
   EXPECT_EQ(req2, std::nullopt);
 
   EXPECT_EQ(pile.requestCount(), 0);
@@ -228,7 +228,7 @@ TEST(RoundRobinRequestPileTest, SingleBucket) {
   check(0, 0);
   check(0, 0);
 
-  auto [req1, _] = pile.dequeue();
+  auto req1 = pile.dequeue();
   EXPECT_EQ(req1, std::nullopt);
 
   opts.numMaxRequests = 1;
@@ -305,6 +305,8 @@ TEST(RoundRobinRequestPileTest, requestCount) {
   WARNING: Benchmark running in DEBUG mode
 */
 BENCHMARK(DefaultPerf) {
+  folly::BenchmarkSuspender suspender;
+  suspender.dismiss();
   // This benchmark is a simple vanilla case
   // where we have a RoundRobinRequestPile with only
   // one priority and one bucket without any limit
@@ -324,7 +326,7 @@ BENCHMARK(DefaultPerf) {
   RoundRobinRequestPile pile(opts);
 
   auto numThreads = std::thread::hardware_concurrency();
-  unsigned numRoundEachWorker = 1000;
+  unsigned numRoundEachWorker = 10'000;
 
   folly::CPUThreadPoolExecutor producer(numThreads);
   folly::CPUThreadPoolExecutor consumer(numThreads);
@@ -337,21 +339,24 @@ BENCHMARK(DefaultPerf) {
     }
   };
 
-  for (unsigned i = 0; i < numThreads; ++i) {
-    producer.add(producerFunc);
-  }
-
   auto consumerFunc = [&]() {
     while (counter.load() != numThreads * numRoundEachWorker) {
-      auto [req, _] = pile.dequeue();
-      if (req) {
+      if (auto req = pile.dequeue()) {
         ++counter;
+      } else {
+        std::this_thread::yield();
       }
     }
   };
 
   for (unsigned i = 0; i < numThreads; ++i) {
     consumer.add(consumerFunc);
+  }
+
+  suspender.rehire();
+
+  for (unsigned i = 0; i < numThreads; ++i) {
+    producer.add(producerFunc);
   }
 
   producer.join();
@@ -368,6 +373,8 @@ BENCHMARK(DefaultPerf) {
   WARNING: Benchmark running in DEBUG mode
 */
 BENCHMARK(RoundRobinBehavior) {
+  folly::BenchmarkSuspender suspender;
+  suspender.dismiss();
   vector<unique_ptr<THeader>> tHeaderStorage;
   vector<unique_ptr<Cpp2RequestContext>> contextStorage;
   std::mutex lock;
@@ -377,7 +384,7 @@ BENCHMARK(RoundRobinBehavior) {
   };
 
   unsigned numBuckets = 100;
-  unsigned numRoundsPerWorker = 10;
+  unsigned numRoundsPerWorker = 100;
   auto numThreads = std::thread::hardware_concurrency();
 
   // single bucket, unlimited request pile, with control on
@@ -400,23 +407,26 @@ BENCHMARK(RoundRobinBehavior) {
     }
   };
 
-  for (unsigned i = 0; i < numThreads; ++i) {
-    producer.add(producerFunc);
-  }
-
   auto sum = numThreads * numRoundsPerWorker * numBuckets;
 
   auto consumerFunc = [&]() {
     while (counter.load() != sum) {
-      auto [req, _] = pile.dequeue();
-      if (req) {
+      if (auto req = pile.dequeue()) {
         ++counter;
+      } else {
+        std::this_thread::yield();
       }
     }
   };
 
   for (unsigned i = 0; i < numThreads; ++i) {
     consumer.add(consumerFunc);
+  }
+
+  suspender.rehire();
+
+  for (unsigned i = 0; i < numThreads; ++i) {
+    producer.add(producerFunc);
   }
 
   producer.join();

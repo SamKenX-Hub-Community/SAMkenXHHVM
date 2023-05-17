@@ -229,6 +229,9 @@ struct Local {
 
 using BlockVec = CompactVector<copy_ptr<Block>>;
 
+using CompressedBytecode = CompactVector<char>;
+using CompressedBytecodePtr = copy_ptr<CompactVector<char>>;
+
 /*
  * Separate out the fields that need special attention when copying,
  * so that Func can just have default copy/move semantics.
@@ -254,7 +257,6 @@ struct FuncBase {
    */
   bool isNative;
 
-protected:
   /*
    * All owning pointers to blocks are in this vector, which has the
    * blocks in an unspecified order.  Blocks use BlockIds to represent
@@ -262,9 +264,7 @@ protected:
    *
    * Use WideFunc to access this data.
    */
-  copy_ptr<CompactVector<char>> rawBlocks;
-
-  friend struct WideFunc;
+  CompressedBytecodePtr rawBlocks;
 };
 
 /*
@@ -354,6 +354,14 @@ struct Func : FuncBase {
   LSString originalClass{};
 
   /*
+   * The module where the method was initially defined, irrespective
+   * of trait inlining.  If the requiresFromOriginalModule flag is set
+   * then this field is exported to HHVM to implement the
+   * Module Level Trait semantics.
+   */
+  LSString originalModuleName{};
+
+  /*
    * This is the generated function for a closure body.  I.e. this
    * function contains the code that should run when the closure is
    * invoked.
@@ -402,6 +410,14 @@ struct Func : FuncBase {
    */
   bool hasParamsWithMultiUBs : 1;
   bool hasReturnWithMultiUBs : 1;
+
+  /*
+   * Method was originally declared in a trait with Module Level Trait semantics
+   * (e.g. the <<__ModuleLevelTrait>> attribute was specified on the original trait).
+   */
+  bool fromModuleLevelTrait : 1;
+  bool requiresFromOriginalModule : 1;
+
   CompactVector<TypeConstraint> returnUBs;
 
   /*
@@ -428,6 +444,20 @@ struct Func : FuncBase {
    */
   UserAttributeMap userAttributes;
 
+  template <typename SerDe> void serde(SerDe&, Class* c = nullptr);
+};
+
+/*
+ * Bytecode for a function (global function or class method). While
+ * using extern-worker, this is stored separately and not within
+ * php::Func.
+ */
+struct FuncBytecode {
+  FuncBytecode() = default;
+  explicit FuncBytecode(CompressedBytecodePtr bc) : bc{std::move(bc)} {}
+
+  CompressedBytecodePtr bc;
+
   /*
    * Bytecode is stored using copy_ptr, which allows multiple
    * functions to share the same bytecode if they're the same. This
@@ -436,13 +466,12 @@ struct Func : FuncBase {
    *
    * If s_reuser is non-nullptr during deserializing, it will be used
    * to try to find similar bytecode and reuse it, restoring the
-   * sharding of copy_ptr (and maybe more).
+   * sharing of copy_ptr (and maybe more).
    */
-  using BytecodeReuser =
-    folly_concurrent_hash_map_simd<SHA1, copy_ptr<CompactVector<char>>>;
-  static BytecodeReuser* s_reuser;
+  using Reuser = folly_concurrent_hash_map_simd<SHA1, CompressedBytecodePtr>;
+  static Reuser* s_reuser;
 
-  template <typename SerDe> void serde(SerDe&, Class* c = nullptr);
+  template <typename SerDe> void serde(SerDe&);
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -535,6 +564,11 @@ struct Class : ClassBase {
   LSString unit;
 
   /*
+   * Which module this class was defined in.
+   */
+  LSString moduleName;
+
+  /*
    * Name of the parent class.
    */
   LSString parentName;
@@ -610,6 +644,11 @@ struct Class : ClassBase {
   template <typename SerDe> void serde(SerDe&);
 };
 
+struct ClassBytecode {
+  CompactVector<FuncBytecode> methodBCs;
+  template <typename SerDe> void serde(SerDe&);
+};
+
 struct Constant {
   LSString name;
   TypedValue val;
@@ -635,7 +674,8 @@ struct TypeAlias {
   LSString value;
   Attr attrs;
   AnnotType type;
-  bool nullable;  // null is allowed; for ?Foo aliases
+  bool nullable : 1;  // null is allowed; for ?Foo aliases
+  bool caseType : 1;
   UserAttributeMap userAttrs;
   Array typeStructure{ArrayData::CreateDict()};
   Array resolvedTypeStructure;
@@ -672,6 +712,7 @@ struct Unit {
   UserAttributeMap metaData;
   UserAttributeMap fileAttributes;
   LSString moduleName;
+  PackageInfo packageInfo;
 
   template <typename SerDe> void serde(SerDe& sd);
 };
@@ -715,7 +756,9 @@ bool check(const Program&);
 MAKE_COPY_PTR_BLOB_SERDE_HELPER(HHBBC::php::Block)
 MAKE_UNIQUE_PTR_BLOB_SERDE_HELPER(HHBBC::php::Unit)
 MAKE_UNIQUE_PTR_BLOB_SERDE_HELPER(HHBBC::php::Func)
+MAKE_UNIQUE_PTR_BLOB_SERDE_HELPER(HHBBC::php::FuncBytecode)
 MAKE_UNIQUE_PTR_BLOB_SERDE_HELPER(HHBBC::php::Class)
+MAKE_UNIQUE_PTR_BLOB_SERDE_HELPER(HHBBC::php::ClassBytecode)
 MAKE_UNIQUE_PTR_BLOB_SERDE_HELPER(HHBBC::php::Constant)
 MAKE_UNIQUE_PTR_BLOB_SERDE_HELPER(HHBBC::php::TypeAlias)
 MAKE_UNIQUE_PTR_BLOB_SERDE_HELPER(HHBBC::php::Module)

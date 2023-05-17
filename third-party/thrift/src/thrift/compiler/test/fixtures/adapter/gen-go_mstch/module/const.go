@@ -4,13 +4,13 @@
 package module // [[[ program thrift source path ]]]
 
 import (
-  cpp "thrift/annotation/cpp"
-  python "thrift/annotation/python"
-  thrift0 "thrift/annotation/thrift"
-  scope "thrift/annotation/scope"
-  hack "thrift/annotation/hack"
-  rust "thrift/annotation/rust"
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    cpp "thrift/annotation/cpp"
+    python "thrift/annotation/python"
+    thrift0 "thrift/annotation/thrift"
+    scope "thrift/annotation/scope"
+    hack "thrift/annotation/hack"
+    rust "thrift/annotation/rust"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = cpp.GoUnusedProtection__
@@ -26,9 +26,9 @@ var GoUnusedProtection__ int
 
 const Var1 int32 = 10
 const Var2 string = "20"
-var Var3 MyStruct = *NewMyStruct().
-    SetField(30).
-    SetSetString(
+var Var3 *MyStruct = NewMyStruct().
+    SetFieldNonCompat(30).
+    SetSetStringNonCompat(
         []string{
     "10",
     "20",
@@ -36,9 +36,9 @@ var Var3 MyStruct = *NewMyStruct().
     )
 const Var4 int32 = 40
 const Var5 string = "50"
-var Var6 MyStruct = *NewMyStruct().
-    SetField(60).
-    SetSetString(
+var Var6 *MyStruct = NewMyStruct().
+    SetFieldNonCompat(60).
+    SetSetStringNonCompat(
         []string{
     "30",
     "40",
@@ -46,15 +46,15 @@ var Var6 MyStruct = *NewMyStruct().
     )
 const Timeout int32 = 42
 const Msg string = "hello, world"
-var Person Person2 = *NewPerson2().
-    SetName("DefaultName")
+var Person *Person2 = NewPerson2().
+    SetNameNonCompat("DefaultName")
 const TimeoutNoTransitive int32 = 420
 const MsgNoTransitive string = "hello, world 2"
-var PersonNoTransitive Person2 = *NewPerson2().
-    SetName("DefaultName 2")
+var PersonNoTransitive *Person2 = NewPerson2().
+    SetNameNonCompat("DefaultName 2")
 const TypeAdapted AdaptedBool = true
-var NestedAdapted MoveOnly = *NewMoveOnly().
-    SetPtr(
+var NestedAdapted *MoveOnly = NewMoveOnly().
+    SetPtrNonCompat(
         *NewHeapAllocated(),
     )
 var ContainerOfAdapted []AdaptedByte = []AdaptedByte{

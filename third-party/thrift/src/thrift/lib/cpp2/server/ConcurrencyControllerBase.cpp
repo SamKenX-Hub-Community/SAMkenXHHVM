@@ -22,67 +22,17 @@
 
 namespace apache::thrift {
 
-using Observer = ConcurrencyControllerBase::Observer;
+using Observer = ConcurrencyControllerInterface::Observer;
 
-auto& getObserverStorage() {
-  class Storage {
-   public:
-    void set(std::shared_ptr<Observer> o) {
-      folly::call_once(observerSetFlag_, [&] { instance_ = std::move(o); });
-    }
-    Observer* get() {
-      if (!folly::test_once(observerSetFlag_)) {
-        return {};
-      }
-      return instance_.get();
-    }
-
-   private:
-    folly::once_flag observerSetFlag_;
-    std::shared_ptr<Observer> instance_;
-  };
-
-  static auto observer = folly::Indestructible<Storage>();
-  return *observer;
-}
-
-Observer* ConcurrencyControllerBase::getGlobalObserver() {
-  return getObserverStorage().get();
-}
-
-void ConcurrencyControllerBase::setGlobalObserver(
+void ConcurrencyControllerBase::setObserver(
     std::shared_ptr<Observer> observer) {
-  getObserverStorage().set(std::move(observer));
+  observer_ = std::move(observer);
 }
 
-void ConcurrencyControllerBase::setObserver(std::unique_ptr<Observer> ob) {
-  observer_ = std::move(ob);
-}
-
-std::optional<ConcurrencyControllerBase::PerRequestStats>
-ConcurrencyControllerBase::onExecute(ServerRequest& req) {
-  // use local observer
+void ConcurrencyControllerBase::notifyOnFinishExecution(
+    ServerRequest& request) {
   if (observer_) {
-    return observer_->onExecute(req);
-  } else {
-    // use global observer
-    if (auto observer = getGlobalObserver()) {
-      return observer->onExecute(req);
-    }
-  }
-  return std::nullopt;
-}
-
-void ConcurrencyControllerBase::onFinishExecution(
-    folly::RequestContext* context, PerRequestStats& stats) {
-  // use local observer
-  if (observer_) {
-    observer_->onFinishExecution(context, stats);
-  } else {
-    // use global observer
-    if (auto observer = getGlobalObserver()) {
-      observer->onFinishExecution(context, stats);
-    }
+    observer_->onFinishExecution(request);
   }
 }
 

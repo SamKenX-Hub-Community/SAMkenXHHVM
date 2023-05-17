@@ -285,6 +285,11 @@ class IOBuf {
   /**
    * Allocate a new IOBuf chain with the requested total capacity, allocating
    * no more than maxBufCapacity to each buffer.
+   *
+   * Note: Some malloc implementations will internally round up an allocation
+   * size to a convenient amount (e.g. jemalloc(31) will actually give you a
+   * slab of size 32). Your buffer size could actually be rounded up to
+   * `goodMallocSize(maxBufCapacity)`.
    */
   static std::unique_ptr<IOBuf> createChain(
       size_t totalCapacity, std::size_t maxBufCapacity);
@@ -1601,6 +1606,18 @@ class IOBuf {
    */
 
   /*
+   * A pointer to the start of the data referenced by this IOBuf, and the
+   * length of the data.
+   *
+   * This may refer to any subsection of the actual buffer capacity.
+   */
+  std::size_t length_{0};
+  uint8_t* data_{nullptr};
+
+  std::size_t capacity_{0};
+  uint8_t* buf_{nullptr};
+
+  /*
    * Links to the next and the previous IOBuf in this chain.
    *
    * The chain is circularly linked (the last element in the chain points back
@@ -1609,17 +1626,6 @@ class IOBuf {
    */
   IOBuf* next_{this};
   IOBuf* prev_{this};
-
-  /*
-   * A pointer to the start of the data referenced by this IOBuf, and the
-   * length of the data.
-   *
-   * This may refer to any subsection of the actual buffer capacity.
-   */
-  uint8_t* data_{nullptr};
-  uint8_t* buf_{nullptr};
-  std::size_t length_{0};
-  std::size_t capacity_{0};
 
   // Pack flags in least significant 2 bits, sharedInfo in the rest
   uintptr_t flagsAndSharedInfo_{0};

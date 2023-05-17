@@ -4,6 +4,10 @@
 
 ## Overview
 
+Thrift Adapter is the standard customization method to allow users to use their own custom types on Thrift generated structs and fields. Thrift Adapter **must** be able to convert from [standard type](../glossary/#kinds-of-types) to [adapted type](../glossary/#kinds-of-types) and vice versa. Thrift Adapter is designed so that it can be enabled per each langauge without intefering wire format. Thrift Adapter serves as a building blocks for other Thrift features, such as [Thrift Patch](patch.md) and Thrift Any.
+
+Thrift Adapter **may** provide customization for [value operators](operators.md), including comparison, equality, hash, clear, serialized size, serialize, and deserialize. This allows Thrift Adapter to avoid conversion back to standard type for evaluation and manipulation.
+
 Thrift Adapters allow the native type used in Thrift code gen, to be customized without writing a lot of code or digging into Thrift internals. This decouples changes in Thrift from the functionality of these custom objects, so they can be maintained directly by individual teams, writing their own libraries to hook into Thrift to achieve their desired API.
 
 To use Adapter, we can apply structured annotation `@{lang}.Adapter{name = "..."}` to a field or a typedef, with the name of adapter class. Adapter provides `from_thrift` and `to_thrift` APIs. Here is an example in C++ (The APIs are similar in other languages)
@@ -16,29 +20,39 @@ struct Adapter {
 ```
 This changes the type used by Thrift from the [default type](../glossary/#kinds-of-types) to [adapted type](../glossary/#kinds-of-types).
 
-## Terminologies
-* **Type adapter** — Allows the user to change any default type to custom type.
-   * Applying a type adapter to a typedef allows using custom types inside containers (e.g. `list<MyCustomType>`).
-* **Field adapter** — Allows the user to change the type of a Thrift field to a custom type. It passes additional field context, including the field id and parent struct.
-   * Field id can be accessed by field adapters (or field wrappers in Hack and Java).
+## Definitions
+### Type Adapter
+Type Adapter **must** accept standard type and convert to adapted type. It **must** convert from standard type to adapted type and from adapted type to standard type. Type Adapter **must** convert from adapted type to another adapted type when it is used for composition.
+
+#### Type Wrapper
+Type Wrapper is a special case of Type Adapter, where adapted type is restricted to be a wrapper around standard type. Type Wrapper **must** convert from adapted type to standard type. Type Wrapper **may** convert from standard type to adapted type. Type Wrapper **must** convert from adapted type to another adapted type when it is used for composition. Each language **may** distinguish Type Adapter and Type Wrapper.
+
+### Field Adapter
+Field Adapter **must** accept standard type and field context which consists of parent struct and field id. Field Adapter **must** convert from standard to adapted type and from adapted type to standard type. Field Adapter **must** convert from adapted type to another adapted type when it is used for composition.
+
+#### Field Wrapper
+Field Wrapper is a special case of Field Adapter, where adapted type is restricted to be a wrapper around standard type. Field Wrapper **must** convert from adapted type to standard type. Field Wrapper **may** convert from standard type to adapted type. Field Wrapper **must** convert from adapted type to another adapted type when it is used for composition. Each language **may** distinguish Field Adapter and Field Wrapper.
+
 
 ## C++
 
-C++ adapter can be enabled via `cpp.Adapter` annotation. e.g.
+C++ adapter can be enabled via `cpp.Adapter` annotation. Users **must** provide a fully qualified C++ typename for `name`, e.g.
 
 ```cpp
 // In C++ Header
+namespace apache::thrift::test {
 struct BitsetAdapter {
   static std::bitset<32> fromThrift(std::uint32_t t) { return {t}; }
   static std::uint32_t toThrift(std::bitset<32> t) { return t.to_ullong(); }
 };
+}
 ```
-```
+```thrift
 // In thrift file
 include "thrift/annotation/cpp.thrift"
 cpp_include "BitsetAdapter.h"
 struct Foo {
-  @cpp.Adapter{name = "BitsetAdapter"}
+  @cpp.Adapter{name = "::apache::thrift::test::BitsetAdapter"}
   1: i32 flags;
 }
 ```
@@ -47,9 +61,13 @@ struct Foo {
 Foo foo;
 foo.flags()->set(0); // set 0th bit
 ```
-> **Note: cpp.Adapter will break Thrift py3 usage. Please migrate to new Thrift Python to use cpp.Adapter and python.Adapter.**
+:::note
+cpp.Adapter will break Thrift py3 usage. Please migrate to new Thrift Python to use cpp.Adapter and python.Adapter.
+:::
 
-> **Note: Adapted types can not be used directly with Thrift APIs. Values must be converted back to Thrift types. (e.g. `apache::thrift::CompactSerializer::serialize(Adapter::toThrift(adaptedValue))`)**
+:::note
+Adapted types can not be used directly with Thrift APIs. Values must be converted back to Thrift types. (e.g. `apache::thrift::CompactSerializer::serialize(Adapter::toThrift(adaptedValue))`)
+:::
 
 ### Type Adapter
 
@@ -93,24 +111,24 @@ Both type adapter and field adapter use `cpp.Adapter` API to enable. We will try
 
 Type Adapter can be applied to a typedef, struct, or field. Field Adpater can be only applied to a field. For each typedef, field, or struct, you can only apply a single adapter. You cannot compose multiple type adapters on nested typedefs. You can only compose adapters on a field, where the type of the field is to be a typedef or struct with type adapter and either type adapter or field adapter is directly applied to the field. You cannot compose multiple field adapters.
 
-```
+```thrift
 // This would result in an error if uncommented.
-// @cpp.Adapter{name="CustomTypeAdapter"}
+// @cpp.Adapter{name="::CustomTypeAdapter"}
 // typedef CustomInt DoubleCustomInt
 
-@cpp.Adapter{name = "CustomTypeAdapter"}
+@cpp.Adapter{name = "::CustomTypeAdapter"}
 typedef i32 CustomInt
 
 struct Foo {
-  @cpp.Adapter{name = "CustomFieldAdapter"}
+  @cpp.Adapter{name = "::CustomFieldAdapter"}
   1: CustomInt field;
 
-  @cpp.Adapter{name = "CustomTypeAdapter"}
+  @cpp.Adapter{name = "::CustomTypeAdapter"}
   2: CustomInt field2;
 
   // This would result in an error if uncommented.
-  // @cpp.Adapter{name = "CustomTypeAdapter"}
-  // @cpp.Adapter{name = "CustomFieldAdapter"}
+  // @cpp.Adapter{name = "::CustomTypeAdapter"}
+  // @cpp.Adapter{name = "::CustomFieldAdapter"}
   // 3: i32 field3;
 }
 ```
@@ -198,10 +216,10 @@ final class TimestampToTimeAdapter implements IThriftAdapter {
   }
 }
 ```
-```
+```thrift
 // In thrift file
 include "thrift/annotation/hack.thrift"
-@hack.Adapter {name = '\TimestampToTimeAdapter'}
+@hack.Adapter {name = '\\TimestampToTimeAdapter'}
 typedef i32 i32_withAdapter;
 
 struct Document {
@@ -227,10 +245,10 @@ function timeSinceCreated(Document $doc): Duration {
 
 Similar to typedef, adapter can be added to fields directly. It should implement [`IThriftAdapter` ](https://www.internalfb.com/code/www/[1cce1dcd39b3d25482944ebc796fafb4c3a3d4fd]/flib/thrift/core/IThriftAdapter.php?lines=19-29)interface. Below IDL will generate the same code as above.
 
-```
+```thrift
 // In thrift file
 struct Document {
-  @hack.Adapter{name = '\TimestampToTimeAdapter'}
+  @hack.Adapter{name = '\\TimestampToTimeAdapter'}
   1: i32 created_time;
 }
 // Thrift compiler will generate this for you:
@@ -297,10 +315,10 @@ final class FooOnlyAllowOwnerToAccess<TThriftType, TStructType>
 
 }
 ```
-```
+```thrift
 // In thrift file
 struct Document {
-  @hack.Wrapper{name = '\FooOnlyAllowOwnerToAccess'}
+  @hack.Wrapper{name = '\\FooOnlyAllowOwnerToAccess'}
   1: i32 created_time;
 }
 ```
@@ -329,7 +347,7 @@ function timeSinceCreated(Document $doc): Duration {
 ### Compose
 * Field Wrapper on a field can be used to compose with Type Wrapper or Type Adapter on a typedef.
 
-```
+```thrift
 @hack.Adapter{name = "CustomTypeAdapter"}
 typedef i32 AdaptedInt
 
@@ -359,7 +377,7 @@ class DatetimeAdapter(Adapter[int, datetime]):
     def to_thrift(cls, adapted: datetime) -> int:
         return int(adapted.timestamp())
 ```
-```
+```thrift
 // In thrift file
 include "thrift/annotation/python.thrift"
 struct Foo {
@@ -384,7 +402,7 @@ Please check thrift-python wiki page for more detail: https://www.internalfb.com
 
 Java type adapters can be enabled via `java.Adapter` annotation by providing the `adapterClassName` and `typeClassName` parameters. Type adapters are only supported when using java2. Adapters can be applied to typedef or fields.
 
-```
+```thrift
 // include java.thrift for java.Adapter annotation
 include "thrift/annotation/java.thrift"
 
@@ -401,7 +419,7 @@ struct MyStruct {
 
 It can also be applied to a field.
 
-```
+```thrift
 // include java.thrift for java.Adapter annotation
 include "thrift/annotation/java.thrift"
 
@@ -416,7 +434,7 @@ struct MyStruct {
 
 Adapters defined on typedef level can be used on nested container types.
 
-```
+```thrift
 // include java.thrift for java.Adapter annotation
 include "thrift/annotation/java.thrift"
 
@@ -460,7 +478,9 @@ Thrift Java already defines a type adapter interface for each thrift type by ext
 
 ```java
 public interface IntegerTypeAdapter<T> extends TypeAdapter<Integer, T> {}
+  ```
 
+```java
 public class DateTypeAdapter implements LongTypeAdapter<Date> {
   @Override
   public Date fromThrift(Long aLong) {
@@ -472,7 +492,9 @@ public class DateTypeAdapter implements LongTypeAdapter<Date> {
     return date == null ? null : date.getTime();
   }
 }
+```
 
+```java
 /**
  * Use this type adapter if you want a to get a zero copy slice of the binary field. This will
  * create a retained slice so you must free the ByteBuf when you're not longer interested in using
@@ -494,7 +516,7 @@ public class RetainedSlicedPooledByteBufTypeAdapter implements TypeAdapter<ByteB
 
 Additionally you might need to refer to packages that aren’t in the standard classpath. You can do this in your `TARGETS` file by adding `java_deps` to your `thrift_library` buck target. Here’s an example that adds netty-buffer to the classpath:
 
-```
+```python
 thrift_library(
   name = "type-adapter",
   java_deps = [
@@ -514,7 +536,7 @@ thrift_library(
 
 Field adapters are defined as wrappers in Java. Wrappers can be enabled via `java.Wrapper` annotation by providing the `wrapperClassName` and `typeClassName` parameters. Wrappers are only supported when using java2. It can only be applied to a field. Wrappers provide access to the underlying struct/exception and allows executing custom code before accessing the field value.
 
-```
+```thrift
 // include java.thrift for java.Wrapper annotation
 include "thrift/annotation/java.thrift"
 
@@ -578,7 +600,7 @@ public class FieldContext<T> {
 ### Compose
 You cannot apply multiple wrappers, nor type adapters on the same type, but you can use both wrapper and type adapter together. e.g.
 
-```
+```thrift
 @java.Adapter{
   adapterClassName = "com.facebook.thrift.CustomTypeAdapter",
   typeClassName = "com.facebook.CustomInt",

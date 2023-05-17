@@ -45,8 +45,15 @@ static_assert(
     test::same_type<MyUnionPatch, ::apache::thrift::op::patch_type<MyUnion>>);
 
 static_assert(::apache::thrift::adapt_detail::has_inplace_toThrift<
-              ::apache::thrift::op::detail::FieldPatchAdapter,
+              ::apache::thrift::op::detail::FieldPatchAdapter<
+                  MyStructFieldPatchStruct>,
               MyStructFieldPatch>::value);
+
+static_assert(test::same_type<
+              type::infer_tag<MyStructPatch>,
+              type::adapted<
+                  InlineAdapter<MyStructPatch>,
+                  type::struct_t<MyStructPatchStruct>>>);
 
 using ListPatch =
     std::decay_t<decltype(*std::declval<MyStructFieldPatch>()->optListVal())>;
@@ -126,14 +133,7 @@ TEST(StructPatchTest, AssignSplit) {
   // For the patch to break apart the assign and check the result;
   patch.patchIfSet<ident::optI64Val>();
   EXPECT_FALSE(patch.toThrift().assign().has_value());
-  EXPECT_TRUE(*patch.toThrift().clear());
-  op::for_each_field_id<MyStruct>([&](auto id) {
-    if (auto&& field = op::get<>(id, *patch.toThrift().ensure())) {
-      EXPECT_TRUE((op::equal<op::get_type_tag<MyStruct, decltype(id)>>(
-          *field, *op::get<>(id, original))))
-          << "for field id " << static_cast<int>(id.value);
-    }
-  });
+  EXPECT_FALSE(*patch.toThrift().clear());
   test::expectPatch(patch, {}, original);
 }
 
@@ -293,6 +293,20 @@ TEST(StructPatchTest, AssignClearEnsure) {
   assignClearEnsure.apply(actual);
   ASSERT_TRUE(actual.optI32Val().has_value());
   EXPECT_EQ(*actual.optI32Val(), 2);
+}
+
+TEST(StructPatchTest, ClearAndEnsure) {
+  MyData data;
+  data.data1() = "42";
+
+  MyStructPatch patch;
+  patch.patch<ident::optStructVal>().clear();
+  patch.ensure<ident::optStructVal>(data);
+
+  MyStruct actual;
+  patch.apply(actual);
+  ASSERT_TRUE(actual.optStructVal().has_value());
+  EXPECT_EQ(*actual.optStructVal(), data);
 }
 
 TEST(StructPatchTest, OptionalField_PatchPrior) {
@@ -576,9 +590,8 @@ TEST(StructPatchTest, MapPatch) {
   EXPECT_EQ(
       *patchMerging2.toThrift().remove(),
       (std::unordered_set<std::string>{"z"}));
-  EXPECT_EQ(patchMerging2.toThrift().patch()->size(), 2);
+  EXPECT_EQ(patchMerging2.toThrift().patch()->size(), 1);
   EXPECT_TRUE(patchMerging2.toThrift().patch()->contains("g"));
-  EXPECT_TRUE(patchMerging2.toThrift().patch()->contains("z"));
 
   auto expectAfterMerge = [&](const std::unordered_set<std::string>& patchPrior,
                               const std::map<std::string, std::string>& add,
@@ -744,9 +757,9 @@ TEST(UnionPatchTest, Patch) {
 
 TEST(UnionPatchTest, PatchIfSet) {
   MyUnionPatch patch;
-  *patch.patchIfSet()->option1() = "Hi";
+  patch.patchIfSet<ident::option1>() = "Hi";
   patch.ensure().option1_ref() = "Bye";
-  *patch.patchIfSet()->option1() += " World!";
+  patch.patchIfSet<ident::option1>() += " World!";
 
   MyUnion hi, bye;
   hi.option1_ref() = "Hi World!";
@@ -763,9 +776,25 @@ TEST(UnionPatchTest, PatchIfSet) {
   test::expectPatch(patch, bye, hi);
 }
 
+TEST(UnionPatchTest, PatchIfSetPredicate) {
+  MyUnionPatch patch;
+  patch.patchIfSet<ident::option1>() = "Hi";
+  patch.patchIfSet<ident::option2>() = 5;
+
+  MyUnion option1;
+  option1.option1_ref() = "";
+  patch.apply(option1);
+  EXPECT_EQ(option1.option1_ref().value(), "Hi");
+
+  MyUnion option2;
+  option2.option2_ref() = 0;
+  patch.apply(option2);
+  EXPECT_EQ(option2.option2_ref().value(), 5);
+}
+
 TEST(UnionPatchTest, PatchInner) {
   MyUnionPatch patch;
-  *patch.patchIfSet()->option3()->patchIfSet()->option1() = "World";
+  patch.patchIfSet<ident::option3>().patchIfSet<ident::option1>() = "World";
 
   MyUnion a, b;
   a.option3_ref().ensure().option1_ref() = "Hello";
@@ -936,6 +965,134 @@ TEST(StructPatchTest, InternBox) {
            ->toThrift()
            .floatVal()
            .value());
+}
+
+template <typename T>
+struct is_terse_intern_boxed_field_ref : std::false_type {};
+template <typename T>
+struct is_terse_intern_boxed_field_ref<terse_intern_boxed_field_ref<T>>
+    : std::true_type {};
+
+TEST(StructPatchTest, EnsureStruct) {
+  MyDataPatch patch;
+
+  patch.ensure<ident::data1>("10");
+  patch.ensure<ident::data3>("20");
+
+  MyData data;
+  EXPECT_EQ(data.data1(), "");
+  EXPECT_FALSE(data.data3().has_value());
+
+  patch.apply(data);
+  EXPECT_EQ(data.data1(), "");
+  EXPECT_EQ(data.data3(), "20");
+}
+
+TEST(StructPatchTest, EnsureUnion) {
+  MyUnionPatch patch;
+
+  patch.ensure<ident::option1>("10");
+  patch.ensure<ident::option2>(20);
+
+  MyUnion data;
+  EXPECT_FALSE(data.option1_ref());
+  EXPECT_FALSE(data.option2_ref());
+
+  patch.apply(data);
+  EXPECT_FALSE(data.option1_ref());
+  EXPECT_EQ(data.option2_ref(), 20);
+}
+
+TEST(StructPatchTest, EnsureStructValPatchable) {
+  MyData data;
+  data.data3() = "";
+
+  MyStructPatch patch;
+  patch.patchIfSet<ident::structVal>().assign(data);
+
+  MyStruct foo;
+  patch.apply(foo);
+  EXPECT_EQ(foo.structVal(), data);
+
+  // Ensure will be no-op since data2 is non-optional field
+  patch.patchIfSet<ident::structVal>().ensure<ident::data2>(42);
+  patch.apply(foo);
+  EXPECT_EQ(foo.structVal(), data);
+}
+
+TEST(StructPatchTest, EnsureOptStructValPatchable) {
+  MyData data;
+  data.data2() = 42;
+
+  MyStructPatch patch;
+  patch.patchIfSet<ident::optStructVal>().assign(data);
+
+  MyStruct foo;
+  foo.optStructVal().ensure();
+  patch.apply(foo);
+  EXPECT_EQ(foo.optStructVal(), data);
+
+  patch.patchIfSet<ident::optStructVal>().ensure<ident::data2>(42);
+  patch.apply(foo);
+  EXPECT_EQ(foo.optStructVal(), data);
+}
+
+TEST(StructPatchTest, IncludePatch) {
+  MyData data;
+  data.data2() = 42;
+
+  test::patch::IncludePatchStruct patch1;
+  patch1.patch()->patch<ident::data2>() -= 10;
+  patch1.patch()->apply(data);
+  EXPECT_EQ(data.data2(), 32);
+
+  test::patch::IncludePatchUnion patch2;
+  patch2.patch_ref().emplace().patch<ident::data2>() += 10;
+  patch2.patch_ref()->apply(data);
+  EXPECT_EQ(data.data2(), 42);
+}
+
+TEST(StructPatchTest, RequiredFieldPatch) {
+  WithRequiredFieldsPatch patch;
+  patch.ensure<ident::requrired_int>() = 10;
+
+  WithRequiredFields data;
+  patch.apply(data);
+
+  EXPECT_EQ(*data.requrired_int(), 10);
+}
+
+TEST(PatchTest, IsPatch) {
+  using op::is_patch_v;
+  static_assert(!is_patch_v<bool>);
+  static_assert(is_patch_v<op::BoolPatch>);
+
+  static_assert(!is_patch_v<std::string>);
+  static_assert(is_patch_v<op::StringPatch>);
+
+  static_assert(!is_patch_v<test::patch::MyStruct>);
+  static_assert(is_patch_v<test::patch::MyStructPatch>);
+  static_assert(!is_patch_v<test::patch::MyStructPatchStruct>);
+  static_assert(is_patch_v<test::patch::MyStructFieldPatch>);
+  static_assert(!is_patch_v<test::patch::MyStructEnsureStruct>);
+
+  static_assert(is_patch_v<ListPatch>);
+  static_assert(is_patch_v<SetPatch>);
+  static_assert(is_patch_v<MapPatch>);
+
+  // Assign only patch
+  static_assert(is_patch_v<test::patch::BarPatch>);
+  static_assert(op::is_assign_only_patch_v<test::patch::BarPatch>);
+  static_assert(!op::is_assign_only_patch_v<op::BoolPatch>);
+  static_assert(!op::is_assign_only_patch_v<test::patch::MyStructPatch>);
+
+  using YourData = MyDataPatch;
+  static_assert(is_patch_v<YourData>);
+
+  struct CounterfeitBoolPatch {
+    using value_type = bool;
+  };
+  static_assert(!is_patch_v<CounterfeitBoolPatch>);
 }
 
 } // namespace

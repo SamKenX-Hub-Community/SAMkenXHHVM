@@ -23,8 +23,8 @@ var _ = thrift.ZERO
 
 
 type Raiser interface {
-    DoBland(ctx context.Context) error
-    DoRaise(ctx context.Context) error
+    DoBland(ctx context.Context) (error)
+    DoRaise(ctx context.Context) (error)
     Get200(ctx context.Context) (string, error)
     Get500(ctx context.Context) (string, error)
 }
@@ -32,8 +32,8 @@ type Raiser interface {
 // Deprecated: Use Raiser instead.
 type RaiserClientInterface interface {
     thrift.ClientInterface
-    DoBland() error
-    DoRaise() error
+    DoBland() (error)
+    DoRaise() (error)
     Get200() (string, error)
     Get500() (string, error)
 }
@@ -121,28 +121,40 @@ func NewRaiserThreadsafeClientFactory(t thrift.Transport, pf thrift.ProtocolFact
 }
 
 
-func (c *RaiserChannelClient) DoBland(ctx context.Context) error {
+func (c *RaiserChannelClient) DoBland(ctx context.Context) (error) {
     in := &reqRaiserDoBland{
     }
     out := newRespRaiserDoBland()
     err := c.ch.Call(ctx, "doBland", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *RaiserClient) DoBland() error {
+func (c *RaiserClient) DoBland() (error) {
     return c.chClient.DoBland(nil)
 }
 
 
-func (c *RaiserChannelClient) DoRaise(ctx context.Context) error {
+func (c *RaiserChannelClient) DoRaise(ctx context.Context) (error) {
     in := &reqRaiserDoRaise{
     }
     out := newRespRaiserDoRaise()
     err := c.ch.Call(ctx, "doRaise", in, out)
-    return err
+    if err != nil {
+        return err
+    } else if out.B != nil {
+        return out.B
+    } else if out.F != nil {
+        return out.F
+    } else if out.S != nil {
+        return out.S
+    }
+    return nil
 }
 
-func (c *RaiserClient) DoRaise() error {
+func (c *RaiserClient) DoRaise() (error) {
     return c.chClient.DoRaise(nil)
 }
 
@@ -152,7 +164,10 @@ func (c *RaiserChannelClient) Get200(ctx context.Context) (string, error) {
     }
     out := newRespRaiserGet200()
     err := c.ch.Call(ctx, "get200", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *RaiserClient) Get200() (string, error) {
@@ -165,7 +180,16 @@ func (c *RaiserChannelClient) Get500(ctx context.Context) (string, error) {
     }
     out := newRespRaiserGet500()
     err := c.ch.Call(ctx, "get500", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    } else if out.F != nil {
+        return out.Value, out.F
+    } else if out.B != nil {
+        return out.Value, out.B
+    } else if out.S != nil {
+        return out.Value, out.S
+    }
+    return out.Value, nil
 }
 
 func (c *RaiserClient) Get500() (string, error) {
@@ -177,6 +201,8 @@ type reqRaiserDoBland struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqRaiserDoBland{}
+
+type RaiserDoBlandArgs = reqRaiserDoBland
 
 func newReqRaiserDoBland() *reqRaiserDoBland {
     return (&reqRaiserDoBland{})
@@ -202,6 +228,7 @@ func (x *reqRaiserDoBlandBuilder) Emit() *reqRaiserDoBland {
     var objCopy reqRaiserDoBland = *x.obj
     return &objCopy
 }
+
 func (x *reqRaiserDoBland) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqRaiserDoBland"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -250,10 +277,12 @@ func (x *reqRaiserDoBland) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respRaiserDoBland struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respRaiserDoBland{}
+var _ thrift.WritableResult = &respRaiserDoBland{}
 
 func newRespRaiserDoBland() *respRaiserDoBland {
     return (&respRaiserDoBland{})
@@ -279,6 +308,11 @@ func (x *respRaiserDoBlandBuilder) Emit() *respRaiserDoBland {
     var objCopy respRaiserDoBland = *x.obj
     return &objCopy
 }
+
+func (x *respRaiserDoBland) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respRaiserDoBland) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respRaiserDoBland"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -327,10 +361,13 @@ func (x *respRaiserDoBland) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqRaiserDoRaise struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqRaiserDoRaise{}
+
+type RaiserDoRaiseArgs = reqRaiserDoRaise
 
 func newReqRaiserDoRaise() *reqRaiserDoRaise {
     return (&reqRaiserDoRaise{})
@@ -356,6 +393,7 @@ func (x *reqRaiserDoRaiseBuilder) Emit() *reqRaiserDoRaise {
     var objCopy reqRaiserDoRaise = *x.obj
     return &objCopy
 }
+
 func (x *reqRaiserDoRaise) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqRaiserDoRaise"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -404,13 +442,222 @@ func (x *reqRaiserDoRaise) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respRaiserDoRaise struct {
+    B *Banal `thrift:"b,1,optional" json:"b,omitempty" db:"b"`
+    F *Fiery `thrift:"f,2,optional" json:"f,omitempty" db:"f"`
+    S *Serious `thrift:"s,3,optional" json:"s,omitempty" db:"s"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respRaiserDoRaise{}
+var _ thrift.WritableResult = &respRaiserDoRaise{}
 
 func newRespRaiserDoRaise() *respRaiserDoRaise {
     return (&respRaiserDoRaise{})
+}
+
+func (x *respRaiserDoRaise) GetBNonCompat() *Banal {
+    return x.B
+}
+
+func (x *respRaiserDoRaise) GetB() *Banal {
+    if !x.IsSetB() {
+        return NewBanal()
+    }
+
+    return x.B
+}
+
+func (x *respRaiserDoRaise) GetFNonCompat() *Fiery {
+    return x.F
+}
+
+func (x *respRaiserDoRaise) GetF() *Fiery {
+    if !x.IsSetF() {
+        return NewFiery()
+    }
+
+    return x.F
+}
+
+func (x *respRaiserDoRaise) GetSNonCompat() *Serious {
+    return x.S
+}
+
+func (x *respRaiserDoRaise) GetS() *Serious {
+    if !x.IsSetS() {
+        return NewSerious()
+    }
+
+    return x.S
+}
+
+func (x *respRaiserDoRaise) SetBNonCompat(value Banal) *respRaiserDoRaise {
+    x.B = &value
+    return x
+}
+
+func (x *respRaiserDoRaise) SetB(value *Banal) *respRaiserDoRaise {
+    x.B = value
+    return x
+}
+
+func (x *respRaiserDoRaise) SetFNonCompat(value Fiery) *respRaiserDoRaise {
+    x.F = &value
+    return x
+}
+
+func (x *respRaiserDoRaise) SetF(value *Fiery) *respRaiserDoRaise {
+    x.F = value
+    return x
+}
+
+func (x *respRaiserDoRaise) SetSNonCompat(value Serious) *respRaiserDoRaise {
+    x.S = &value
+    return x
+}
+
+func (x *respRaiserDoRaise) SetS(value *Serious) *respRaiserDoRaise {
+    x.S = value
+    return x
+}
+
+func (x *respRaiserDoRaise) IsSetB() bool {
+    return x.B != nil
+}
+
+func (x *respRaiserDoRaise) IsSetF() bool {
+    return x.F != nil
+}
+
+func (x *respRaiserDoRaise) IsSetS() bool {
+    return x.S != nil
+}
+
+func (x *respRaiserDoRaise) writeField1(p thrift.Protocol) error {  // B
+    if !x.IsSetB() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("b", thrift.STRUCT, 1); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetBNonCompat()
+    if err := item.Write(p); err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *respRaiserDoRaise) writeField2(p thrift.Protocol) error {  // F
+    if !x.IsSetF() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("f", thrift.STRUCT, 2); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetFNonCompat()
+    if err := item.Write(p); err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *respRaiserDoRaise) writeField3(p thrift.Protocol) error {  // S
+    if !x.IsSetS() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("s", thrift.STRUCT, 3); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetSNonCompat()
+    if err := item.Write(p); err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *respRaiserDoRaise) readField1(p thrift.Protocol) error {  // B
+    result := *NewBanal()
+err := result.Read(p)
+if err != nil {
+    return err
+}
+
+    x.SetBNonCompat(result)
+    return nil
+}
+
+func (x *respRaiserDoRaise) readField2(p thrift.Protocol) error {  // F
+    result := *NewFiery()
+err := result.Read(p)
+if err != nil {
+    return err
+}
+
+    x.SetFNonCompat(result)
+    return nil
+}
+
+func (x *respRaiserDoRaise) readField3(p thrift.Protocol) error {  // S
+    result := *NewSerious()
+err := result.Read(p)
+if err != nil {
+    return err
+}
+
+    x.SetSNonCompat(result)
+    return nil
+}
+
+// Deprecated: Use newRespRaiserDoRaise().GetB() instead.
+var respRaiserDoRaise_B_DEFAULT = newRespRaiserDoRaise().GetB()
+
+// Deprecated: Use newRespRaiserDoRaise().GetB() instead.
+func (x *respRaiserDoRaise) DefaultGetB() *Banal {
+    if !x.IsSetB() {
+        return NewBanal()
+    }
+    return x.B
+}
+
+// Deprecated: Use newRespRaiserDoRaise().GetF() instead.
+var respRaiserDoRaise_F_DEFAULT = newRespRaiserDoRaise().GetF()
+
+// Deprecated: Use newRespRaiserDoRaise().GetF() instead.
+func (x *respRaiserDoRaise) DefaultGetF() *Fiery {
+    if !x.IsSetF() {
+        return NewFiery()
+    }
+    return x.F
+}
+
+// Deprecated: Use newRespRaiserDoRaise().GetS() instead.
+var respRaiserDoRaise_S_DEFAULT = newRespRaiserDoRaise().GetS()
+
+// Deprecated: Use newRespRaiserDoRaise().GetS() instead.
+func (x *respRaiserDoRaise) DefaultGetS() *Serious {
+    if !x.IsSetS() {
+        return NewSerious()
+    }
+    return x.S
 }
 
 func (x *respRaiserDoRaise) String() string {
@@ -429,13 +676,54 @@ func newRespRaiserDoRaiseBuilder() *respRaiserDoRaiseBuilder {
     }
 }
 
+func (x *respRaiserDoRaiseBuilder) B(value *Banal) *respRaiserDoRaiseBuilder {
+    x.obj.B = value
+    return x
+}
+
+func (x *respRaiserDoRaiseBuilder) F(value *Fiery) *respRaiserDoRaiseBuilder {
+    x.obj.F = value
+    return x
+}
+
+func (x *respRaiserDoRaiseBuilder) S(value *Serious) *respRaiserDoRaiseBuilder {
+    x.obj.S = value
+    return x
+}
+
 func (x *respRaiserDoRaiseBuilder) Emit() *respRaiserDoRaise {
     var objCopy respRaiserDoRaise = *x.obj
     return &objCopy
 }
+
+func (x *respRaiserDoRaise) Exception() thrift.WritableException {
+    if x.B != nil {
+        return x.B
+    }
+    if x.F != nil {
+        return x.F
+    }
+    if x.S != nil {
+        return x.S
+    }
+    return nil
+}
+
 func (x *respRaiserDoRaise) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respRaiserDoRaise"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
+    }
+
+    if err := x.writeField1(p); err != nil {
+        return err
+    }
+
+    if err := x.writeField2(p); err != nil {
+        return err
+    }
+
+    if err := x.writeField3(p); err != nil {
+        return err
     }
 
     if err := p.WriteFieldStop(); err != nil {
@@ -464,6 +752,18 @@ func (x *respRaiserDoRaise) Read(p thrift.Protocol) error {
         }
 
         switch id {
+        case 1:  // b
+            if err := x.readField1(p); err != nil {
+                return err
+            }
+        case 2:  // f
+            if err := x.readField2(p); err != nil {
+                return err
+            }
+        case 3:  // s
+            if err := x.readField3(p); err != nil {
+                return err
+            }
         default:
             if err := p.Skip(typ); err != nil {
                 return err
@@ -481,10 +781,13 @@ func (x *respRaiserDoRaise) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqRaiserGet200 struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqRaiserGet200{}
+
+type RaiserGet200Args = reqRaiserGet200
 
 func newReqRaiserGet200() *reqRaiserGet200 {
     return (&reqRaiserGet200{})
@@ -510,6 +813,7 @@ func (x *reqRaiserGet200Builder) Emit() *reqRaiserGet200 {
     var objCopy reqRaiserGet200 = *x.obj
     return &objCopy
 }
+
 func (x *reqRaiserGet200) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqRaiserGet200"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -558,14 +862,17 @@ func (x *reqRaiserGet200) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respRaiserGet200 struct {
-    Value string `thrift:"value,0,required" json:"value" db:"value"`
+    Value string `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respRaiserGet200{}
+var _ thrift.WritableResult = &respRaiserGet200{}
 
 func newRespRaiserGet200() *respRaiserGet200 {
-    return (&respRaiserGet200{})
+    return (&respRaiserGet200{}).
+        SetValueNonCompat("")
 }
 
 func (x *respRaiserGet200) GetValueNonCompat() string {
@@ -576,11 +883,15 @@ func (x *respRaiserGet200) GetValue() string {
     return x.Value
 }
 
-func (x *respRaiserGet200) SetValue(value string) *respRaiserGet200 {
+func (x *respRaiserGet200) SetValueNonCompat(value string) *respRaiserGet200 {
     x.Value = value
     return x
 }
 
+func (x *respRaiserGet200) SetValue(value string) *respRaiserGet200 {
+    x.Value = value
+    return x
+}
 
 func (x *respRaiserGet200) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.STRING, 0); err != nil {
@@ -604,7 +915,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -633,6 +944,11 @@ func (x *respRaiserGet200Builder) Emit() *respRaiserGet200 {
     var objCopy respRaiserGet200 = *x.obj
     return &objCopy
 }
+
+func (x *respRaiserGet200) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respRaiserGet200) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respRaiserGet200"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -689,10 +1005,13 @@ func (x *respRaiserGet200) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqRaiserGet500 struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqRaiserGet500{}
+
+type RaiserGet500Args = reqRaiserGet500
 
 func newReqRaiserGet500() *reqRaiserGet500 {
     return (&reqRaiserGet500{})
@@ -718,6 +1037,7 @@ func (x *reqRaiserGet500Builder) Emit() *reqRaiserGet500 {
     var objCopy reqRaiserGet500 = *x.obj
     return &objCopy
 }
+
 func (x *reqRaiserGet500) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqRaiserGet500"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -766,14 +1086,20 @@ func (x *reqRaiserGet500) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respRaiserGet500 struct {
-    Value string `thrift:"value,0,required" json:"value" db:"value"`
+    Value string `thrift:"value,0" json:"value" db:"value"`
+    F *Fiery `thrift:"f,1,optional" json:"f,omitempty" db:"f"`
+    B *Banal `thrift:"b,2,optional" json:"b,omitempty" db:"b"`
+    S *Serious `thrift:"s,3,optional" json:"s,omitempty" db:"s"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respRaiserGet500{}
+var _ thrift.WritableResult = &respRaiserGet500{}
 
 func newRespRaiserGet500() *respRaiserGet500 {
-    return (&respRaiserGet500{})
+    return (&respRaiserGet500{}).
+        SetValueNonCompat("")
 }
 
 func (x *respRaiserGet500) GetValueNonCompat() string {
@@ -784,11 +1110,93 @@ func (x *respRaiserGet500) GetValue() string {
     return x.Value
 }
 
+func (x *respRaiserGet500) GetFNonCompat() *Fiery {
+    return x.F
+}
+
+func (x *respRaiserGet500) GetF() *Fiery {
+    if !x.IsSetF() {
+        return NewFiery()
+    }
+
+    return x.F
+}
+
+func (x *respRaiserGet500) GetBNonCompat() *Banal {
+    return x.B
+}
+
+func (x *respRaiserGet500) GetB() *Banal {
+    if !x.IsSetB() {
+        return NewBanal()
+    }
+
+    return x.B
+}
+
+func (x *respRaiserGet500) GetSNonCompat() *Serious {
+    return x.S
+}
+
+func (x *respRaiserGet500) GetS() *Serious {
+    if !x.IsSetS() {
+        return NewSerious()
+    }
+
+    return x.S
+}
+
+func (x *respRaiserGet500) SetValueNonCompat(value string) *respRaiserGet500 {
+    x.Value = value
+    return x
+}
+
 func (x *respRaiserGet500) SetValue(value string) *respRaiserGet500 {
     x.Value = value
     return x
 }
 
+func (x *respRaiserGet500) SetFNonCompat(value Fiery) *respRaiserGet500 {
+    x.F = &value
+    return x
+}
+
+func (x *respRaiserGet500) SetF(value *Fiery) *respRaiserGet500 {
+    x.F = value
+    return x
+}
+
+func (x *respRaiserGet500) SetBNonCompat(value Banal) *respRaiserGet500 {
+    x.B = &value
+    return x
+}
+
+func (x *respRaiserGet500) SetB(value *Banal) *respRaiserGet500 {
+    x.B = value
+    return x
+}
+
+func (x *respRaiserGet500) SetSNonCompat(value Serious) *respRaiserGet500 {
+    x.S = &value
+    return x
+}
+
+func (x *respRaiserGet500) SetS(value *Serious) *respRaiserGet500 {
+    x.S = value
+    return x
+}
+
+func (x *respRaiserGet500) IsSetF() bool {
+    return x.F != nil
+}
+
+func (x *respRaiserGet500) IsSetB() bool {
+    return x.B != nil
+}
+
+func (x *respRaiserGet500) IsSetS() bool {
+    return x.S != nil
+}
 
 func (x *respRaiserGet500) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.STRING, 0); err != nil {
@@ -806,14 +1214,140 @@ func (x *respRaiserGet500) writeField0(p thrift.Protocol) error {  // Value
     return nil
 }
 
+func (x *respRaiserGet500) writeField1(p thrift.Protocol) error {  // F
+    if !x.IsSetF() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("f", thrift.STRUCT, 1); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetFNonCompat()
+    if err := item.Write(p); err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *respRaiserGet500) writeField2(p thrift.Protocol) error {  // B
+    if !x.IsSetB() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("b", thrift.STRUCT, 2); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetBNonCompat()
+    if err := item.Write(p); err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *respRaiserGet500) writeField3(p thrift.Protocol) error {  // S
+    if !x.IsSetS() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("s", thrift.STRUCT, 3); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetSNonCompat()
+    if err := item.Write(p); err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
 func (x *respRaiserGet500) readField0(p thrift.Protocol) error {  // Value
     result, err := p.ReadString()
 if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
+}
+
+func (x *respRaiserGet500) readField1(p thrift.Protocol) error {  // F
+    result := *NewFiery()
+err := result.Read(p)
+if err != nil {
+    return err
+}
+
+    x.SetFNonCompat(result)
+    return nil
+}
+
+func (x *respRaiserGet500) readField2(p thrift.Protocol) error {  // B
+    result := *NewBanal()
+err := result.Read(p)
+if err != nil {
+    return err
+}
+
+    x.SetBNonCompat(result)
+    return nil
+}
+
+func (x *respRaiserGet500) readField3(p thrift.Protocol) error {  // S
+    result := *NewSerious()
+err := result.Read(p)
+if err != nil {
+    return err
+}
+
+    x.SetSNonCompat(result)
+    return nil
+}
+
+// Deprecated: Use newRespRaiserGet500().GetF() instead.
+var respRaiserGet500_F_DEFAULT = newRespRaiserGet500().GetF()
+
+// Deprecated: Use newRespRaiserGet500().GetF() instead.
+func (x *respRaiserGet500) DefaultGetF() *Fiery {
+    if !x.IsSetF() {
+        return NewFiery()
+    }
+    return x.F
+}
+
+// Deprecated: Use newRespRaiserGet500().GetB() instead.
+var respRaiserGet500_B_DEFAULT = newRespRaiserGet500().GetB()
+
+// Deprecated: Use newRespRaiserGet500().GetB() instead.
+func (x *respRaiserGet500) DefaultGetB() *Banal {
+    if !x.IsSetB() {
+        return NewBanal()
+    }
+    return x.B
+}
+
+// Deprecated: Use newRespRaiserGet500().GetS() instead.
+var respRaiserGet500_S_DEFAULT = newRespRaiserGet500().GetS()
+
+// Deprecated: Use newRespRaiserGet500().GetS() instead.
+func (x *respRaiserGet500) DefaultGetS() *Serious {
+    if !x.IsSetS() {
+        return NewSerious()
+    }
+    return x.S
 }
 
 func (x *respRaiserGet500) String() string {
@@ -837,16 +1371,57 @@ func (x *respRaiserGet500Builder) Value(value string) *respRaiserGet500Builder {
     return x
 }
 
+func (x *respRaiserGet500Builder) F(value *Fiery) *respRaiserGet500Builder {
+    x.obj.F = value
+    return x
+}
+
+func (x *respRaiserGet500Builder) B(value *Banal) *respRaiserGet500Builder {
+    x.obj.B = value
+    return x
+}
+
+func (x *respRaiserGet500Builder) S(value *Serious) *respRaiserGet500Builder {
+    x.obj.S = value
+    return x
+}
+
 func (x *respRaiserGet500Builder) Emit() *respRaiserGet500 {
     var objCopy respRaiserGet500 = *x.obj
     return &objCopy
 }
+
+func (x *respRaiserGet500) Exception() thrift.WritableException {
+    if x.F != nil {
+        return x.F
+    }
+    if x.B != nil {
+        return x.B
+    }
+    if x.S != nil {
+        return x.S
+    }
+    return nil
+}
+
 func (x *respRaiserGet500) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respRaiserGet500"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
     }
 
     if err := x.writeField0(p); err != nil {
+        return err
+    }
+
+    if err := x.writeField1(p); err != nil {
+        return err
+    }
+
+    if err := x.writeField2(p); err != nil {
+        return err
+    }
+
+    if err := x.writeField3(p); err != nil {
         return err
     }
 
@@ -880,6 +1455,18 @@ func (x *respRaiserGet500) Read(p thrift.Protocol) error {
             if err := x.readField0(p); err != nil {
                 return err
             }
+        case 1:  // f
+            if err := x.readField1(p); err != nil {
+                return err
+            }
+        case 2:  // b
+            if err := x.readField2(p); err != nil {
+                return err
+            }
+        case 3:  // s
+            if err := x.readField3(p); err != nil {
+                return err
+            }
         default:
             if err := p.Skip(typ); err != nil {
                 return err
@@ -897,6 +1484,7 @@ func (x *respRaiserGet500) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type RaiserProcessor struct {
@@ -967,9 +1555,11 @@ func (p *procFuncRaiserDoBland) Read(iprot thrift.Protocol) (thrift.Struct, thri
 func (p *procFuncRaiserDoBland) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("DoBland", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -987,10 +1577,12 @@ func (p *procFuncRaiserDoBland) Write(seqId int32, result thrift.WritableStruct,
 
 func (p *procFuncRaiserDoBland) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespRaiserDoBland()
-    if err := p.handler.DoBland(); err != nil {
+    err := p.handler.DoBland()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing DoBland: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -1013,9 +1605,23 @@ func (p *procFuncRaiserDoRaise) Read(iprot thrift.Protocol) (thrift.Struct, thri
 func (p *procFuncRaiserDoRaise) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch v := result.(type) {
+    case *Banal:
+        result = &respRaiserDoRaise{
+            B: v,
+        }
+    case *Fiery:
+        result = &respRaiserDoRaise{
+            F: v,
+        }
+    case *Serious:
+        result = &respRaiserDoRaise{
+            S: v,
+        }
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("DoRaise", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -1033,10 +1639,21 @@ func (p *procFuncRaiserDoRaise) Write(seqId int32, result thrift.WritableStruct,
 
 func (p *procFuncRaiserDoRaise) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespRaiserDoRaise()
-    if err := p.handler.DoRaise(); err != nil {
-        x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing DoRaise: " + err.Error(), err)
-        return x, x
+    err := p.handler.DoRaise()
+    if err != nil {
+        switch v := err.(type) {
+        case *Banal:
+            result.B = v
+        case *Fiery:
+            result.F = v
+        case *Serious:
+            result.S = v
+        default:
+            x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing doRaise: " + err.Error(), err)
+            return x, x
+        }
     }
+
     return result, nil
 }
 
@@ -1059,9 +1676,11 @@ func (p *procFuncRaiserGet200) Read(iprot thrift.Protocol) (thrift.Struct, thrif
 func (p *procFuncRaiserGet200) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Get200", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -1079,13 +1698,13 @@ func (p *procFuncRaiserGet200) Write(seqId int32, result thrift.WritableStruct, 
 
 func (p *procFuncRaiserGet200) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespRaiserGet200()
-    if retval, err := p.handler.Get200(); err != nil {
+    retval, err := p.handler.Get200()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Get200: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -1108,9 +1727,23 @@ func (p *procFuncRaiserGet500) Read(iprot thrift.Protocol) (thrift.Struct, thrif
 func (p *procFuncRaiserGet500) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch v := result.(type) {
+    case *Fiery:
+        result = &respRaiserGet500{
+            F: v,
+        }
+    case *Banal:
+        result = &respRaiserGet500{
+            B: v,
+        }
+    case *Serious:
+        result = &respRaiserGet500{
+            S: v,
+        }
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Get500", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -1128,13 +1761,22 @@ func (p *procFuncRaiserGet500) Write(seqId int32, result thrift.WritableStruct, 
 
 func (p *procFuncRaiserGet500) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespRaiserGet500()
-    if retval, err := p.handler.Get500(); err != nil {
-        x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Get500: " + err.Error(), err)
-        return x, x
-    } else {
-        result.Value = retval
+    retval, err := p.handler.Get500()
+    if err != nil {
+        switch v := err.(type) {
+        case *Fiery:
+            result.F = v
+        case *Banal:
+            result.B = v
+        case *Serious:
+            result.S = v
+        default:
+            x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing doRaise: " + err.Error(), err)
+            return x, x
+        }
     }
 
+    result.Value = retval
     return result, nil
 }
 

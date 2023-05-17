@@ -22,7 +22,6 @@ pub use oxidized::typing_defs::ClassConstKind;
 pub use oxidized::typing_defs_core::ConsistentKind;
 pub use oxidized::typing_defs_core::Enforcement;
 pub use oxidized::typing_defs_core::ParamMode;
-pub use oxidized::typing_defs_core::ShapeKind;
 pub use oxidized::typing_defs_flags;
 pub use oxidized::typing_defs_flags::ClassEltFlags;
 pub use oxidized::typing_defs_flags::ClassEltFlagsArgs;
@@ -323,7 +322,7 @@ pub enum Ty_<R: Reason> {
     Ttuple(Box<[Ty<R>]>),
     /// Whether all fields of this shape are known, types of each of the
     /// known arms.
-    Tshape(Box<(ShapeKind, BTreeMap<TshapeFieldName, ShapeFieldType<R>>)>),
+    Tshape(Box<(Ty<R>, BTreeMap<TshapeFieldName, ShapeFieldType<R>>)>),
     Tvar(Ident),
     /// The type of a generic parameter. The constraints on a generic parameter
     /// are accessed through the lenv.tpenv component of the environment, which
@@ -503,6 +502,7 @@ pub struct FunType<R: Reason, TY> {
     pub ret: PossiblyEnforcedTy<TY>,
     pub flags: typing_defs_flags::FunTypeFlags,
     pub ifc_decl: IfcFunDecl,
+    pub cross_package: Option<Symbol>,
 }
 
 walkable!(impl<R: Reason, TY> for FunType<R, TY> => [

@@ -87,6 +87,13 @@ class ServerAcceptor : public Acceptor,
       pipeline_->setPipelineManager(this);
     }
 
+    explicit ServerConnection(
+        typename Pipeline::Ptr pipeline,
+        folly::SocketAddress peerAddress)
+        : pipeline_(std::move(pipeline)), peerAddress_(std::move(peerAddress)) {
+      pipeline_->setPipelineManager(this);
+    }
+
     void timeoutExpired() noexcept override {
       auto ew = folly::make_exception_wrapper<AcceptorException>(
           AcceptorException::ExceptionType::TIMED_OUT, "timeout");
@@ -132,12 +139,18 @@ class ServerAcceptor : public Acceptor,
       enableNotifyPendingShutdown_ = isEnabled;
     }
 
+    [[nodiscard]] const folly::SocketAddress& getPeerAddress()
+        const noexcept override {
+      return peerAddress_;
+    }
+
    private:
     ~ServerConnection() override {
       pipeline_->setPipelineManager(nullptr);
     }
     typename Pipeline::Ptr pipeline_;
     bool enableNotifyPendingShutdown_{false};
+    folly::SocketAddress peerAddress_;
   };
 
   explicit ServerAcceptor(
@@ -193,7 +206,8 @@ class ServerAcceptor : public Acceptor,
         std::shared_ptr<folly::AsyncTransport>(
             transport.release(), folly::DelayedDestruction::Destructor()));
     pipeline->setTransportInfo(tInfoPtr);
-    auto connection = new ServerConnection(std::move(pipeline));
+    auto connection =
+        new ServerConnection(std::move(pipeline), *connInfo.clientAddr);
     connection->setNotifyPendingShutdown(enableNotifyPendingShutdown_);
     Acceptor::addConnection(connection);
     connection->init();
@@ -248,6 +262,18 @@ class ServerAcceptor : public Acceptor,
 
     acceptPipeline_->readException(ew);
     Acceptor::dropConnections(pct);
+  }
+
+  void dropEstablishedConnections(
+      double pct,
+      const std::function<bool(ManagedConnection*)>& filter) noexcept override {
+    auto ew = folly::make_exception_wrapper<AcceptorException>(
+        AcceptorException::ExceptionType::DROP_CONN_PCT,
+        "dropping some established connections",
+        pct);
+
+    acceptPipeline_->readException(ew);
+    Acceptor::dropEstablishedConnections(pct, filter);
   }
 
   void forceStop() noexcept override {

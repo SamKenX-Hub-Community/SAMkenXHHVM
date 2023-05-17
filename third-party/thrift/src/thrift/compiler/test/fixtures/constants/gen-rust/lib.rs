@@ -255,34 +255,42 @@ pub mod consts {
 
     pub const backslash: &::std::primitive::str = "\\";
 
-    pub const escaped_a: &::std::primitive::str = "\x61";
+    pub const escaped_a: &::std::primitive::str = "a";
 
     pub static char2ascii: ::once_cell::sync::Lazy<::std::collections::BTreeMap<::std::string::String, ::std::primitive::i32>> = ::once_cell::sync::Lazy::new(|| {
             let mut map = ::std::collections::BTreeMap::new();
             map.insert("'".to_owned(), 39);
             map.insert("\"".to_owned(), 34);
             map.insert("\\".to_owned(), 92);
-            map.insert("\x61".to_owned(), 97);
+            map.insert("a".to_owned(), 97);
             map
         });
 
     pub static escaped_strings: ::once_cell::sync::Lazy<::std::vec::Vec<::std::string::String>> = ::once_cell::sync::Lazy::new(|| vec![
-            "\x61".to_owned(),
-            "\xab".to_owned(),
-            "\x6a".to_owned(),
-            "\xa6".to_owned(),
-            "\x61yyy".to_owned(),
-            "\xabyyy".to_owned(),
-            "\x6ayyy".to_owned(),
-            "\xa6yyy".to_owned(),
-            "zzz\x61".to_owned(),
-            "zzz\xab".to_owned(),
-            "zzz\x6a".to_owned(),
-            "zzz\xa6".to_owned(),
-            "zzz\x61yyy".to_owned(),
-            "zzz\xabyyy".to_owned(),
-            "zzz\x6ayyy".to_owned(),
-            "zzz\xa6yyy".to_owned(),
+            "".to_owned(),
+            "".to_owned(),
+            " ".to_owned(),
+            "'".to_owned(),
+            "\"".to_owned(),
+            "\n".to_owned(),
+            "\r".to_owned(),
+            "\t".to_owned(),
+            "a".to_owned(),
+            "«".to_owned(),
+            "j".to_owned(),
+            "¦".to_owned(),
+            "ayyy".to_owned(),
+            "«yyy".to_owned(),
+            "jyyy".to_owned(),
+            "¦yyy".to_owned(),
+            "zzza".to_owned(),
+            "zzz«".to_owned(),
+            "zzzj".to_owned(),
+            "zzz¦".to_owned(),
+            "zzzayyy".to_owned(),
+            "zzz«yyy".to_owned(),
+            "zzzjyyy".to_owned(),
+            "zzz¦yyy".to_owned(),
         ]);
 
     pub const false_c: ::std::primitive::bool = false;
@@ -358,6 +366,7 @@ pub mod consts {
     pub const minNDub: ::std::primitive::f64 = -2.2250738585072014e-308;
 
     pub const minNSDub: ::std::primitive::f64 = -5e-324;
+
 }
 
 pub mod types;

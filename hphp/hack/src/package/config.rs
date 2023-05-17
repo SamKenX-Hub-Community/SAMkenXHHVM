@@ -3,9 +3,8 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 
-use std::hash::Hash;
+use std::collections::VecDeque;
 
-use hash::HashMap;
 use hash::HashSet;
 use serde::Deserialize;
 use toml::Spanned;
@@ -13,7 +12,6 @@ use toml::Spanned;
 use crate::error::Error;
 use crate::types::DeploymentMap;
 use crate::types::NameSet;
-use crate::types::Package;
 use crate::types::PackageMap;
 
 #[derive(Debug, Deserialize)]
@@ -23,15 +21,23 @@ pub struct Config {
 }
 impl Config {
     pub fn check_config(&self) -> Vec<Error> {
-        let check_packages_are_defined = |errors: &mut Vec<Error>, pkgs: &Option<NameSet>| {
-            if let Some(packages) = pkgs {
-                packages.iter().for_each(|package| {
-                    if !self.packages.contains_key(package) {
-                        errors.push(Error::undefined_package(package))
-                    }
-                })
-            }
-        };
+        let check_packages_are_defined =
+            |errors: &mut Vec<Error>, pkgs: &Option<NameSet>, soft_pkgs: &Option<NameSet>| {
+                if let Some(packages) = pkgs {
+                    packages.iter().for_each(|package| {
+                        if !self.packages.contains_key(package) {
+                            errors.push(Error::undefined_package(package))
+                        }
+                    })
+                }
+                if let Some(packages) = soft_pkgs {
+                    packages.iter().for_each(|package| {
+                        if !self.packages.contains_key(package) {
+                            errors.push(Error::undefined_package(package))
+                        }
+                    })
+                }
+            };
         let mut used_globs = NameSet::default();
         let mut check_each_glob_is_used_once =
             |errors: &mut Vec<Error>, globs: &Option<NameSet>| {
@@ -44,105 +50,139 @@ impl Config {
                     })
                 }
             };
-        let check_cyclic_package_deps = |errors: &mut Vec<Error>, pkgs: &PackageMap| {
-            let cycles = find_cycles(pkgs);
-            cycles
-                .into_iter()
-                .for_each(|cycle| errors.push(Error::cyclic_includes(cycle)));
-        };
+        let check_deployed_packages_are_transitively_closed =
+            |errors: &mut Vec<Error>,
+             deployment: &Spanned<String>,
+             pkgs: &Option<NameSet>,
+             soft_pkgs: &Option<NameSet>| {
+                let deployed = pkgs.as_ref().unwrap_or_default();
+                let soft_deployed = soft_pkgs.as_ref().unwrap_or_default();
+                let (missing_pkgs, missing_soft_pkgs) =
+                    find_missing_packages_from_deployment(&self.packages, deployed, soft_deployed);
+                if !missing_pkgs.is_empty() {
+                    errors.push(Error::incomplete_deployment(
+                        deployment,
+                        missing_pkgs,
+                        false,
+                    ));
+                }
+                if !missing_soft_pkgs.is_empty() {
+                    errors.push(Error::incomplete_deployment(
+                        deployment,
+                        missing_soft_pkgs,
+                        true,
+                    ));
+                }
+            };
         let mut errors = vec![];
         for (_, package) in self.packages.iter() {
-            check_packages_are_defined(&mut errors, &package.includes);
+            check_packages_are_defined(&mut errors, &package.includes, &package.soft_includes);
             check_each_glob_is_used_once(&mut errors, &package.uses);
         }
         if let Some(deployments) = &self.deployments {
-            for (_, deployment) in deployments.iter() {
-                check_packages_are_defined(&mut errors, &deployment.packages);
+            for (positioned_name, deployment) in deployments.iter() {
+                check_packages_are_defined(
+                    &mut errors,
+                    &deployment.packages,
+                    &deployment.soft_packages,
+                );
+                check_deployed_packages_are_transitively_closed(
+                    &mut errors,
+                    positioned_name,
+                    &deployment.packages,
+                    &deployment.soft_packages,
+                );
             }
         };
-        check_cyclic_package_deps(&mut errors, &self.packages);
         errors
     }
 }
 
-fn find_cycles(packages: &PackageMap) -> HashSet<Vec<Spanned<String>>> {
-    #[derive(Default)]
-    struct State<Pkg> {
-        path: Vec<Pkg>,
-        package_location_in_path: HashMap<Pkg, usize>,
-        stack: Vec<(Pkg, Option<Pkg>)>,
-        visited: HashSet<Pkg>,
+// The function takes a starting set of package names and a PackageMap, and
+// returns two HashSets: one with packages included by the starting set (transitive closure),
+// and the other with packages soft-included by the starting set (transitive closure) but not included.
+pub fn analyze_includes<'a>(
+    starting_set: &'a NameSet,
+    package_map: &'a PackageMap,
+) -> (HashSet<&'a Spanned<String>>, HashSet<&'a Spanned<String>>) {
+    // Sets to store packages that are included and soft-included, respectively
+    let mut included = HashSet::default();
+    let mut soft_included = HashSet::default();
+
+    // Queue of package names and whether the package is soft included
+    let mut queue = VecDeque::new();
+
+    // Add the starting set of package names to the queue, with 'is_soft' flag set to false
+    for package_name in starting_set.iter() {
+        queue.push_back((package_name, false));
     }
-    impl<Pkg: Eq + PartialEq + Hash> State<Pkg> {
-        fn reset(&mut self, start_package: Option<Pkg>) {
-            match start_package {
-                None => {
-                    self.path = vec![];
-                    self.package_location_in_path = HashMap::default();
-                }
-                Some(start_package) => {
-                    while let Some(last_package) = self.path.pop() {
-                        if last_package != start_package {
-                            self.package_location_in_path.remove(&last_package);
-                        } else {
-                            break;
-                        }
+
+    while let Some((current_package_name, is_soft)) = queue.pop_front() {
+        if let Some(package) = package_map.get(current_package_name) {
+            // If the package is not soft-included, add it to the 'included' set
+            if !is_soft {
+                included.insert(current_package_name);
+            } else if !included.contains(current_package_name) {
+                // If the package is soft-included and not in the 'included' set, add it to the 'soft_included' set
+                soft_included.insert(current_package_name);
+            }
+
+            if let Some(ref includes) = package.includes {
+                for include in includes.iter() {
+                    if !included.contains(include) {
+                        queue.push_back((include, false));
                     }
-                    self.path.push(start_package);
                 }
             }
-        }
-    }
-    let mut state = State::default();
-    let mut cycles = HashSet::default();
 
-    for package in packages.keys() {
-        let start_package = package.get_ref().as_str();
-        state.stack.push((start_package, None));
-        while let Some((current_package, parent_package)) = state.stack.pop() {
-            state.reset(parent_package);
-            let idx = state.path.len();
-            state.path.push(current_package);
-            state.package_location_in_path.insert(current_package, idx);
-
-            if let Some(Package {
-                includes: Some(next_packages),
-                ..
-            }) = packages.get(current_package)
-            {
-                for next_package in next_packages {
-                    let next_package = next_package.get_ref().as_str();
-                    if let Some(idx) = state.package_location_in_path.get(next_package) {
-                        let cycle = normalize_cycle(&state.path[*idx..], packages);
-                        cycles.insert(cycle);
-                    } else if !state.visited.contains(next_package) {
-                        state.stack.push((next_package, Some(current_package)));
+            if let Some(ref soft_includes) = package.soft_includes {
+                for soft_include in soft_includes.iter() {
+                    if !included.contains(soft_include) && !soft_included.contains(soft_include) {
+                        queue.push_back((soft_include, true));
                     }
                 }
             }
         }
-        state.visited.insert(start_package);
     }
-
-    cycles
+    (included, soft_included)
 }
 
-fn normalize_cycle<'a>(cycle: &[&'a str], packages: &'a PackageMap) -> Vec<Spanned<String>> {
-    let min_idx: Option<usize> = cycle
-        .iter()
-        .enumerate()
-        .min_by_key(|(_, &val)| val)
-        .map(|(idx, _)| idx);
-    match min_idx {
-        None => Vec::new(),
-        Some(idx) => cycle[idx..]
+fn find_missing_packages_from_deployment(
+    package_map: &PackageMap,
+    deployed: &NameSet,
+    soft_deployed: &NameSet,
+) -> (Vec<Spanned<String>>, Vec<Spanned<String>>) {
+    // Taking the transitive closure of all nested included packages so that the user
+    // could complete the deployment set upon the first error message they receive, as
+    // opposed to iterating upon it over multiple checks and going through a full init
+    // every time they update the config.
+    // TODO: simplify after incremental mode (T148526825)
+
+    let (included, soft_included) = analyze_includes(deployed, package_map);
+    let soft_or_regular_deployed = deployed.union(soft_deployed).cloned().collect();
+
+    fn get_missing<'a>(
+        included: &HashSet<&'a Spanned<String>>,
+        deployed: &NameSet,
+        package_map: &PackageMap,
+    ) -> Vec<Spanned<String>> {
+        let mut missing_pkgs = included
             .iter()
-            .chain(cycle[..idx].iter())
-            .into_iter()
-            .map(|&pkg_name| {
-                let (positioned_pkg_name, _) = packages.get_key_value(pkg_name).unwrap();
-                positioned_pkg_name.clone()
+            .filter_map(|pkg| {
+                let pkg_name = pkg.get_ref().as_str();
+                if !deployed.contains(pkg_name) {
+                    let (positioned_pkg_name, _) = package_map.get_key_value(pkg_name).unwrap();
+                    Some(positioned_pkg_name.clone())
+                } else {
+                    None
+                }
             })
-            .collect(),
+            .collect::<Vec<_>>();
+        missing_pkgs.sort();
+        missing_pkgs
     }
+    (
+        get_missing(&included, deployed, package_map),
+        get_missing(&soft_included, &soft_or_regular_deployed, package_map),
+    )
 }

@@ -110,4 +110,10 @@ module Codes = struct
   let redundant_cast = 5648
 
   let internal_classname = 5649
+
+  let async_lambda = 5650
+
+  let awaitable_awaitable = 5651
+
+  let cast_non_primitive = 5652
 end

@@ -263,6 +263,9 @@ module Type_expansions : sig
   val ids : t -> string list
 
   val positions : t -> Pos_or_decl.t list
+
+  (** Returns true if there was an attempt to add a cycle to the expansion list. *)
+  val cyclic_expansion : t -> bool
 end = struct
   type t = {
     report_cycle: (Pos.t * string) option;
@@ -272,16 +275,18 @@ end = struct
     expansions: (Pos_or_decl.t * string) list;
         (** A list of the type defs and type access we have expanded thus far. Used
             to prevent entering into a cycle when expanding these types. *)
+    cyclic_expansion: bool ref;
   }
 
-  let empty_w_cycle_report ~report_cycle = { report_cycle; expansions = [] }
+  let empty_w_cycle_report ~report_cycle =
+    { report_cycle; expansions = []; cyclic_expansion = ref false }
 
   let empty = empty_w_cycle_report ~report_cycle:None
 
-  let add { report_cycle; expansions } exp =
-    { report_cycle; expansions = exp :: expansions }
+  let add ({ expansions; _ } as exps) exp =
+    { exps with expansions = exp :: expansions }
 
-  let has_expanded { report_cycle; expansions } x =
+  let has_expanded { report_cycle; expansions; _ } x =
     match report_cycle with
     | Some (p, x') when String.equal x x' -> Some (Some p)
     | Some _
@@ -292,10 +297,11 @@ end = struct
 
   let add_and_check_cycles exps (p, id) =
     let has_cycle = has_expanded exps id in
+    if Option.is_some has_cycle then exps.cyclic_expansion := true;
     let exps = add exps (p, id) in
     (exps, has_cycle)
 
-  let as_list { report_cycle; expansions } =
+  let as_list { report_cycle; expansions; _ } =
     (report_cycle
     |> Option.map ~f:(Tuple2.map_fst ~f:Pos_or_decl.of_raw_pos)
     |> Option.to_list)
@@ -304,6 +310,8 @@ end = struct
   let ids exps = as_list exps |> List.map ~f:snd
 
   let positions exps = as_list exps |> List.map ~f:fst
+
+  let cyclic_expansion exps = !(exps.cyclic_expansion)
 end
 
 (** Tracks information about how a type was expanded *)
@@ -340,6 +348,8 @@ let add_type_expansion_check_cycles env exp =
   let env = { env with type_expansions } in
   (env, has_cycle)
 
+let cyclic_expansion env = Type_expansions.cyclic_expansion env.type_expansions
+
 let get_var t =
   match get_node t with
   | Tvar v -> Some v
@@ -372,6 +382,11 @@ let is_generic t =
 let is_dynamic t =
   match get_node t with
   | Tdynamic -> true
+  | _ -> false
+
+let is_nothing t =
+  match get_node t with
+  | Tunion [] -> true
   | _ -> false
 
 let is_nonnull t =
@@ -526,8 +541,9 @@ let rec is_denotable ty =
     List.for_all ~f:is_denotable ts
   | Tvec_or_dict (tk, tv) -> is_denotable tk && is_denotable tv
   | Taccess (ty, _) -> is_denotable ty
-  | Tshape (_, sm) ->
+  | Tshape (_, unknown_field_type, sm) ->
     TShapeMap.for_all (fun _ { sft_ty; _ } -> is_denotable sft_ty) sm
+    && unknown_field_type_is_denotable unknown_field_type
   | Tfun { ft_params; ft_ret; _ } ->
     is_denotable ft_ret.et_type
     && List.for_all ft_params ~f:(fun { fp_type; _ } ->
@@ -545,6 +561,22 @@ let rec is_denotable ty =
   | Tdependent _
   | Tunapplied_alias _ ->
     false
+
+and unknown_field_type_is_denotable ty =
+  match get_node ty with
+  | Tunion [] -> true
+  | Tintersection [] -> true
+  | Toption ty -> begin
+    match get_node ty with
+    | Tnonnull -> true
+    | _ -> false
+  end
+  | _ -> false
+
+let same_type_origin orig1 orig2 =
+  match orig1 with
+  | Missing_origin -> false
+  | _ -> equal_type_origin orig1 orig2
 
 module ShapeFieldMap = struct
   include TShapeMap
@@ -715,18 +747,22 @@ let rec ty__compare : type a. ?normalize_lists:bool -> a ty_ -> a ty_ -> int =
       end
       | n -> n
     end
-    | (Tshape (shape_kind1, fields1), Tshape (shape_kind2, fields2)) -> begin
-      match compare_shape_kind shape_kind1 shape_kind2 with
-      | 0 ->
-        List.compare
-          (fun (k1, v1) (k2, v2) ->
-            match TShapeField.compare k1 k2 with
-            | 0 -> shape_field_type_compare v1 v2
-            | n -> n)
-          (TShapeMap.elements fields1)
-          (TShapeMap.elements fields2)
-      | n -> n
-    end
+    | ( Tshape (shape_origin1, unknown_fields_type1, fields1),
+        Tshape (shape_origin2, unknown_fields_type2, fields2) ) ->
+      if same_type_origin shape_origin1 shape_origin2 then
+        0
+      else begin
+        match ty_compare unknown_fields_type1 unknown_fields_type2 with
+        | 0 ->
+          List.compare
+            (fun (k1, v1) (k2, v2) ->
+              match TShapeField.compare k1 k2 with
+              | 0 -> shape_field_type_compare v1 v2
+              | n -> n)
+            (TShapeMap.elements fields1)
+            (TShapeMap.elements fields2)
+        | n -> n
+      end
     | (Tvar v1, Tvar v2) -> compare v1 v2
     | (Tunapplied_alias n1, Tunapplied_alias n2) -> String.compare n1 n2
     | (Taccess (ty1, id1), Taccess (ty2, id2)) -> begin
@@ -843,6 +879,7 @@ let rec ty__compare : type a. ?normalize_lists:bool -> a ty_ -> a ty_ -> int =
       ft_ifc_decl = ifc_decl1;
       ft_tparams = tparams1;
       ft_where_constraints = where_constraints1;
+      ft_cross_package = cross_package1;
     } =
       fty1
     in
@@ -854,6 +891,7 @@ let rec ty__compare : type a. ?normalize_lists:bool -> a ty_ -> a ty_ -> int =
       ft_ifc_decl = ifc_decl2;
       ft_tparams = tparams2;
       ft_where_constraints = where_constraints2;
+      ft_cross_package = cross_package2;
     } =
       fty2
     in
@@ -873,7 +911,12 @@ let rec ty__compare : type a. ?normalize_lists:bool -> a ty_ -> a ty_ -> int =
               let { capability = capability2 } = implicit_params2 in
               begin
                 match capability_compare capability1 capability2 with
-                | 0 -> compare_ifc_fun_decl ifc_decl1 ifc_decl2
+                | 0 -> begin
+                  match compare_ifc_fun_decl ifc_decl1 ifc_decl2 with
+                  | 0 ->
+                    compare_cross_package_decl cross_package1 cross_package2
+                  | n -> n
+                end
                 | n -> n
               end
             | n -> n

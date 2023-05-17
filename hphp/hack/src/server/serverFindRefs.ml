@@ -1,4 +1,5 @@
 (*
+
  * Copyright (c) 2015, Facebook, Inc.
  * All rights reserved.
  *
@@ -50,6 +51,15 @@ let search ctx target include_defs files genv =
   in
   strip_ns res
 
+let search_single_file ctx target file =
+  if Hh_logger.Level.passes_min_level Hh_logger.Level.Debug then
+    Hh_logger.debug
+      "ServerFindRefs.search file %s"
+      (Relative_path.to_absolute file);
+  (* Get all the references to the provided target in the file *)
+  let res = FindRefsService.find_references_single_file ctx target file in
+  strip_ns res
+
 let handle_prechecked_files genv env dep f =
   (* We need to handle prechecked files here to get accurate results. *)
   let dep = Typing_deps.DepSet.singleton dep in
@@ -83,6 +93,11 @@ let search_function ctx function_name include_defs genv env =
     |> Relative_path.Set.elements
   in
   search ctx (FindRefsService.IFunction function_name) include_defs files genv
+
+let search_single_file_for_function ctx function_name filename =
+  let function_name = add_ns function_name in
+  Hh_logger.debug "ServerFindRefs.search_function: %s" function_name;
+  search_single_file ctx (FindRefsService.IFunction function_name) filename
 
 let search_member
     ctx
@@ -125,6 +140,33 @@ let search_member
   in
   search ctx target include_defs files genv
 
+let search_single_file_for_member
+    ctx
+    (class_name : string)
+    (member : member)
+    ~(naming_table : Naming_table.t)
+    (filename : Relative_path.t) : (string * Pos.t) list =
+  let class_name = add_ns class_name in
+  let origin_class_name =
+    FindRefsService.get_origin_class_name ctx class_name member
+  in
+  let descendant_class_files =
+    Relative_path.Set.add Relative_path.Set.empty filename
+  in
+  let descendant_classes =
+    FindRefsService.find_child_classes
+      ctx
+      origin_class_name
+      naming_table
+      descendant_class_files
+  in
+  let class_and_descendants = SSet.add descendant_classes origin_class_name in
+  let target =
+    FindRefsService.IMember
+      (FindRefsService.Class_set class_and_descendants, member)
+  in
+  search_single_file ctx target filename
+
 let search_gconst ctx cst_name include_defs genv env =
   let cst_name = add_ns cst_name in
   handle_prechecked_files genv env Typing_deps.(Dep.(make (GConst cst_name)))
@@ -137,6 +179,10 @@ let search_gconst ctx cst_name include_defs genv env =
     |> Relative_path.Set.elements
   in
   search ctx (FindRefsService.IGConst cst_name) include_defs files genv
+
+let search_single_file_for_gconst ctx cst_name filename =
+  let cst_name = add_ns cst_name in
+  search_single_file ctx (FindRefsService.IGConst cst_name) filename
 
 let search_class ctx class_name include_defs include_all_ci_types genv env =
   let class_name = add_ns class_name in
@@ -157,6 +203,16 @@ let search_class ctx class_name include_defs include_all_ci_types genv env =
   in
   search ctx target include_defs files genv
 
+let search_single_file_for_class ctx class_name filename include_all_ci_types =
+  let class_name = add_ns class_name in
+  let target =
+    if include_all_ci_types then
+      FindRefsService.IClass class_name
+    else
+      FindRefsService.IExplicitClass class_name
+  in
+  search_single_file ctx target filename
+
 let search_localvar ~ctx ~entry ~line ~char =
   let results = ServerFindLocals.go ~ctx ~entry ~line ~char in
   match results with
@@ -165,6 +221,10 @@ let search_localvar ~ctx ~entry ~line ~char =
     let var_text = Pos.get_text_from_pos ~content first_pos in
     List.map results ~f:(fun x -> (var_text, x))
   | [] -> []
+
+let is_local = function
+  | LocalVar _ -> true
+  | _ -> false
 
 let go ctx action include_defs genv env =
   match action with
@@ -187,6 +247,46 @@ let go ctx action include_defs genv env =
         ~contents:file_content
     in
     (env, Done (search_localvar ~ctx ~entry ~line ~char))
+
+let go_for_single_file
+    ~(ctx : Provider_context.t)
+    ~(action : ServerCommandTypes.Find_refs.action)
+    ~(filename : Relative_path.t)
+    ~(name : string)
+    ~(naming_table : Naming_table.t) =
+  let _ = name in
+  match action with
+  | Member (class_name, member) ->
+    search_single_file_for_member ctx class_name member filename ~naming_table
+  | Function function_name ->
+    search_single_file_for_function ctx function_name filename
+  | Class class_name ->
+    let include_all_ci_types = true in
+    search_single_file_for_class ctx class_name filename include_all_ci_types
+  | ExplicitClass class_name ->
+    let include_all_ci_types = false in
+    search_single_file_for_class ctx class_name filename include_all_ci_types
+  | GConst cst_name -> search_single_file_for_gconst ctx cst_name filename
+  | LocalVar { filename; file_content; line; char } ->
+    let (ctx, entry) =
+      Provider_context.add_or_overwrite_entry_contents
+        ~ctx
+        ~path:filename
+        ~contents:file_content
+    in
+    search_localvar ~ctx ~entry ~line ~char
+
+let go_for_localvar ctx action =
+  match action with
+  | LocalVar { filename; file_content; line; char } ->
+    let (ctx, entry) =
+      Provider_context.add_or_overwrite_entry_contents
+        ~ctx
+        ~path:filename
+        ~contents:file_content
+    in
+    Ok (search_localvar ~ctx ~entry ~line ~char)
+  | _ -> Error action
 
 let to_absolute res = List.map res ~f:(fun (r, pos) -> (r, Pos.to_absolute pos))
 
@@ -225,13 +325,14 @@ let get_action symbol (filename, file_content, line, char) =
   (* TODO(toyang): find references doesn't work for enum labels yet *)
   | SO.EnumClassLabel _ -> None
 
-let go_from_file_ctx
+let go_from_file_ctx_with_symbol_definition
     ~(ctx : Provider_context.t)
     ~(entry : Provider_context.entry)
     ~(line : int)
-    ~(column : int) : (string * ServerCommandTypes.Find_refs.action) option =
+    ~(column : int) :
+    (string SymbolDefinition.t * ServerCommandTypes.Find_refs.action) option =
   (* Find the symbol at given position *)
-  ServerIdentifyFunction.go_quarantined ~ctx ~entry ~line ~column
+  ServerIdentifyFunction.go_quarantined_absolute ~ctx ~entry ~line ~column
   |> (* If there are few, arbitrarily pick the first *)
   List.hd
   >>= fun (occurrence, definition) ->
@@ -244,4 +345,13 @@ let go_from_file_ctx
       source_text.Full_fidelity_source_text.text,
       line,
       column )
-  >>= fun action -> Some (definition.SymbolDefinition.full_name, action)
+  >>= fun action -> Some (definition, action)
+
+let go_from_file_ctx
+    ~(ctx : Provider_context.t)
+    ~(entry : Provider_context.entry)
+    ~(line : int)
+    ~(column : int) : (string * ServerCommandTypes.Find_refs.action) option =
+  go_from_file_ctx_with_symbol_definition ~ctx ~entry ~line ~column
+  |> Option.map ~f:(fun (def, action) ->
+         (def.SymbolDefinition.full_name, action))

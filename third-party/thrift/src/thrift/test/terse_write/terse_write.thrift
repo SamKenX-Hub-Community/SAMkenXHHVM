@@ -19,6 +19,7 @@ include "thrift/annotation/thrift.thrift"
 
 cpp_include "thrift/test/AdapterTest.h"
 
+@thrift.Experimental
 package "facebook.com/thrift/test"
 
 namespace cpp2 apache.thrift.test.terse_write
@@ -107,11 +108,11 @@ struct FieldLevelTerseStruct {
 // TODO(dokwon): Add support to py3 terse write with cpp.ref.
 @thrift.TerseWrite
 struct CppRefTerseStruct {
-  @cpp.Ref{type = cpp.RefType.SharedMutable}
+  @cpp.Ref{type = cpp.RefType.Unique}
   1: i32 unique_int_field (py3.hidden);
   @cpp.Ref{type = cpp.RefType.SharedMutable}
   2: i32 shared_int_field (py3.hidden);
-  @cpp.Ref{type = cpp.RefType.SharedMutable}
+  @cpp.Ref{type = cpp.RefType.Shared}
   3: i32 shared_const_int_field (py3.hidden);
   @thrift.InternBox
   4: MyStruct intern_boxed_field;

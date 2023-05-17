@@ -7,6 +7,7 @@ import collections.abc
 import functools
 import lldb
 import re
+import sys
 import typing
 
 class Command(abc.ABC):
@@ -134,7 +135,7 @@ def Enum(enum_name: str, elem: typing.Union[str, int], target: lldb.SBTarget) ->
 
     Arguments:
         enum_name: name of the enumeration
-        elem: name or index of the enumerator element 
+        elem: name or index of the enumerator element
 
     Returns:
         SBTypeEnumMember wrapping the enumerator element
@@ -233,7 +234,7 @@ def template_type(t: lldb.SBType) -> str:
 
     Return:
         The unparameterized name
-    
+
     For example:
         HPHP::VMFixedVector<ObjectProps::quick_index> -> 'HPHP::VMFixedVector'
     """
@@ -244,9 +245,14 @@ def template_type(t: lldb.SBType) -> str:
 # Pointer helpers
 
 
-def nullptr(target: lldb.SBValue):
+def nullptr(target: lldb.SBTarget):
     """ Return an SBValue wrapping a pointer to 0 """
     return target.CreateValueFromExpression("nullptr", "(void *)0")
+
+
+def is_nullptr(ptr: lldb.SBValue):
+    assert ptr.type.IsPointerType()
+    return ptr.unsigned == 0
 
 
 def referenced_value(val: lldb.SBValue) -> lldb.SBValue:
@@ -258,10 +264,10 @@ def referenced_value(val: lldb.SBValue) -> lldb.SBValue:
 
 def rawptr(val: lldb.SBValue) -> typing.Optional[lldb.SBValue]:
     """Fully strip a smart pointer to a raw pointer. References are re-cast as pointers.
-    
+
         Arguments:
             val: A smart pointer
-        
+
         Returns:
             The stripped pointer, or None if it's not yet supported
     """
@@ -277,15 +283,15 @@ def rawptr(val: lldb.SBValue) -> typing.Optional[lldb.SBValue]:
         # This is a synthetic value, so we can just use its synthesized child.
         # We could also do utils.get(val.GetNonSyntheticValue(), "_M_t", "_M_t", "_M_head_impl")
         ptr = get(val, "pointer")
-    if name == "HPHP::req::ptr" or name == "HPHP::AtomicSharedPtrImpl":
+    elif name == "HPHP::req::ptr" or name == "HPHP::AtomicSharedPtrImpl":
         ptr = get(val, "m_px")
     elif name == "HPHP::LowPtr" or name == "HPHP::detail::LowPtrImpl":
         inner = val.type.GetTemplateArgumentType(0)
-        storage_type = template_type(val.type.GetTemplateArgumentType(1))
         ptr = get(val, "m_s")
-        # Unwrap the std::atomic in AtomicLowPtr. (LowPtr is templated on
-        # the m_s field's type, and for AtomicLowPtr, it's an atomic.)
-        if storage_type == "HPHP::detail::AtomicStorage":
+        if name == "HPHP::detail::LowPtrImpl":
+            storage_type = template_type(val.type.GetTemplateArgumentType(1))
+            # Currently only used by AtomicLowPtr alias
+            assert storage_type == "HPHP::detail::AtomicStorage"
             ptr = get(ptr, "_M_i")
         ptr = ptr.Cast(inner.GetPointerType())
     elif name == "HPHP::CompactTaggedPtr":
@@ -318,7 +324,7 @@ def deref(val: lldb.SBValue) -> lldb.SBValue:
             The fully dereferenced value.
     """
     p = rawptr(val)
- 
+
     if p is None:
         return val.Cast(rawtype(val.type))
     else:
@@ -366,6 +372,8 @@ def nameof(val: lldb.SBValue) -> typing.Optional[str]:
     elif t == "HPHP::Class":
         pre_class = deref(get(val, "m_preClass"))
         sd = get(pre_class, "m_name")
+    elif t == "HPHP::LazyClassData":
+        sd = get(val, "className")
     elif t == "HPHP::ObjectData":
         cls = deref(get(val, "m_cls"))
         pre_class = deref(get(cls, "m_preClass"))
@@ -380,8 +388,36 @@ def nameof(val: lldb.SBValue) -> typing.Optional[str]:
 #------------------------------------------------------------------------------
 # String helpers
 
+def read_cstring(addr: typing.Union[int, lldb.SBValue], len: str, process: lldb.SBProcess, keep_case: bool = True) -> str:
+    """ Read a null-terminated char * from memory at the given address or lldb.SBValue's load_addr
 
-def string_data_val(val: lldb.SBValue, keep_case=True):
+        LLDB can already format char * variables, like so:
+
+            (char *) varname = 0x0000abcd "string value"
+
+        This gets just the "string value" char array.
+        We could probably also just parse the result of str(val) or val.summary.
+    """
+    if isinstance(addr, lldb.SBValue):
+        addr = addr.load_addr
+
+    err = None
+
+    try:
+        error = lldb.SBError()
+        cstring = process.ReadCStringFromMemory(addr, len, error)
+        if error.Success():
+            return cstring if keep_case else cstring.lower()
+        else:
+            err = error
+    except SystemError as error:
+        err = error
+
+    print(f"error while trying to get string: {err}", file=sys.stderr)
+    return f"<invalid string with addr 0x{addr:0x} and length {len}>"
+
+
+def string_data_val(val: lldb.SBValue, keep_case=True) -> str:
     """ Convert an HPHP::StringData[*] to a Python string
 
     Arguments:
@@ -389,30 +425,157 @@ def string_data_val(val: lldb.SBValue, keep_case=True):
         keep_case: If False, lowercase the returned string
 
     Returns:
-        A Python string that stored by the StringData
+        A Python string with the string value stored by the StringData
     """
 
     if val.type.IsPointerType():
         val = deref(val)
+    assert val.type.name == "HPHP::StringData"
 
     addr = val.load_addr
     assert addr != lldb.LLDB_INVALID_ADDRESS, f"invalid string address {val.load_addr}"
     addr += val.size
     m_len = val.children[1].GetChildMemberWithName("m_len").unsigned
-    error = lldb.SBError()
+    return read_cstring(addr, m_len + 1, val.process)
 
-    # +1 for null terminator, it seems
-    cstring = val.process.ReadCStringFromMemory(addr, m_len + 1, error)
-    if error.Success():
-        return cstring
+#------------------------------------------------------------------------------
+# Resource helpers
+
+def pretty_resource_data(data: lldb.SBValue, print_header=False) -> str:
+    """ Convert an HPHP::ResourceData[*] to a Python string
+
+    Arguments:
+        val: A ResourceData* wrapped by an lldb.SBValue
+        print_header: If True, also print the ResourceHeader the precedes it
+
+    Returns:
+        A Python string representing the contents of the ResourceData object
+    """
+
+    if data.type.IsPointerType():
+        data = deref(data)
+
+    assert data.type.name == "HPHP::ResourceData"
+    return str(hex(data.load_addr))
+
+
+def pretty_resource_header(header: lldb.SBValue, print_data=True) -> str:
+    """ Convert an HPHP::ResourceHdr[*] to a Python string
+
+    Arguments:
+        val: A ResourceHdr* wrapped by an lldb.SBValue
+        print_data: If True, also print the ResourceData that follows
+
+    Returns:
+        A Python string representing the contents of the ResourceHdr object
+    """
+
+    if header.type.IsPointerType():
+        header = deref(header)
+
+    assert header.type.name == "HPHP::ResourceHdr", f"Expected HPHP::ResourceHdr, got {header.type.name}"
+    data = None
+    if print_data:
+        addr = header.load_addr
+        addr += header.size
+        data = header.CreateValueFromAddress("data", addr, Type("HPHP::ResourceData", header.target))
+        data = pretty_resource_data(data)
+
+    header = str(hex(header.load_addr))
+
+    return f"(hdr = {header}" + (f", data = {data}" if data else "") + ")"
+
+
+#------------------------------------------------------------------------------
+# TypedValue helpers
+
+
+def pretty_tv(typ: lldb.SBValue, data: lldb.SBValue) -> str:
+    """ Get the pretty string representation of a TypedValue (or its subclasses)
+
+    Arguments:
+        typ: A HPHP::DataType wrapped by an lldb.SBValue
+        data: A HPHP::Value wrapped by an lldb.SBValue
+
+    Returns:
+        A Python string representing the TypedValue
+    """
+
+    target = typ.target
+    typ = typ.Cast(Type("HPHP::DataType", target))
+
+    def DT(elem):
+        return Enum("HPHP::DataType", elem, target).unsigned
+
+    val = None
+    name = None
+
+    if typ.unsigned in [DT("Uninit"), DT("Null")]:
+        pass
+    elif typ.unsigned == DT("Boolean"):
+        val = get(data, "num").unsigned
+        val = bool(val) if val in (0, 1) else val
+    elif typ.unsigned == DT("Int64"):
+        val = get(data, "num").signed
+    elif typ.unsigned == DT("Double"):
+        val = float(get(data, "dbl").value)
+    elif typ.unsigned in (DT("String"), DT("PersistentString")):
+        pstr = get(data, "pstr")
+        val = '\"%s\"' % string_data_val(pstr)
+    elif typ.unsigned == DT("Object"):
+        val = get(data, "pobj")
+        name = nameof(val)
+    elif typ.unsigned == DT("Resource"):
+        val = deref(get(data, "pres"))
+        val = pretty_resource_header(val)
+    elif typ.unsigned == DT("Class"):
+        val = get(data, "pclass")
+        name = nameof(val)
+    elif typ.unsigned == DT("LazyClass"):
+        val = get(data, "plazyclass")
+        name = nameof(val)
+    elif typ.unsigned == DT("Func"):
+        val = get(data, "pfunc")
+        name = nameof(val)
+    elif typ.unsigned == DT("ClsMeth"):
+        # For non-lowptr, m_data is a pointer, so try and dereference first
+        val = referenced_value(get(data, "pclsmeth", "m_data"))
+        cls = get(val, "m_cls").Cast(Type("HPHP::Class", target).GetPointerType())
+        func = get(val, "m_func").Cast(Type("HPHP::Func", target).GetPointerType())
+        name = f"{nameof(cls)}::{nameof(func)}"
+    elif typ.unsigned == DT("RFunc"):
+        val = get(data, "prfunc")
+        func = get(val, "m_func")
+        #arr = get(val, "m_arr")  # TODO use to print array contents
+        name = nameof(func)
+    elif typ.unsigned == DT("RClsMeth"):
+        val = get(data, "prclsmeth")
+        cls = get(val, "m_cls")
+        func = get(val, "m_func")
+        #arr = get(val, "m_arr")  # TODO use to print array contents
+        name = f"{nameof(cls)}::{nameof(func)}"
     else:
-        print('error: ', error)
+        typ_as_int8_t = typ.Cast(Type("int8_t", target))
+        num = get(data, "num").signed
+        typ = 'Invalid Type (%d)' % typ_as_int8_t.signed
+        val = '0x%x' % num
 
-    return cstring if keep_case else cstring.lower()
+    if isinstance(typ, lldb.SBValue):
+        typ = typ.value
+
+    if val is None:
+        out = '{ %s }' % typ
+    elif name is None:
+        out = '{ %s, %s }' % (typ, str(val))
+    else:
+        out = '{ %s, %s ("%s") }' % (typ, str(val), name)
+
+    return out
 
 
 #------------------------------------------------------------------------------
 # Architecture
+
 
 def arch(target: lldb.SBTarget) -> str:
     """ Get the current architecture (e.g. "x86_64" or "aarch64") """

@@ -1,4 +1,6 @@
 class
+  INSERT class
   classname<this>
 bar
-  (function(): void)
+  INSERT bar()
+  function(): void

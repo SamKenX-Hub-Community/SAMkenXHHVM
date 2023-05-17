@@ -6,7 +6,7 @@
  *
  *)
 
-type pos_id = Pos_or_decl.t * Ast_defs.id_ [@@deriving eq, ord, show]
+type pos_id = Pos_or_decl.t * Ast_defs.id_ [@@deriving eq, hash, ord, show]
 
 type arg_position =
   | Aonly
@@ -40,9 +40,9 @@ type blame = Blame of Pos.t * blame_source [@@deriving eq]
    inferred via local inference.
 *)
 (* create private types to represent the different type phases *)
-type decl_phase = private DeclPhase [@@deriving eq, show]
+type decl_phase = private DeclPhase [@@deriving eq, hash, show]
 
-type locl_phase = private LoclPhase [@@deriving eq, show]
+type locl_phase = private LoclPhase [@@deriving eq, hash, show]
 
 (* The phase below helps enforce that only Pos_or_decl.t positions end up in the heap.
  * To enforce that, any reason taking a Pos.t should be a locl_phase t_
@@ -117,6 +117,7 @@ type _ t_ =
   | Rpredicated : Pos.t * string -> locl_phase t_
   | Ris : Pos.t -> locl_phase t_
   | Ras : Pos.t -> locl_phase t_
+  | Requal : Pos.t -> locl_phase t_
   | Rvarray_or_darray_key : Pos_or_decl.t -> 'phase t_
   | Rvec_or_dict_key : Pos_or_decl.t -> 'phase t_
   | Rusing : Pos.t -> locl_phase t_
@@ -166,6 +167,7 @@ type _ t_ =
       -> locl_phase t_
   | Rmissing_class : Pos.t -> locl_phase t_
   | Rinvalid : 'phase t_
+[@@deriving hash]
 
 type t = locl_phase t_
 

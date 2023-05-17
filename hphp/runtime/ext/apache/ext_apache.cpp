@@ -140,7 +140,7 @@ Array HHVM_FUNCTION(get_headers_secure) {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-ApacheExtension::ApacheExtension() : Extension("apache") {}
+ApacheExtension::ApacheExtension() : Extension("apache", NO_EXTENSION_VERSION_YET, NO_ONCALL_YET) {}
 
 ApacheExtension::~ApacheExtension() {}
 
@@ -154,8 +154,6 @@ void ApacheExtension::moduleInit() {
   HHVM_FE(apache_get_config);
   HHVM_FALIAS(HH\\get_headers_secure, get_headers_secure);
   HHVM_FALIAS(HH\\get_proxygen_headers, get_proxygen_headers);
-
-  HHVM_RC_INT(APACHE_MAP, 200);
 
   loadSystemlib();
 }

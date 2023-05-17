@@ -16,8 +16,11 @@
 
 #pragma once
 
+#include <type_traits>
+
 #include <thrift/lib/cpp2/Thrift.h>
 #include <thrift/lib/cpp2/op/detail/Patch.h>
+#include <thrift/lib/cpp2/protocol/DebugProtocol.h>
 #include <thrift/lib/cpp2/type/Tag.h>
 #include <thrift/lib/thrift/gen-cpp2/patch_types.h>
 
@@ -80,6 +83,29 @@ UnionPatch<::apache::thrift::detail::st::private_access::patch_struct<T>>
 /// * patch.apply(value); // Sets value to 2;
 template <typename T>
 using patch_type = decltype(detail::patchType(type::infer_tag<T>{}));
+
+template <typename T, typename = void>
+FOLLY_INLINE_VARIABLE constexpr bool is_patch_v = false;
+
+template <typename T>
+FOLLY_INLINE_VARIABLE constexpr bool
+    is_patch_v<T, folly::void_t<typename T::underlying_type>> =
+        std::is_base_of_v<detail::BasePatch<typename T::underlying_type, T>, T>;
+
+template <typename T>
+FOLLY_INLINE_VARIABLE constexpr bool is_assign_only_patch_v = false;
+template <typename T>
+FOLLY_INLINE_VARIABLE constexpr bool
+    is_assign_only_patch_v<detail::AssignPatch<T>> = true;
+
+template <typename T>
+std::string prettyPrintPatch(
+    const T& obj,
+    DebugProtocolWriter::Options options =
+        DebugProtocolWriter::Options::simple()) {
+  static_assert(is_patch_v<T>, "Argument must be a Patch.");
+  return debugStringViaRecursiveEncode(obj.toThrift(), std::move(options));
+}
 
 } // namespace op
 } // namespace thrift

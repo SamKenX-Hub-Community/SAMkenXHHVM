@@ -113,22 +113,13 @@ module Program = struct
     exit error_code
 
   (* filter and relativize updated file paths *)
-  let process_updates genv updates =
-    let root = Path.to_string @@ ServerArgs.root genv.options in
-    (* Because of symlinks, we can have updates from files that aren't in
-     * the .hhconfig directory *)
-    let updates =
-      SSet.filter updates ~f:(fun p -> String.is_prefix p ~prefix:root)
-    in
-    let updates = Relative_path.(relativize_set Root updates) in
-    let to_recheck =
-      Relative_path.Set.filter updates ~f:(fun update ->
-          FindUtils.file_filter (Relative_path.to_absolute update))
-    in
+  let exit_if_critical_update genv ~(raw_updates : SSet.t) : unit =
     let hhconfig_in_updates =
-      Relative_path.Set.mem updates ServerConfig.repo_config_path
+      SSet.mem
+        raw_updates
+        (Relative_path.to_absolute ServerConfig.repo_config_path)
     in
-    (if hhconfig_in_updates then
+    if hhconfig_in_updates then begin
       let (new_config, _) = ServerConfig.load ~silent:false genv.options in
       if not (ServerConfig.is_compatible genv.config new_config) then (
         Hh_logger.log
@@ -138,18 +129,20 @@ module Program = struct
 
         (* TODO: Notify the server monitor directly about this. *)
         Exit.exit Exit_status.Hhconfig_changed
-      ));
+      )
+    end;
     let package_config_in_updates =
-      Relative_path.Set.mem updates PackageConfig.repo_config_path
+      SSet.mem
+        raw_updates
+        (Relative_path.to_absolute PackageConfig.repo_config_path)
     in
-    if package_config_in_updates then (
+    if package_config_in_updates then begin
       Hh_logger.log
         "%s changed; please restart %s.\n"
         (Relative_path.suffix PackageConfig.repo_config_path)
         GlobalConfig.program_name;
       Exit.exit Exit_status.Package_config_changed
-    );
-    to_recheck
+    end
 end
 
 let finalize_init init_env typecheck_telemetry init_telemetry =
@@ -179,44 +172,78 @@ let finalize_init init_env typecheck_telemetry init_telemetry =
 (* The main loop *)
 (*****************************************************************************)
 
-(** Query the notifier of changed files. *)
-let query_notifier genv env query_kind start_time =
-  let open ServerNotifierTypes in
+(** Query for changed files. This is a hard to understand method...
+[let (env, changes, new_clock, may_be_stale, telemetry) = query_notifier genv env query_kind start_time].
+
+CARE! [query_kind] is hard to understand...
+* [`Sync] -- a watchman sync query, i.e. guarantees to have picked up all updates
+  up to the moment it was invoked. Watchman does this by writing a dummy file
+  and waiting until the OS notifies about it; the OS guarantees to send notifications in order.
+* [`Async] -- picks up changes that watchman has pushed over the subscription, but we don't
+  do a sync, so therefore there might be changes on disk that watchman will tell us about
+  in future.
+* [`Skip] -- CARE! Despite its name, this also behaves much like [`Async].
+
+The return value [may_be_stale] indicates that the most recent watchman event that got pushed
+was not a "sync" to the dummy file. This will never be true for [`Sync] query kind (which deliberately
+waits for the sync), but it might be true or false for [`Async] and [`Skip]. The caller can
+use this as a hint that we don't know whether there are more disk changes.
+Personally, I've never actually seen it be true. It's surfaced to the user in clientCheckStatus.ml
+with the message "this may be stale, probably due to watchman being unresponsive". *)
+let query_notifier
+    (genv : ServerEnv.genv)
+    (env : ServerEnv.env)
+    (query_kind : [> `Async | `Skip | `Sync ])
+    (start_time : float) :
+    ServerEnv.env
+    * Relative_path.Set.t
+    * Watchman.clock option
+    * bool
+    * Telemetry.t =
   let telemetry =
     Telemetry.create () |> Telemetry.duration ~key:"start" ~start_time
   in
-  let (env, raw_updates) =
+  let (env, (raw_updates, clock)) =
     match query_kind with
     | `Sync ->
       ( env,
-        begin
-          try Notifier_synchronous_changes (genv.notifier ()) with
-          | Watchman.Timeout -> Notifier_unavailable
-        end )
+        (try ServerNotifier.get_changes_sync genv.notifier with
+        | Watchman.Timeout -> (ServerNotifier.Unavailable, None)) )
     | `Async ->
       ( { env with last_notifier_check_time = start_time },
-        genv.notifier_async () )
-    | `Skip -> (env, Notifier_async_changes SSet.empty)
+        ServerNotifier.get_changes_async genv.notifier )
+    | `Skip -> (env, (ServerNotifier.AsyncChanges SSet.empty, None))
   in
   let telemetry = Telemetry.duration telemetry ~key:"notified" ~start_time in
   let unpack_updates = function
-    | Notifier_unavailable -> (true, SSet.empty)
-    | Notifier_state_enter _ -> (true, SSet.empty)
-    | Notifier_state_leave _ -> (true, SSet.empty)
-    | Notifier_async_changes updates -> (true, updates)
-    | Notifier_synchronous_changes updates -> (false, updates)
+    | ServerNotifier.Unavailable -> (true, SSet.empty)
+    | ServerNotifier.StateEnter _ -> (true, SSet.empty)
+    | ServerNotifier.StateLeave _ -> (true, SSet.empty)
+    | ServerNotifier.AsyncChanges updates -> (true, updates)
+    | ServerNotifier.SyncChanges updates -> (false, updates)
   in
   let (updates_stale, raw_updates) = unpack_updates raw_updates in
-  let rec pump_async_updates acc =
-    match genv.notifier_async_reader () with
+  let rec pump_async_updates acc acc_clock =
+    match ServerNotifier.async_reader_opt genv.notifier with
     | Some reader when Buffered_line_reader.is_readable reader ->
-      let (_, raw_updates) = unpack_updates (genv.notifier_async ()) in
-      pump_async_updates (SSet.union acc raw_updates)
-    | _ -> acc
+      let (changes, clock) = ServerNotifier.get_changes_async genv.notifier in
+      let (_, raw_updates) = unpack_updates changes in
+      pump_async_updates (SSet.union acc raw_updates) clock
+    | _ -> (acc, acc_clock)
   in
-  let raw_updates = pump_async_updates raw_updates in
+  let (raw_updates, clock) = pump_async_updates raw_updates clock in
   let telemetry = Telemetry.duration telemetry ~key:"pumped" ~start_time in
-  let updates = Program.process_updates genv raw_updates in
+  Program.exit_if_critical_update genv ~raw_updates;
+  let updates =
+    FindUtils.post_watchman_filter_from_fully_qualified_raw_updates
+      ~root:(ServerArgs.root genv.options)
+      ~raw_updates
+  in
+  (* CARE! For streaming-errors to work in clientCheckStatus.ml, the test
+     which hh_server uses to determine "is there a non-empty set of changes which prompt me
+     to start a new check" must be at least as strict as the one in clientCheckStatus.
+     They're identical, in fact, because they both use the same watchman filter
+     (FilesToIgnore.watchman_server_expression_terms) and the same post-watchman-filter. *)
   let telemetry =
     telemetry
     |> Telemetry.duration ~key:"processed" ~start_time
@@ -225,7 +252,7 @@ let query_notifier genv env query_kind start_time =
   in
   if not @@ Relative_path.Set.is_empty updates then
     HackEventLogger.notifier_returned start_time (SSet.cardinal raw_updates);
-  (env, updates, updates_stale, telemetry)
+  (env, updates, clock, updates_stale, telemetry)
 
 let update_stats_after_recheck :
     RecheckLoopStats.t ->
@@ -295,11 +322,14 @@ let rec recheck_until_no_changes_left stats genv env select_outcome :
   in
 
   (* When a new client connects, we use the synchronous notifier.
-   * This is to get synchronous file system changes when invoking
-   * hh_client in terminal.
-   *
-   * NB: This also uses synchronous notify on establishing a persistent
-   * connection. This is harmless, but could maybe be filtered away. *)
+      This is to get synchronous file system changes when invoking
+      hh_client in terminal.
+
+     CARE! The [`Skip] option doesn't in fact skip. It will still
+     retrieve queued-up watchman updates.
+
+      NB: This also uses synchronous notify on establishing a persistent
+      connection. This is harmless, but could maybe be filtered away. *)
   let query_kind =
     match select_outcome with
     | ClientProvider.Select_new _ -> `Sync
@@ -311,14 +341,19 @@ let rec recheck_until_no_changes_left stats genv env select_outcome :
       else
         `Skip
     | ClientProvider.Select_persistent ->
-      (* Do not process any disk changes when there are pending persistent
-       * client requests - some of them might be edits, and we don't want to
-       * do analysis on mid-edit state of the world *)
+      (* Do not aggressively process any disk changes when there are pending persistent
+         client requests - some of them might be edits, and we don't want to
+         do analysis on mid-edit state of the world. (Nevertheless, [`Skip] still may
+         pick up updates...) *)
       `Skip
   in
-  let (env, updates, updates_stale, query_telemetry) =
+  let (env, updates, clock, updates_stale, query_telemetry) =
     query_notifier genv env query_kind start_time
   in
+  (* The response from [query_notifier] is tricky to unpick...
+     * For [`Sync | `Async] it will always return [clock=Some] and updates may be empty or not.
+     * For [`Skip] it might return [clock=Some] and updates empty or not; or it might
+       return [clock=None] with updates empty. *)
   let telemetry =
     telemetry
     |> Telemetry.object_ ~key:"query" ~value:query_telemetry
@@ -335,6 +370,14 @@ let rec recheck_until_no_changes_left stats genv env select_outcome :
   in
   (* saving any file is our trigger to start full recheck *)
   let env =
+    if Option.is_some clock && not (Option.equal String.equal clock env.clock)
+    then begin
+      Hh_logger.log "Recheck at watchclock %s" (ServerEnv.show_clock clock);
+      { env with clock }
+    end else
+      env
+  in
+  let env =
     if Relative_path.Set.is_empty updates then
       env
     else
@@ -349,35 +392,55 @@ let rec recheck_until_no_changes_left stats genv env select_outcome :
         { env with disk_needs_parsing; full_check_status = Full_check_started }
   in
   let telemetry = Telemetry.duration telemetry ~key:"got_updates" ~start_time in
+
+  (* If the client went away (e.g. user pressed Ctrl+C while waiting for the typecheck),
+     let's clean up now. *)
   let env =
     match env.nonpersistent_client_pending_command_needs_full_check with
-    (* We need to auto-restart the recheck to make progress towards handling
-     * this command... *)
-    | Some (_command, reason, client)
+    | Some (_command, _reason, client)
       when is_full_check_needed env.full_check_status
-           (*... but we don't want to get into a battle with IDE edits stopping
-            * rechecks and us restarting them. We're going to heavily favor edits and
-            * restart only after a longer period since last edit. Note that we'll still
-            * start full recheck immediately after any file save. *)
-           && Float.(start_time - env.last_command_time > 5.0) ->
-      let still_there =
-        try
-          ClientProvider.ping client;
-          true
-        with
-        | ClientProvider.Client_went_away -> false
-      in
-      if still_there then (
-        Hh_logger.log "Restarting full check due to %s" reason;
-        { env with full_check_status = Full_check_started }
-      ) else (
+           && Float.(start_time - env.last_command_time > 5.0) -> begin
+      try
+        ClientProvider.ping client;
+        env
+      with
+      | ClientProvider.Client_went_away ->
         ClientProvider.shutdown_client client;
         {
           env with
           nonpersistent_client_pending_command_needs_full_check = None;
         }
-      )
+    end
     | _ -> env
+  in
+
+  (* If a typecheck had been suspended due to IDE edits, then we want to resume it eventually...
+     To recap: if an IDE edit comes in, it takes us time to suspend the current typecheck,
+     handle the edit, then resume the current typecheck. If we did this every edit then we'd
+     get sluggish perf. We have two "debounce" mechanisms to avoid resuming too eagerly:
+     * If we handled any IDE action, then we won't accept any further CLI clients until
+       the IDE tells us it has no further pending work which it does by sending IDE_IDLE.
+       The code to deny further clients is when [ServerMain.serve_one_iteration] calls
+       [ClientProvider.sleep_and_check]. The code to reset upon IDE_IDLE is in [ServerRpc.handle]
+       when it receives IDE_IDLE.
+     * If we handled an IDE edit action, then we won't resume any typechecking work until either
+       5.0s has elapsed or there was a disk change. The code to suspend typechecking work is when
+       [ServerCommand.handle] returns [Needs_writes {recheck_restart_is_needed=false}] and
+       its caller [ServerMain.persistent_client_interrupt_handler] sets [env.full_check_status=Full_check_needed].
+       This has effect because [ServerMain.recheck_until_no_changes_left] is in charge of deciding
+       whether a check is needed, and it decides "no" unless [ServerEnv.is_full_check_started].
+       The code to resume typechecking work is right here! We'll restart only after 5.0s.
+     * These mechanisms notwithstanding, we'll still start full recheck immediately
+       upon any file save. *)
+  let env =
+    if
+      is_full_check_needed env.full_check_status
+      && Float.(start_time > env.last_command_time + 5.0)
+    then begin
+      Hh_logger.log "Restarting full check after 5.0s";
+      { env with full_check_status = Full_check_started }
+    end else
+      env
   in
   (* Same as above, but for persistent clients *)
   let env =
@@ -671,27 +734,29 @@ let serve_one_iteration genv env client_provider =
    * And if the selected_client was a request, then once we discover the nature
    * of that request then ServerCommand.handle will send its own status updates too.
    *)
-  ServerProgress.write
-    ~include_in_logs:false
-    "%s"
-    (match selected_client with
-    | ClientProvider.Select_nothing ->
-      if env.ide_idle then
-        "ready"
-      else
-        "HackIDE:active"
-    | ClientProvider.Select_exception e ->
-      Printf.sprintf
-        "%s, exception during client selection: %s"
-        (if env.ide_idle then
-          "ready"
-        else
-          "HackIDE:active")
-        (Exception.get_ctor_string e)
-    | ClientProvider.Not_selecting_hg_updating -> "hg-transaction"
+  begin
+    match selected_client with
+    | ClientProvider.(Select_nothing | Select_exception _) when not env.ide_idle
+      ->
+      ServerProgress.write ~include_in_logs:false "hh_client:active"
+    | ClientProvider.(Select_nothing | Select_exception _) ->
+      (* There's some subtle IDE behavior, described in [ServerCommand.handle]
+         and [ServerMain.recheck_until_no_changes_left]... If an EDIT was received
+         over the persistent connection, then we won't resume typechecking
+         until either a file-save comes in or 5.0s has elapsed. *)
+      let (disposition, msg) =
+        match env.full_check_status with
+        | Full_check_needed -> (ServerProgress.DWorking, "will resume")
+        | Full_check_started -> (ServerProgress.DWorking, "typechecking")
+        | Full_check_done -> (ServerProgress.DReady, "ready")
+      in
+      ServerProgress.write ~include_in_logs:false ~disposition "%s" msg
+    | ClientProvider.Not_selecting_hg_updating ->
+      ServerProgress.write ~include_in_logs:false "hg-transaction"
     | ClientProvider.Select_new _
     | ClientProvider.Select_persistent ->
-      "working");
+      ServerProgress.write ~include_in_logs:false "working"
+  end;
   let env = idle_if_no_client env selected_client in
   let stage =
     if Option.is_some env.init_env.why_needed_full_check then
@@ -841,23 +906,64 @@ let serve_one_iteration genv env client_provider =
   in
   env
 
+(** This synthesizes a [MultiThreadedCall.Cancel] in the event that we want
+a typecheck cancelled due to files changing on disk. It constructs the
+human-readable [user_message] and also [log_message] appropriately. *)
+let cancel_due_to_watchman
+    (updates : Relative_path.Set.t) (clock : Watchman.clock option) :
+    MultiThreadedCall.interrupt_result =
+  assert (not (Relative_path.Set.is_empty updates));
+  let size = Relative_path.Set.cardinal updates in
+  let examples =
+    (List.take (Relative_path.Set.elements updates) 5
+    |> List.map ~f:Relative_path.suffix)
+    @
+    if size > 5 then
+      ["..."]
+    else
+      []
+  in
+  let timestamp = Unix.gettimeofday () in
+  let tm = Unix.localtime timestamp in
+  MultiThreadedCall.Cancel
+    {
+      MultiThreadedCall.user_message =
+        Printf.sprintf
+          "Files have changed on disk! [%02d:%02d:%02d] %s"
+          tm.Unix.tm_hour
+          tm.Unix.tm_min
+          tm.Unix.tm_sec
+          (List.hd_exn examples);
+      log_message =
+        Printf.sprintf
+          "watchman interrupt handler at clock %s. %d files changed. [%s]"
+          (ServerEnv.show_clock clock)
+          (Relative_path.Set.cardinal updates)
+          (String.concat examples ~sep:",");
+      timestamp;
+    }
+
 let watchman_interrupt_handler genv : env MultiThreadedCall.interrupt_handler =
  fun env ->
   let start_time = Unix.gettimeofday () in
-  let (env, updates, updates_stale, _telemetry) =
+  let (env, updates, clock, updates_stale, _telemetry) =
     query_notifier genv env `Async start_time
   in
   (* Async updates can always be stale, so we don't care *)
   ignore updates_stale;
   let size = Relative_path.Set.cardinal updates in
   if size > 0 then (
-    Hh_logger.log "Interrupted by Watchman message: %d files changed" size;
+    Hh_logger.log
+      "Interrupted by Watchman message: %d files changed at watchclock %s"
+      size
+      (ServerEnv.show_clock clock);
     ( {
         env with
         disk_needs_parsing =
           Relative_path.Set.union env.disk_needs_parsing updates;
+        clock;
       },
-      MultiThreadedCall.Cancel )
+      cancel_due_to_watchman updates clock )
   ) else
     (env, MultiThreadedCall.Continue)
 
@@ -873,18 +979,22 @@ let priority_client_interrupt_handler genv client_provider :
    * this file contents. Async notifications are not always fast enough to
    * guarantee it, so we need an additional sync query before accepting such
    * client *)
-  let (env, updates, _updates_stale, _telemetry) =
+  let (env, updates, clock, _updates_stale, _telemetry) =
     query_notifier genv env `Sync t
   in
   let size = Relative_path.Set.cardinal updates in
   if size > 0 then (
-    Hh_logger.log "Interrupted by Watchman sync query: %d files changed" size;
+    Hh_logger.log
+      "Interrupted by Watchman sync query: %d files changed at watchclock %s"
+      size
+      (ServerEnv.show_clock clock);
     ( {
         env with
         disk_needs_parsing =
           Relative_path.Set.union env.disk_needs_parsing updates;
+        clock;
       },
-      MultiThreadedCall.Cancel )
+      cancel_due_to_watchman updates clock )
   ) else
     let idle_gc_slice = genv.local_config.ServerLocalConfig.idle_gc_slice in
     let use_tracker_v2 =
@@ -965,6 +1075,11 @@ let priority_client_interrupt_handler genv client_provider :
           Some recheck_id )
         when String.equal paused_recheck_id recheck_id ->
         MultiThreadedCall.Cancel
+          {
+            MultiThreadedCall.user_message = "Pause via 'hh --pause'";
+            log_message = "";
+            timestamp = Unix.gettimeofday ();
+          }
       | _ -> MultiThreadedCall.Continue
     in
     (env, decision)
@@ -998,8 +1113,7 @@ let persistent_client_interrupt_handler genv :
         },
         MultiThreadedCall.Continue )
     | ServerUtils.Needs_writes
-        { env; finish_command_handling; recheck_restart_is_needed; reason = _ }
-      ->
+        { env; finish_command_handling; recheck_restart_is_needed; reason } ->
       let full_check_status =
         match env.full_check_status with
         | Full_check_started when not recheck_restart_is_needed ->
@@ -1014,7 +1128,15 @@ let persistent_client_interrupt_handler genv :
           pending_command_needs_writes = Some finish_command_handling;
           full_check_status;
         },
-        MultiThreadedCall.Cancel )
+        MultiThreadedCall.Cancel
+          {
+            MultiThreadedCall.user_message =
+              Printf.sprintf
+                "Interrupted [%s]\n(Sorry about this nuisance... we're working to fix it T92870399)"
+                reason;
+            log_message = "";
+            timestamp = Unix.gettimeofday ();
+          } )
     | ServerUtils.Done env ->
       ServerProgress.write "typechecking";
       (env, MultiThreadedCall.Continue))
@@ -1033,7 +1155,7 @@ let setup_interrupts env client_provider =
           let interrupt_on_watchman =
             interrupt_on_watchman && env.can_interrupt
           in
-          match genv.notifier_async_reader () with
+          match ServerNotifier.async_reader_opt genv.notifier with
           | Some reader when interrupt_on_watchman ->
             (Buffered_line_reader.get_fd reader, watchman_interrupt_handler genv)
             :: handlers
@@ -1168,6 +1290,11 @@ let resolve_init_approach genv : ServerInit.init_approach * string =
 
 let program_init genv env =
   Hh_logger.log "Init id: %s" env.init_env.init_id;
+  ServerProgress.write "initializing...";
+  ServerProgress.enable_error_production
+    genv.local_config.ServerLocalConfig.produce_streaming_errors;
+  Exit.add_hook_upon_clean_exit (fun _finale_data ->
+      ServerProgress.ErrorsWrite.unlink_at_server_stop ());
   let env =
     {
       env with
@@ -1218,7 +1345,7 @@ let program_init genv env =
   in
   Hh_logger.log "Waiting for daemon(s) to be ready...";
   ServerProgress.write "wrapping up init...";
-  genv.wait_until_ready ();
+  ServerNotifier.wait_until_ready genv.notifier;
   ServerStamp.touch_stamp ();
   EventLogger.set_init_type init_type;
   let telemetry =
@@ -1305,7 +1432,7 @@ let setup_server ~informant_managed ~monitor_pid options config local_config =
   | _ -> ());
   (try Unix.unlink server_receipt_to_monitor_file with
   | _ -> ());
-  ServerProgress.write "startuping up";
+  ServerProgress.write "starting up";
   Exit.add_hook_upon_clean_exit (fun finale_data ->
       begin
         try Unix.unlink server_receipt_to_monitor_file with
@@ -1436,8 +1563,8 @@ let setup_server ~informant_managed ~monitor_pid options config local_config =
   let worker_logging_init () =
     logging_init (init_id ^ "." ^ Random_id.short_string ()) ~is_worker:true
   in
+  let gc_control = ServerConfig.gc_control config in
   let workers =
-    let gc_control = ServerConfig.gc_control config in
     ServerWorker.make
       ~longlived_workers:local_config.ServerLocalConfig.longlived_workers
       ~nbr_procs:num_workers
@@ -1445,11 +1572,11 @@ let setup_server ~informant_managed ~monitor_pid options config local_config =
       handle
       ~logging_init:worker_logging_init
   in
-  let genv = ServerEnvBuild.make_genv options config local_config workers in
-  (genv, ServerEnvBuild.make_env genv.config ~init_id ~deps_mode)
+  (workers, ServerEnvBuild.make_env config ~init_id ~deps_mode)
 
 let run_once options config local_config =
-  let (genv, env) =
+  assert (ServerArgs.check_mode options);
+  let (workers, env) =
     setup_server
       options
       config
@@ -1457,10 +1584,7 @@ let run_once options config local_config =
       ~informant_managed:false
       ~monitor_pid:None
   in
-  if not (ServerArgs.check_mode genv.options) then (
-    Hh_logger.log "ServerMain run_once only supported in check mode.";
-    Exit.exit Exit_status.Input_error
-  );
+  let genv = ServerEnvBuild.make_genv options config local_config workers in
 
   (* The type-checking happens here *)
   let env = program_init genv env in
@@ -1503,13 +1627,14 @@ let run_once options config local_config =
  * via ic.
  *)
 let daemon_main_exn ~informant_managed options monitor_pid in_fds =
+  assert (not (ServerArgs.check_mode options));
   Folly.ensure_folly_init ();
-
   Printexc.record_backtrace true;
+
   let (config, local_config) = ServerConfig.load ~silent:false options in
   Option.iter local_config.ServerLocalConfig.memtrace_dir ~f:(fun dir ->
       Daemon.start_memtracing (Filename.concat dir "memtrace.server.ctf"));
-  let (genv, env) =
+  let (workers, env) =
     setup_server
       options
       config
@@ -1517,10 +1642,7 @@ let daemon_main_exn ~informant_managed options monitor_pid in_fds =
       ~informant_managed
       ~monitor_pid:(Some monitor_pid)
   in
-  if ServerArgs.check_mode genv.options then (
-    Hh_logger.log "Invalid program args - can't run daemon in check mode.";
-    Exit.exit Exit_status.Input_error
-  );
+  let genv = ServerEnvBuild.make_genv options config local_config workers in
   HackEventLogger.with_id ~stage:`Init env.init_env.init_id @@ fun () ->
   let env = MainInit.go genv options (fun () -> program_init genv env) in
   serve genv env in_fds

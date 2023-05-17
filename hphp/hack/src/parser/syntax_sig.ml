@@ -130,6 +130,23 @@ module type Syntax_S = sig
         ctx_alias_context: t;
         ctx_alias_semicolon: t;
       }
+    | CaseTypeDeclaration of {
+        case_type_attribute_spec: t;
+        case_type_modifiers: t;
+        case_type_case_keyword: t;
+        case_type_type_keyword: t;
+        case_type_name: t;
+        case_type_generic_parameter: t;
+        case_type_as: t;
+        case_type_bounds: t;
+        case_type_equal: t;
+        case_type_variants: t;
+        case_type_semicolon: t;
+      }
+    | CaseTypeVariant of {
+        case_type_variant_bar: t;
+        case_type_variant_type: t;
+      }
     | PropertyDeclaration of {
         property_attribute_spec: t;
         property_modifiers: t;
@@ -1033,6 +1050,10 @@ module type Syntax_S = sig
         module_membership_declaration_name: t;
         module_membership_declaration_semicolon: t;
       }
+    | PackageExpression of {
+        package_expression_keyword: t;
+        package_expression_name: t;
+      }
   [@@deriving sexp_of]
 
   val rust_parse :
@@ -1126,6 +1147,11 @@ module type Syntax_S = sig
     t -> t -> t -> t -> t -> t -> t -> t -> t -> t -> t
 
   val make_context_alias_declaration : t -> t -> t -> t -> t -> t -> t -> t -> t
+
+  val make_case_type_declaration :
+    t -> t -> t -> t -> t -> t -> t -> t -> t -> t -> t -> t
+
+  val make_case_type_variant : t -> t -> t
 
   val make_property_declaration : t -> t -> t -> t -> t -> t
 
@@ -1445,6 +1471,8 @@ module type Syntax_S = sig
 
   val make_module_membership_declaration : t -> t -> t -> t
 
+  val make_package_expression : t -> t -> t
+
   val position : Relative_path.t -> t -> Pos.t option
 
   val offset : t -> int option
@@ -1488,6 +1516,10 @@ module type Syntax_S = sig
   val is_alias_declaration : t -> bool
 
   val is_context_alias_declaration : t -> bool
+
+  val is_case_type_declaration : t -> bool
+
+  val is_case_type_variant : t -> bool
 
   val is_property_declaration : t -> bool
 
@@ -1798,6 +1830,8 @@ module type Syntax_S = sig
   val is_module_imports : t -> bool
 
   val is_module_membership_declaration : t -> bool
+
+  val is_package_expression : t -> bool
 
   val is_specific_token : TokenKind.t -> t -> bool
 

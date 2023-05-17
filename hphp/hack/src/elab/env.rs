@@ -26,6 +26,10 @@ bitflags! {
         const CONST_STATIC_PROPS = 1 << 6;
         const ALLOW_MODULE_DECLARATIONS = 1 << 7;
         const ERROR_PHP_LAMBDAS = 1 << 9;
+        const INFER_FLOWS = 1 << 10;
+        const EVERYTHING_SDT = 1 << 11;
+        const SUPPORTDYNAMIC_TYPE_HINT_ENABLED = 1 << 12;
+        const NO_AUTO_DYNAMIC_ENABLED = 1 << 13;
     }
 }
 
@@ -37,9 +41,20 @@ impl Flags {
             Self::SOFT_AS_LIKE,
             tco.po_interpret_soft_types_as_like_types,
         );
+
         flags.set(Self::HKT_ENABLED, tco.tco_higher_kinded_types);
         flags.set(Self::IS_SYSTEMLIB, tco.tco_is_systemlib);
         flags.set(Self::LIKE_TYPE_HINTS_ENABLED, tco.tco_like_type_hints);
+        flags.set(
+            Self::NO_AUTO_DYNAMIC_ENABLED,
+            tco.tco_enable_no_auto_dynamic,
+        );
+        flags.set(
+            Self::SUPPORTDYNAMIC_TYPE_HINT_ENABLED,
+            tco.tco_experimental_features
+                .contains("supportdynamic_type_hint"),
+        );
+        flags.set(Self::EVERYTHING_SDT, tco.tco_everything_sdt);
         flags.set(Self::CONST_ATTRIBUTE, tco.tco_const_attribute);
         flags.set(Self::CONST_STATIC_PROPS, tco.tco_const_static_props);
         flags.set(Self::ERROR_PHP_LAMBDAS, tco.tco_error_php_lambdas);
@@ -48,6 +63,12 @@ impl Flags {
         flags.set(
             Self::ALLOW_MODULE_DECLARATIONS,
             pso.allow_module_declarations,
+        );
+
+        flags.set(
+            Self::INFER_FLOWS,
+            tco.tco_experimental_features
+                .contains(EXPERIMENTAL_INFER_FLOWS),
         );
 
         flags
@@ -83,6 +104,10 @@ impl Env {
         self.errors.borrow_mut().push(err.into())
     }
 
+    pub fn assert_no_errors(&self) {
+        assert!(self.errors.borrow().is_empty());
+    }
+
     pub fn into_errors(self) -> Vec<NamingPhaseError> {
         self.errors.into_inner()
     }
@@ -111,6 +136,18 @@ impl Env {
         self.flags.contains(Flags::LIKE_TYPE_HINTS_ENABLED)
     }
 
+    pub fn supportdynamic_type_hint_enabled(&self) -> bool {
+        self.flags.contains(Flags::SUPPORTDYNAMIC_TYPE_HINT_ENABLED)
+    }
+
+    pub fn no_auto_dynamic_enabled(&self) -> bool {
+        self.flags.contains(Flags::NO_AUTO_DYNAMIC_ENABLED)
+    }
+
+    pub fn everything_sdt(&self) -> bool {
+        self.flags.contains(Flags::EVERYTHING_SDT)
+    }
+
     pub fn is_hhi(&self) -> bool {
         self.flags.contains(Flags::IS_HHI)
     }
@@ -122,4 +159,10 @@ impl Env {
     pub fn const_static_props(&self) -> bool {
         self.flags.contains(Flags::CONST_STATIC_PROPS)
     }
+
+    pub fn infer_flows(&self) -> bool {
+        self.flags.contains(Flags::INFER_FLOWS)
+    }
 }
+
+const EXPERIMENTAL_INFER_FLOWS: &str = "ifc_infer_flows";

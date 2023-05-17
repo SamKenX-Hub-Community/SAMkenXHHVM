@@ -10,6 +10,7 @@ use dep_graph_delta::DepGraphDelta;
 pub use depgraph_reader::Dep;
 use depgraph_reader::DepGraph;
 use hash::HashSet;
+use ocamlrep::ptr::UnsafeOcamlPtr;
 use ocamlrep::FromError;
 use ocamlrep::FromOcamlRep;
 use ocamlrep::ToOcamlRep;
@@ -19,6 +20,14 @@ use ocamlrep_custom::CamlSerialize;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use rpds::HashTrieSet;
+
+/// A structure wrapping the memory-mapped dependency graph.
+/// Each worker will itself lazily (or eagerly upon request)
+/// open a memory-mapping to the dependency graph.
+///
+/// It's an option, because custom mode might be enabled without
+/// an existing saved-state.
+static DEP_GRAPH: Mutex<Option<DepGraph>> = Mutex::new(None);
 
 fn _static_assert() {
     // The use of 64-bit (actually 63-bit) dependency hashes requires that we
@@ -52,12 +61,12 @@ pub enum TypingDepsMode {
     SaveToDiskMode {
         graph: Option<String>,
         new_edges_dir: String,
+        // This is unused.
         human_readable_dep_map_dir: Option<String>,
     },
-    /// Mode that keeps track of edges via hh_fanout's Rust API
-    HhFanoutRustMode {
-        hh_fanout: ocamlrep_custom::Custom<hh_fanout_rust_ffi::HhFanoutRustFfi>,
-    },
+    /// Mode that keeps track of edges via hh_fanout's Rust API. We include this
+    /// here to match the OCaml version of `TypingDepsMode`, but this is unused.
+    HhFanoutRustMode { hh_fanout: UnsafeOcamlPtr },
 }
 
 /// A raw OCaml pointer to the dependency mode.
@@ -98,52 +107,102 @@ impl RawTypingDepsMode {
 ///
 /// The pointer to the dependency graph mode should still be pointing
 /// to a valid OCaml object.
-fn load_global_dep_graph(mode: RawTypingDepsMode) -> Result<Option<&'static DepGraph>, String> {
-    /// A structure wrapping the memory-mapped dependency graph.
-    /// Each worker will itself lazily (or eagerly upon request)
-    /// open a memory-mapping to the dependency graph.
-    ///
-    /// It's an option, because custom mode might be enabled without
-    /// an existing saved-state.
-    static DEP_GRAPH: OnceCell<Option<DepGraph>> = OnceCell::new();
+fn load_global_dep_graph(mode: RawTypingDepsMode) -> Result<(), String> {
+    let mut dep_graph_guard = DEP_GRAPH.lock();
 
-    let depgraph: &'static Option<DepGraph> =
-        DEP_GRAPH.get_or_try_init::<_, String>(move || {
-            // # Safety
-            //
-            // The pointer to the dependency graph mode should still be pointing
-            // to a valid OCaml object.
-            let mode = unsafe { mode.to_rust().unwrap() };
+    if dep_graph_guard.is_none() {
+        let mode = unsafe { mode.to_rust().unwrap() };
 
-            match mode {
-                TypingDepsMode::InMemoryMode(None)
-                | TypingDepsMode::SaveToDiskMode {
-                    graph: None,
-                    new_edges_dir: _,
-                    human_readable_dep_map_dir: _,
-                } => {
-                    // Enabled, but we don't have a saved-state, so we can't open it
-                    Ok(None)
-                }
-                TypingDepsMode::InMemoryMode(Some(depgraph_fn))
-                | TypingDepsMode::SaveToDiskMode {
-                    graph: Some(depgraph_fn),
-                    new_edges_dir: _,
-                    human_readable_dep_map_dir: _,
-                } => {
-                    let depgraph = DepGraph::from_path(depgraph_fn)
-                        .map_err(|err| format!("could not open dep graph file: {:?}", err))?;
-                    Ok(Some(depgraph))
-                }
-                TypingDepsMode::HhFanoutRustMode { hh_fanout: _ } => {
-                    // HhFanoutRustMode doesn't load the dep graph this way.
-                    // This path shouldn't be reached.
-                    unimplemented!()
-                }
+        let dep_graph: Result<Option<DepGraph>, String> = match mode {
+            TypingDepsMode::InMemoryMode(None)
+            | TypingDepsMode::SaveToDiskMode {
+                graph: None,
+                new_edges_dir: _,
+                human_readable_dep_map_dir: _,
+            } => {
+                // Enabled, but we don't have a saved-state, so we can't open it
+                Ok(None)
             }
-        })?;
+            TypingDepsMode::InMemoryMode(Some(depgraph_fn))
+            | TypingDepsMode::SaveToDiskMode {
+                graph: Some(depgraph_fn),
+                new_edges_dir: _,
+                human_readable_dep_map_dir: _,
+            } => {
+                // We are opening and intializing the dep graph while holding onto the mutex...
+                // Which typically isn't great, but since ocaml is single threaded, it's ok.
+                let depgraph = DepGraph::from_path(depgraph_fn)
+                    .map_err(|err| format!("could not open dep graph file: {:?}", err))?;
+                Ok(Some(depgraph))
+            }
+            TypingDepsMode::HhFanoutRustMode { hh_fanout: _ } => {
+                // HhFanoutRustMode doesn't load the dep graph this way.
+                // This path shouldn't be reached.
+                unimplemented!()
+            }
+        };
+        *dep_graph_guard = dep_graph?;
+    }
 
-    Ok(depgraph.as_ref())
+    Ok(())
+}
+
+pub fn replace_dep_graph(mode: RawTypingDepsMode) -> Result<(), String> {
+    let mut dep_graph_guard = DEP_GRAPH.lock();
+    // # Safety
+    //
+    // The pointer to the dependency graph mode should still be pointing
+    // to a valid OCaml object.
+    let mode = unsafe { mode.to_rust().unwrap() };
+
+    let dep_graph: Result<Option<DepGraph>, String> = match mode {
+        TypingDepsMode::InMemoryMode(None)
+        | TypingDepsMode::SaveToDiskMode {
+            graph: None,
+            new_edges_dir: _,
+            human_readable_dep_map_dir: _,
+        } => {
+            // Enabled, but we don't have a saved-state, so we can't open it
+            Ok(None)
+        }
+        TypingDepsMode::InMemoryMode(Some(depgraph_fn))
+        | TypingDepsMode::SaveToDiskMode {
+            graph: Some(depgraph_fn),
+            new_edges_dir: _,
+            human_readable_dep_map_dir: _,
+        } => {
+            // We are opening and intializing the dep graph while holding onto the mutex...
+            // Which typically isn't great, but since ocaml is single threaded, it's ok.
+            let depgraph = DepGraph::from_path(depgraph_fn)
+                .map_err(|err| format!("could not open dep graph file: {:?}", err))?;
+            Ok(Some(depgraph))
+        }
+        TypingDepsMode::HhFanoutRustMode { hh_fanout: _ } => {
+            // HhFanoutRustMode doesn't load the dep graph this way.
+            // This path shouldn't be reached.
+            unimplemented!()
+        }
+    };
+    *dep_graph_guard = dep_graph?;
+
+    Ok(())
+}
+
+/// Override the loaded dep graph.
+///
+/// # Panics
+///
+/// Panics if the graph is not loaded, and custom mode was not enabled.
+///
+/// Panics if the graph is not yet loaded, and opening
+/// the graph results in an error.
+///
+/// # Safety
+///
+/// The pointer to the dependency graph mode should still be pointing
+/// to a valid OCaml object.
+pub fn dep_graph_override(mode: RawTypingDepsMode) {
+    replace_dep_graph(mode).unwrap();
 }
 
 /// Run the closure with the loaded dep graph. If the custom dep graph
@@ -165,7 +224,8 @@ pub fn dep_graph_with_default<F, R>(mode: RawTypingDepsMode, default: R, f: F) -
 where
     F: FnOnce(&DepGraph) -> R,
 {
-    load_global_dep_graph(mode).unwrap().map_or(default, f)
+    load_global_dep_graph(mode).unwrap();
+    DEP_GRAPH.lock().as_ref().map_or(default, f)
 }
 
 /// Run the closure with the loaded dep graph. If the custom dep graph
@@ -190,7 +250,8 @@ pub fn dep_graph_with_option<F, R>(mode: RawTypingDepsMode, f: F) -> R
 where
     F: FnOnce(Option<&DepGraph>) -> R,
 {
-    f(load_global_dep_graph(mode).unwrap())
+    load_global_dep_graph(mode).unwrap();
+    f(DEP_GRAPH.lock().as_ref())
 }
 
 pub fn dep_graph_delta_with_cell<R>(f: impl FnOnce(&Mutex<DepGraphDelta>) -> R) -> R {

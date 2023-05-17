@@ -83,6 +83,7 @@ pub mod ffi {
     enum TypeConstraintFlags {
         NoFlags = 0x0,
         Nullable = 0x1,
+        CaseType = 0x2,
         ExtendedHint = 0x4,
         TypeVar = 0x8,
         Soft = 0x10,
@@ -132,6 +133,7 @@ pub mod ffi {
         T_null = 28,
         T_nothing = 29,
         T_dynamic = 30,
+        T_union = 31,
 
         // The following kinds needs class/alias resolution, and
         // are generally not exposed to the users.
@@ -274,7 +276,7 @@ impl From<Attr> for u32 {
 
 impl Attr {
     pub fn add(&mut self, attr: Attr) {
-        self.repr = *self | attr
+        *self = *self | attr
     }
     pub fn remove(&mut self, attr: Attr) {
         self.repr &= !attr.repr;
@@ -378,10 +380,12 @@ impl SubAssign for Attr {
 }
 
 impl BitOr for Attr {
-    type Output = u32;
+    type Output = Self;
 
-    fn bitor(self, other: Self) -> u32 {
-        self.repr | other.repr
+    fn bitor(self, other: Self) -> Self {
+        Self {
+            repr: self.repr | other.repr,
+        }
     }
 }
 

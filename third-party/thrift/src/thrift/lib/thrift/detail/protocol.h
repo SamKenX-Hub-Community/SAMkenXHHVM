@@ -18,6 +18,7 @@
 
 #include <folly/Utility.h>
 #include <thrift/lib/cpp2/Thrift.h>
+#include <thrift/lib/cpp2/op/Hash.h>
 
 namespace apache::thrift::protocol::detail {
 
@@ -25,6 +26,8 @@ namespace detail {
 class Object;
 class Value;
 } // namespace detail
+
+struct ObjectAdapter;
 
 template <class Base = detail::Object>
 class ObjectWrapper;
@@ -44,18 +47,18 @@ class ObjectWrapper : public Base {
  public:
   using Base::Base;
   using Base::members;
+  using Tag = type::adapted<ObjectAdapter, type::struct_t<detail::Object>>;
+
   explicit ObjectWrapper(const Base& base) : Base(base) {}
   explicit ObjectWrapper(Base&& base) : Base(std::move(base)) {}
 
   // TODO(ytj): Provide boost.json.value like APIs
   // www.boost.org/doc/libs/release/libs/json/doc/html/json/ref/boost__json__object.html
 
-  Value& operator[](FieldId i) {
-    return members().value()[folly::to_underlying(i)];
-  }
+  Value& operator[](FieldId i) { return (*members())[folly::to_underlying(i)]; }
 
   const Value& operator[](FieldId i) const {
-    return members().value()[folly::to_underlying(i)];
+    return (*members())[folly::to_underlying(i)];
   }
 
   Value& at(FieldId i) { return members()->at(folly::to_underlying(i)); }
@@ -167,3 +170,20 @@ struct ValueAdapter {
 };
 
 } // namespace apache::thrift::protocol::detail
+
+template <>
+struct std::hash<apache::thrift::protocol::detail::Value> {
+  std::size_t operator()(
+      const apache::thrift::protocol::detail::Value& s) const noexcept {
+    // TODO(dokwon): Remove specifying op::StdHasher and use default op::hash
+    // after op::StdHasherDeprecated migration.
+    auto accumulator = apache::thrift::op::makeDeterministicAccumulator<
+        apache::thrift::op::StdHasher>();
+    apache::thrift::op::hash<apache::thrift::type::union_t<
+        apache::thrift::protocol::detail::detail::Value>>(
+
+        apache::thrift::protocol::detail::ValueAdapter::toThrift(s),
+        accumulator);
+    return std::move(accumulator.result()).getResult();
+  }
+};

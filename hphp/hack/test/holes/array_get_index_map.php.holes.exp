@@ -19,11 +19,12 @@
           [([4:3-16],
             (Expr
                ((Map<nothing, nothing>), [4:3-15],
-                (Binop ((Eq None), ((Map<nothing, nothing>), [4:3-6], (Lvar ([4:3-6], $xs))), ((Map<nothing, nothing>), [4:9-15], (KeyValCollection (([4:9-12], Map), None, []))))))));
+                (Binop { bop = (Eq None); lhs = ((Map<nothing, nothing>), [4:3-6], (Lvar ([4:3-6], $xs))); rhs = ((Map<nothing, nothing>), [4:9-15], (KeyValCollection (([4:9-12], Map), None, []))) }))));
             ([7:3-13],
              (Expr
                 ((nothing), [7:3-12],
-                 (Array_get (((Map<nothing, nothing>), [7:3-6], (Lvar ([7:3-6], $xs))), (Some ((mixed), [7:7-11], (Hole (((mixed), [7:7-11], (Lvar ([7:7-11], $idx))), (mixed), (nothing), Typing)))))))))
+                 (Array_get (((Map<nothing, nothing>), [7:3-6], (Lvar ([7:3-6], $xs))),
+                    (Some ((mixed), [7:7-11], (Hole (((mixed), [7:7-11], (Lvar ([7:7-11], $idx))), (mixed), ((arraykey & nothing)), Typing)))))))))
             ]
           };
         f_fun_kind = FSync; f_user_attributes = []; f_external = false; 

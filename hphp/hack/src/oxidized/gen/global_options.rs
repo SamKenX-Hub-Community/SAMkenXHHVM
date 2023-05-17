@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<4f3022578914eb6c484fd4322bb0e17a>>
+// @generated SignedSource<<edc4c01d5b9dc561eeb8d6a12aaf577b>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -85,7 +85,6 @@ pub struct GlobalOptions {
     pub tco_experimental_features: s_set::SSet,
     pub tco_migration_flags: s_set::SSet,
     pub tco_num_local_workers: Option<isize>,
-    pub tco_parallel_type_checking_threshold: isize,
     pub tco_max_typechecker_worker_memory_mb: Option<isize>,
     pub tco_defer_class_declaration_threshold: Option<isize>,
     pub tco_prefetch_deferred_files: bool,
@@ -94,6 +93,8 @@ pub struct GlobalOptions {
     pub tco_remote_worker_key: Option<String>,
     pub tco_remote_check_id: Option<String>,
     pub tco_num_remote_workers: isize,
+    pub tco_locl_cache_capacity: isize,
+    pub tco_locl_cache_node_threshold: isize,
     pub so_remote_version_specifier: Option<String>,
     pub so_naming_sqlite_path: Option<String>,
     pub po_auto_namespace_map: Vec<(String, String)>,
@@ -157,6 +158,7 @@ pub struct GlobalOptions {
     pub symbol_write_include_hhi: bool,
     pub symbol_write_sym_hash_in: Option<String>,
     pub symbol_write_exclude_out: Option<String>,
+    pub symbol_write_referenced_out: Option<String>,
     pub symbol_write_sym_hash_out: bool,
     pub po_disallow_func_ptrs_in_constants: bool,
     pub tco_error_php_lambdas: bool,
@@ -164,7 +166,6 @@ pub struct GlobalOptions {
     pub po_enable_xhp_class_modifier: bool,
     pub po_disable_xhp_element_mangling: bool,
     pub po_disable_xhp_children_declarations: bool,
-    pub po_enable_enum_classes: bool,
     pub po_disable_hh_ignore_error: isize,
     pub tco_is_systemlib: bool,
     pub tco_higher_kinded_types: bool,
@@ -172,10 +173,10 @@ pub struct GlobalOptions {
     pub tco_report_pos_from_reason: bool,
     pub tco_typecheck_sample_rate: f64,
     pub tco_enable_sound_dynamic: bool,
+    pub tco_enable_no_auto_dynamic: bool,
     pub tco_skip_check_under_dynamic: bool,
     pub tco_ifc_enabled: Vec<String>,
     pub tco_global_access_check_enabled: bool,
-    pub po_enable_enum_supertyping: bool,
     pub po_interpret_soft_types_as_like_types: bool,
     pub tco_enable_strict_string_concat_interp: bool,
     pub tco_ignore_unsafe_cast: bool,
@@ -192,7 +193,6 @@ pub struct GlobalOptions {
     pub tco_strict_value_equality: bool,
     pub tco_enforce_sealed_subclasses: bool,
     pub tco_everything_sdt: bool,
-    pub tco_pessimise_builtins: bool,
     pub tco_explicit_consistent_constructors: isize,
     pub tco_require_types_class_consts: isize,
     pub tco_type_printer_fuel: isize,
@@ -211,4 +211,5 @@ pub struct GlobalOptions {
     pub tco_ide_should_use_hack_64_distc: bool,
     pub tco_tast_under_dynamic: bool,
     pub tco_rust_elab: bool,
+    pub tco_ide_load_naming_table_on_disk: bool,
 }

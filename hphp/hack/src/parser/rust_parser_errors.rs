@@ -100,9 +100,10 @@ enum UnstableFeatures {
     MethodTraitDiamond,
     UpcastExpression,
     RequireClass,
-    EnumClassTypeConstants,
     NewtypeSuperBounds,
     ExpressionTreeBlocks,
+    Package,
+    CaseTypes,
 }
 impl UnstableFeatures {
     // Preview features are allowed to run in prod. This function decides
@@ -126,9 +127,10 @@ impl UnstableFeatures {
             UnstableFeatures::MethodTraitDiamond => OngoingRelease,
             UnstableFeatures::UpcastExpression => Unstable,
             UnstableFeatures::RequireClass => Preview,
-            UnstableFeatures::EnumClassTypeConstants => OngoingRelease,
             UnstableFeatures::NewtypeSuperBounds => Unstable,
             UnstableFeatures::ExpressionTreeBlocks => OngoingRelease,
+            UnstableFeatures::Package => Unstable,
+            UnstableFeatures::CaseTypes => Unstable,
         }
     }
 }
@@ -347,6 +349,7 @@ fn get_modifiers_of_declaration<'a>(node: S<'a>) -> Option<S<'a>> {
         EnumClassEnumerator(x) => Some(&x.modifiers),
         EnumDeclaration(x) => Some(&x.modifiers),
         AliasDeclaration(x) => Some(&x.modifiers),
+        CaseTypeDeclaration(x) => Some(&x.modifiers),
         _ => None,
     }
 }
@@ -357,6 +360,7 @@ fn declaration_is_toplevel<'a>(node: S<'a>) -> bool {
         | ClassishDeclaration(_)
         | EnumClassDeclaration(_)
         | EnumDeclaration(_)
+        | CaseTypeDeclaration(_)
         | AliasDeclaration(_) => true,
         _ => false,
     }
@@ -738,10 +742,16 @@ fn is_invalid_xhp_attr_enum_item(node: S<'_>) -> bool {
     }
 }
 
-fn cant_be_classish_name(name: &str) -> bool {
+fn cant_be_reserved_type_name(name: &str) -> bool {
+    // Keep in sync with test/reserved
     match name.to_ascii_lowercase().as_ref() {
-        "callable" | "classname" | "darray" | "false" | "null" | "parent" | "self" | "this"
-        | "true" | "varray" => true,
+        // reserved_global_name
+        "callable" | "parent" | "self" => true,
+        // reserved_hh_name
+        "arraykey" | "bool" | "dynamic" | "float" | "int" | "mixed" | "nonnull" | "noreturn"
+        | "nothing" | "null" | "num" | "resource" | "string" | "this" | "void" | "_" => true,
+        // misc
+        "darray" | "false" | "true" | "varray" => true,
         _ => false,
     }
 }
@@ -1921,17 +1931,42 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
             && self.methodish_contains_attribute(node, sn::user_attributes::MEMOIZE)
     }
 
-    fn is_ifc_attribute(&self, name: &str) -> bool {
-        name == sn::user_attributes::POLICIED
-            || name == sn::user_attributes::INFERFLOWS
-            || name == sn::user_attributes::EXTERNAL
+    fn check_cross_package_args_are_string_literals(&mut self, node: S<'a>) {
+        let mut crossed_packages_count = 0;
+        if let Some(args) = self.attr_args(node) {
+            for arg in args.peekable() {
+                crossed_packages_count += 1;
+                if let LiteralExpression(x) = &arg.children {
+                    if let Token(t) = &x.expression.children {
+                        if t.kind() == TokenKind::SingleQuotedStringLiteral
+                            || t.kind() == TokenKind::DoubleQuotedStringLiteral
+                        {
+                            continue;
+                        }
+                    }
+                }
+                self.errors.push(make_error_from_node(
+                    arg,
+                    errors::invalid_cross_package_argument(
+                        "this is not a literal string expression",
+                    ),
+                ))
+            }
+            if crossed_packages_count == 1 {
+                return;
+            }
+        }
+        self.errors.push(make_error_from_node(
+            node,
+            errors::cross_package_wrong_arity(crossed_packages_count),
+        ))
     }
 
     fn check_attr_enabled(&mut self, attrs: S<'a>) {
         for node in attr_spec_to_node_list(attrs) {
             match self.attr_name(node) {
                 Some(n) => {
-                    if self.is_ifc_attribute(n) {
+                    if sn::user_attributes::is_ifc(n) {
                         self.check_can_use_feature(node, &UnstableFeatures::Ifc)
                     }
                     if (sn::user_attributes::ignore_readonly_local_errors(n)
@@ -1947,6 +1982,10 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
                             node,
                             errors::invalid_attribute_reserved,
                         ));
+                    }
+                    if sn::user_attributes::is_cross_package(n) {
+                        self.check_can_use_feature(node, &UnstableFeatures::Package);
+                        self.check_cross_package_args_are_string_literals(node);
                     }
                 }
                 None => {}
@@ -3483,7 +3522,18 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
         }
     }
 
-    fn check_type_name(&mut self, name: S<'a>, name_text: &str, location: Location) {
+    fn check_alias_name(&mut self, name: S<'a>, name_text: &str, location: Location) {
+        self.produce_error(
+            |_, x| cant_be_reserved_type_name(x),
+            name_text,
+            || errors::reserved_keyword_as_type_name(name_text),
+            name,
+        );
+        self.check_use_type_name(name, name_text, location);
+    }
+
+    /// This reports "name already in use" relating to namespace use statements.
+    fn check_use_type_name(&mut self, name: S<'a>, name_text: &str, location: Location) {
         match self.names.classes.get(name_text) {
             Some(FirstUseOrDef {
                 location,
@@ -3682,7 +3732,14 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
     }
 
     fn enum_class_errors(&mut self, node: S<'a>) {
-        if let EnumClassDeclaration(_c) = &node.children {
+        if let EnumClassDeclaration(c) = &node.children {
+            let name = self.text(&c.name);
+            self.produce_error(
+                |_, x| cant_be_reserved_type_name(x),
+                name,
+                || errors::reserved_keyword_as_type_name(name),
+                &c.name,
+            );
             self.invalid_modifier_errors("Enum classes", node, |kind| {
                 kind == TokenKind::Abstract
                     || kind == TokenKind::Internal
@@ -3841,9 +3898,9 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
 
             let classish_name = self.text(&cd.name);
             self.produce_error(
-                |_, x| cant_be_classish_name(x),
+                |_, x| cant_be_reserved_type_name(x),
                 classish_name,
-                || errors::reserved_keyword_as_class_name(classish_name),
+                || errors::reserved_keyword_as_type_name(classish_name),
                 &cd.name,
             );
             if is_token_kind(&cd.keyword, TokenKind::Interface)
@@ -3946,7 +4003,7 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
             match token_kind(&cd.keyword) {
                 Some(TokenKind::Class) | Some(TokenKind::Trait) if !cd.name.is_missing() => {
                     let location = make_location_of_node(&cd.name);
-                    self.check_type_name(&cd.name, name, location)
+                    self.check_use_type_name(&cd.name, name, location)
                 }
                 _ => {}
             }
@@ -4079,7 +4136,7 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
                     }
                 }
 
-                self.check_type_name(&ad.name, name, location)
+                self.check_alias_name(&ad.name, name, location)
             }
         } else if let ContextAliasDeclaration(cad) = &node.children {
             if cad.equal.is_missing() {
@@ -4107,7 +4164,36 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
                     }
                 }
 
-                self.check_type_name(&cad.name, name, location)
+                self.check_alias_name(&cad.name, name, location)
+            }
+        } else if let CaseTypeDeclaration(ctd) = &node.children {
+            self.check_can_use_feature(node, &UnstableFeatures::CaseTypes);
+
+            let attrs = &ctd.attribute_spec;
+            self.check_attr_enabled(attrs);
+
+            self.invalid_modifier_errors("Case types", node, |kind| {
+                kind == TokenKind::Internal || kind == TokenKind::Public
+            });
+
+            if !ctd.name.is_missing() {
+                let name = self.text(&ctd.name);
+                let location = make_location_of_node(&ctd.name);
+
+                self.check_alias_name(&ctd.name, name, location)
+            }
+        }
+    }
+
+    fn case_type_variant_errors(&mut self, node: S<'a>) {
+        if let CaseTypeVariant(ctv) = &node.children {
+            if let TypeConstant(_) = &ctv.type_.children {
+                if self.env.is_typechecker() {
+                    self.errors.push(make_error_from_node(
+                        &ctv.type_,
+                        errors::type_alias_to_type_constant,
+                    ))
+                }
             }
         }
     }
@@ -4555,7 +4641,7 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
             }
             ObjectCreationExpression(_) => {
                 // We allow "enum class" constants to be initialized via new.
-                if !(self.env.parser_options.po_enable_enum_classes && self.is_in_enum_class()) {
+                if !self.is_in_enum_class() {
                     default(self);
                 }
             }
@@ -4848,7 +4934,13 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
             if !x.name.is_missing() {
                 let name = self.text(&x.name);
                 let location = make_location_of_node(&x.name);
-                self.check_type_name(&x.name, name, location);
+                self.check_use_type_name(&x.name, name, location);
+                self.produce_error(
+                    |_, x| cant_be_reserved_type_name(x),
+                    name,
+                    || errors::reserved_keyword_as_type_name(name),
+                    &x.name,
+                );
 
                 if x.base.is_missing() {
                     // Create a zero width region to insert the new text.
@@ -5287,7 +5379,10 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
                 self.type_const_bounds_errors(node);
             }
 
-            AliasDeclaration(_) | ContextAliasDeclaration(_) => self.alias_errors(node),
+            AliasDeclaration(_) | ContextAliasDeclaration(_) | CaseTypeDeclaration(_) => {
+                self.alias_errors(node)
+            }
+            CaseTypeVariant(_) => self.case_type_variant_errors(node),
             ConstantDeclarator(_) => self.const_decl_errors(node),
             NamespaceBody(_) | NamespaceEmptyBody(_) | NamespaceDeclaration(_) => {
                 self.mixed_namespace_errors(node)
@@ -5323,6 +5418,9 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
                 for expr in syntax_to_list_no_separators(&x.variables) {
                     self.check_lvalue_and_inout(expr, LvalRoot::Unset);
                 }
+            }
+            PackageExpression(_) => {
+                self.check_can_use_feature(node, &UnstableFeatures::Package);
             }
             _ => {}
         }
@@ -5361,9 +5459,6 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
                 if c.kind.is_class() {
                     self.check_can_use_feature(node, &UnstableFeatures::RequireClass)
                 }
-            }
-            PrefixedCodeExpression(x) if x.body.is_compound_statement() => {
-                self.check_can_use_feature(&x.body, &UnstableFeatures::ExpressionTreeBlocks);
             }
             _ => {}
         }

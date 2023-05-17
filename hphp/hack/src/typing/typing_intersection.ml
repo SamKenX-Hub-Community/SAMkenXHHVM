@@ -174,12 +174,12 @@ let rec intersect env ~r ty1 ty2 =
               List.map2_env env tyl1 tyl2 ~f:(intersect ~r)
             in
             (env, mk (r, Ttuple inter_tyl))
-          | ((_, Tshape (shape_kind1, fdm1)), (_, Tshape (shape_kind2, fdm2)))
-            ->
+          | ( (_, Tshape (_, shape_kind1, fdm1)),
+              (_, Tshape (_, shape_kind2, fdm2)) ) ->
             let (env, shape_kind, fdm) =
               intersect_shapes env r (shape_kind1, fdm1) (shape_kind2, fdm2)
             in
-            (env, mk (r, Tshape (shape_kind, fdm)))
+            (env, mk (r, Tshape (Missing_origin, shape_kind, fdm)))
           | ((_, Tintersection tyl1), (_, Tintersection tyl2)) ->
             intersect_lists env r tyl1 tyl2
           (* Simplify `supportdyn<t> & u` to `supportdyn<t & u>`. Do not apply if `u` is
@@ -256,28 +256,29 @@ let rec intersect env ~r ty1 ty2 =
 and intersect_shapes env r (shape_kind1, fdm1) (shape_kind2, fdm2) =
   let (env, fdm) =
     TShapeMap.merge_env env fdm1 fdm2 ~combine:(fun env _sfn sft1 sft2 ->
-        match ((shape_kind1, sft1), (shape_kind2, sft2)) with
+        match
+          ((is_nothing shape_kind1, sft1), (is_nothing shape_kind2, sft2))
+        with
         | ((_, None), (_, None))
-        | ((_, Some { sft_optional = true; _ }), (Closed_shape, None))
-        | ((Closed_shape, None), (_, Some { sft_optional = true; _ })) ->
+        | ((_, Some { sft_optional = true; _ }), (true, None))
+        | ((true, None), (_, Some { sft_optional = true; _ })) ->
           (env, None)
-        | ((_, Some { sft_optional = false; _ }), (Closed_shape, None))
-        | ((Closed_shape, None), (_, Some { sft_optional = false; _ })) ->
+        | ((_, Some { sft_optional = false; _ }), (true, None))
+        | ((true, None), (_, Some { sft_optional = false; _ })) ->
           raise Nothing
-        | ((_, Some sft), (Open_shape, None))
-        | ((Open_shape, None), (_, Some sft)) ->
-          (env, Some sft)
+        | ((_, Some sft), (_, None)) ->
+          let (env, ty) = intersect env ~r shape_kind2 sft.sft_ty in
+          (env, Some { sft with sft_ty = ty })
+        | ((_, None), (_, Some sft)) ->
+          let (env, ty) = intersect env ~r shape_kind1 sft.sft_ty in
+          (env, Some { sft with sft_ty = ty })
         | ( (_, Some { sft_optional = opt1; sft_ty = ty1 }),
             (_, Some { sft_optional = opt2; sft_ty = ty2 }) ) ->
           let opt = opt1 && opt2 in
           let (env, ty) = intersect env ~r ty1 ty2 in
           (env, Some { sft_optional = opt; sft_ty = ty }))
   in
-  let shape_kind =
-    match (shape_kind1, shape_kind2) with
-    | (Open_shape, Open_shape) -> Open_shape
-    | _ -> Closed_shape
-  in
+  let (env, shape_kind) = intersect env ~r shape_kind1 shape_kind2 in
   (env, shape_kind, fdm)
 
 and intersect_lists env r tyl1 tyl2 =

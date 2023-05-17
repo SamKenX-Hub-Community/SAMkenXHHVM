@@ -55,7 +55,7 @@ impl<R: Reason> Display for Ty_<R> {
             Toption(ty) => write!(f, "?{}", ty),
             Taccess(ta) => write!(f, "{}::{}", ta.ty, ta.type_const.id()),
             Tfun(ft) => write!(f, "{}", ft),
-            Tshape(params) => tshape(f, params.0, &params.1),
+            Tshape(params) => tshape(f, &params.0, &params.1),
             Ttuple(tys) => list(f, "(", ", ", ")", tys.iter()),
             Trefinement(r) => {
                 write!(f, "({} with ", r.ty)?;
@@ -205,7 +205,7 @@ fn trefinements<TY: Display>(
 
 fn tshape<R: Reason>(
     f: &mut Formatter<'_>,
-    kind: ShapeKind,
+    kind: &Ty<R>,
     fields: &BTreeMap<TshapeFieldName, ShapeFieldType<R>>,
 ) -> fmt::Result {
     write!(f, "shape(")?;
@@ -227,9 +227,10 @@ fn tshape<R: Reason>(
         }
         write!(f, " => {}", sft.ty)?;
     }
-    match kind {
-        ShapeKind::ClosedShape => {}
-        ShapeKind::OpenShape => {
+    match &**kind.node() {
+        // Closed shape is represented by unknown fields having type nothing
+        Ty_::Tunion(tys) if tys.is_empty() => {}
+        _ => {
             if !is_first {
                 write!(f, ", ")?;
             }

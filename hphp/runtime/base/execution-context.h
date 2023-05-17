@@ -18,6 +18,7 @@
 
 #include "hphp/runtime/base/apc-handle.h"
 #include "hphp/runtime/base/ini-setting.h"
+#include "hphp/runtime/base/recorder.h"
 #include "hphp/runtime/base/req-list.h"
 #include "hphp/runtime/base/req-tiny-vector.h"
 #include "hphp/runtime/base/req-vector.h"
@@ -49,6 +50,9 @@ namespace HPHP {
 struct RequestEventHandler;
 struct EventHook;
 struct Resumable;
+namespace stream_transport {
+struct StreamTransport;
+}
 }
 
 namespace HPHP {
@@ -189,6 +193,7 @@ public:
    */
   Transport* getTransport();
   void setTransport(Transport*);
+  std::shared_ptr<stream_transport::StreamTransport> getServerStreamTransport() const;
   void setRequestTrace(rqtrace::Trace*);
   std::string getRequestUrl(size_t szLimit = std::string::npos);
   String getMimeType() const;
@@ -321,6 +326,8 @@ public:
   void setSandboxId(const String&);
 
   bool hasRequestEventHandlers() const;
+
+  const PackageInfo& getPackageInfo() const;
 
   const RepoOptions& getRepoOptionsForCurrentFrame() const;
   const RepoOptions& getRepoOptionsForFrame(int frame) const;
@@ -648,6 +655,8 @@ public:
     const StringData*,
     req::vector<std::pair<std::string, SHA1>>
   > m_loadedRdepMap;
+
+  Optional<Recorder> m_recorder;
 };
 
 ///////////////////////////////////////////////////////////////////////////////

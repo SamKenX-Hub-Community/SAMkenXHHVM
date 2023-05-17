@@ -16,13 +16,7 @@ type expand_typedef =
 
 val expand_typedef_ref : expand_typedef ref
 
-val expand_typedef :
-  Typing_defs.expand_env ->
-  Typing_env_types.env ->
-  Typing_reason.t ->
-  string ->
-  Typing_defs.locl_ty list ->
-  (Typing_env_types.env * Typing_error.t option) * Typing_defs.locl_ty
+val expand_typedef : expand_typedef
 
 type sub_type =
   Typing_env_types.env ->
@@ -471,9 +465,8 @@ val try_strip_dynamic :
 
 val try_strip_dynamic_from_union :
   Typing_env_types.env ->
-  Typing_reason.t ->
   Typing_defs.locl_ty list ->
-  Typing_defs.locl_ty option
+  Typing_defs.locl_ty list option
 
 (* If input is dynamic | t or t | dynamic then return t,
  * otherwise return type unchanged. *)
@@ -530,3 +523,21 @@ val strip_supportdyn :
   Typing_env_types.env ->
   Typing_defs.locl_ty ->
   bool * Typing_env_types.env * Typing_defs.locl_ty
+
+val no_upper_bound :
+  include_sd_mixed:bool ->
+  Typing_env_types.env ->
+  Typing_defs.locl_ty list ->
+  Typing_env_types.env * bool
+
+val recompose_like_type :
+  Typing_env_types.env ->
+  Typing_defs.locl_ty ->
+  Typing_env_types.env * Typing_defs.locl_ty
+
+val make_simplify_typed_expr :
+  Typing_env_types.env ->
+  Pos.t ->
+  Typing_defs.locl_ty ->
+  (Typing_defs.locl_ty, Tast.saved_env) Aast_defs.expr_ ->
+  Typing_env_types.env * Tast.expr

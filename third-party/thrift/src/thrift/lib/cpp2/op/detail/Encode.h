@@ -18,9 +18,13 @@
 
 #include <utility>
 
+#include <folly/Range.h>
 #include <folly/Utility.h>
 #include <folly/io/IOBuf.h>
 #include <thrift/lib/cpp/protocol/TType.h>
+#include <thrift/lib/cpp2/FieldRef.h>
+#include <thrift/lib/cpp2/op/Clear.h>
+#include <thrift/lib/cpp2/op/Get.h>
 #include <thrift/lib/cpp2/protocol/detail/protocol_methods.h>
 #include <thrift/lib/cpp2/type/NativeType.h>
 #include <thrift/lib/cpp2/type/Tag.h>
@@ -416,11 +420,11 @@ struct Encode<type::string_t> {
 template <>
 struct Encode<type::binary_t> {
   template <typename Protocol>
-  uint32_t operator()(Protocol& prot, const std::string& s) const {
+  uint32_t operator()(Protocol& prot, const folly::IOBuf& s) const {
     return prot.writeBinary(s);
   }
   template <typename Protocol>
-  uint32_t operator()(Protocol& prot, const folly::IOBuf& s) const {
+  uint32_t operator()(Protocol& prot, folly::StringPiece s) const {
     return prot.writeBinary(s);
   }
 };
@@ -458,15 +462,15 @@ struct Encode<type::enum_t<T>> {
 };
 
 // TODO: add optimization used in protocol_methods.h
-template <typename Tag>
-struct Encode<type::list<Tag>> {
+template <typename Tag, template <class...> class EncodeImpl = Encode>
+struct ListEncode {
   template <typename Protocol, typename T>
   uint32_t operator()(Protocol& prot, const T& list) const {
     uint32_t xfer = 0;
     xfer += prot.writeListBegin(
         typeTagToTType<Tag>, checked_container_size(list.size()));
     for (const auto& elem : list) {
-      xfer += Encode<Tag>{}(prot, elem);
+      xfer += EncodeImpl<Tag>{}(prot, elem);
     }
     xfer += prot.writeListEnd();
     return xfer;
@@ -474,22 +478,31 @@ struct Encode<type::list<Tag>> {
 };
 
 template <typename Tag>
-struct Encode<type::set<Tag>> {
+struct Encode<type::list<Tag>> : ListEncode<Tag> {};
+
+template <typename Tag, template <class...> class EncodeImpl = Encode>
+struct SetEncode {
   template <typename Protocol, typename T>
   uint32_t operator()(Protocol& prot, const T& set) const {
     uint32_t xfer = 0;
     xfer += prot.writeSetBegin(
         typeTagToTType<Tag>, checked_container_size(set.size()));
     for (const auto& elem : set) {
-      xfer += Encode<Tag>{}(prot, elem);
+      xfer += EncodeImpl<Tag>{}(prot, elem);
     }
     xfer += prot.writeSetEnd();
     return xfer;
   }
 };
 
-template <typename Key, typename Value>
-struct Encode<type::map<Key, Value>> {
+template <typename Tag>
+struct Encode<type::set<Tag>> : SetEncode<Tag> {};
+
+template <
+    typename Key,
+    typename Value,
+    template <class...> class EncodeImpl = Encode>
+struct MapEncode {
   template <typename Protocol, typename T>
   uint32_t operator()(Protocol& prot, const T& map) const {
     uint32_t xfer = 0;
@@ -498,32 +511,47 @@ struct Encode<type::map<Key, Value>> {
         typeTagToTType<Value>,
         checked_container_size(map.size()));
     for (const auto& kv : map) {
-      xfer += Encode<Key>{}(prot, kv.first);
-      xfer += Encode<Value>{}(prot, kv.second);
+      xfer += EncodeImpl<Key>{}(prot, kv.first);
+      xfer += EncodeImpl<Value>{}(prot, kv.second);
     }
     xfer += prot.writeMapEnd();
     return xfer;
   }
 };
 
-template <typename T, typename Tag>
-struct Encode<type::cpp_type<T, Tag>> : Encode<Tag> {
+template <typename Key, typename Value>
+struct Encode<type::map<Key, Value>> : MapEncode<Key, Value> {};
+
+template <
+    typename T,
+    typename Tag,
+    template <class...> class EncodeImpl = Encode>
+struct CppTypeEncode {
   template <class Protocol, class U>
   uint32_t operator()(Protocol& prot, const U& m) const {
     auto f = folly::if_constexpr<kIsStrongType<U, Tag>>(
         [](auto& v) { return static_cast<type::native_type<Tag>>(v); },
         folly::identity);
-    return Encode<Tag>::operator()(prot, f(m));
+    return EncodeImpl<Tag>{}(prot, f(m));
+  }
+};
+
+template <typename T, typename Tag>
+struct Encode<type::cpp_type<T, Tag>> : CppTypeEncode<T, Tag> {};
+
+template <
+    typename Adapter,
+    typename Tag,
+    template <class...> class EncodeImpl = Encode>
+struct AdaptedEncode {
+  template <typename Protocol, typename U>
+  uint32_t operator()(Protocol& prot, const U& m) const {
+    return EncodeImpl<Tag>{}(prot, Adapter::toThrift(m));
   }
 };
 
 template <typename Adapter, typename Tag>
-struct Encode<type::adapted<Adapter, Tag>> {
-  template <typename Protocol, typename U>
-  uint32_t operator()(Protocol& prot, const U& m) const {
-    return Encode<Tag>{}(prot, Adapter::toThrift(m));
-  }
-};
+struct Encode<type::adapted<Adapter, Tag>> : AdaptedEncode<Adapter, Tag> {};
 
 template <typename>
 struct Decode;
@@ -825,6 +853,108 @@ struct Decode<
     m = adapt_detail::fromThriftField<Adapter, FieldId>(std::move(orig), strct);
   }
 };
+
+template <class Tag>
+struct ShouldWrite {
+  template <typename T>
+  bool operator()(field_ref<T>) const {
+    return true;
+  }
+  template <typename T>
+  bool operator()(required_field_ref<T>) const {
+    return true;
+  }
+  template <typename T>
+  bool operator()(optional_field_ref<T> opt) const {
+    return opt.has_value();
+  }
+  template <typename T>
+  bool operator()(optional_boxed_field_ref<T> opt) const {
+    return opt.has_value();
+  }
+  template <typename T>
+  bool operator()(union_field_ref<T> opt) const {
+    return opt.has_value();
+  }
+  template <typename T>
+  bool operator()(terse_field_ref<T> val) const {
+    return !isEmpty<Tag>(*val);
+  }
+  template <typename T>
+  bool operator()(terse_intern_boxed_field_ref<T> val) const {
+    return !isEmpty<Tag>(*val);
+  }
+  template <typename T>
+  bool operator()(const std::unique_ptr<T>& ptr) const {
+    return ptr != nullptr;
+  }
+  template <typename T>
+  bool operator()(const std::shared_ptr<T>& ptr) const {
+    return ptr != nullptr;
+  }
+};
+
+template <class Tag>
+FOLLY_INLINE_VARIABLE constexpr ShouldWrite<Tag> should_write{};
+
+template <class T>
+struct RecursiveEncode : Encode<T> {};
+
+template <class T>
+struct RecursiveEncode<type::list<T>> : ListEncode<T, RecursiveEncode> {};
+
+template <class T>
+struct RecursiveEncode<type::set<T>> : SetEncode<T, RecursiveEncode> {};
+
+template <class K, class V>
+struct RecursiveEncode<type::map<K, V>> : MapEncode<K, V, RecursiveEncode> {};
+
+template <class T>
+struct RecursiveEncode<type::struct_t<T>> {
+  template <typename Protocol>
+  uint32_t operator()(Protocol& prot, const T& t) const {
+    uint32_t s = 0;
+    s += prot.writeStructBegin(op::get_class_name_v<T>.data());
+    op::for_each_ordinal<T>([&](auto id) {
+      using Id = decltype(id);
+      using Tag = op::get_type_tag<T, Id>;
+      auto&& field = op::get<Id>(t);
+      if (!should_write<Tag>(field)) {
+        return;
+      }
+
+      s += prot.writeFieldBegin(
+          &*op::get_name_v<T, Id>.begin(),
+          typeTagToTType<Tag>,
+          folly::to_underlying(op::get_field_id<T, Id>::value));
+      s += RecursiveEncode<Tag>{}(prot, *field);
+      s += prot.writeFieldEnd();
+    });
+    s += prot.writeFieldStop();
+    s += prot.writeStructEnd();
+    return s;
+  }
+};
+
+template <class T>
+struct RecursiveEncode<type::union_t<T>> : RecursiveEncode<type::struct_t<T>> {
+};
+
+template <class T>
+struct RecursiveEncode<type::exception_t<T>>
+    : RecursiveEncode<type::struct_t<T>> {};
+
+template <typename T, typename Tag>
+struct RecursiveEncode<type::cpp_type<T, Tag>>
+    : CppTypeEncode<T, Tag, RecursiveEncode> {};
+
+template <typename Adapter, typename Tag>
+struct RecursiveEncode<type::adapted<Adapter, Tag>>
+    : AdaptedEncode<Adapter, Tag, RecursiveEncode> {};
+
+template <typename T>
+FOLLY_INLINE_VARIABLE constexpr RecursiveEncode<type::infer_tag<T>>
+    recursive_encode{};
 
 } // namespace detail
 } // namespace op

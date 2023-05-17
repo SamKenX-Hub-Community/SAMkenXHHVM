@@ -112,7 +112,8 @@ std::unique_ptr<UnitEmitter> cache_hook(
       size_t blobSize;
       query.getBlob(0, blob, blobSize);
 
-      auto ue = std::make_unique<UnitEmitter>(sha1, SHA1{}, nativeFuncs);
+      auto const packageInfo = RepoOptions::forFile(filename).packageInfo();
+      auto ue = std::make_unique<UnitEmitter>(sha1, SHA1{}, nativeFuncs, packageInfo);
       BlobDecoder decoder{blob, blobSize};
       ue->m_filepath = makeStaticString(filename);
       ue->serde(decoder, false);
@@ -160,7 +161,7 @@ std::unique_ptr<UnitEmitter> cache_hook(
 ///////////////////////////////////////////////////////////////////////////////
 
 static struct UnitFileCacheExtension final : Extension {
-  UnitFileCacheExtension() : Extension("unitfilecache") {}
+  UnitFileCacheExtension() : Extension("unitfilecache", NO_EXTENSION_VERSION_YET, NO_ONCALL_YET) {}
 
   void moduleLoad(const IniSetting::Map& ini, Hdf config) override {
     static std::string filename;

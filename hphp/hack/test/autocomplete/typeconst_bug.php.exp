@@ -1,2 +1,3 @@
 test
-  (function(): C::Z)
+  INSERT test()
+  function(): C::Z

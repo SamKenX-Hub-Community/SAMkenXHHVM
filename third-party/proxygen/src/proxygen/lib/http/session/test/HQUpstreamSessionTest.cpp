@@ -25,6 +25,7 @@
 #include <proxygen/lib/http/session/test/HTTPSessionMocks.h>
 #include <proxygen/lib/http/session/test/HTTPTransactionMocks.h>
 #include <proxygen/lib/http/session/test/MockQuicSocketDriver.h>
+#include <proxygen/lib/http/session/test/MockSessionObserver.h>
 #include <proxygen/lib/http/session/test/TestUtils.h>
 #include <quic/api/test/MockQuicSocket.h>
 #include <wangle/acceptor/ConnectionManager.h>
@@ -32,7 +33,6 @@
 using namespace proxygen;
 using namespace proxygen::hq;
 using namespace quic;
-using namespace folly;
 using namespace testing;
 using namespace std::chrono;
 
@@ -203,6 +203,14 @@ bool HQUpstreamSessionTest::flush(bool eof,
   return done;
 }
 
+std::unique_ptr<MockSessionObserver>
+HQUpstreamSessionTest::addMockSessionObserver(
+    MockSessionObserver::EventSet eventSet) {
+  auto observer = std::make_unique<NiceMock<MockSessionObserver>>(eventSet);
+  EXPECT_CALL(*observer, attached(_));
+  hqSession_->addObserver(observer.get());
+  return observer;
+}
 StrictMock<MockController>& HQUpstreamSessionTest::getMockController() {
   return controllerContainer_.mockController;
 }
@@ -263,7 +271,8 @@ TEST_P(HQUpstreamSessionTest, PriorityUpdateIntoTransport) {
   auto handler = openTransaction();
   auto req = getGetRequest();
   req.getHeaders().add(HTTP_HEADER_PRIORITY, "u=3, i");
-  EXPECT_CALL(*socketDriver_->getSocket(), setStreamPriority(_, 3, true));
+  EXPECT_CALL(*socketDriver_->getSocket(),
+              setStreamPriority(_, quic::Priority(3, true)));
   handler->txn_->sendHeadersWithEOM(req);
 
   handler->expectHeaders();
@@ -276,7 +285,8 @@ TEST_P(HQUpstreamSessionTest, PriorityUpdateIntoTransport) {
                *std::get<0>(resp),
                std::move(std::get<1>(resp)),
                true);
-  EXPECT_CALL(*socketDriver_->getSocket(), setStreamPriority(_, 5, false));
+  EXPECT_CALL(*socketDriver_->getSocket(),
+              setStreamPriority(_, quic::Priority(5, false)));
   flushAndLoop();
   hqSession_->closeWhenIdle();
 }
@@ -324,9 +334,10 @@ TEST_P(HQUpstreamSessionTest, SendPriorityUpdate) {
   handler->txn_->sendHeaders(getGetRequest());
   handler->expectHeaders();
   handler->expectBody([&]() {
-    EXPECT_CALL(*socketDriver_->getSocket(),
-                setStreamPriority(handler->txn_->getID(), 5, true));
-    handler->txn_->updateAndSendPriority(5, true);
+    EXPECT_CALL(
+        *socketDriver_->getSocket(),
+        setStreamPriority(handler->txn_->getID(), quic::Priority(5, true)));
+    handler->txn_->updateAndSendPriority(HTTPPriority(5, true));
   });
   handler->txn_->sendEOM();
   handler->expectEOM();
@@ -346,10 +357,11 @@ TEST_P(HQUpstreamSessionTest, SkipPriorityUpdateAfterSeenEOM) {
   handler->expectHeaders();
   handler->expectBody();
   handler->expectEOM([&]() {
-    EXPECT_CALL(*socketDriver_->getSocket(),
-                setStreamPriority(handler->txn_->getID(), 5, true))
+    EXPECT_CALL(
+        *socketDriver_->getSocket(),
+        setStreamPriority(handler->txn_->getID(), quic::Priority(5, true)))
         .Times(0);
-    handler->txn_->updateAndSendPriority(5, true);
+    handler->txn_->updateAndSendPriority(HTTPPriority(5, true));
   });
   handler->txn_->sendEOM();
 
@@ -1172,6 +1184,65 @@ TEST_P(HQUpstreamSessionTest, ExtraSettings) {
             HTTP3::ErrorCode::HTTP_FRAME_UNEXPECTED);
 }
 
+TEST_P(HQUpstreamSessionTest, Observer_Attach_Detach_Destroyed) {
+
+  MockSessionObserver::EventSet eventSet;
+
+  // Test attached/detached callbacks when adding/removing observers
+  {
+    auto observer = addMockSessionObserver(eventSet);
+    EXPECT_CALL(*observer, detached(_));
+    hqSession_->removeObserver(observer.get());
+  }
+
+  {
+    auto observer = addMockSessionObserver(eventSet);
+    EXPECT_CALL(*observer, destroyed(_, _));
+    hqSession_->dropConnection();
+  }
+}
+
+TEST_P(HQUpstreamSessionTest, Observer_RequestStarted) {
+  // Add an observer NOT subscribed to the RequestStarted event
+  auto observerUnsubscribed =
+      addMockSessionObserver(MockSessionObserver::EventSetBuilder().build());
+  hqSession_->addObserver(observerUnsubscribed.get());
+
+  // Add an observer subscribed to this event
+  auto observerSubscribed = addMockSessionObserver(
+      MockSessionObserver::EventSetBuilder()
+          .enable(HTTPSessionObserverInterface::Events::requestStarted)
+          .build());
+  hqSession_->addObserver(observerSubscribed.get());
+
+  // expect to see a request started with header 'x-meta-test-header' having
+  // value 'abc123'
+  EXPECT_CALL(*observerSubscribed, requestStarted(_, _))
+      .WillOnce(Invoke(
+          [](HTTPSessionObserverAccessor*,
+             const proxygen::MockSessionObserver::RequestStartedEvent& event) {
+            auto hdrs = event.requestHeaders;
+            EXPECT_EQ(hdrs.getSingleOrEmpty("x-meta-test-header"), "abc123");
+          }));
+
+  auto handler = openTransaction();
+  HTTPMessage req = getGetRequest();
+  req.getHeaders().add("x-meta-test-header", "abc123");
+  handler->txn_->sendHeaders(req);
+  handler->txn_->sendEOM();
+  handler->expectHeaders();
+  handler->expectBody();
+  handler->expectEOM();
+  handler->expectDetachTransaction();
+  auto resp = makeResponse(200, 100);
+  sendResponse(handler->txn_->getID(),
+               *std::get<0>(resp),
+               std::move(std::get<1>(resp)),
+               true);
+  flushAndLoop();
+  hqSession_->closeWhenIdle();
+}
+
 // Test Cases for which Settings are not sent in the test SetUp
 using HQUpstreamSessionTestNoSettings = HQUpstreamSessionTest;
 
@@ -1248,7 +1319,8 @@ class HQUpstreamSessionTestPush : public HQUpstreamSessionTest {
     return (pushId % 2) == 1;
   }
 
-  using WriteFunctor = std::function<folly::Optional<size_t>(IOBufQueue&)>;
+  using WriteFunctor =
+      std::function<folly::Optional<size_t>(folly::IOBufQueue&)>;
   folly::Optional<size_t> writeUpTo(quic::StreamId id,
                                     size_t maxlen,
                                     WriteFunctor functor) {
@@ -1258,7 +1330,7 @@ class HQUpstreamSessionTestPush : public HQUpstreamSessionTest {
       return folly::none;
     }
 
-    IOBufQueue tmpbuf{IOBufQueue::cacheChainLength()};
+    folly::IOBufQueue tmpbuf{folly::IOBufQueue::cacheChainLength()};
     auto funcres = functor(tmpbuf);
     if (!funcres) {
       return folly::none;
@@ -1274,7 +1346,7 @@ class HQUpstreamSessionTestPush : public HQUpstreamSessionTest {
   // Use the common facilities to write the quic integer
   folly::Optional<size_t> writePushStreamPreface(quic::StreamId id,
                                                  size_t maxlen) {
-    WriteFunctor f = [](IOBufQueue& outbuf) {
+    WriteFunctor f = [](folly::IOBufQueue& outbuf) {
       return generateStreamPreface(outbuf, hq::UnidirectionalStreamType::PUSH);
     };
 
@@ -1285,7 +1357,7 @@ class HQUpstreamSessionTestPush : public HQUpstreamSessionTest {
   folly::Optional<size_t> writeUnframedPushId(quic::StreamId id,
                                               size_t maxlen,
                                               hq::PushId pushId) {
-    WriteFunctor f = [=](IOBufQueue& outbuf) -> folly::Optional<size_t> {
+    WriteFunctor f = [=](folly::IOBufQueue& outbuf) -> folly::Optional<size_t> {
       folly::io::QueueAppender appender(&outbuf, 8);
       uint8_t size = 1 << (folly::Random::rand32() % 4);
       auto wlen = encodeQuicIntegerWithAtLeast(pushId, size, appender);

@@ -121,7 +121,10 @@ func (c *MyServiceChannelClient) Query(ctx context.Context, u *MyUnion) (*MyStru
     }
     out := newRespMyServiceQuery()
     err := c.ch.Call(ctx, "query", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *MyServiceClient) Query(u *MyUnion) (*MyStruct, error) {
@@ -135,12 +138,12 @@ type reqMyServiceQuery struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceQuery{}
 
-func newReqMyServiceQuery() *reqMyServiceQuery {
-    return (&reqMyServiceQuery{})
-}
+type MyServiceQueryArgs = reqMyServiceQuery
 
-// Deprecated: Use newReqMyServiceQuery().U instead.
-var reqMyServiceQuery_U_DEFAULT = newReqMyServiceQuery().U
+func newReqMyServiceQuery() *reqMyServiceQuery {
+    return (&reqMyServiceQuery{}).
+        SetUNonCompat(*NewMyUnion())
+}
 
 func (x *reqMyServiceQuery) GetUNonCompat() *MyUnion {
     return x.U
@@ -148,14 +151,19 @@ func (x *reqMyServiceQuery) GetUNonCompat() *MyUnion {
 
 func (x *reqMyServiceQuery) GetU() *MyUnion {
     if !x.IsSetU() {
-      return NewMyUnion()
+        return NewMyUnion()
     }
 
     return x.U
 }
 
-func (x *reqMyServiceQuery) SetU(value MyUnion) *reqMyServiceQuery {
+func (x *reqMyServiceQuery) SetUNonCompat(value MyUnion) *reqMyServiceQuery {
     x.U = &value
+    return x
+}
+
+func (x *reqMyServiceQuery) SetU(value *MyUnion) *reqMyServiceQuery {
+    x.U = value
     return x
 }
 
@@ -190,8 +198,19 @@ if err != nil {
     return err
 }
 
-    x.SetU(result)
+    x.SetUNonCompat(result)
     return nil
+}
+
+// Deprecated: Use newReqMyServiceQuery().GetU() instead.
+var reqMyServiceQuery_U_DEFAULT = newReqMyServiceQuery().GetU()
+
+// Deprecated: Use newReqMyServiceQuery().GetU() instead.
+func (x *reqMyServiceQuery) DefaultGetU() *MyUnion {
+    if !x.IsSetU() {
+        return NewMyUnion()
+    }
+    return x.U
 }
 
 func (x *reqMyServiceQuery) String() string {
@@ -219,6 +238,7 @@ func (x *reqMyServiceQueryBuilder) Emit() *reqMyServiceQuery {
     var objCopy reqMyServiceQuery = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceQuery) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceQuery"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -275,18 +295,18 @@ func (x *reqMyServiceQuery) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceQuery struct {
-    Value *MyStruct `thrift:"value,0,required" json:"value" db:"value"`
+    Value *MyStruct `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceQuery{}
+var _ thrift.WritableResult = &respMyServiceQuery{}
 
 func newRespMyServiceQuery() *respMyServiceQuery {
-    return (&respMyServiceQuery{})
+    return (&respMyServiceQuery{}).
+        SetValueNonCompat(*NewMyStruct())
 }
-
-// Deprecated: Use newRespMyServiceQuery().Value instead.
-var respMyServiceQuery_Value_DEFAULT = newRespMyServiceQuery().Value
 
 func (x *respMyServiceQuery) GetValueNonCompat() *MyStruct {
     return x.Value
@@ -294,14 +314,19 @@ func (x *respMyServiceQuery) GetValueNonCompat() *MyStruct {
 
 func (x *respMyServiceQuery) GetValue() *MyStruct {
     if !x.IsSetValue() {
-      return NewMyStruct()
+        return NewMyStruct()
     }
 
     return x.Value
 }
 
-func (x *respMyServiceQuery) SetValue(value MyStruct) *respMyServiceQuery {
+func (x *respMyServiceQuery) SetValueNonCompat(value MyStruct) *respMyServiceQuery {
     x.Value = &value
+    return x
+}
+
+func (x *respMyServiceQuery) SetValue(value *MyStruct) *respMyServiceQuery {
+    x.Value = value
     return x
 }
 
@@ -336,8 +361,19 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
+}
+
+// Deprecated: Use newRespMyServiceQuery().GetValue() instead.
+var respMyServiceQuery_Value_DEFAULT = newRespMyServiceQuery().GetValue()
+
+// Deprecated: Use newRespMyServiceQuery().GetValue() instead.
+func (x *respMyServiceQuery) DefaultGetValue() *MyStruct {
+    if !x.IsSetValue() {
+        return NewMyStruct()
+    }
+    return x.Value
 }
 
 func (x *respMyServiceQuery) String() string {
@@ -365,6 +401,11 @@ func (x *respMyServiceQueryBuilder) Emit() *respMyServiceQuery {
     var objCopy respMyServiceQuery = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceQuery) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceQuery) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceQuery"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -421,6 +462,7 @@ func (x *respMyServiceQuery) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type MyServiceProcessor struct {
@@ -485,9 +527,11 @@ func (p *procFuncMyServiceQuery) Read(iprot thrift.Protocol) (thrift.Struct, thr
 func (p *procFuncMyServiceQuery) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Query", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -506,13 +550,13 @@ func (p *procFuncMyServiceQuery) Write(seqId int32, result thrift.WritableStruct
 func (p *procFuncMyServiceQuery) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqMyServiceQuery)
     result := newRespMyServiceQuery()
-    if retval, err := p.handler.Query(args.U); err != nil {
+    retval, err := p.handler.Query(args.U)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Query: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 

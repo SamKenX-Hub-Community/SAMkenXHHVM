@@ -321,8 +321,14 @@ class HQSession
       });
     }
     auto datagramEnabled = egressSettings_.getSetting(SettingsId::_HQ_DATAGRAM);
+    auto datagramDraft8Enabled =
+        egressSettings_.getSetting(SettingsId::_HQ_DATAGRAM_DRAFT_8);
+    auto datagramRFCEnabled =
+        egressSettings_.getSetting(SettingsId::_HQ_DATAGRAM_RFC);
     // if enabling H3 datagrams check that the transport supports datagrams
-    if (datagramEnabled && datagramEnabled->value) {
+    if ((datagramEnabled && datagramEnabled->value) ||
+        (datagramDraft8Enabled && datagramDraft8Enabled->value) ||
+        (datagramRFCEnabled && datagramRFCEnabled->value)) {
       datagramEnabled_ = true;
     }
   }
@@ -467,11 +473,6 @@ class HQSession
 
   const folly::SocketAddress& getPeerAddress() const noexcept override {
     return sock_ && sock_->good() ? sock_->getPeerAddress() : peerAddr_;
-  }
-
-  // Returns creation time point for logging of handshake duration
-  const std::chrono::steady_clock::time_point& getCreatedTime() const {
-    return createTime_;
   }
 
   void enablePingProbes(std::chrono::seconds /*interval*/,
@@ -664,7 +665,8 @@ class HQSession
         dropping_(false),
         inLoopCallback_(false),
         unidirectionalReadDispatcher_(*this, direction),
-        createTime_(std::chrono::steady_clock::now()) {
+        sessionObserverAccessor_(this),
+        sessionObserverContainer_(&sessionObserverAccessor_) {
     codec_.add<HTTPChecks>();
     // dummy, ingress, egress
     codecStack_.reserve(kMaxCodecStackDepth);
@@ -1881,14 +1883,42 @@ class HQSession
   folly::EvictingCacheMap<quic::StreamId, HTTPPriority> priorityUpdatesBuffer_{
       kMaxBufferedPriorityUpdates};
 
-  // Creation time (for handshake time tracking)
-  std::chrono::steady_clock::time_point createTime_;
-
   // Lookup maps for matching PushIds to StreamIds
   folly::F14FastMap<hq::PushId, quic::StreamId> pushIdToStreamId_;
   // Lookup maps for matching ingress push streams to push ids
   folly::F14FastMap<quic::StreamId, hq::PushId> streamIdToPushId_;
   std::string userAgent_;
+
+  /**
+   * Accessor implementation for HTTPSessionObserver.
+   */
+  class ObserverAccessor : public HTTPSessionObserverAccessor {
+   public:
+    explicit ObserverAccessor(HTTPSessionBase* sessionBasePtr)
+        : sessionBasePtr_(sessionBasePtr) {
+      (void)sessionBasePtr_; // silence unused variable warnings
+    }
+    ~ObserverAccessor() override = default;
+
+   private:
+    HTTPSessionBase* sessionBasePtr_{nullptr};
+  };
+
+  ObserverAccessor sessionObserverAccessor_;
+
+  // Container of observers for a HTTP session
+  //
+  // This member MUST be last in the list of members to ensure it is destroyed
+  // first, before any other members are destroyed. This ensures that observers
+  // can inspect any session state available through public methods
+  // when destruction of the session begins.
+  HTTPSessionObserverContainer sessionObserverContainer_;
+
+  HTTPSessionObserverContainer* getHTTPSessionObserverContainer()
+      const override {
+    return const_cast<HTTPSessionObserverContainer*>(
+        &sessionObserverContainer_);
+  }
 }; // HQSession
 
 std::ostream& operator<<(std::ostream& os, HQSession::DrainState drainState);

@@ -319,6 +319,75 @@ let rec t (env : Env.t) (node : Syntax.t) : Doc.t =
           t env semi;
           Newline;
         ]
+    | Syntax.CaseTypeDeclaration
+        {
+          case_type_attribute_spec = attr;
+          case_type_modifiers = modifiers;
+          case_type_case_keyword = case_kw;
+          case_type_type_keyword = type_kw;
+          case_type_name = name;
+          case_type_generic_parameter = generic;
+          case_type_as = as_kw;
+          case_type_bounds = bounds;
+          case_type_equal = eq_kw;
+          case_type_variants = variants;
+          case_type_semicolon = semi;
+        } ->
+      let has_leading_bar =
+        match Syntax.syntax variants with
+        | Syntax.SyntaxList (hd :: _) ->
+          (match Syntax.syntax hd with
+          | Syntax.CaseTypeVariant { case_type_variant_bar = bar; _ }
+            when not @@ Syntax.is_missing bar ->
+            true
+          | _ -> false)
+        | _ -> false
+      in
+      Concat
+        [
+          t env attr;
+          when_present attr newline;
+          handle_possible_list env ~after_each:(fun _ -> Space) modifiers;
+          t env case_kw;
+          Space;
+          t env type_kw;
+          Space;
+          t env name;
+          t env generic;
+          when_present as_kw space;
+          t env as_kw;
+          when_present as_kw space;
+          handle_possible_list env bounds;
+          when_present eq_kw (function () ->
+              Concat
+                [
+                  Space;
+                  t env eq_kw;
+                  (if has_leading_bar then
+                    Newline
+                  else
+                    Space);
+                  WithRule
+                    ( (if has_leading_bar then
+                        Rule.Always
+                      else
+                        Rule.Parental),
+                      Nest
+                        [
+                          handle_possible_list
+                            ~after_each:(function
+                              | false -> space_split ()
+                              | true -> Nothing)
+                            env
+                            variants;
+                        ] );
+                ]);
+          t env semi;
+          Newline;
+        ]
+    | Syntax.CaseTypeVariant
+        { case_type_variant_bar = bar; case_type_variant_type = ty } ->
+      Span [t env bar; when_present bar space; t env ty]
     | Syntax.PropertyDeclaration
         {
           property_attribute_spec = attr;
@@ -2584,7 +2653,11 @@ let rec t (env : Env.t) (node : Syntax.t) : Doc.t =
           module_membership_declaration_name = name;
           module_membership_declaration_semicolon = semicolon;
         } ->
-      Concat [t env mod_kw; Space; t env name; t env semicolon; Newline])
+      Concat [t env mod_kw; Space; t env name; t env semicolon; Newline]
+    | Syntax.PackageExpression
+        { package_expression_keyword = pkg_kw; package_expression_name = name }
+      ->
+      Concat [t env pkg_kw; Space; t env name])
 
 and when_present node f =
   match Syntax.syntax node with

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
+use std::io::ErrorKind;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -307,6 +308,11 @@ fn write_extracted_examples(
     Ok(())
 }
 
+fn is_hidden(path: &Path) -> bool {
+    let name = path.file_name().unwrap_or_default();
+    name.to_string_lossy().starts_with('.')
+}
+
 /// Write all the extracted examples from `chapter_dir` to `test_dir`.
 fn write_chapter_examples(chapter_dir: &Path, test_dir: &Path, hack_dir: &Path) -> Result<()> {
     let chapter_name = chapter_dir.file_name().unwrap().to_string_lossy();
@@ -330,8 +336,9 @@ fn write_chapter_examples(chapter_dir: &Path, test_dir: &Path, hack_dir: &Path) 
     for page_name in std::fs::read_dir(chapter_dir)? {
         let page_path = page_name?.path();
 
-        if page_path.extension() == Some(&OsString::from("md")) {
-            let src_bytes = std::fs::read(&page_path)?;
+        if page_path.extension() == Some(&OsString::from("md")) && !is_hidden(&page_path) {
+            let src_bytes = std::fs::read(&page_path)
+                .with_context(|| format!("Could not read {}", page_path.display()))?;
             let src = String::from_utf8_lossy(&src_bytes);
 
             let code_blocks = extract_hack_blocks(&src)
@@ -373,7 +380,22 @@ fn main() -> Result<()> {
     let guide_dir = match cli.command {
         Commands::Extract { path } => path,
     };
-    let abs_guide_dir = guide_dir.canonicalize()?;
+
+    let abs_guide_dir = match guide_dir.canonicalize() {
+        Ok(d) => d,
+        Err(e) => match e.kind() {
+            ErrorKind::NotFound => {
+                return Err(anyhow::format_err!(
+                    "Path does not exist: {}",
+                    guide_dir.display()
+                ));
+            }
+            _ => {
+                return Err(anyhow::format_err!("{}", e.to_string()));
+            }
+        },
+    };
+
     let hack_dir = abs_guide_dir.parent().unwrap().parent().unwrap();
     let test_dir = hack_dir.join("test").join("extracted_from_manual");
 

@@ -101,7 +101,9 @@ HTTPSession::HTTPSession(const WheelTimerInstance& wheelTimer,
       resetSocketOnShutdown_(false),
       inLoopCallback_(false),
       pendingPause_(false),
-      writeBufSplit_(false) {
+      writeBufSplit_(false),
+      sessionObserverAccessor_(this),
+      sessionObserverContainer_(&sessionObserverAccessor_) {
   setByteEventTracker(std::make_shared<ByteEventTracker>(this));
   initialReceiveWindow_ = receiveStreamWindowSize_ = receiveSessionWindowSize_ =
       codec_->getDefaultWindowSize();
@@ -846,6 +848,23 @@ void HTTPSession::onHeadersComplete(HTTPCodec::StreamID streamID,
   if (infoCallback_) {
     infoCallback_->onIngressMessage(*this, *msg.get());
   }
+
+  // Inform observers when request headers (i.e. ingress, from downstream
+  // client) are processed.
+  if (isDownstream()) {
+    if (auto msgPtr = msg.get()) {
+      const auto event =
+          HTTPSessionObserverInterface::RequestStartedEvent::Builder()
+              .setHeaders(msgPtr->getHeaders())
+              .build();
+      sessionObserverContainer_.invokeInterfaceMethod<
+          HTTPSessionObserverInterface::Events::requestStarted>(
+          [&event](auto observer, auto observed) {
+            observer->requestStarted(observed, event);
+          });
+    }
+  }
+
   HTTPTransaction* txn = findTransaction(streamID);
   if (!txn) {
     invalidStream(streamID);
@@ -1604,6 +1623,20 @@ void HTTPSession::sendHeaders(HTTPTransaction* txn,
   }
   scheduleWrite();
   onHeadersSent(headers, wasReusable);
+
+  // If this is a client sending request headers to upstream
+  // invoke requestStarted event for attached observers.
+  if (isUpstream()) {
+    const auto event =
+        HTTPSessionObserverInterface::RequestStartedEvent::Builder()
+            .setHeaders(headers.getHeaders())
+            .build();
+    sessionObserverContainer_.invokeInterfaceMethod<
+        HTTPSessionObserverInterface::Events::requestStarted>(
+        [&event](auto observer, auto observed) {
+          observer->requestStarted(observed, event);
+        });
+  }
 }
 
 void HTTPSession::commonEom(HTTPTransaction* txn,
@@ -1931,10 +1964,10 @@ void HTTPSession::detach(HTTPTransaction* txn) noexcept {
     if (getConnectionManager()) {
       getConnectionManager()->onDeactivated(*this);
     }
-  } else {
-    if (infoCallback_) {
-      infoCallback_->onTransactionDetached(*this);
-    }
+  }
+
+  if (infoCallback_) {
+    infoCallback_->onTransactionDetached(*this);
   }
 
   if (!readsShutdown()) {
@@ -2698,6 +2731,10 @@ HTTPTransaction* HTTPSession::createTransaction(
     incrementIncomingStreams(txn);
   }
   // Downstream push is counted in HTTPSession::sendHeaders
+
+  if (infoCallback_) {
+    infoCallback_->onTransactionAttached(*this);
+  }
 
   return txn;
 }

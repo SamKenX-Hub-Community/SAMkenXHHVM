@@ -146,8 +146,8 @@ impl<R: Reason> From<&obr::typing_defs::Ty<'_>> for Ty<R> {
             typing_defs_core::Ty_::Tprim(prim) => Tprim(*prim),
             typing_defs_core::Ty_::Tfun(ft) => Tfun(Box::new(ft.into())),
             typing_defs_core::Ty_::Ttuple(tys) => Ttuple(slice(tys)),
-            typing_defs_core::Ty_::Tshape(&(kind, fields)) => Tshape(Box::new((
-                kind,
+            typing_defs_core::Ty_::Tshape(&(_, kind, fields)) => Tshape(Box::new((
+                kind.into(),
                 fields
                     .iter()
                     .map(|(name, ty)| {
@@ -253,6 +253,7 @@ impl<R: Reason> From<&obr::typing_defs::FunType<'_>> for ty::FunType<R, Ty<R>> {
             ret: ft.ret.into(),
             flags: ft.flags,
             ifc_decl: ft.ifc_decl.into(),
+            cross_package: ft.cross_package.as_ref().map(|s| (*s).into()),
         }
     }
 }
@@ -414,6 +415,7 @@ impl<R: Reason> From<&obr::shallow_decl_defs::ClassDecl<'_>> for shallow::Shallo
             uses,
             xhp_attr_uses,
             xhp_enum_values,
+            xhp_marked_empty,
             req_extends,
             req_implements,
             req_class,
@@ -448,6 +450,7 @@ impl<R: Reason> From<&obr::shallow_decl_defs::ClassDecl<'_>> for shallow::Shallo
             xhp_enum_values: (xhp_enum_values.iter())
                 .map(|(&k, v)| (k.into(), slice(v)))
                 .collect(),
+            xhp_marked_empty: *xhp_marked_empty,
             req_extends: slice(req_extends),
             req_implements: slice(req_implements),
             req_class: slice(req_class),
@@ -677,6 +680,7 @@ impl<R: Reason> From<&obr::decl_defs::DeclClassType<'_>> for folded::FoldedClass
             consts,
             typeconsts,
             xhp_enum_values,
+            xhp_marked_empty,
             construct,
             need_init: _, // `Self::has_concrete_constructor()` reads the `constructor` field
             deferred_init_members,
@@ -716,6 +720,7 @@ impl<R: Reason> From<&obr::decl_defs::DeclClassType<'_>> for folded::FoldedClass
             xhp_enum_values: (xhp_enum_values.iter())
                 .map(|(&s, &evs)| (s.into(), slice(evs)))
                 .collect(),
+            xhp_marked_empty: *xhp_marked_empty,
             extends: extends.iter().copied().map(Into::into).collect(),
             xhp_attr_deps: xhp_attr_deps.iter().copied().map(Into::into).collect(),
             req_ancestors: req_ancestors.iter().copied().map(Into::into).collect(),

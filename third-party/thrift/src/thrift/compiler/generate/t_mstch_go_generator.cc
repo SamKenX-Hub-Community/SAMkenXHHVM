@@ -46,6 +46,9 @@ struct go_codegen_data {
   // whether to generate "legacy" getters which do not properly support optional
   // fields (to make the migration easier)
   bool compat_getters = true;
+  // whether to generate "legacy" setters which do not properly support optional
+  // fields (to make the migration easier)
+  bool compat_setters = true;
 
   // Key: package name according to Thrift.
   // Value: package name to use in generated code.
@@ -61,6 +64,9 @@ struct go_codegen_data {
   // Req/Resp structs are internal and must be unexported (i.e. lowercase)
   // This set will help us track these srtucts by name.
   std::set<std::string> req_resp_struct_names;
+  // Mapping of service name to a vector of req/resp structs for that service.
+  std::map<std::string, std::vector<t_struct*>> service_to_req_resp_structs =
+      {};
   // The current program being generated.
   const t_program* current_program;
 };
@@ -112,6 +118,7 @@ class t_mstch_go_generator : public t_mstch_generator {
   void set_mstch_factories();
   void set_go_package_aliases();
   void set_struct_to_field_names();
+  void set_service_to_req_resp_structs();
   go_codegen_data data_;
 };
 
@@ -135,6 +142,8 @@ class mstch_go_program : public mstch_program {
             {"program:compat?", &mstch_go_program::go_gen_compat},
             {"program:compat_getters?",
              &mstch_go_program::go_gen_compat_getters},
+            {"program:compat_setters?",
+             &mstch_go_program::go_gen_compat_setters},
             {"program:thrift_imports", &mstch_go_program::thrift_imports},
             {"program:has_thrift_imports",
              &mstch_go_program::has_thrift_imports},
@@ -156,6 +165,7 @@ class mstch_go_program : public mstch_program {
   mstch::node go_doc_comment() { return doc_comment(program_); }
   mstch::node go_gen_compat() { return data_.compat; }
   mstch::node go_gen_compat_getters() { return data_.compat_getters; }
+  mstch::node go_gen_compat_setters() { return data_.compat_setters; }
   mstch::node thrift_imports() {
     mstch::array a;
     for (const auto* program : program_->get_included_programs()) {
@@ -310,26 +320,27 @@ class mstch_go_field : public mstch_field {
             {"field:go_arg_name", &mstch_go_field::go_arg_name},
             {"field:go_setter_name", &mstch_go_field::go_setter_name},
             {"field:pointer?", &mstch_go_field::is_pointer},
+            {"field:compat_setter_pointer?",
+             &mstch_go_field::is_compat_setter_pointer},
             {"field:nilable?", &mstch_go_field::is_nilable},
             {"field:dereference?", &mstch_go_field::should_dereference},
-            {"field:compat_getter_dereference?",
-             &mstch_go_field::should_compat_getter_dereference},
             {"field:key_str", &mstch_go_field::key_str},
             {"field:go_tag?", &mstch_go_field::has_go_tag},
             {"field:go_tag", &mstch_go_field::go_tag},
+            {"field:retval?", &mstch_go_field::is_retval},
         });
   }
 
-  mstch::node go_name() { return go::get_field_name(field_); }
+  mstch::node go_name() { return go::get_go_field_name(field_); }
   mstch::node go_setter_name() {
-    auto setter_name = "Set" + go::get_field_name(field_);
+    auto setter_name = "Set" + go::get_go_field_name(field_);
     // Setters which collide with existing field names should be suffixed with
     // an underscore.
     if (field_context_ != nullptr && field_context_->strct != nullptr) {
       auto stfn_iter =
           data_.struct_to_field_names.find(field_context_->strct->name());
       if (stfn_iter != data_.struct_to_field_names.end()) {
-        if (stfn_iter->second.count(setter_name) > 0) {
+        while (stfn_iter->second.count(setter_name) > 0) {
           setter_name += "_";
         }
       }
@@ -341,23 +352,8 @@ class mstch_go_field : public mstch_field {
     return go::munge_ident(field_->name(), /*exported*/ false);
   }
   mstch::node is_pointer() {
-    // Whether this field is a pointer '*' in Go:
-    //  * Struct type fields must be pointers
-    //  * Fields inside a union must be pointers
-    //  * Optional fields must be pointers
-    //     * Except (!!!) when the underlying type itself is nilable (map/slice)
-    auto real_type = field_->type()->get_true_type();
-    return (go::is_type_go_struct(real_type) || is_inside_union_() ||
-            is_optional_()) &&
-        !go::is_type_nilable(real_type);
-  }
-  mstch::node should_compat_getter_dereference() {
-    // Dereference all pointers, except structs and eceptions.
-    auto real_type = field_->type()->get_true_type();
-    bool is_pointer = (go::is_type_go_struct(real_type) || is_inside_union_() ||
-                       is_optional_()) &&
-        !go::is_type_nilable(real_type);
-    return is_pointer && !go::is_type_go_struct(real_type);
+    // See comment in the private method for details.
+    return is_pointer_();
   }
   mstch::node is_nilable() {
     // Whether this field can be set to 'nil' in Go:
@@ -370,12 +366,23 @@ class mstch_go_field : public mstch_field {
         is_optional_() || go::is_type_nilable(real_type);
   }
   mstch::node should_dereference() {
-    // Whether this field should be dereferenced when encoding/decoding.
-    // Not all pointer fields need to be dereferenced when they are
-    // processed by the encoder/decoder logic.
+    // Whether this field should be dereferenced when inside the compat-get
+    // and writeField methods.
+    // Dereference all pointers, except structs and exceptions.
     auto real_type = field_->type()->get_true_type();
-    return (is_inside_union_() || is_optional_()) &&
-        !go::is_type_nilable(real_type) && !go::is_type_go_struct(real_type);
+    return is_pointer_() && !go::is_type_go_struct(real_type);
+  }
+  mstch::node is_compat_setter_pointer() {
+    // Whether this field's value should be a poitner in compat-setter.
+    // This is needed for a seamless migration from the legacy generator.
+    //
+    // Legacy generator would make optional fields with default values be
+    // impelemented as non-pointer fields. This is incorrect because such
+    // field cannot be unset (i.e set to nil) despite being optional.
+    // This ommision is fixed in the new generator, however, our compat
+    // setters must be backwards compatible to ensure graceful migration.
+    bool has_default_value = (field_->default_value() != nullptr);
+    return is_pointer_() && !(is_optional_() && has_default_value);
   }
   mstch::node key_str() {
     // Legacy schemas may have negative tags - replace minus with an underscore.
@@ -395,9 +402,26 @@ class mstch_go_field : public mstch_field {
     }
     return std::string();
   }
+  mstch::node is_retval() {
+    return field_->name() == go::DEFAULT_RETVAL_FIELD_NAME;
+  }
 
  private:
   go_codegen_data& data_;
+
+  bool is_pointer_() {
+    // Whether this field is a pointer '*' in a Go struct definition:
+    //  * Struct-type fields are pointers.
+    //     * Union-type fields are pointers too - by extension.
+    //  * Fields inside a union are pointers.
+    //     * Except (!!!) when the underlying type itself is nilable (map/slice)
+    //  * Optional fields are pointers.
+    //     * Except (!!!) when the underlying type itself is nilable (map/slice)
+    auto real_type = field_->type()->get_true_type();
+    return (go::is_type_go_struct(real_type) || is_inside_union_() ||
+            is_optional_()) &&
+        !go::is_type_nilable(real_type);
+  }
 
   bool is_inside_union_() {
     // Whether field is part of a union
@@ -421,6 +445,10 @@ class mstch_go_struct : public mstch_struct {
             {"struct:go_qualified_name", &mstch_go_struct::go_qualified_name},
             {"struct:go_qualified_new_func",
              &mstch_go_struct::go_qualified_new_func},
+            {"struct:go_public_req_name", &mstch_go_struct::go_public_req_name},
+            {"struct:req_resp?", &mstch_go_struct::is_req_resp_struct},
+            {"struct:resp?", &mstch_go_struct::is_resp_struct},
+            {"struct:req?", &mstch_go_struct::is_req_struct},
         });
   }
 
@@ -433,13 +461,30 @@ class mstch_go_struct : public mstch_struct {
     auto prefix = go_package_alias_prefix(struct_->program(), data_);
     return prefix + go_new_func_();
   }
+  mstch::node is_req_resp_struct() {
+    // Whether this is a helper request or response struct.
+    return is_req_resp_struct_();
+  }
+  mstch::node is_resp_struct() {
+    // Whether this is a helper response struct.
+    return is_req_resp_struct_() &&
+        boost::algorithm::starts_with(struct_->name(), "resp");
+  }
+  mstch::node is_req_struct() {
+    // Whether this is a helper request struct.
+    return is_req_resp_struct_() &&
+        boost::algorithm::starts_with(struct_->name(), "req");
+  }
+  mstch::node go_public_req_name() {
+    return boost::algorithm::erase_first_copy(struct_->name(), "req") + "Args";
+  }
 
  private:
   go_codegen_data& data_;
 
   std::string go_name_() {
     auto name = struct_->name();
-    if (data_.req_resp_struct_names.count(name) > 0) {
+    if (is_req_resp_struct_()) {
       // Unexported/lowercase
       return go::munge_ident(name, false);
     } else {
@@ -451,13 +496,17 @@ class mstch_go_struct : public mstch_struct {
   std::string go_new_func_() {
     auto name = struct_->name();
     auto go_name = go::munge_ident(struct_->name(), true);
-    if (data_.req_resp_struct_names.count(name) > 0) {
+    if (is_req_resp_struct_()) {
       // Unexported/lowercase
       return "new" + go_name;
     } else {
       // Exported/uppercase
       return "New" + go_name;
     }
+  }
+
+  bool is_req_resp_struct_() {
+    return (data_.req_resp_struct_names.count(struct_->name()) > 0);
   }
 };
 
@@ -502,36 +551,14 @@ class mstch_go_service : public mstch_service {
   }
 
   mstch::node req_resp_structs() {
-    std::vector<t_struct*> req_resp_structs;
-    for (auto func : get_functions()) {
-      if (!go::is_func_go_supported(func)) {
-        continue;
-      }
-      auto svcGoName = go::munge_ident(service_->name());
-      auto funcGoName = go::get_go_func_name(func);
-
-      auto req_struct_name =
-          go::munge_ident("req" + svcGoName + funcGoName, false);
-      auto req_struct = new t_struct(service_->program(), req_struct_name);
-      for (auto member : func->params().get_members()) {
-        req_struct->append_field(std::unique_ptr<t_field>(member));
-      }
-      req_resp_structs.push_back(req_struct);
-      data_.req_resp_struct_names.insert(req_struct_name);
-
-      auto resp_struct_name =
-          go::munge_ident("resp" + svcGoName + funcGoName, false);
-      auto resp_struct = new t_struct(service_->program(), resp_struct_name);
-      if (!func->get_return_type()->is_void()) {
-        auto resp_field =
-            std::make_unique<t_field>(func->get_return_type(), "value", 0);
-        resp_field->set_req(t_field::e_req::required);
-        resp_struct->append_field(std::move(resp_field));
-      }
-      req_resp_structs.push_back(resp_struct);
-      data_.req_resp_struct_names.insert(resp_struct_name);
+    auto req_resp_structs =
+        data_.service_to_req_resp_structs.find(service_->name());
+    if (req_resp_structs != data_.service_to_req_resp_structs.end()) {
+      return make_mstch_array(
+          req_resp_structs->second, *context_.struct_factory);
     }
-    return make_mstch_array(req_resp_structs, *context_.struct_factory);
+    throw std::runtime_error(
+        "unable to get req/resp structs for service " + service_->name());
   }
 
  private:
@@ -571,8 +598,14 @@ class mstch_go_type : public mstch_type {
       go_codegen_data* data)
       : mstch_type(t, ctx, pos), data_(*data) {
     (void)data_;
-    register_methods(this, {});
+    register_methods(
+        this,
+        {
+            {"type:go_comparable?", &mstch_go_type::is_go_comparable},
+        });
   }
+
+  mstch::node is_go_comparable() { return go::is_type_go_comparable(type_); }
 
  private:
   go_codegen_data& data_;
@@ -601,12 +634,7 @@ class mstch_go_typedef : public mstch_typedef {
             {"typedef:placeholder?", &mstch_go_typedef::is_placeholder},
         });
   }
-  mstch::node go_name() {
-    if (typedef_->has_annotation("go.name")) {
-      return typedef_->get_annotation("go.name");
-    }
-    return go::munge_ident(typedef_->name());
-  }
+  mstch::node go_name() { return go_name_(); }
   mstch::node go_newtype() { return typedef_->has_annotation("go.newtype"); }
   mstch::node go_qualified_name() {
     auto prefix = go_package_alias_prefix(typedef_->program(), data_);
@@ -632,15 +660,11 @@ class mstch_go_typedef : public mstch_typedef {
     // Special handling for the following two scenarios:
     //   1. t_placeholder_typedef is not an actual typedef, but a
     //   dummy hack/workaround in Thrift compiler AST.
-    //   2. Type resolution is a bit wonky in the AST - occasionally there are
-    //   multiple identical typedefs in a typedef chain (parent/child).
+    //   2. Unnamed typedef to hold unstructured annotations.
     //
     // In either case, we want to skip a few steps down the chain to the
     // "actual" types if order to generate code properly.
-    auto parentName = typedef_->get_scoped_name();
-    auto childName = typedef_->get_type()->get_scoped_name();
-    return typedef_->typedef_kind() != t_typedef::kind::defined ||
-        parentName == childName;
+    return typedef_->typedef_kind() != t_typedef::kind::defined;
   }
 
  private:
@@ -660,6 +684,7 @@ void t_mstch_go_generator::generate_program() {
   set_mstch_factories();
   set_go_package_aliases();
   set_struct_to_field_names();
+  set_service_to_req_resp_structs();
   data_.current_program = program_;
 
   if (auto thrift_lib_import = get_option("thrift_import")) {
@@ -701,10 +726,13 @@ void t_mstch_go_generator::set_go_package_aliases() {
   auto program = get_program();
   auto includes = program->get_included_programs();
 
+  // Prevent collisions with *this* program's package name
+  auto pkg_name = go::get_go_package_base_name(program, data_.package_override);
+  data_.go_package_name_collisions[pkg_name] = 0;
+
   for (auto include : includes) {
-    auto package = go::get_go_package_name(include, data_.package_override);
-    auto package_base_name =
-        go::get_go_package_base_name(include, data_.package_override);
+    auto package = go::get_go_package_name(include);
+    auto package_base_name = go::get_go_package_base_name(include);
     auto unique_package_name = go::make_unique_name(
         data_.go_package_name_collisions,
         go::munge_ident(package_base_name, /*exported*/ false));
@@ -716,11 +744,22 @@ void t_mstch_go_generator::set_go_package_aliases() {
 void t_mstch_go_generator::set_struct_to_field_names() {
   auto program = get_program();
   for (auto struct_ : program->structs()) {
-    std::set<std::string> field_names;
-    for (const t_field& field : struct_->fields()) {
-      field_names.insert(go::get_field_name(&field));
+    data_.struct_to_field_names[struct_->name()] =
+        go::get_struct_go_field_names(struct_);
+  }
+}
+
+void t_mstch_go_generator::set_service_to_req_resp_structs() {
+  auto program = get_program();
+  for (auto service : program->services()) {
+    std::vector<t_struct*> req_resp_structs =
+        go::get_service_req_resp_structs(service);
+    data_.service_to_req_resp_structs[service->name()] = req_resp_structs;
+    for (auto struct_ : req_resp_structs) {
+      data_.req_resp_struct_names.insert(struct_->name());
+      data_.struct_to_field_names[struct_->name()] =
+          go::get_struct_go_field_names(struct_);
     }
-    data_.struct_to_field_names[struct_->name()] = field_names;
   }
 }
 } // namespace

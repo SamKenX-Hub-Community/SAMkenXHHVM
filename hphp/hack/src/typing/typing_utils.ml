@@ -528,6 +528,26 @@ let run_on_intersection_array_key_value_res env ~f tyl =
   let (res, arr_errs, key_errs, val_errs) = List.unzip4 quads in
   (env, res, arr_errs, key_errs, val_errs)
 
+let rec strip_supportdyn env ty =
+  let (env, ty) = Typing_env.expand_type env ty in
+  match get_node ty with
+  | Tnewtype (name, [tyarg], _) when String.equal name SN.Classes.cSupportDyn ->
+    let (_, env, ty) = strip_supportdyn env tyarg in
+    (true, env, ty)
+  | _ -> (false, env, ty)
+
+(* The list of types should not be considered to be a bound if it is all mixed
+   or supportdyn<mixed> (when include_sd_mixed is set *)
+let no_upper_bound ~include_sd_mixed env tyl =
+  List.for_all_env env tyl ~f:(fun env ty ->
+      if is_mixed env ty then
+        (env, true)
+      else if include_sd_mixed then
+        let (stripped, env, ty) = strip_supportdyn env ty in
+        (env, stripped && is_mixed env ty)
+      else
+        (env, false))
+
 (* Gets the base type of an abstract type *)
 let get_base_type ?(expand_supportdyn = true) env ty =
   let rec loop seen_generics ty =
@@ -564,11 +584,14 @@ let get_base_type ?(expand_supportdyn = true) env ty =
     | Tgeneric _
     | Tnewtype _
     | Tdependent _ ->
-      let (_env, tys) =
+      let (env, tys) =
         get_concrete_supertypes ~expand_supportdyn ~abstract_enum:true env ty
       in
+      let (_env, has_no_bounds) =
+        no_upper_bound ~include_sd_mixed:expand_supportdyn env tys
+      in
       (match tys with
-      | [ty] -> loop seen_generics ty
+      | [ty] when not has_no_bounds -> loop seen_generics ty
       | _ -> ty)
     | _ -> ty
   in
@@ -608,7 +631,7 @@ let shape_field_name_with_ty_err env (_, p, field) =
 let shape_field_name env field =
   let (res, error) = shape_field_name_with_ty_err env field in
   (match error with
-  | Some error -> Errors.add_typing_error error
+  | Some error -> Typing_error_utils.add_typing_error error
   | None -> ());
   res
 
@@ -748,7 +771,7 @@ and has_ancestor_including_req_refl env sub_id super_id =
   | None -> false
   | Some cls -> has_ancestor_including_req env cls super_id
 
-let rec try_strip_dynamic_from_union _env r tyl =
+let rec try_strip_dynamic_from_union _env tyl =
   (* search through tyl, and any unions directly-recursively contained in tyl,
      and return those that satisfy f, and those that do not, separately.*)
   let rec partition_union tyl ~f =
@@ -761,26 +784,30 @@ let rec try_strip_dynamic_from_union _env r tyl =
       else (
         match get_node t with
         | Tunion tyl ->
-          (match strip_union (get_reason t) tyl with
+          (match strip_union tyl with
           | Some (sub_dyns, sub_nondyns) ->
-            (sub_dyns @ dyns, sub_nondyns :: nondyns)
+            ( sub_dyns @ dyns,
+              Typing_make_type.union (get_reason t) sub_nondyns :: nondyns )
           | None -> (dyns, t :: nondyns))
         | _ -> (dyns, t :: nondyns)
       )
-  and strip_union r tyl =
+  and strip_union tyl =
     let (dyns, nondyns) = partition_union tyl ~f:Typing_defs.is_dynamic in
     match (dyns, nondyns) with
     | ([], _) -> None
-    | (_, _) -> Some (dyns, Typing_make_type.union r nondyns)
+    | (_, _) -> Some (dyns, nondyns)
   in
-  match strip_union r tyl with
+  match strip_union tyl with
   | None -> None
-  | Some (_, ty) -> Some ty
+  | Some (_, tyl) -> Some tyl
 
 and try_strip_dynamic env ty =
   let (env, ty) = Env.expand_type env ty in
   match get_node ty with
-  | Tunion tyl -> try_strip_dynamic_from_union env (get_reason ty) tyl
+  | Tunion tyl ->
+    (match try_strip_dynamic_from_union env tyl with
+    | None -> None
+    | Some tyl -> Some (Typing_make_type.union (get_reason ty) tyl))
   | _ -> None
 
 and strip_dynamic env ty =
@@ -852,10 +879,55 @@ let supports_dynamic env ty =
   let r = get_reason ty in
   sub_type env ty (MakeType.supportdyn_mixed r)
 
-let rec strip_supportdyn env ty =
-  let (env, ty) = Typing_env.expand_type env ty in
+let is_inter_dyn env ty =
+  let (env, ty) = Env.expand_type env ty in
   match get_node ty with
-  | Tnewtype (name, [tyarg], _) when String.equal name SN.Classes.cSupportDyn ->
-    let (_, env, ty) = strip_supportdyn env tyarg in
-    (true, env, ty)
-  | _ -> (false, env, ty)
+  | Tintersection [ty1; ty2]
+    when Typing_defs.is_dynamic ty1 || Typing_defs.is_dynamic ty2 ->
+    (env, Some (ty1, ty2))
+  | _ -> (env, None)
+
+let rec find_inter_dyn env acc tyl =
+  match tyl with
+  | [] -> (env, None)
+  | ty :: tyl ->
+    (match is_inter_dyn env ty with
+    | (env, None) -> find_inter_dyn env (ty :: acc) tyl
+    | (env, Some ty_inter) -> (env, Some (ty_inter, acc @ tyl)))
+
+(* Detect types that look like (t1 & dynamic) | t2 and convert to
+   ~t2 & (t1 | t2). Also in function returns.
+*)
+let rec recompose_like_type env orig_ty =
+  let (env, ty) = Env.expand_type env orig_ty in
+  match get_node ty with
+  | Tunion tys ->
+    (match find_inter_dyn env [] tys with
+    | (env, Some ((ty1, ty2), [ty_sub])) ->
+      let (env, ty_union1) = union env ty1 ty_sub in
+      let (env, ty_union2) = union env ty2 ty_sub in
+      (env, Typing_make_type.intersection (get_reason ty) [ty_union1; ty_union2])
+    | (env, _) ->
+      (match try_strip_dynamic env ty with
+      | None -> (env, ty)
+      | Some ty1 ->
+        let (env, ty2) = recompose_like_type env ty1 in
+        (env, Typing_make_type.locl_like (get_reason ty) ty2)))
+  | Tfun ft ->
+    let (env, et_type) = recompose_like_type env ft.ft_ret.et_type in
+    let ft_ret = { ft.ft_ret with et_type } in
+    (env, mk (get_reason ty, Tfun { ft with ft_ret }))
+  | Tnewtype (n, _, ty1)
+    when String.equal n Naming_special_names.Classes.cSupportDyn ->
+    let (env, ty1) = recompose_like_type env ty1 in
+    simple_make_supportdyn (get_reason ty) env ty1
+  | _ -> (env, orig_ty)
+
+let make_simplify_typed_expr env p ty te =
+  let (env, ty) =
+    if TypecheckerOptions.enable_sound_dynamic (Env.get_tcopt env) then
+      recompose_like_type env ty
+    else
+      (env, ty)
+  in
+  (env, Tast.make_typed_expr p ty te)

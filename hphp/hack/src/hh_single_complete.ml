@@ -129,7 +129,7 @@ let parse_options () =
   let root = Path.make "/" (* we use this dummy *) in
 
   let tcopt =
-    GlobalOptions.make
+    GlobalOptions.set
       ~tco_saved_state:
         (GlobalOptions.default_saved_state
         |> GlobalOptions.with_saved_state_manifold_api_key
@@ -138,7 +138,7 @@ let parse_options () =
       ~po_disable_xhp_element_mangling:!disable_xhp_element_mangling
       ~po_disable_xhp_children_declarations:!disable_xhp_children_declarations
       ~po_enable_xhp_class_modifier:!enable_xhp_class_modifier
-      ()
+      GlobalOptions.default
   in
   (* Configure symbol index settings *)
   let namespace_map = ParserOptions.auto_namespace_map tcopt in
@@ -169,7 +169,6 @@ let parse_options () =
     },
     sienv,
     root,
-    None,
     SharedMem.default_config )
 
 (** This is an almost-pure function which returns what we get out of parsing.
@@ -178,7 +177,7 @@ let parse_and_name ctx files_contents =
   Relative_path.Map.mapi files_contents ~f:(fun fn contents ->
       (* Get parse errors. *)
       let () =
-        Errors.run_in_context fn Errors.Parsing (fun () ->
+        Errors.run_in_context fn Errors.Typing (fun () ->
             let popt = Provider_context.get_tcopt ctx in
             let parsed_file =
               Full_fidelity_ast.defensive_program popt fn contents
@@ -215,8 +214,7 @@ let parse_name_and_decl ctx files_contents =
       (* Decl.make_env has the side effect of updating the decl heap, and
          reporting errors. *)
       Relative_path.Map.iter files_info ~f:(fun fn _ ->
-          Errors.run_in_context fn Errors.Decl (fun () ->
-              Decl.make_env ~sh:SharedMem.Uses ctx fn));
+          Decl.make_env ~sh:SharedMem.Uses ctx fn);
       files_info)
 
 let scan_files_for_symbol_index
@@ -234,7 +232,7 @@ let scan_files_for_symbol_index
   in
   SymbolIndexCore.update_files ~ctx ~sienv ~paths:transformed_list
 
-let handle_mode mode filenames ctx (sienv : SearchUtils.si_env) =
+let handle_mode mode filenames ctx (sienv : SearchUtils.si_env) naming_table =
   let expect_single_file () : Relative_path.t =
     match filenames with
     | [x] -> x
@@ -276,6 +274,7 @@ let handle_mode mode filenames ctx (sienv : SearchUtils.si_env) =
         ~entry
         ~sienv
         ~autocomplete_context
+        ~naming_table
     in
     List.iter
       ~f:
@@ -283,8 +282,15 @@ let handle_mode mode filenames ctx (sienv : SearchUtils.si_env) =
           fun r ->
             begin
               let open AutocompleteTypes in
-              Printf.printf "%s\n" r.res_name;
-              Printf.printf "  %s\n" r.res_ty;
+              Printf.printf "%s\n" r.res_label;
+              List.iter r.res_additional_edits ~f:(fun (s, _) ->
+                  Printf.printf "  INSERT %s\n" s);
+              Printf.printf
+                "  INSERT %s\n"
+                (match r.res_insert_text with
+                | InsertLiterally s -> s
+                | InsertAsSnippet { snippet; _ } -> snippet);
+              Printf.printf "  %s\n" r.res_detail;
               match r.res_documentation with
               | Some doc ->
                 List.iter (String.split_lines doc) ~f:(fun line ->
@@ -302,7 +308,6 @@ let decl_and_run_mode
     { files; extra_builtins; mode; no_builtins; tcopt }
     (popt : TypecheckerOptions.t)
     (hhi_root : Path.t)
-    (naming_table_path : string option)
     (sienv : SearchUtils.si_env) : unit =
   Ident.track_names := true;
   let builtins =
@@ -381,23 +386,14 @@ let decl_and_run_mode
       ~tcopt
       ~deps_mode:(Typing_deps_mode.InMemoryMode None)
   in
-  (* We make the following call for the side-effect of updating ctx's "naming-table fallback"
-     so it will look in the sqlite database for names it doesn't know.
-     This function returns the forward naming table, but we don't care about that;
-     it's only needed for tools that process file changes, to know in the event
-     of a file-change which old symbols used to be defined in the file. *)
-  let _naming_table_for_root : Naming_table.t option =
-    Option.map naming_table_path ~f:(fun path ->
-        Naming_table.load_from_sqlite ctx path)
-  in
-  let (_errors, _files_info) = parse_name_and_decl ctx to_decl in
-  handle_mode mode files ctx sienv
+  let (_errors, files_info) = parse_name_and_decl ctx to_decl in
+  let naming_table = Naming_table.create files_info in
+  handle_mode mode files ctx sienv naming_table
 
 let main_hack
     ({ tcopt; _ } as opts)
     (sienv : SearchUtils.si_env)
     (root : Path.t)
-    (naming_table : string option)
     (sharedmem_config : SharedMem.config) : unit =
   (* TODO: We should have a per file config *)
   Sys_utils.signal Sys.sigusr1 (Sys.Signal_handle Typing.debug_print_last_pos);
@@ -411,7 +407,7 @@ let main_hack
       Relative_path.set_path_prefix Relative_path.Root root;
       Relative_path.set_path_prefix Relative_path.Hhi hhi_root;
       Relative_path.set_path_prefix Relative_path.Tmp (Path.make "tmp");
-      decl_and_run_mode opts tcopt hhi_root naming_table sienv;
+      decl_and_run_mode opts tcopt hhi_root sienv;
       TypingLogger.flush_buffers ())
 
 (* command line driver *)
@@ -424,13 +420,5 @@ let () =
        it breaks the testsuite where the output is compared to the
        expected one (i.e. in given file without CRLF). *)
     Out_channel.set_binary_mode stdout true;
-  let (options, sienv, root, naming_table, sharedmem_config) =
-    parse_options ()
-  in
-  Unix.handle_unix_error
-    main_hack
-    options
-    sienv
-    root
-    naming_table
-    sharedmem_config
+  let (options, sienv, root, sharedmem_config) = parse_options () in
+  Unix.handle_unix_error main_hack options sienv root sharedmem_config

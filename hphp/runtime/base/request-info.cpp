@@ -137,7 +137,6 @@ void RequestInfo::InvokeOOMKiller(int maxToKill) {
 void RequestInfo::onSessionInit() {
   m_reqInjectionData.onSessionInit();
   m_coverage.onSessionInit();
-  m_recorder.onSessionInit();
 }
 
 bool RequestInfo::changeGlobalGCStatus(GlobalGCStatus from, GlobalGCStatus to) {
@@ -161,7 +160,6 @@ void RequestInfo::onSessionExit() {
 
   m_reqInjectionData.reset();
   m_coverage.onSessionExit();
-  m_recorder.onSessionExit();
 
   if (auto tmp = m_pendingException) {
     m_pendingException = nullptr;
@@ -189,11 +187,14 @@ NEVER_INLINE void* stack_top_ptr_conservative() {
 }
 
 static Exception* generate_request_timeout_exception(c_WaitableWaitHandle* wh) {
-  auto exceptionMsg = folly::sformat(
-    !RuntimeOption::ServerExecutionMode() || is_cli_server_mode()
-      ? "Maximum execution time of {} seconds exceeded"
-      : "entire web request took longer than {} seconds and timed out",
-    RID().getTimeout());
+  auto timeout = RID().getTimeout();
+  auto exceptionMsg = is_any_cli_mode()
+    ? folly::sformat(
+        "Maximum execution time of {} seconds exceeded",
+        timeout)
+    : folly::sformat(
+        "entire web request took longer than {} seconds and timed out",
+        timeout);
   auto exceptionStack = createBacktrace(BacktraceArgs()
                                         .fromWaitHandle(wh)
                                         .withSelf()

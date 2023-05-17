@@ -15,9 +15,9 @@
   limitations under the License.
 
 }}{{!
-{{#field:hasAdapter?}}{{!
-  }}{{#field:hasMultipleTypeAdapters?}}{{field:secondTypeClassName}}{{/field:hasMultipleTypeAdapters?}}{{!
-  }}{{^field:hasMultipleTypeAdapters?}}{{field:typeClassName}}{{/field:hasMultipleTypeAdapters?}}{{!
+}}{{#field:hasAdapter?}}{{!
+  }}{{#field:hasFieldAdapter?}}{{field:fieldAdapterTypeClassName}}{{/field:hasFieldAdapter?}}{{!
+  }}{{^field:hasFieldAdapter?}}{{field:typeAdapterTypeClassName}}{{/field:hasFieldAdapter?}}{{!
 }}{{/field:hasAdapter?}}{{!
 }}{{^field:hasAdapter?}}{{!
   }}{{#field:optional?}}{{#field:type}}{{> BoxedType}}{{/field:type}}{{/field:optional?}}{{!

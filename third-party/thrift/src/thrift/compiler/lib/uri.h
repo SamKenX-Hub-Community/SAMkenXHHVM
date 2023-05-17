@@ -84,14 +84,25 @@ constexpr auto kCppTriviallyRelocatableUri =
     "facebook.com/thrift/annotation/cpp/TriviallyRelocatable";
 constexpr auto kCppUseOpEncodeUri =
     "facebook.com/thrift/annotation/cpp/UseOpEncode";
+constexpr auto kCppFrozen2ExcludeUri =
+    "facebook.com/thrift/annotation/cpp/Frozen2Exclude";
+constexpr auto kCppTypeUri = "facebook.com/thrift/annotation/cpp/Type";
 
 // java
+constexpr auto kJavaMutableUri = "facebook.com/thrift/annotation/java/Mutable";
+constexpr auto kJavaAnnotationUri =
+    "facebook.com/thrift/annotation/java/Annotation";
 constexpr auto kJavaAdapterUri = "facebook.com/thrift/annotation/java/Adapter";
 constexpr auto kJavaWrapperUri = "facebook.com/thrift/annotation/java/Wrapper";
 
 // python
 constexpr auto kPythonAdapterUri =
     "facebook.com/thrift/annotation/python/Adapter";
+constexpr auto kPythonHiddenUri =
+    "facebook.com/thrift/annotation/python/Hidden";
+constexpr auto kPythonFlagsUri = "facebook.com/thrift/annotation/python/Flags";
+constexpr auto kPythonNameUri = "facebook.com/thrift/annotation/python/Name";
+constexpr auto kPythonIOBufUri = "facebook.com/thrift/annotation/python/IOBuf";
 
 // hack
 constexpr auto kHackAdapterUri = "facebook.com/thrift/annotation/hack/Adapter";
@@ -109,6 +120,8 @@ constexpr auto kHackStructTraitUri =
 constexpr auto kHackUnionEnumAttributesUri =
     "facebook.com/thrift/annotation/hack/UnionEnumAttributes";
 constexpr auto kHackWrapperUri = "facebook.com/thrift/annotation/hack/Wrapper";
+constexpr auto kHackModuleInternalUri =
+    "facebook.com/thrift/annotation/hack/ModuleInternal";
 
 constexpr auto kGeneratePatchUri = "facebook.com/thrift/op/GeneratePatch";
 constexpr auto kAssignOnlyPatchUri = "facebook.com/thrift/op/AssignOnlyPatch";

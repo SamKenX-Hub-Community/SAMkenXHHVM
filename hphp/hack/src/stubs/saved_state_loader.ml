@@ -64,18 +64,14 @@ module Shallow_decls_info = struct
 end
 
 type _ saved_state_type =
-  | Naming_and_dep_table_distc : {
-      naming_sqlite: bool;
-    }
-      -> (Naming_and_dep_table_info.main_artifacts
-         * Naming_and_dep_table_info.additional_info)
-         saved_state_type
-  | Naming_and_dep_table : {
-      naming_sqlite: bool;
-    }
-      -> (Naming_and_dep_table_info.main_artifacts
-         * Naming_and_dep_table_info.additional_info)
-         saved_state_type
+  | Naming_and_dep_table_distc
+      : (Naming_and_dep_table_info.main_artifacts
+        * Naming_and_dep_table_info.additional_info)
+        saved_state_type
+  | Naming_and_dep_table
+      : (Naming_and_dep_table_info.main_artifacts
+        * Naming_and_dep_table_info.additional_info)
+        saved_state_type
   | Naming_table
       : (Naming_table_info.main_artifacts * Naming_table_info.additional_info)
         saved_state_type
@@ -121,3 +117,5 @@ module LoadError = struct
 end
 
 let get_project_name _ = ""
+
+let ignore_saved_state_version_mismatch ~ignore_hh_version = ignore_hh_version

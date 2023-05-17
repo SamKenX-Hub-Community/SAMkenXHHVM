@@ -424,6 +424,7 @@ class NestedContainersClient extends \ThriftClientBase implements NestedContaine
 abstract class NestedContainersAsyncProcessorBase extends \ThriftAsyncProcessor {
   abstract const type TThriftIf as NestedContainersAsyncIf;
   const classname<\IThriftServiceStaticMetadata> SERVICE_METADATA_CLASS = NestedContainersStaticMetadata::class;
+  const string THRIFT_SVC_NAME = 'NestedContainers';
 
   protected async function process_mapList(int $seqid, \TProtocol $input, \TProtocol $output): Awaitable<void> {
     $handler_ctx = $this->eventHandler_->getHandlerContext('mapList');
@@ -688,6 +689,7 @@ class NestedContainersAsyncProcessor extends NestedContainersAsyncProcessorBase 
 abstract class NestedContainersSyncProcessorBase extends \ThriftSyncProcessor {
   abstract const type TThriftIf as NestedContainersIf;
   const classname<\IThriftServiceStaticMetadata> SERVICE_METADATA_CLASS = NestedContainersStaticMetadata::class;
+  const string THRIFT_SVC_NAME = 'NestedContainers';
 
   protected function process_mapList(int $seqid, \TProtocol $input, \TProtocol $output): void {
     $handler_ctx = $this->eventHandler_->getHandlerContext('mapList');
@@ -1714,17 +1716,17 @@ class NestedContainers_turtles_args implements \IThriftSyncStruct, \IThriftStruc
             'type' => \TType::MAP,
             'ktype' => \TType::I32,
             'vtype' => \TType::SET,
-            'key' => \HH\FIXME\UNSAFE_CAST<mixed, \HH_FIXME\NON_DENOTABLE_TYPE>(shape(
+            'key' => shape(
               'type' => \TType::I32,
-            )),
-            'val' => \HH\FIXME\UNSAFE_CAST<mixed, \HH_FIXME\NON_DENOTABLE_TYPE>(shape(
+            ),
+            'val' => shape(
               'type' => \TType::SET,
               'etype' => \TType::I32,
               'elem' => \HH\FIXME\UNSAFE_CAST<mixed, \HH_FIXME\NON_DENOTABLE_TYPE>(shape(
                 'type' => \TType::I32,
               )),
               'format' => 'collection',
-            )),
+            ),
             'format' => 'collection',
           ),
           'format' => 'collection',

@@ -10,7 +10,6 @@ open Hh_prelude
 open Aast
 open Typing_defs
 open Utils
-module S = Core.Sequence
 module Cls = Decl_provider.Class
 module Env = Tast_env
 
@@ -78,6 +77,7 @@ let check_attrs pos env sid attrs =
   else
     SMap.iter
       (fun attr origin_sid ->
+        let attr_name = Utils.strip_xhp_ns attr in
         let ty_reason_msg =
           lazy
             (match Env.get_class env origin_sid with
@@ -89,17 +89,17 @@ let check_attrs pos env sid attrs =
                 | None -> Cls.pos ty
               in
               Reason.to_string
-                ("The attribute `" ^ attr ^ "` is declared here.")
+                ("The attribute `" ^ attr_name ^ "` is declared here.")
                 (Reason.Rwitness_from_decl pos))
         in
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             xhp
             @@ Primary.Xhp.Missing_xhp_required_attr
-                 { pos; attr; ty_reason_msg }))
+                 { pos; attr = attr_name; ty_reason_msg }))
       missing_attrs
 
-let make_handler ctx =
+let create_handler ctx =
   let handler =
     object
       inherit Tast_visitor.handler_base

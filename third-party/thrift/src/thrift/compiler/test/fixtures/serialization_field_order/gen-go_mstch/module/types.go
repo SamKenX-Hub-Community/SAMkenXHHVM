@@ -4,10 +4,10 @@
 package module // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  thrift0 "thrift/annotation/thrift"
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift0 "thrift/annotation/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = thrift0.GoUnusedProtection__
@@ -26,7 +26,10 @@ type Foo struct {
 var _ thrift.Struct = &Foo{}
 
 func NewFoo() *Foo {
-    return (&Foo{})
+    return (&Foo{}).
+        SetField1NonCompat(0).
+        SetField2NonCompat(0).
+        SetField3NonCompat(0)
 }
 
 func (x *Foo) GetField1NonCompat() int32 {
@@ -53,8 +56,18 @@ func (x *Foo) GetField3() int32 {
     return x.Field3
 }
 
+func (x *Foo) SetField1NonCompat(value int32) *Foo {
+    x.Field1 = value
+    return x
+}
+
 func (x *Foo) SetField1(value int32) *Foo {
     x.Field1 = value
+    return x
+}
+
+func (x *Foo) SetField2NonCompat(value int32) *Foo {
+    x.Field2 = value
     return x
 }
 
@@ -63,13 +76,15 @@ func (x *Foo) SetField2(value int32) *Foo {
     return x
 }
 
-func (x *Foo) SetField3(value int32) *Foo {
+func (x *Foo) SetField3NonCompat(value int32) *Foo {
     x.Field3 = value
     return x
 }
 
-
-
+func (x *Foo) SetField3(value int32) *Foo {
+    x.Field3 = value
+    return x
+}
 
 func (x *Foo) writeField3(p thrift.Protocol) error {  // Field1
     if err := p.WriteFieldBegin("field1", thrift.I32, 3); err != nil {
@@ -125,7 +140,7 @@ if err != nil {
     return err
 }
 
-    x.SetField1(result)
+    x.SetField1NonCompat(result)
     return nil
 }
 
@@ -135,7 +150,7 @@ if err != nil {
     return err
 }
 
-    x.SetField2(result)
+    x.SetField2NonCompat(result)
     return nil
 }
 
@@ -145,7 +160,7 @@ if err != nil {
     return err
 }
 
-    x.SetField3(result)
+    x.SetField3NonCompat(result)
     return nil
 }
 
@@ -184,6 +199,7 @@ func (x *FooBuilder) Emit() *Foo {
     var objCopy Foo = *x.obj
     return &objCopy
 }
+
 func (x *Foo) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Foo"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -257,6 +273,7 @@ func (x *Foo) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Foo2 struct {
     Field1 int32 `thrift:"field1,3" json:"field1" db:"field1"`
     Field2 int32 `thrift:"field2,1" json:"field2" db:"field2"`
@@ -266,7 +283,10 @@ type Foo2 struct {
 var _ thrift.Struct = &Foo2{}
 
 func NewFoo2() *Foo2 {
-    return (&Foo2{})
+    return (&Foo2{}).
+        SetField1NonCompat(0).
+        SetField2NonCompat(0).
+        SetField3NonCompat(0)
 }
 
 func (x *Foo2) GetField1NonCompat() int32 {
@@ -293,8 +313,18 @@ func (x *Foo2) GetField3() int32 {
     return x.Field3
 }
 
+func (x *Foo2) SetField1NonCompat(value int32) *Foo2 {
+    x.Field1 = value
+    return x
+}
+
 func (x *Foo2) SetField1(value int32) *Foo2 {
     x.Field1 = value
+    return x
+}
+
+func (x *Foo2) SetField2NonCompat(value int32) *Foo2 {
+    x.Field2 = value
     return x
 }
 
@@ -303,13 +333,15 @@ func (x *Foo2) SetField2(value int32) *Foo2 {
     return x
 }
 
-func (x *Foo2) SetField3(value int32) *Foo2 {
+func (x *Foo2) SetField3NonCompat(value int32) *Foo2 {
     x.Field3 = value
     return x
 }
 
-
-
+func (x *Foo2) SetField3(value int32) *Foo2 {
+    x.Field3 = value
+    return x
+}
 
 func (x *Foo2) writeField3(p thrift.Protocol) error {  // Field1
     if err := p.WriteFieldBegin("field1", thrift.I32, 3); err != nil {
@@ -365,7 +397,7 @@ if err != nil {
     return err
 }
 
-    x.SetField1(result)
+    x.SetField1NonCompat(result)
     return nil
 }
 
@@ -375,7 +407,7 @@ if err != nil {
     return err
 }
 
-    x.SetField2(result)
+    x.SetField2NonCompat(result)
     return nil
 }
 
@@ -385,7 +417,7 @@ if err != nil {
     return err
 }
 
-    x.SetField3(result)
+    x.SetField3NonCompat(result)
     return nil
 }
 
@@ -424,6 +456,7 @@ func (x *Foo2Builder) Emit() *Foo2 {
     var objCopy Foo2 = *x.obj
     return &objCopy
 }
+
 func (x *Foo2) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Foo2"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -496,3 +529,4 @@ func (x *Foo2) Read(p thrift.Protocol) error {
 
     return nil
 }
+

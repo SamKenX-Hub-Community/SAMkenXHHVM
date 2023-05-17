@@ -7,7 +7,7 @@
  *
  *)
 
-type refactor_mode =
+type rename_mode =
   | Function
   | Class
   | Method
@@ -15,8 +15,12 @@ type refactor_mode =
 
 type client_mode =
   | MODE_AUTO_COMPLETE
-  | MODE_COLORING of string
-  | MODE_COVERAGE of string
+  | MODE_CODEMOD_SDT of {
+      csdt_path_to_jsonl: string;
+      csdt_strategy: [ `CodemodSdtCumulative | `CodemodSdtIndependent ];
+      csdt_log_remotely: bool;
+      csdt_tag: string;
+    }
   | MODE_CREATE_CHECKPOINT of string
   | MODE_CST_SEARCH of string list option
   | MODE_DELETE_CHECKPOINT of string
@@ -29,16 +33,15 @@ type client_mode =
   | MODE_FULL_FIDELITY_PARSE of string
   | MODE_FULL_FIDELITY_SCHEMA
   | MODE_GEN_PREFETCH_DIR of string
-  | MODE_GEN_REMOTE_DECLS_FULL
-  | MODE_GEN_REMOTE_DECLS_INCREMENTAL
-  | MODE_GEN_SHALLOW_DECLS_DIR of string
   | MODE_GO_TO_IMPL_CLASS of string
   | MODE_GO_TO_IMPL_CLASS_REMOTE of string
   | MODE_GO_TO_IMPL_METHOD of string
   | MODE_IDE_FIND_REFS of string
+  | MODE_IDE_FIND_REFS_BY_SYMBOL of string
   | MODE_IDE_GO_TO_IMPL of string
   | MODE_IDE_HIGHLIGHT_REFS of string
-  | MODE_IDE_REFACTOR of string
+  | MODE_IDE_RENAME of string
+  | MODE_IDE_RENAME_BY_SYMBOL of string
   | MODE_IDENTIFY_SYMBOL1 of string
   | MODE_IDENTIFY_SYMBOL2 of string
   | MODE_IDENTIFY_SYMBOL3 of string
@@ -54,8 +57,8 @@ type client_mode =
   | MODE_OUTLINE
   | MODE_OUTLINE2
   | MODE_PAUSE of bool
-  | MODE_REFACTOR of refactor_mode * string * string
-  | MODE_REFACTOR_SOUND_DYNAMIC of refactor_mode * string
+  | MODE_RENAME of rename_mode * string * string
+  | MODE_RENAME_SOUND_DYNAMIC of rename_mode * string
   | MODE_REMOVE_DEAD_FIXMES of int list
   | MODE_REMOVE_DEAD_UNSAFE_CASTS
   | MODE_REWRITE_LAMBDA_PARAMETERS of string list
@@ -117,12 +120,12 @@ type client_check_env = {
   desc: string;
 }
 
-let string_to_refactor_mode = function
+let string_to_rename_mode = function
   | "Function" -> Function
   | "Class" -> Class
   | "Method" -> Method
   | _ ->
     Printf.fprintf
       stderr
-      "Error: please provide one of the following refactor modes: Function, Class, or Method. \n%!";
+      "Error: please provide one of the following rename modes: Function, Class, or Method. \n%!";
     exit 1

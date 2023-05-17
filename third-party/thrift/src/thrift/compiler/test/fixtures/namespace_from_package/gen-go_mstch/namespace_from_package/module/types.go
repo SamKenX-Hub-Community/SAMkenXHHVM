@@ -4,9 +4,9 @@
 package module // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 
@@ -22,7 +22,8 @@ type Foo struct {
 var _ thrift.Struct = &Foo{}
 
 func NewFoo() *Foo {
-    return (&Foo{})
+    return (&Foo{}).
+        SetMyIntNonCompat(0)
 }
 
 func (x *Foo) GetMyIntNonCompat() int64 {
@@ -33,11 +34,15 @@ func (x *Foo) GetMyInt() int64 {
     return x.MyInt
 }
 
-func (x *Foo) SetMyInt(value int64) *Foo {
+func (x *Foo) SetMyIntNonCompat(value int64) *Foo {
     x.MyInt = value
     return x
 }
 
+func (x *Foo) SetMyInt(value int64) *Foo {
+    x.MyInt = value
+    return x
+}
 
 func (x *Foo) writeField1(p thrift.Protocol) error {  // MyInt
     if err := p.WriteFieldBegin("MyInt", thrift.I64, 1); err != nil {
@@ -61,7 +66,7 @@ if err != nil {
     return err
 }
 
-    x.SetMyInt(result)
+    x.SetMyIntNonCompat(result)
     return nil
 }
 
@@ -90,6 +95,7 @@ func (x *FooBuilder) Emit() *Foo {
     var objCopy Foo = *x.obj
     return &objCopy
 }
+
 func (x *Foo) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Foo"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -146,3 +152,4 @@ func (x *Foo) Read(p thrift.Protocol) error {
 
     return nil
 }
+

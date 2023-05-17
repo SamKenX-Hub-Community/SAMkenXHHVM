@@ -26,8 +26,8 @@ let check_soft_internal_without_internal
     (internal : bool) (attrs : Nast.user_attribute list) =
   match find_attribute SN.UserAttributes.uaSoftInternal attrs with
   | Some { ua_name = (pos, _); _ } when not internal ->
-    Errors.add_nast_check_error
-    @@ Nast_check_error.Soft_internal_without_internal pos
+    Errors.add_error
+      Nast_check_error.(to_user_error @@ Soft_internal_without_internal pos)
   | _ -> ()
 
 let check_soft_internal_on_param fp =
@@ -38,12 +38,14 @@ let check_soft_internal_on_param fp =
     match fp.param_visibility with
     | Some Internal -> ()
     | Some _ ->
-      Errors.add_nast_check_error
-      @@ Nast_check_error.Soft_internal_without_internal pos
+      Errors.add_error
+        Nast_check_error.(to_user_error @@ Soft_internal_without_internal pos)
     | None ->
-      Errors.add_nast_check_error
-        (Nast_check_error.Wrong_expression_kind_builtin_attribute
-           { expr_kind = "a parameter"; pos; attr_name })
+      Errors.add_error
+        Nast_check_error.(
+          to_user_error
+          @@ Wrong_expression_kind_builtin_attribute
+               { expr_kind = "a parameter"; pos; attr_name })
   end
   | _ -> ()
 
@@ -75,7 +77,9 @@ let check_attribute_arity attrs attr_name arg_spec =
            })
     | _ -> None
   in
-  Option.iter Errors.add_nast_check_error prim_err_opt
+  Option.iter
+    (fun err -> Errors.add_error Nast_check_error.(to_user_error err))
+    prim_err_opt
 
 let attr_pos (attr : ('a, 'b) user_attribute) : Pos.t = fst attr.ua_name
 
@@ -85,9 +89,11 @@ let check_duplicate_memoize (attrs : Nast.user_attribute list) : unit =
   let memoize_lsb = find_attribute SN.UserAttributes.uaMemoizeLSB attrs in
   match (memoize, memoize_lsb) with
   | (Some memoize, Some memoize_lsb) ->
-    Errors.add_nast_check_error
-      (Nast_check_error.Attribute_conflicting_memoize
-         { pos = attr_pos memoize; second_pos = attr_pos memoize_lsb })
+    Errors.add_error
+      Nast_check_error.(
+        to_user_error
+        @@ Attribute_conflicting_memoize
+             { pos = attr_pos memoize; second_pos = attr_pos memoize_lsb })
   | _ -> ()
 
 let check_deprecated_static attrs =
@@ -97,12 +103,25 @@ let check_deprecated_static attrs =
   | Some { ua_name = _; ua_params = [msg; _] } -> begin
     match Nast_eval.static_string msg with
     | Error p ->
-      Errors.add_nast_check_error
-        (Nast_check_error.Attribute_param_type
-           { pos = p; x = "static string literal" })
+      Errors.add_error
+        Nast_check_error.(
+          to_user_error
+          @@ Attribute_param_type { pos = p; x = "static string literal" })
     | _ -> ()
   end
   | _ -> ()
+
+let check_no_auto_dynamic env attrs =
+  if TypecheckerOptions.enable_no_auto_dynamic (Nast_check_env.get_tcopt env)
+  then
+    ()
+  else
+    let attr = Naming_attributes.find SN.UserAttributes.uaNoAutoDynamic attrs in
+    match attr with
+    | Some { ua_name = (pos, _); _ } when not (Pos.is_hhi pos) ->
+      Errors.add_error
+        Nast_check_error.(to_user_error @@ Attribute_no_auto_dynamic pos)
+    | _ -> ()
 
 let check_ifc_enabled tcopt attrs =
   let inferflows_opt = find_attribute SN.UserAttributes.uaInferFlows attrs in
@@ -131,12 +150,13 @@ let handler =
         (match f.f_params with
         | [] -> ()
         | param :: _ ->
-          Errors.add_nast_check_error
-          @@ Nast_check_error.Entrypoint_arguments param.param_pos);
+          Errors.add_error
+            Nast_check_error.(
+              to_user_error @@ Entrypoint_arguments param.param_pos));
         match variadic_param with
         | Some p ->
-          Errors.add_nast_check_error
-          @@ Nast_check_error.Entrypoint_arguments p.param_pos
+          Errors.add_error
+            Nast_check_error.(to_user_error @@ Entrypoint_arguments p.param_pos)
         | None -> ()
       end;
 
@@ -144,8 +164,8 @@ let handler =
       (if has_attribute "__Memoize" f.f_user_attributes then
         match variadic_param with
         | Some p ->
-          Errors.add_nast_check_error
-          @@ Nast_check_error.Variadic_memoize p.param_pos
+          Errors.add_error
+            Nast_check_error.(to_user_error @@ Variadic_memoize p.param_pos)
         | None -> ());
       check_attribute_arity
         f.f_user_attributes
@@ -160,6 +180,7 @@ let handler =
         SN.UserAttributes.uaDeprecated
         (`Range (1, 2));
       check_deprecated_static f.f_user_attributes;
+      check_no_auto_dynamic env f.f_user_attributes;
       check_ifc_enabled (Nast_check_env.get_tcopt env) f.f_user_attributes;
       let params = f.f_params in
       List.iter
@@ -181,8 +202,9 @@ let handler =
         match fd.fd_tparams with
         | [] -> ()
         | tparam :: _ ->
-          Errors.add_nast_check_error
-          @@ Nast_check_error.Entrypoint_generics (fst tparam.tp_name)
+          Errors.add_error
+            Nast_check_error.(
+              to_user_error @@ Entrypoint_generics (fst tparam.tp_name))
       end;
 
       check_soft_internal_without_internal
@@ -211,6 +233,7 @@ let handler =
         m.m_user_attributes;
       check_deprecated_static m.m_user_attributes;
       check_duplicate_memoize m.m_user_attributes;
+      check_no_auto_dynamic env m.m_user_attributes;
       List.iter check_soft_internal_on_param m.m_params;
       (* Ban variadic arguments on memoized methods. *)
       if
@@ -219,11 +242,12 @@ let handler =
       then
         match variadic_param with
         | Some p ->
-          Errors.add_nast_check_error
-          @@ Nast_check_error.Variadic_memoize p.param_pos
+          Errors.add_error
+            Nast_check_error.(to_user_error @@ Variadic_memoize p.param_pos)
         | None -> ()
 
-    method! at_class_ _env c =
+    method! at_class_ env c =
+      check_no_auto_dynamic env c.c_user_attributes;
       check_soft_internal_without_internal c.c_internal c.c_user_attributes;
       check_attribute_arity
         c.c_user_attributes

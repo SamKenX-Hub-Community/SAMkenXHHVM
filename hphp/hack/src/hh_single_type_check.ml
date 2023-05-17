@@ -9,8 +9,6 @@
 
 open Hh_prelude
 open Sys_utils
-open Typing_env_types
-module Inf = Typing_inference_env
 module Cls = Decl_provider.Class
 
 (*****************************************************************************)
@@ -38,11 +36,10 @@ let standard_deviation mean samples =
 
 type mode =
   | Ifc of string * string
-  | Color
-  | Coverage
   | Cst_search
   | Dump_symbol_info
   | Glean_index of string
+  | Glean_sym_hash
   | Dump_inheritance
   | Errors
   | Lint
@@ -51,6 +48,7 @@ type mode =
   | Dump_dep_hashes
   | Get_some_file_deps of int
   | Identify_symbol of int * int
+  | Ide_code_actions
   | Find_local of int * int
   | Get_member of string
   | Outline
@@ -58,7 +56,6 @@ type mode =
   | Dump_stripped_tast
   | Dump_tast
   | Check_tast
-  | RewriteGlobalInference
   | Find_refs of int * int
   | Highlight_refs of int * int
   | Decl_compare
@@ -88,7 +85,6 @@ type options = {
   custom_hhi_path: string option;
   profile_type_check_multi: int option;
   memtrace: string option;
-  pessimise_builtins: bool;
   rust_provider_backend: bool;
 }
 
@@ -109,27 +105,13 @@ let magic_builtins =
     ( "hh_single_type_check_magic.hhi",
       "<?hh\n"
       ^ "namespace {\n"
-      ^ "function hh_show<T>(<<__AcceptDisposable>> readonly T $val)[]:T {}\n"
-      ^ "function hh_expect<T>(<<__AcceptDisposable>> readonly T $val)[]:T {}\n"
-      ^ "function hh_expect_equivalent<T>(<<__AcceptDisposable>> readonly T $val)[]:T {}\n"
-      ^ "function hh_show_env()[]:void {}\n"
-      ^ "function hh_log_level(string $key, int $level)[]:void {}\n"
-      ^ "function hh_force_solve()[]:void {}"
-      ^ "function hh_time(string $command, string $tag = '_'):void {}\n"
-      ^ "}\n" );
-  |]
-
-let pessimised_magic_builtins =
-  [|
-    ( "hh_single_type_check_magic.hhi",
-      "<?hh\n"
-      ^ "namespace {\n"
-      ^ "function hh_show<T as supportdyn<mixed>>(<<__AcceptDisposable>> readonly ~T $val)[]:~T {}\n"
-      ^ "function hh_expect<T as supportdyn<mixed>>(<<__AcceptDisposable>> readonly ~T $val)[]:~T {}\n"
-      ^ "function hh_expect_equivalent<T as supportdyn<mixed>>(<<__AcceptDisposable>> readonly ~T $val)[]:~T {}\n"
-      ^ "function hh_show_env()[]:void {}\n"
-      ^ "function hh_log_level(string $key, int $level)[]:void {}\n"
-      ^ "function hh_force_solve()[]:void {}"
+      ^ "<<__NoAutoDynamic, __SupportDynamicType>> function hh_show<T>(<<__AcceptDisposable>> readonly T $val)[]:T {}\n"
+      ^ "<<__NoAutoDynamic, __SupportDynamicType>> function hh_expect<T>(<<__AcceptDisposable>> readonly T $val)[]:T {}\n"
+      ^ "<<__NoAutoDynamic, __SupportDynamicType>> function hh_expect_equivalent<T>(<<__AcceptDisposable>> readonly T $val)[]:T {}\n"
+      ^ "<<__NoAutoDynamic>> function hh_show_env()[]:void {}\n"
+      ^ "<<__NoAutoDynamic>> function hh_log_level(string $key, int $level)[]:void {}\n"
+      ^ "<<__NoAutoDynamic>> function hh_force_solve()[]:void {}"
+      ^ "<<__NoAutoDynamic>> function hh_time(string $command, string $tag = '_'):void {}\n"
       ^ "}\n" );
   |]
 
@@ -165,9 +147,9 @@ let write_error_list format errors oc max_errors =
     match
       Errors.format_summary
         format
-        errors
-        (List.length dropped_errors)
-        max_errors
+        ~displayed_count:(List.length errors)
+        ~dropped_count:(Some (List.length dropped_errors))
+        ~max_errors
     with
     | Some summary -> Out_channel.output_string oc summary
     | None -> ()
@@ -186,9 +168,9 @@ let print_error_list format errors max_errors =
     match
       Errors.format_summary
         format
-        errors
-        (List.length dropped_errors)
-        max_errors
+        ~displayed_count:(List.length errors)
+        ~dropped_count:(Some (List.length dropped_errors))
+        ~max_errors
     with
     | Some summary -> Out_channel.output_string stderr summary
     | None -> ()
@@ -228,6 +210,7 @@ let parse_options () =
     set_mode (Ifc (!ifc_mode, lattice)) ();
     batch_mode := true
   in
+  let config_overrides = ref [] in
   let error_format = ref Errors.Highlighted in
   let forbid_nullable_cast = ref false in
   let deregister_attributes = ref None in
@@ -239,7 +222,7 @@ let parse_options () =
   let set_bool x () = x := Some true in
   let set_bool_ x () = x := true in
   let set_float_ x f = x := f in
-  let rust_elab = ref false in
+  let rust_elab = ref true in
   let rust_provider_backend = ref false in
   let skip_hierarchy_checks = ref false in
   let skip_tast_checks = ref false in
@@ -292,7 +275,6 @@ let parse_options () =
   let enable_sound_dynamic = ref false in
   let always_pessimise_return = ref false in
   let consider_type_const_enforceable = ref false in
-  let disable_enum_classes = ref false in
   let interpret_soft_types_as_like_types = ref false in
   let enable_strict_string_concat_interp = ref false in
   let ignore_unsafe_cast = ref false in
@@ -310,7 +292,6 @@ let parse_options () =
   let print_position = ref true in
   let enforce_sealed_subclasses = ref false in
   let everything_sdt = ref false in
-  let pessimise_builtins = ref false in
   let custom_hhi_path = ref None in
   let explicit_consistent_constructors = ref 0 in
   let require_types_class_consts = ref 0 in
@@ -330,6 +311,9 @@ let parse_options () =
   let tast_under_dynamic = ref false in
   let options =
     [
+      ( "--config",
+        Arg.String (fun s -> config_overrides := s :: !config_overrides),
+        "<option=value> Set one hhconfig option; can be used multiple times" );
       ( "--no-print-position",
         Arg.Unit (fun _ -> print_position := false),
         " Don't print positions while printing TASTs and NASTs" );
@@ -350,7 +334,7 @@ let parse_options () =
           (fun mode ->
             batch_mode := true;
             set_mode (Shape_analysis mode) ()),
-        " Run the flow analysis" );
+        " Run the shape analysis" );
       ( "--refactor-sound-dynamic",
         (let refactor_analysis_mode = ref "" in
          let refactor_mode = ref "" in
@@ -385,9 +369,6 @@ let parse_options () =
       ( "--no-strict-contexts",
         Arg.Unit (fun () -> strict_contexts := false),
         " Do not enforce contexts to be defined within Contexts namespace" );
-      ("--colour", Arg.Unit (set_mode Color), " Produce colour output");
-      ("--color", Arg.Unit (set_mode Color), " Produce color output");
-      ("--coverage", Arg.Unit (set_mode Coverage), " Produce coverage output");
       ( "--cst-search",
         Arg.Unit (set_mode Cst_search),
         " Search the concrete syntax tree of the given file using the pattern"
@@ -399,6 +380,9 @@ let parse_options () =
       ( "--glean-index",
         Arg.String (fun output_dir -> set_mode (Glean_index output_dir) ()),
         " Run indexer and output json in provided dir" );
+      ( "--glean-sym-hash",
+        Arg.Unit (set_mode Glean_sym_hash),
+        " Print symbols hashes used by incremental indexer" );
       ( "--error-format",
         Arg.String
           (fun s ->
@@ -432,6 +416,10 @@ let parse_options () =
         Arg.Int (fun depth -> set_mode (Get_some_file_deps depth) ()),
         " Print a list of files this file depends on. The provided integer is the depth of the traversal. Requires --root, --naming-table and --depth"
       );
+      ( "--ide-code-actions",
+        Arg.Unit (set_mode Ide_code_actions),
+        " Apply a code action to the given file, where the code action is indicated with position markers (see tests)"
+      );
       ( "--identify-symbol",
         (let line = ref 0 in
          Arg.Tuple
@@ -460,13 +448,6 @@ let parse_options () =
         Arg.Unit (set_mode Dump_stripped_tast),
         " Print out the typed AST, stripped of type information."
         ^ " This can be compared against the named AST to look for holes." );
-      ( "--rewrite",
-        Arg.Unit (set_mode RewriteGlobalInference),
-        " Rewrite the file after inferring types using global inference"
-        ^ " (requires --global-inference)." );
-      ( "--global-inference",
-        Arg.Set global_inference,
-        " Global type inference to infer missing type annotations." );
       ( "--ordered-solving",
         Arg.Set ordered_solving,
         " Optimized solver for type variables. Experimental." );
@@ -594,8 +575,7 @@ let parse_options () =
             set_bool_ like_type_hints ();
             set_bool_ always_pessimise_return ();
             set_bool_ consider_type_const_enforceable ();
-            set_bool_ enable_supportdyn_hint ();
-            set_bool_ pessimise_builtins ()),
+            set_bool_ enable_supportdyn_hint ()),
         " Enables naive implicit pessimisation" );
       ( "--implicit-pess",
         Arg.Unit
@@ -603,8 +583,7 @@ let parse_options () =
             set_bool_ enable_sound_dynamic ();
             set_bool_ everything_sdt ();
             set_bool_ like_type_hints ();
-            set_bool_ enable_supportdyn_hint ();
-            set_bool_ pessimise_builtins ()),
+            set_bool_ enable_supportdyn_hint ()),
         " Enables implicit pessimisation" );
       ( "--explicit-pess",
         Arg.String
@@ -612,7 +591,6 @@ let parse_options () =
             set_bool_ enable_sound_dynamic ();
             set_bool_ like_type_hints ();
             set_bool_ enable_supportdyn_hint ();
-            set_bool_ pessimise_builtins ();
             custom_hhi_path := Some dir),
         " Enables checking explicitly pessimised files. Requires path to pessimised .hhi files "
       );
@@ -725,9 +703,6 @@ let parse_options () =
       ( "--consider-type-const-enforceable",
         Arg.Set consider_type_const_enforceable,
         " Consider type constants to potentially be enforceable." );
-      ( "--disable-enum-classes",
-        Arg.Set disable_enum_classes,
-        " Disable the enum classes extension." );
       ( "--interpret-soft-types-as-like-types",
         Arg.Set interpret_soft_types_as_like_types,
         " Types declared with <<__Soft>> (runtime logs but doesn't throw) become like types."
@@ -786,10 +761,6 @@ let parse_options () =
       ( "--everything-sdt",
         Arg.Set everything_sdt,
         " Treat all classes, functions, and traits as though they are annotated with <<__SupportDynamicType>>, unless they are annotated with <<__NoAutoDynamic>>"
-      );
-      ( "--pessimise-builtins",
-        Arg.Set pessimise_builtins,
-        " Treat built-in collections and Hack arrays as though they contain ~T"
       );
       ( "--custom-hhi-path",
         Arg.String (fun s -> custom_hhi_path := Some s),
@@ -928,7 +899,7 @@ let parse_options () =
   in
 
   let tcopt : GlobalOptions.t =
-    GlobalOptions.make
+    GlobalOptions.set
       ~tco_saved_state:GlobalOptions.default_saved_state
       ?po_deregister_php_stdlib:!deregister_attributes
       ?tco_log_inference_constraints:!log_inference_constraints
@@ -992,7 +963,6 @@ let parse_options () =
         else
           [])
       ~tco_global_access_check_enabled:!enable_global_access_check
-      ~po_enable_enum_classes:(not !disable_enum_classes)
       ~po_interpret_soft_types_as_like_types:!interpret_soft_types_as_like_types
       ~tco_enable_strict_string_concat_interp:
         !enable_strict_string_concat_interp
@@ -1008,7 +978,6 @@ let parse_options () =
       ~tco_strict_value_equality:!strict_value_equality
       ~tco_enforce_sealed_subclasses:!enforce_sealed_subclasses
       ~tco_everything_sdt:!everything_sdt
-      ~tco_pessimise_builtins:!pessimise_builtins
       ~tco_explicit_consistent_constructors:!explicit_consistent_constructors
       ~tco_require_types_class_consts:!require_types_class_consts
       ~tco_type_printer_fuel:!type_printer_fuel
@@ -1021,8 +990,24 @@ let parse_options () =
       ~tco_substitution_mutation:!substitution_mutation
       ~tco_tast_under_dynamic:!tast_under_dynamic
       ~tco_rust_elab:!rust_elab
-      ()
+      GlobalOptions.default
   in
+
+  let tcopt =
+    let config =
+      List.fold
+        (List.rev !config_overrides)
+        ~init:(Config_file_common.empty ())
+        ~f:(fun config setting ->
+          let c = Config_file_common.parse_contents setting in
+          Config_file_common.apply_overrides
+            ~config
+            ~overrides:c
+            ~log_reason:None)
+    in
+    ServerConfig.load_config config tcopt
+  in
+
   Errors.allowed_fixme_codes_strict :=
     GlobalOptions.allowed_fixme_codes_strict tcopt;
   Errors.report_pos_from_reason :=
@@ -1096,7 +1081,6 @@ let parse_options () =
       custom_hhi_path = !custom_hhi_path;
       profile_type_check_multi = !profile_type_check_multi;
       memtrace = !memtrace;
-      pessimise_builtins = !pessimise_builtins;
       rust_provider_backend = !rust_provider_backend;
     },
     root,
@@ -1112,130 +1096,6 @@ let parse_options () =
     else
       !sharedmem_config),
     !packages_config_path )
-
-(* Make readable test output *)
-let replace_color input =
-  Ide_api_types.(
-    match input with
-    | (Some Unchecked, str) -> "<unchecked>" ^ str ^ "</unchecked>"
-    | (Some Checked, str) -> "<checked>" ^ str ^ "</checked>"
-    | (Some Partial, str) -> "<partial>" ^ str ^ "</partial>"
-    | (None, str) -> str)
-
-let print_colored fn type_acc =
-  let content = cat (Relative_path.to_absolute fn) in
-  let results = ColorFile.go content type_acc in
-  if Unix.isatty Unix.stdout then
-    Tty.cprint (ClientColorFile.replace_colors results)
-  else
-    print_string (List.map ~f:replace_color results |> String.concat ~sep:"")
-
-let print_coverage type_acc =
-  ClientCoverageMetric.go ~json:false (Some (Coverage_level_defs.Leaf type_acc))
-
-let print_global_inference_envs ctx ~verbosity gienvs =
-  let gienvs =
-    Typing_global_inference.StateSubConstraintGraphs.global_tvenvs gienvs
-  in
-  let tco_global_inference =
-    TypecheckerOptions.global_inference (Provider_context.get_tcopt ctx)
-  in
-  if verbosity >= 2 && tco_global_inference then
-    let should_log (pos, gienv) =
-      let file_relevant =
-        match verbosity with
-        | 1
-          when Filename.check_suffix
-                 (Relative_path.suffix (Pos.filename pos))
-                 ".hhi" ->
-          false
-        | _ -> true
-      in
-      file_relevant && (not @@ List.is_empty @@ Inf.get_vars_g gienv)
-    in
-    let env = Typing_env_types.empty ctx Relative_path.default ~droot:None in
-
-    List.filter gienvs ~f:should_log
-    |> List.iter ~f:(fun (pos, gienv) ->
-           Typing_log.log_global_inference_env pos env gienv)
-
-let merge_global_inference_envs_opt ctx gienvs :
-    Typing_global_inference.StateConstraintGraph.t option =
-  if TypecheckerOptions.global_inference (Provider_context.get_tcopt ctx) then
-    let open Typing_global_inference in
-    let (type_map, env, state_errors) =
-      StateConstraintGraph.merge_subgraphs ctx [gienvs]
-    in
-    (* we are not going to print type variables without any bounds *)
-    let env = { env with inference_env = Inf.compress env.inference_env } in
-    Some (type_map, env, state_errors)
-  else
-    None
-
-let print_global_inference_env
-    env ~step_name state_errors error_format max_errors =
-  let print_header s =
-    print_endline "";
-    print_endline (String.map s ~f:(const '='));
-    print_endline s;
-    print_endline (String.map s ~f:(const '='))
-  in
-  print_header (Printf.sprintf "%sd environment" step_name);
-  Typing_log.hh_show_full_env Pos.none env;
-
-  print_header (Printf.sprintf "%s errors" step_name);
-  List.iter
-    (Typing_global_inference.StateErrors.elements state_errors)
-    ~f:(fun (var, errl) ->
-      Printf.fprintf stderr "#%d\n" var;
-      print_error_list error_format errl max_errors);
-  Out_channel.flush stderr
-
-let print_merged_global_inference_env
-    ~verbosity
-    (gienv : Typing_global_inference.StateConstraintGraph.t option)
-    error_format
-    max_errors =
-  if verbosity >= 1 then
-    match gienv with
-    | None -> ()
-    | Some (_type_map, gienv, state_errors) ->
-      print_global_inference_env
-        gienv
-        ~step_name:"Merge"
-        state_errors
-        error_format
-        max_errors
-
-let print_solved_global_inference_env
-    ~verbosity
-    (gienv : Typing_global_inference.StateSolvedGraph.t option)
-    error_format
-    max_errors =
-  if verbosity >= 1 then
-    match gienv with
-    | None -> ()
-    | Some (gienv, state_errors, _type_map) ->
-      print_global_inference_env
-        gienv
-        ~step_name:"Solve"
-        state_errors
-        error_format
-        max_errors
-
-let solve_global_inference_env
-    (gienv : Typing_global_inference.StateConstraintGraph.t) :
-    Typing_global_inference.StateSolvedGraph.t =
-  Typing_global_inference.StateSolvedGraph.from_constraint_graph gienv
-
-let global_inference_merge_and_solve
-    ~verbosity ?(error_format = Errors.Plain) ?max_errors ctx gienvs =
-  print_global_inference_envs ctx ~verbosity gienvs;
-  let gienv = merge_global_inference_envs_opt ctx gienvs in
-  print_merged_global_inference_env ~verbosity gienv error_format max_errors;
-  let gienv = Option.map gienv ~f:solve_global_inference_env in
-  print_solved_global_inference_env ~verbosity gienv error_format max_errors;
-  gienv
 
 let print_elapsed fn desc ~start_time =
   let elapsed_ms = Float.(Unix.gettimeofday () - start_time) *. 1000. in
@@ -1322,7 +1182,7 @@ let parse_and_name ctx files_contents =
   Relative_path.Map.mapi files_contents ~f:(fun fn contents ->
       (* Get parse errors. *)
       let () =
-        Errors.run_in_context fn Errors.Parsing (fun () ->
+        Errors.run_in_context fn Errors.Typing (fun () ->
             let popt = Provider_context.get_tcopt ctx in
             let parsed_file =
               Full_fidelity_ast.defensive_program popt fn contents
@@ -1354,8 +1214,7 @@ let parse_name_and_decl ctx files_contents =
           in
           Errors.merge_into_current errors);
       Relative_path.Map.iter files_info ~f:(fun fn _ ->
-          Errors.run_in_context fn Errors.Decl (fun () ->
-              Decl.make_env ~sh:SharedMem.Uses ctx fn));
+          Decl.make_env ~sh:SharedMem.Uses ctx fn);
 
       files_info)
 
@@ -1364,8 +1223,7 @@ let add_decls_to_heap ctx files_contents =
   Errors.ignore_ (fun () ->
       let files_info = parse_and_name ctx files_contents in
       Relative_path.Map.iter files_info ~f:(fun fn _ ->
-          Errors.run_in_context fn Errors.Decl (fun () ->
-              Decl.make_env ~sh:SharedMem.Uses ctx fn)));
+          Decl.make_env ~sh:SharedMem.Uses ctx fn));
   ()
 
 (** This function doesn't have side-effects. Its sole job is to return shallow decls. *)
@@ -1548,9 +1406,7 @@ let test_decl_compare ctx filenames builtins files_contents files_info =
 
 (* Returns a list of Tast defs, along with associated type environments. *)
 let compute_tasts ?(drop_fixmed = true) ctx files_info interesting_files :
-    Errors.t
-    * (Tast.program Relative_path.Map.t
-      * Typing_inference_env.t_global_with_pos list) =
+    Errors.t * Tast.program Relative_path.Map.t =
   let _f _k nast x =
     match (nast, x) with
     | (Some nast, Some _) -> Some nast
@@ -1566,35 +1422,12 @@ let compute_tasts ?(drop_fixmed = true) ctx files_info interesting_files :
             | _ -> None)
       in
       let nasts = filter_non_interesting nasts in
-      let tasts_envs =
+      let tasts =
         Relative_path.Map.map
           nasts
-          ~f:(Typing_toplevel.nast_to_tast_gienv ~do_tast_checks:true ctx)
+          ~f:(Typing_toplevel.nast_to_tast ~do_tast_checks:true ctx)
       in
-      let tasts = Relative_path.Map.map tasts_envs ~f:fst in
-      let genvs =
-        List.concat
-        @@ Relative_path.Map.values
-        @@ Relative_path.Map.map tasts_envs ~f:snd
-      in
-      (tasts, genvs))
-
-let merge_global_inference_env_in_tast gienv tast =
-  let env_merger =
-    object
-      inherit Tast_visitor.endo
-
-      method! on_'en _ env =
-        {
-          env with
-          Tast.inference_env =
-            Typing_inference_env.simple_merge
-              env.Tast.inference_env
-              gienv.inference_env;
-        }
-    end
-  in
-  env_merger#go tast
+      tasts)
 
 (* Given source code containing the string "^ hover-at-caret", return
    the line and column of the position indicated. *)
@@ -1615,38 +1448,52 @@ let hover_at_caret_pos (src : string) : int * int =
   | None ->
     failwith "Could not find any occurrence of ^ hover-at-caret in source code"
 
+(* Given source code containing the patterns [start_marker] and [end_marker], calculate the range between the markers *)
+let find_ide_range src : Ide_api_types.range =
+  let start_marker = "/*range-start*/" in
+  let end_marker = "/*range-end*/" in
+  let lines = String.split_lines src in
+  let find_line marker =
+    List.findi lines ~f:(fun _ line ->
+        String.is_substring line ~substring:marker)
+  in
+  let find_marker marker after_or_before =
+    let (line_zero_indexed, start_line_src) =
+      find_line marker
+      |> Option.value_exn
+           ~message:(Format.sprintf "couldn't find marker %s" marker)
+    in
+    let line = line_zero_indexed + 1 in
+    let column =
+      let marker_start =
+        Str.search_forward (Str.regexp_string marker) start_line_src 0
+      in
+      let column_adjustment =
+        match after_or_before with
+        | `After -> String.length marker + 1
+        | `Before -> 1
+      in
+      marker_start + column_adjustment
+    in
+    Ide_api_types.{ line; column }
+  in
+  let st = find_marker start_marker `After in
+  let ed = find_marker end_marker `Before in
+  Ide_api_types.{ st; ed }
+
 (**
  * Compute TASTs for some files, then expand all type variables.
  *)
-let compute_tasts_expand_types ctx ~verbosity files_info interesting_files =
-  let (errors, (tasts, gienvs)) =
-    compute_tasts ctx files_info interesting_files
-  in
-  let subconstraints =
-    Typing_global_inference.StateSubConstraintGraphs.build
-      ctx
-      (List.concat (Relative_path.Map.values tasts))
-      gienvs
-  in
-  let (tasts, gi_solved) =
-    match global_inference_merge_and_solve ctx ~verbosity subconstraints with
-    | None -> (tasts, None)
-    | Some ((gienv, _, _) as gi_solved) ->
-      let tasts =
-        Relative_path.Map.map
-          tasts
-          ~f:(merge_global_inference_env_in_tast gienv ctx)
-      in
-      (tasts, Some gi_solved)
-  in
+let compute_tasts_expand_types ctx files_info interesting_files =
+  let (errors, tasts) = compute_tasts ctx files_info interesting_files in
   let tasts = Relative_path.Map.map tasts ~f:(Tast_expand.expand_program ctx) in
-  (errors, tasts, gi_solved)
+  (errors, tasts)
 
-let decl_parse_typecheck_and_then ~verbosity ctx files_contents f =
+let decl_parse_typecheck_and_then ctx files_contents f =
   let (parse_errors, files_info) = parse_name_and_decl ctx files_contents in
   let parse_errors = Errors.get_sorted_error_list parse_errors in
-  let (errors, _tasts, _gi_solved) =
-    compute_tasts_expand_types ctx ~verbosity files_info files_contents
+  let (errors, _tasts) =
+    compute_tasts_expand_types ctx files_info files_contents
   in
   let errors = parse_errors @ Errors.get_sorted_error_list errors in
   if List.is_empty errors then
@@ -1845,12 +1692,59 @@ let traverse_file_dependencies ctx (files : Relative_path.t list) ~(depth : int)
     Relative_path.Set.empty
     Relative_path.Set.empty
 
-let apply_patches files_contents patches =
-  if List.length patches <= 0 then
-    print_endline "No patches"
-  else
-    ServerRefactorTypes.apply_patches_to_file_contents files_contents patches
-    |> Multifile.print_files_as_multifile
+(** Used for testing code that generates patches. *)
+let codemod
+    ~files_info
+    ~files_contents
+    ctx
+    (get_patches :
+      files_info:FileInfo.t Relative_path.Map.t -> ServerRenameTypes.patch list)
+    =
+  let decl_parse_typecheck_and_then = decl_parse_typecheck_and_then ctx in
+  let backend = Provider_context.get_backend ctx in
+  (* Because we repeatedly apply the codemod, positions change. So we need to
+     re-parse, decl, and typecheck the file to generated accurate patches as
+     well as amend the patched test files in memory. This involves
+     invalidating a number of shared heaps and providing in memory
+     replacements after patching files. *)
+  let invalidate_heaps_and_update_files files_info files_contents =
+    let paths_to_purge =
+      Relative_path.Map.keys files_contents |> Relative_path.Set.of_list
+    in
+    (* Purge the file, then provide its replacement, otherwise the
+       replacement is dropped on the floor. *)
+    File_provider.remove_batch paths_to_purge;
+    Relative_path.Map.iter
+      ~f:File_provider.provide_file_for_tests
+      files_contents;
+    Ast_provider.remove_batch paths_to_purge;
+    Relative_path.Map.iter
+      ~f:(fun path file_info ->
+        (* Don't invalidate builtins, otherwise, we can't find them. *)
+        if not (Relative_path.prefix path |> Relative_path.is_hhi) then
+          Naming_global.remove_decls_using_file_info backend file_info)
+      files_info
+  in
+  let rec go files_info files_contents =
+    invalidate_heaps_and_update_files files_info files_contents;
+    decl_parse_typecheck_and_then files_contents @@ fun files_info ->
+    let patches = get_patches ~files_info in
+    let files_contents =
+      ServerRenameTypes.apply_patches_to_file_contents files_contents patches
+    in
+    if List.is_empty patches then
+      Multifile.print_files_as_multifile files_contents
+    else
+      go files_info files_contents
+  in
+  go files_info files_contents;
+
+  (* Typecheck after the codemod is fully applied to confirm that what we
+     produce is not garbage. *)
+  Printf.printf
+    "\nTypechecking after the codemod... (no output after this is good news)\n";
+  invalidate_heaps_and_update_files files_info files_contents;
+  decl_parse_typecheck_and_then files_contents ignore
 
 let handle_mode
     mode
@@ -1975,28 +1869,6 @@ let handle_mode
     iter_over_files (fun filename ->
         Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
             process_file filename))
-  | Color ->
-    Relative_path.Map.iter files_info ~f:(fun fn fileinfo ->
-        if Relative_path.Map.mem builtins fn then
-          ()
-        else
-          let (tast, _) = Typing_check_utils.type_file ctx fn fileinfo in
-          let result = Coverage_level.get_levels ctx tast fn in
-          match result with
-          | Ok result -> print_colored fn result
-          | Error () ->
-            failwith
-              ("HH_FIXMEs not found for path " ^ Relative_path.to_absolute fn))
-  | Coverage ->
-    Relative_path.Map.iter files_info ~f:(fun fn fileinfo ->
-        if Relative_path.Map.mem builtins fn then
-          ()
-        else
-          let (tast, _) = Typing_check_utils.type_file ctx fn fileinfo in
-          let type_acc =
-            ServerCoverageMetricUtils.accumulate_types ctx tast fn
-          in
-          print_coverage type_acc)
   | Cst_search ->
     let path = expect_single_file () in
     let (ctx, entry) = Provider_context.add_entry_if_missing ~ctx ~path in
@@ -2036,6 +1908,10 @@ let handle_mode
       exit 1
     ) else
       Symbol_entrypoint.index_files ctx ~out_dir ~files:filenames
+  | Glean_sym_hash ->
+    List.iter
+      (Symbol_entrypoint.sym_hashes ctx ~files:filenames)
+      ~f:(fun (path, hash) -> Printf.printf "%s %s\n" path (Md5.to_hex hash))
   | Lint ->
     let lint_errors =
       Relative_path.Map.fold
@@ -2083,7 +1959,7 @@ let handle_mode
     exit 2
   | Dump_deps ->
     Relative_path.Map.iter files_info ~f:(fun fn fileinfo ->
-        ignore @@ Typing_check_utils.check_defs ctx fn fileinfo);
+        ignore @@ Typing_check_utils.type_file ctx fn fileinfo);
     if Hashtbl.length dbg_deps > 0 then dump_debug_deps dbg_deps
   | Dump_dep_hashes ->
     iter_over_files (fun _ ->
@@ -2092,7 +1968,7 @@ let handle_mode
             Dep_hash_to_symbol.dump nast))
   | Dump_glean_deps ->
     Relative_path.Map.iter files_info ~f:(fun fn fileinfo ->
-        ignore @@ Typing_check_utils.check_defs ctx fn fileinfo);
+        ignore @@ Typing_check_utils.type_file ctx fn fileinfo);
     dump_debug_glean_deps dbg_glean_deps
   | Get_some_file_deps depth ->
     let file_deps = traverse_file_dependencies ctx filenames ~depth in
@@ -2160,6 +2036,29 @@ let handle_mode
       | [] -> print_endline "None"
       | result -> ClientGetDefinition.print_readable ~short_pos:true result
     end
+  | Ide_code_actions ->
+    let path = expect_single_file () in
+    let (ctx, entry) = Provider_context.add_entry_if_missing ~ctx ~path in
+    let src = Provider_context.read_file_contents_exn entry in
+    let range = find_ide_range src in
+    let commands_or_actions =
+      CodeActionsService.go
+        ~ctx
+        ~entry
+        ~path:(Relative_path.to_absolute path)
+        ~range
+    in
+    let hermeticize_paths =
+      Str.global_replace (Str.regexp "\".+?.php\"") "\"FILE.php\""
+    in
+    if List.is_empty commands_or_actions then
+      Format.printf "No commands or actions found\n"
+    else
+      commands_or_actions
+      |> Lsp_fmt.print_codeActionResult
+      |> Hh_json.json_to_string ~sort_keys:true ~pretty:true
+      |> hermeticize_paths
+      |> Format.printf "%s\n"
   | Find_local (line, char) ->
     let filename = expect_single_file () in
     let (ctx, entry) =
@@ -2184,8 +2083,8 @@ let handle_mode
       nasts
       (Relative_path.Map.keys files_contents)
   | Dump_tast ->
-    let (errors, tasts, _gi_solved) =
-      compute_tasts_expand_types ctx ~verbosity files_info files_contents
+    let (errors, tasts) =
+      compute_tasts_expand_types ctx files_info files_contents
     in
     print_errors_if_present (parse_errors @ Errors.get_sorted_error_list errors);
     print_tasts ~should_print_position tasts ctx
@@ -2195,8 +2094,8 @@ let handle_mode
           Relative_path.Map.filter files_contents ~f:(fun k _v ->
               Relative_path.equal k filename)
         in
-        let (errors, tasts, _gi_solved) =
-          compute_tasts_expand_types ctx ~verbosity files_info files_contents
+        let (errors, tasts) =
+          compute_tasts_expand_types ctx files_info files_contents
         in
         print_tasts ~should_print_position tasts ctx;
         if not @@ Errors.is_empty errors then (
@@ -2213,87 +2112,22 @@ let handle_mode
           Relative_path.Map.filter files_contents ~f:(fun k _v ->
               Relative_path.equal k filename)
         in
-        let (_, (tasts, _gienvs)) =
-          compute_tasts ctx files_info files_contents
-        in
+        let (_, tasts) = compute_tasts ctx files_info files_contents in
         let tast = Relative_path.Map.find tasts filename in
         let nast = Tast.to_nast tast in
         Printf.printf "%s\n" (Nast.show_program nast))
-  | RewriteGlobalInference ->
-    let (errors, _tasts, gi_solved) =
-      compute_tasts_expand_types ctx ~verbosity files_info files_contents
-    in
-    print_errors_if_present (parse_errors @ Errors.get_sorted_error_list errors);
-    (match gi_solved with
-    | None ->
-      prerr_endline
-        ("error: no patches generated as global"
-        ^ " inference is turend off (use --global-inference)");
-      exit 1
-    | Some gi_solved ->
-      ServerGlobalInference.Mode_rewrite.get_patches ~files_contents gi_solved
-      |> apply_patches files_contents)
   | RemoveDeadUnsafeCasts ->
     let ctx =
       Provider_context.map_tcopt ctx ~f:(fun tcopt ->
           GlobalOptions.{ tcopt with tco_populate_dead_unsafe_cast_heap = true })
     in
-    let decl_parse_typecheck_and_then =
-      decl_parse_typecheck_and_then ~verbosity ctx
+    let get_patches ~files_info =
+      Remove_dead_unsafe_casts.get_patches
+        ~is_test:true
+        ~files_info
+        ~fold:Relative_path.Map.fold
     in
-    let backend = Provider_context.get_backend ctx in
-    (* Because we repeatedly apply the codemod, positions change. So we need to
-       re-parse, decl, and typecheck the file to generated accurate patches as
-       well as amend the patched test files in memory. This involves
-       invalidating a number of shared heaps and providing in memory
-       replacements after patching files. *)
-    let invalidate_heaps_and_update_files files_info files_contents =
-      let paths_to_purge =
-        Relative_path.Map.keys files_contents |> Relative_path.Set.of_list
-      in
-      (* Purge the file, then provide its replacement, otherwise the
-         replacement is dropped on the floor. *)
-      File_provider.remove_batch paths_to_purge;
-      Relative_path.Map.iter
-        ~f:File_provider.provide_file_for_tests
-        files_contents;
-      Ast_provider.remove_batch paths_to_purge;
-      Relative_path.Map.iter
-        ~f:(fun path file_info ->
-          (* Don't invalidate builtins, otherwise, we can't find them. *)
-          if not (Relative_path.prefix path |> Relative_path.is_hhi) then
-            Naming_global.remove_decls_using_file_info backend file_info)
-        files_info
-    in
-    (* Repeatedly apply dead unsafe cast removal. We can't do this at once as
-       removing one unsafe cast might have a bearing on another. *)
-    let rec go files_info files_contents =
-      invalidate_heaps_and_update_files files_info files_contents;
-      decl_parse_typecheck_and_then files_contents @@ fun files_info ->
-      let patches =
-        Remove_dead_unsafe_casts.get_patches
-          ~is_test:true
-          ~files_info
-          ~fold:Relative_path.Map.fold
-      in
-      let files_contents =
-        ServerRefactorTypes.apply_patches_to_file_contents
-          files_contents
-          patches
-      in
-      if List.is_empty patches then
-        Multifile.print_files_as_multifile files_contents
-      else
-        go files_info files_contents
-    in
-    go files_info files_contents;
-
-    (* Typecheck after the codemod is fully applied to confirm that what we
-       produce is not garbage. *)
-    Printf.printf
-      "\nTypechecking after the codemod... (no output after this is good news)\n";
-    invalidate_heaps_and_update_files files_info files_contents;
-    decl_parse_typecheck_and_then files_contents @@ fun _ -> ()
+    codemod ~files_info ~files_contents ctx get_patches
   | Find_refs (line, column) ->
     let path = expect_single_file () in
     let naming_table = Naming_table.create files_info in
@@ -2617,8 +2451,8 @@ let handle_mode
     (* Print the source code after applying all these quickfixes. *)
     Printf.printf "\n%s" (Quickfix.apply_all src classish_starts quickfixes)
   | CountImpreciseTypes ->
-    let (errors, tasts, _gi_solved) =
-      compute_tasts_expand_types ctx ~verbosity files_info files_contents
+    let (errors, tasts) =
+      compute_tasts_expand_types ctx files_info files_contents
     in
     if not @@ Errors.is_empty errors then (
       print_errors error_format errors max_errors;
@@ -2656,7 +2490,6 @@ let decl_and_run_mode
       custom_hhi_path;
       profile_type_check_multi;
       memtrace;
-      pessimise_builtins;
       rust_provider_backend;
     }
     (popt : TypecheckerOptions.t)
@@ -2679,12 +2512,6 @@ let decl_and_run_mode
         extra_builtins
         |> List.fold ~f:add_file_content ~init:[]
         |> Array.of_list
-      in
-      let magic_builtins =
-        if pessimise_builtins then
-          pessimised_magic_builtins
-        else
-          magic_builtins
       in
       let magic_builtins = Array.append magic_builtins extra_builtins in
       let hhi_builtins =
@@ -2725,10 +2552,12 @@ let decl_and_run_mode
   in
   let files =
     if use_canonical_filenames () then
-      files
-      |> List.map ~f:Sys_utils.realpath
-      |> List.map ~f:(fun s -> Option.value_exn s)
-      |> List.map ~f:Relative_path.create_detect_prefix
+      let canonicalize_path path =
+        match Sys_utils.realpath path with
+        | Some path -> Relative_path.create_detect_prefix path
+        | None -> failwith ("Couldn't resolve realpath of " ^ path)
+      in
+      files |> List.map ~f:canonicalize_path
     else
       files |> List.map ~f:(Relative_path.create Relative_path.Dummy)
   in
@@ -2788,6 +2617,13 @@ let decl_and_run_mode
     in
     Typing_deps.add_dependency_callback ~name:"get_debug_trace" get_debug_trace
   | _ -> ());
+  let package_info =
+    match packages_config_path with
+    | None -> Package.Info.empty
+    | Some path ->
+      let (_errors, info) = Package.Info.initialize path in
+      info
+  in
   let ctx =
     if rust_provider_backend then (
       Provider_backend.set_rust_backend popt;
@@ -2796,23 +2632,12 @@ let decl_and_run_mode
         ~tcopt
         ~backend:(Provider_backend.get ())
         ~deps_mode:(Typing_deps_mode.InMemoryMode None)
+        ~package_info
     ) else
       Provider_context.empty_for_test
         ~popt
         ~tcopt
         ~deps_mode:(Typing_deps_mode.InMemoryMode None)
-  in
-  let get_package_for_module =
-    match packages_config_path with
-    | None -> (fun _ -> None)
-    | Some path ->
-      let _errors = Package.initialize_packages_info path in
-      Package.get_package_for_module
-  in
-  let ctx =
-    Provider_context.ctx_with_get_package_for_module
-      ctx
-      (Some get_package_for_module)
   in
 
   (* We make the following call for the side-effect of updating ctx's "naming-table fallback"

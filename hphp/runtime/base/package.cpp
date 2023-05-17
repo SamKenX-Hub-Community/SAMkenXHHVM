@@ -19,6 +19,7 @@
 #include "hphp/runtime/base/execution-context.h"
 #include "hphp/runtime/base/string-data.h"
 
+#include <re2/re2.h>
 #include "hphp/util/trace.h"
 
 //TODO(T146965521) Until Rust FFI symbol redefinition problem can be resolved
@@ -63,7 +64,8 @@ PackageInfo PackageInfo::fromFile(const std::filesystem::path& path) {
     packages.emplace(std::string(p.name),
                      Package {
                        convert(p.package.uses),
-                       convert(p.package.includes)
+                       convert(p.package.includes),
+                       convert(p.package.soft_includes)
                      });
   }
 
@@ -75,6 +77,7 @@ PackageInfo PackageInfo::fromFile(const std::filesystem::path& path) {
     deployments.emplace(std::string(d.name),
                         Deployment {
                           convert(d.deployment.packages),
+                          convert(d.deployment.soft_packages),
                           std::move(domains),
                         });
   }
@@ -111,12 +114,14 @@ std::string PackageInfo::mangleForCacheKey() const {
     folly::dynamic entry = folly::dynamic::object();
     entry["uses"] = mangleVecForCacheKey(package.m_uses);
     entry["includes"] = mangleVecForCacheKey(package.m_includes);
+    entry["soft_includes"] = mangleVecForCacheKey(package.m_soft_includes);
     result[name] = entry;
   }
 
   for (auto& [name, deployment] : deployments()) {
     folly::dynamic entry = folly::dynamic::object();
     entry["packages"] = mangleVecForCacheKey(deployment.m_packages);
+    entry["soft_packages"] = mangleVecForCacheKey(deployment.m_soft_packages);
     entry["domains"] = mangleVecForCacheKey(deployment.m_domains);
     result[name] = entry;
   }
@@ -146,6 +151,56 @@ bool PackageInfo::isPackageInActiveDeployment(const StringData* package) const {
   // If there's no active deployment, return whether package exists at all
   if (!activeDeployment) return packages().contains(package->toCppString());
   return activeDeployment->m_packages.contains(package->toCppString());
+}
+
+namespace {
+
+bool moduleNameMatchesPattern(const std::string& moduleName,
+                              const std::string& pattern) {
+  if (pattern.empty()) return false;
+  if (pattern == "*") return true;
+  auto size = pattern.size();
+  if (size > 2 && pattern[size-1] == '*' && pattern[size-2] == '.') {
+    // Looking for a prefix match
+    // TODO: This is very inefficient, improve this using a something along the
+    // lines of a trie before using it in production
+    if (moduleName.size() <= size - 1) return false;
+    // Check if size - 1 length prefix of moduleName matches pattern
+    return moduleName.compare(0, size - 1, pattern, 0, size - 1) == 0;
+  }
+  // Looking for an exact match
+  return moduleName == pattern;
+}
+
+} // namespace
+
+bool PackageInfo::moduleInPackage(const StringData* module,
+                                  const Package& package) const {
+  assertx(module && !module->empty());
+  auto const moduleName = module->toCppString();
+  for (auto const& pattern : package.m_uses) {
+    if (moduleNameMatchesPattern(moduleName, pattern)) return true;
+  }
+  return false;
+}
+
+bool PackageInfo::moduleInDeployment(const StringData* module,
+                                     const Deployment& deployment,
+                                     bool allow_soft /* = true */) const {
+  assertx(module && !module->empty());
+  for (auto const& package : deployment.m_packages) {
+    auto const it = packages().find(package);
+    if (it == end(packages())) continue;
+    if (moduleInPackage(module, it->second)) return true;
+  }
+  if (allow_soft) {
+    for (auto const& package : deployment.m_soft_packages) {
+      auto const it = packages().find(package);
+      if (it == end(packages())) continue;
+      if (moduleInPackage(module, it->second)) return true;
+    }
+  }
+  return false;
 }
 
 } // namespace HPHP

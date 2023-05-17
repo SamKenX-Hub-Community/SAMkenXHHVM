@@ -23,7 +23,7 @@ type token_node = {
    * NB 2: for class names, in addition, a few other keywords are "reserved",
    * i.e. not allowed as class names. These include type names like int or
    * bool. Those "reserved" keywords are not defined here. See syntax error
-   * `reserved_keyword_as_class_name`.
+   * `reserved_keyword_as_type_name`.
    *)
   allowed_as_identifier: bool;
 }
@@ -254,6 +254,7 @@ let given_text_tokens =
     make_token_node "Hash" "#" ();
     make_token_node "Readonly" "readonly" ();
     make_token_node "Internal" "internal" ~allowed_as_identifier:true ();
+    make_token_node "Package" "package" ();
   ]
 
 let tokens = variable_text_tokens @ no_text_tokens @ given_text_tokens

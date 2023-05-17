@@ -24,14 +24,6 @@ set(LIB_CPP2_HOME ${CMAKE_CURRENT_SOURCE_DIR})
 # Using global properties gets around this; probably better to restructure
 # the directories/files to avoid this type of hack
 #
-get_property(api-cpp2-SOURCES GLOBAL PROPERTY api-cpp2-SOURCES)
-get_property(cpp-cpp2-SOURCES GLOBAL PROPERTY cpp-cpp2-SOURCES)
-get_property(hack-cpp2-SOURCES GLOBAL PROPERTY hack-cpp2-SOURCES)
-get_property(java-cpp2-SOURCES GLOBAL PROPERTY java-cpp2-SOURCES)
-get_property(meta-cpp2-SOURCES GLOBAL PROPERTY meta-cpp2-SOURCES)
-get_property(python-cpp2-SOURCES GLOBAL PROPERTY python-cpp2-SOURCES)
-get_property(scope-cpp2-SOURCES GLOBAL PROPERTY scope-cpp2-SOURCES)
-get_property(thrift-cpp2-SOURCES GLOBAL PROPERTY thrift-cpp2-SOURCES)
 get_property(any_rep-cpp2-SOURCES GLOBAL PROPERTY any_rep-cpp2-SOURCES)
 get_property(RpcMetadata-cpp2-SOURCES GLOBAL PROPERTY RpcMetadata-cpp2-SOURCES)
 get_property(metadata-cpp2-SOURCES GLOBAL PROPERTY metadata-cpp2-SOURCES)
@@ -43,42 +35,6 @@ get_property(id-cpp2-SOURCES GLOBAL PROPERTY id-cpp2-SOURCES)
 get_property(standard-cpp2-SOURCES GLOBAL PROPERTY standard-cpp2-SOURCES)
 get_property(type_rep-cpp2-SOURCES GLOBAL PROPERTY type_rep-cpp2-SOURCES)
 get_property(type-cpp2-SOURCES GLOBAL PROPERTY type-cpp2-SOURCES)
-
-bypass_source_check("${api-cpp2-SOURCES}")
-bypass_source_check("${cpp-cpp2-SOURCES}")
-bypass_source_check("${hack-cpp2-SOURCES}")
-bypass_source_check("${java-cpp2-SOURCES}")
-bypass_source_check("${meta-cpp2-SOURCES}")
-bypass_source_check("${python-cpp2-SOURCES}")
-bypass_source_check("${scope-cpp2-SOURCES}")
-bypass_source_check("${thrift-cpp2-SOURCES}")
-add_library(
-  thriftannotation
-
-  ${api-cpp2-SOURCES}
-  ${cpp-cpp2-SOURCES}
-  ${hack-cpp2-SOURCES}
-  ${java-cpp2-SOURCES}
-  ${meta-cpp2-SOURCES}
-  ${python-cpp2-SOURCES}
-  ${scope-cpp2-SOURCES}
-  ${thrift-cpp2-SOURCES}
-)
-add_dependencies(thriftannotation
-  api-cpp2-target
-  cpp-cpp2-target
-  hack-cpp2-target
-  java-cpp2-target
-  meta-cpp2-target
-  python-cpp2-target
-  scope-cpp2-target
-  thrift-cpp2-target
-)
-target_link_libraries(
-  thriftannotation
-  PUBLIC
-    Folly::folly
-)
 
 bypass_source_check("${metadata-cpp2-SOURCES}")
 add_library(
@@ -151,13 +107,15 @@ add_library(
   type/TypeRegistry.cpp
   type/UniversalName.cpp
 )
-add_dependencies(thrifttype type-cpp2-target thriftannotation thrifttyperep)
+add_dependencies(thrifttype type-cpp2-target thriftannotation thrifttyperep
+  thriftprotocol)
 target_link_libraries(
   thrifttype
   PUBLIC
     Folly::folly
     thriftannotation
     thrifttyperep
+    thriftprotocol
 )
 
 bypass_source_check("${any_rep-cpp2-SOURCES}")
@@ -267,6 +225,7 @@ add_library(
   async/RpcOptions.cpp
   async/RpcTypes.cpp
   async/ServerGeneratorStream.cpp
+  async/ServerRequestData.cpp
   async/ServerSinkBridge.cpp
   async/ThreadBoundAdaptorChannel.cpp
   gen/module_metadata_cpp.cpp
@@ -289,6 +248,8 @@ add_library(
   server/LoggingEventHelper.cpp
   server/MonitoringMethodNames.cpp
   server/ParallelConcurrencyController.cpp
+  server/TokenBucketConcurrencyController.cpp
+  server/StandardConcurrencyController.cpp
   server/ThreadManagerLoggingWrapper.cpp
   server/RequestDebugLog.cpp
   server/RequestPileBase.cpp
@@ -296,6 +257,7 @@ add_library(
   server/ReactiveToggle.cpp
   server/RequestsRegistry.cpp
   server/ResourcePool.cpp
+  server/ResourcePoolSet.cpp
   server/ResourcePoolHandle.cpp
   server/RoundRobinRequestPile.cpp
   server/WeightedRequestPileQueue.cpp
@@ -306,12 +268,14 @@ add_library(
   server/ThriftProcessor.cpp
   server/ThriftServer.cpp
   server/ThriftServerConfig.cpp
+  server/TMConcurrencyController.cpp
   server/peeking/TLSHelper.cpp
   transport/core/RpcMetadataUtil.cpp
   transport/core/RpcMetadataPlugins.cpp
   transport/core/ThriftClient.cpp
   transport/core/ThriftClientCallback.cpp
   transport/core/ThriftRequest.cpp
+  transport/rocket/FdSocketMetadata.cpp
   transport/rocket/PayloadUtils.cpp
   transport/rocket/Types.cpp
   transport/rocket/client/RequestContext.cpp
@@ -325,6 +289,7 @@ add_library(
   transport/rocket/framing/Util.cpp
   transport/rocket/server/RocketRoutingHandler.cpp
   transport/rocket/server/RocketServerConnection.cpp
+  transport/rocket/server/RocketServerConnectionPlugins.cpp
   transport/rocket/server/RocketServerFrameContext.cpp
   transport/rocket/server/RocketSinkClientCallback.cpp
   transport/rocket/server/RocketStreamClientCallback.cpp
@@ -387,7 +352,6 @@ endif()
 install(
   TARGETS
     rpcmetadata
-    thriftannotation
     thriftmetadata
     thriftfrozen2
     thrifttyperep

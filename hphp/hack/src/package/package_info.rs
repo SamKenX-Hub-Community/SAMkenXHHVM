@@ -76,6 +76,7 @@ mod test {
     fn test_parsing_basic_file() {
         let contents = include_str!("tests/package-1.toml");
         let info = PackageInfo::from_text(contents).unwrap();
+        assert!(info.errors.is_empty());
 
         let foo = &info.packages()["foo"];
         assert_eq!(foo.uses.as_ref().unwrap()[0].get_ref(), "a.*");
@@ -111,6 +112,7 @@ mod test {
     fn test_multiline_uses() {
         let contents = include_str!("tests/package-2.toml");
         let info = PackageInfo::from_text(contents).unwrap();
+        assert!(info.errors.is_empty());
 
         let foo = &info.packages()["foo"];
         let foo_uses = &foo.uses.as_ref().unwrap();
@@ -125,19 +127,20 @@ mod test {
     }
 
     #[test]
-    fn test_config_errors() {
+    fn test_config_errors1() {
         let contents = include_str!("tests/package-3.toml");
         let info = PackageInfo::from_text(contents).unwrap();
-        assert_eq!(info.errors.len(), 2);
+        assert_eq!(info.errors.len(), 3);
         assert_eq!(info.errors[0].msg(), "Undefined package: baz");
+        assert_eq!(info.errors[1].msg(), "Undefined package: baz");
         assert_eq!(
-            info.errors[1].msg(),
+            info.errors[2].msg(),
             "This module can only be used in one package: b.*"
         );
     }
 
     #[test]
-    fn test_config_errors1() {
+    fn test_config_errors2() {
         let contents = include_str!("tests/package-4.toml");
         let info = PackageInfo::from_text(contents).unwrap();
         let errors = info
@@ -147,15 +150,40 @@ mod test {
             .collect::<std::collections::HashSet<_>>();
         assert_eq!(
             errors,
+            [String::from(
+                "my-prod must deploy all nested included packages. Missing e, g, h, i"
+            )]
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_soft() {
+        let contents = include_str!("tests/package-5.toml");
+        let info = PackageInfo::from_text(contents).unwrap();
+        let c = &info.packages()["c"];
+        let errors = info
+            .errors
+            .iter()
+            .map(|e| e.msg())
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(
+            errors,
             [
-                String::from("Circular dependency detected: e -> g -> e"),
-                String::from("Circular dependency detected: e -> f -> e"),
-                String::from("Circular dependency detected: a -> b -> c -> a"),
-                String::from("Circular dependency detected: h -> j -> i -> h"),
+                String::from("f must soft-deploy all nested soft-included packages. Missing b"),
+                String::from("g must deploy all nested included packages. Missing c")
             ]
             .iter()
             .cloned()
             .collect::<std::collections::HashSet<_>>()
         );
+
+        assert_eq!(c.soft_includes.as_ref().unwrap()[0].get_ref(), "b");
+
+        let d = &info.deployments().unwrap()["d"];
+        assert_eq!(d.packages.as_ref().unwrap()[0].get_ref(), "c");
+        assert_eq!(d.soft_packages.as_ref().unwrap()[0].get_ref(), "b");
     }
 }

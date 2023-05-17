@@ -43,6 +43,7 @@
 #include "hphp/util/rds-local.h"
 
 #include <folly/AtomicHashMap.h>
+#include <folly/Bits.h>
 #include <folly/Format.h>
 
 #include <limits>
@@ -240,7 +241,8 @@ struct CompactWriter {
     CState state;
     uint16_t lastFieldNum;
     uint16_t boolFieldNum;
-    std::stack<std::pair<CState, uint16_t> > structHistory;
+    using StructHistoryState = std::pair<CState, uint16_t>;
+    std::stack<StructHistoryState, std::vector<StructHistoryState>> structHistory;
     std::stack<CState> containerHistory;
 
     void writeSlow(const FieldSpec& field, const Object& obj) {
@@ -266,7 +268,7 @@ struct CompactWriter {
 
     void writeStruct(const Object& obj) {
       // Save state
-      structHistory.push(std::make_pair(state, lastFieldNum));
+      structHistory.emplace(state, lastFieldNum);
       state = STATE_FIELD_WRITE;
       lastFieldNum = 0;
 
@@ -283,13 +285,11 @@ struct CompactWriter {
       for (int slot = 0; slot < numFields; ++slot) {
         if (slot < numProps && fields[slot].name == prop[slot].name) {
           auto index = cls->propSlotToIndex(slot);
-
-          VarNR fieldWrapper(objProps->at(index).tv());
           Variant fieldVal;
           if (fields[slot].isWrapped) {
             fieldVal = getThriftType(obj, StrNR(fields[slot].name));
           } else {
-            fieldVal = fieldWrapper;
+            fieldVal = VarNR{objProps->at(index).tv()};
           }
           if (!fieldVal.isNull()) {
             TType fieldType = fields[slot].type;
@@ -360,15 +360,15 @@ struct CompactWriter {
                     const FieldSpec& valueSpec,
                     TType type,
                     const FieldInfo& fieldInfo) {
-      auto thrift_val = value;
       if (valueSpec.isTypeWrapped && value.isObject()) {
-        thrift_val = getThriftField(value.toObject());
+        writeField(getThriftField(value.toObject()), valueSpec, type, fieldInfo);
+        return;
       }
       if (valueSpec.adapter) {
-        const auto& thriftValue = transformToThriftType(thrift_val, *valueSpec.adapter);
+        const auto& thriftValue = transformToThriftType(value, *valueSpec.adapter);
         writeFieldInternal(thriftValue, valueSpec, type, fieldInfo);
       } else {
-        writeFieldInternal(thrift_val, valueSpec, type, fieldInfo);
+        writeFieldInternal(value, valueSpec, type, fieldInfo);
       }
     }
 
@@ -419,17 +419,12 @@ struct CompactWriter {
           break;
 
         case T_DOUBLE: {
-            union {
-              uint64_t i;
-              double d;
-            } u;
-
-            u.d = value.toDouble();
-            uint64_t bits;
+            double d = value.toDouble();
+            uint64_t bits = folly::bit_cast<uint64_t>(d);
             if (version >= VERSION_DOUBLE_BE) {
-              bits = htonll(u.i);
+              bits = htonll(bits);
             } else {
-              bits = htolell(u.i);
+              bits = htolell(bits);
             }
 
             transport->write((char*)&bits, 8);
@@ -437,14 +432,9 @@ struct CompactWriter {
           break;
 
         case T_FLOAT: {
-          union {
-            uint32_t i;
-            float d;
-          } u;
-
-          u.d = (float)value.toDouble();
-          uint32_t bits = htonl(u.i);
-          transport->write((char*)&bits, 4);
+            float d = (float)value.toDouble();
+            uint32_t bits = htonl(folly::bit_cast<uint32_t>(d));
+            transport->write((char*)&bits, 4);
           }
           break;
 
@@ -781,11 +771,12 @@ struct CompactReader {
     CState state;
     uint16_t lastFieldNum;
     bool boolValue;
-    std::stack<std::pair<CState, uint16_t> > structHistory;
+    using StructHistoryState = std::pair<CState, uint16_t>;
+    std::stack<StructHistoryState, std::vector<StructHistoryState>> structHistory;
     std::stack<CState> containerHistory;
 
     void readStructBegin(void) {
-      structHistory.push(std::make_pair(state, lastFieldNum));
+      structHistory.emplace(state, lastFieldNum);
       state = STATE_FIELD_READ;
       lastFieldNum = 0;
     }
@@ -872,29 +863,21 @@ struct CompactReader {
           return readI();
 
         case T_DOUBLE: {
-            union {
-              uint64_t i;
-              double d;
-            } u;
-
-            transport.readBytes(&(u.i), 8);
+            uint64_t i;
+            transport.readBytes(&i, 8);
             if (version >= VERSION_DOUBLE_BE) {
-              u.i = ntohll(u.i);
+              i = ntohll(i);
             } else {
-              u.i = letohll(u.i);
+              i = letohll(i);
             }
-            return u.d;
+            return folly::bit_cast<double>(i);
           }
 
         case T_FLOAT: {
-             union {
-              uint32_t i;
-              float d;
-            } u;
-
-            transport.readBytes(&(u.i), 4);
-            u.i = ntohl(u.i);
-            return u.d;
+            uint32_t i;
+            transport.readBytes(&i, 4);
+            i = ntohl(i);
+            return folly::bit_cast<float>(i);
           }
 
         case T_UTF8:

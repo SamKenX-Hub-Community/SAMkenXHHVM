@@ -19,7 +19,7 @@ include "thrift/annotation/scope.thrift"
 package "facebook.com/thrift/annotation/hack"
 
 namespace py thrift.annotation.hack
-namespace java com.facebook.thrift.annotation.java_deprecated
+namespace java com.facebook.thrift.annotation.hack_deprecated
 namespace py.asyncio facebook_thrift_asyncio.annotation.hack
 namespace go thrift.annotation.hack
 namespace hs2 facebook.thrift.annotation.hack
@@ -63,7 +63,7 @@ struct Wrapper {
 } (thrift.uri = "facebook.com/thrift/annotation/hack/Wrapper")
 
 // An annotation that applies a Hack adapter to types. For example:
-// @hack.Adapter{name="\TimestampAdapter"}
+// @hack.Adapter{name="\\TimestampAdapter"}
 // typedef i64 Timestamp;
 //
 //   struct User {
@@ -78,6 +78,7 @@ struct Adapter {
   1: string name;
 }
 
+@scope.Typedef
 @scope.Field
 @scope.Function
 struct SkipCodegen {
@@ -116,3 +117,13 @@ struct Attributes {
 @scope.Union
 @scope.Exception
 struct StructAsTrait {}
+
+// This annotation is to generate an entity as internal
+@scope.Struct
+@scope.Union
+@scope.Enum
+@scope.Field
+@scope.Typedef
+@scope.Function
+@scope.Service
+struct ModuleInternal {}

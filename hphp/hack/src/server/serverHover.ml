@@ -400,7 +400,22 @@ let split_class_name (full_name : string) : string =
   | Some (class_name, _member) -> class_name
   | None -> full_name
 
-let make_hover_info ctx env_and_ty entry occurrence def_opt =
+let fun_defined_in def_opt : string =
+  match def_opt with
+  | Some { SymbolDefinition.full_name; _ } ->
+    let abs_name = "\\" ^ full_name in
+    if SN.PseudoFunctions.is_pseudo_function abs_name then
+      ""
+    else (
+      match String.rsplit2 (Utils.strip_hh_lib_ns abs_name) ~on:'\\' with
+      | Some (namespace, _) when not (String.equal namespace "") ->
+        Printf.sprintf "// Defined in namespace %s\n" namespace
+      | _ -> ""
+    )
+  | _ -> ""
+
+let make_hover_info under_dynamic_result ctx env_and_ty entry occurrence def_opt
+    =
   SymbolOccurrence.(
     Typing_defs.(
       let defined_in =
@@ -443,8 +458,12 @@ let make_hover_info ctx env_and_ty entry occurrence def_opt =
           | Some def_txt -> def_txt
           | None ->
             Tast_env.print_ty_with_identity env (LoclTy ty) occurrence def_opt)
+        | ({ type_ = Function; _ }, Some (env, ty)) ->
+          fun_defined_in def_opt
+          ^ Tast_env.print_ty_with_identity env (LoclTy ty) occurrence def_opt
         | (occurrence, Some (env, ty)) ->
           Tast_env.print_ty_with_identity env (LoclTy ty) occurrence def_opt
+          ^ under_dynamic_result
       in
       let addendum =
         match occurrence with
@@ -464,7 +483,7 @@ let make_hover_info ctx env_and_ty entry occurrence def_opt =
       HoverService.
         { snippet; addendum; pos = Some occurrence.SymbolOccurrence.pos }))
 
-let make_hover_info_with_fallback results =
+let make_hover_info_with_fallback under_dynamic_result results =
   let class_fallback =
     List.hd
       (List.filter results ~f:(fun (_, _, _, occurrence, _) ->
@@ -478,7 +497,13 @@ let make_hover_info_with_fallback results =
       then
         (* Case where constructor docblock is empty. *)
         let hover_info =
-          make_hover_info ctx env_and_ty entry occurrence def_opt
+          make_hover_info
+            under_dynamic_result
+            ctx
+            env_and_ty
+            entry
+            occurrence
+            def_opt
         in
         match class_fallback with
         | Some (ctx, _, entry, class_occurrence, def_opt) ->
@@ -494,7 +519,14 @@ let make_hover_info_with_fallback results =
               } )
         | None -> (occurrence, hover_info)
       else
-        (occurrence, make_hover_info ctx env_and_ty entry occurrence def_opt))
+        ( occurrence,
+          make_hover_info
+            under_dynamic_result
+            ctx
+            env_and_ty
+            entry
+            occurrence
+            def_opt ))
     results
 
 let go_quarantined
@@ -535,22 +567,15 @@ let go_quarantined
     match env_and_ty_dynamic with
     | Some (env, ty') ->
       (match env_and_ty with
-      | None -> []
+      | None -> ""
       | Some (_, ty) ->
         if Typing_defs.ty_equal ty ty' then
-          []
+          ""
         else
-          [
-            {
-              snippet =
-                Printf.sprintf
-                  "%s when called dynamically"
-                  (Tast_env.print_ty env ty');
-              addendum = [];
-              pos = None;
-            };
-          ])
-    | None -> []
+          Printf.sprintf
+            " (%s when called dynamically)"
+            (Tast_env.print_ty env ty'))
+    | None -> ""
   in
   let result =
     match (identities, env_and_ty) with
@@ -559,7 +584,13 @@ let go_quarantined
          know the type of the expression. Just show the type.
 
          This can occur if the user hovers over a literal such as `123`. *)
-      [{ snippet = Tast_env.print_ty env ty; addendum = []; pos = None }]
+      [
+        {
+          snippet = Tast_env.print_ty env ty ^ under_dynamic_result;
+          addendum = [];
+          pos = None;
+        };
+      ]
     | ( [
           ( {
               SymbolOccurrence.type_ =
@@ -578,7 +609,13 @@ let go_quarantined
       let ty_result =
         match env_and_ty with
         | Some (env, ty) ->
-          [{ snippet = Tast_env.print_ty env ty; addendum = []; pos = None }]
+          [
+            {
+              snippet = Tast_env.print_ty env ty ^ under_dynamic_result;
+              addendum = [];
+              pos = None;
+            };
+          ]
         | None -> []
       in
       let param_result =
@@ -593,7 +630,7 @@ let go_quarantined
           ]
         | None -> []
       in
-      ty_result @ under_dynamic_result @ param_result
+      ty_result @ param_result
     | (identities, _) ->
       (* We have a list of named things at the cursor. Show the
          docblock and type of each thing. *)
@@ -617,8 +654,8 @@ let go_quarantined
                Provider_context.add_entry_if_missing ~ctx ~path
              in
              (ctx, env_and_ty, entry, occurrence, def_opt))
-      |> make_hover_info_with_fallback
+      |> make_hover_info_with_fallback under_dynamic_result
       |> filter_class_and_constructor
       |> List.remove_consecutive_duplicates ~equal:equal_hover_info
   in
-  result @ under_dynamic_result
+  result

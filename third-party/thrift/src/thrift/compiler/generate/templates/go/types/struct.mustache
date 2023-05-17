@@ -22,8 +22,8 @@
 {{! type definition }}
 {{> types/struct_definition}}
 
-{{! default function }}
-{{> types/struct_default}}
+{{! new function }}
+{{> types/struct_method_new}}
 
 {{! methods }}
 {{> types/struct_methods}}
@@ -32,6 +32,14 @@
 {{! builder }}
 {{> types/struct_builder}}
 {{/program:compat?}}
+{{#struct:resp?}}
 
-{{! marshal/unmarshal }}
-{{> types/struct_codec}}
+{{! exception }}
+{{> types/struct_method_exception}}
+{{/struct:resp?}}
+
+{{! write (serialize) }}
+{{> types/struct_method_write}}
+
+{{! read (deserialize) }}
+{{> types/struct_method_read}}

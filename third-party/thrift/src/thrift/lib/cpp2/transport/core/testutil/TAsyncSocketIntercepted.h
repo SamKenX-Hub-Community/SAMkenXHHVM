@@ -58,9 +58,11 @@ class TAsyncSocketIntercepted : public folly::AsyncSocket {
       uint32_t count,
       folly::WriteFlags flags,
       uint32_t* countWritten,
-      uint32_t* partialWritten) override;
+      uint32_t* partialWritten,
+      folly::AsyncSocket::WriteRequestTag) override;
 
-  ReadResult performRead(void** buf, size_t* buflen, size_t* offset) override;
+  ReadResult performReadMsg(
+      struct ::msghdr& msg, AsyncReader::ReadCallback::ReadMode) override;
 
  private:
   std::shared_ptr<Params> params_;

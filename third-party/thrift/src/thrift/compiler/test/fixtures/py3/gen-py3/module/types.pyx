@@ -56,8 +56,8 @@ import weakref as __weakref
 import builtins as _builtins
 cimport facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
 import facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
-cimport facebook.thrift.annotation.deprecated.meta.types as _facebook_thrift_annotation_deprecated_meta_types
-import facebook.thrift.annotation.deprecated.meta.types as _facebook_thrift_annotation_deprecated_meta_types
+cimport facebook.thrift.annotation.python.types as _facebook_thrift_annotation_python_types
+import facebook.thrift.annotation.python.types as _facebook_thrift_annotation_python_types
 
 cimport module.types_reflection as _types_reflection
 
@@ -624,9 +624,19 @@ cdef class SimpleStruct(thrift.py3.types.Struct):
     def __get_thrift_name__():
         return "module.SimpleStruct"
 
+    __fbthrift_field_name_list = [
+        'is_on',
+        'tiny_int',
+        'small_int',
+        'nice_sized_int',
+        'big_int',
+        'real',
+        'smaller_real',
+    ]
+
     @classmethod
     def _fbthrift_get_field_name_by_index(cls, idx):
-        return __sv_to_str(__get_field_name_by_index[cSimpleStruct](idx))
+        return cls.__fbthrift_field_name_list[idx]
 
     @classmethod
     def _fbthrift_get_struct_size(cls):
@@ -725,9 +735,12 @@ cdef class HiddenTypeFieldsStruct(thrift.py3.types.Struct):
     def __get_thrift_name__():
         return "module.HiddenTypeFieldsStruct"
 
+    __fbthrift_field_name_list = [
+    ]
+
     @classmethod
     def _fbthrift_get_field_name_by_index(cls, idx):
-        return __sv_to_str(__get_field_name_by_index[cHiddenTypeFieldsStruct](idx))
+        return cls.__fbthrift_field_name_list[idx]
 
     @classmethod
     def _fbthrift_get_struct_size(cls):

@@ -6,7 +6,7 @@
  *
  *)
 
-type t = Pos.t [@@deriving eq, ord, show]
+type t = Pos.t [@@deriving eq, hash, ord, show]
 
 module Map = Pos.Map
 
@@ -15,6 +15,7 @@ type ctx = {
   decl: Decl_reference.t option;
   file: Relative_path.t;
 }
+[@@deriving show]
 
 let none : t = Pos.none
 

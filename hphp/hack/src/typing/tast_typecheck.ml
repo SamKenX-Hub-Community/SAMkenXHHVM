@@ -26,7 +26,7 @@ let expect_ty_equal
   if not @@ ty_equal ~normalize_lists:true ty expected_ty then
     let actual_ty = lazy (Typing_print.debug env ty) in
     let expected_ty = lazy (Typing_print.debug env expected_ty) in
-    Errors.add_typing_error
+    Typing_error_utils.add_typing_error
       Typing_error.(
         primary @@ Primary.Unexpected_ty_in_tast { pos; actual_ty; expected_ty })
 
@@ -109,7 +109,9 @@ let check_expr env ((_, p, _) as expr : ETast.expr) (gamma : gamma) : gamma =
           expect_ty_equal ty expected_ty
         | _ -> (* TODO *) super#on_expr env texpr
 
-      method! on_Binop env bop expr1 ((ty2, p2, _) as expr2) =
+      method! on_Binop
+          env (Aast.{ bop; lhs = expr1; rhs = (ty2, p2, _) as expr2 } as binop)
+          =
         match bop with
         | Ast_defs.Eq None ->
           let (gamma_, updates) = check_assign expr1 p2 ty2 gamma in
@@ -124,7 +126,7 @@ let check_expr env ((_, p, _) as expr : ETast.expr) (gamma : gamma) : gamma =
           gamma <- refine expr1 Ast_defs.(equal_bop bop Ampamp) gamma;
           self#on_expr env expr2;
           gamma <- gamma_
-        | _ -> (* TODO *) super#on_Binop env bop expr1 expr2
+        | _ -> (* TODO *) super#on_Binop env binop
 
       method! on_Efun _env _ = raise Not_implemented
 

@@ -128,12 +128,6 @@ public final class RpcServerUtils {
               .trustManager(caFile)
               .sessionCacheSize(config.getSessionCacheSize());
 
-      if (System.getProperty("java.version").startsWith("1.8")) {
-        contextBuilder.protocols("TLSv1.2", "TLSv1.1", "TLSv1");
-      } else {
-        contextBuilder.protocols("TLSv1.3", "TLSv1.2", "TLSv1.1", "TLSv1");
-      }
-
       if (config.isEnableAlpn()) {
         contextBuilder.applicationProtocolConfig(
             new ApplicationProtocolConfig(

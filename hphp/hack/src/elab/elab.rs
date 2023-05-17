@@ -4,6 +4,7 @@
 // LICENSE file in the "hack" directory of this source tree.
 
 #![feature(box_patterns)]
+#![cfg_attr(not(rust_lib_feature = "let_chains"), feature(let_chains))]
 
 /// Used to combine multiple types implementing `Pass` into nested `Passes` types
 /// without requiring them to hand write it so :
@@ -29,6 +30,7 @@ mod prelude {
     pub use std::ops::ControlFlow;
     pub use std::ops::ControlFlow::Break;
     pub use std::ops::ControlFlow::Continue;
+    pub use std::rc::Rc;
 
     pub use naming_special_names_rust as sn;
     pub use oxidized::naming_error::NamingError;
@@ -56,6 +58,29 @@ use pass::Pass;
 use relative_path::RelativePath;
 use transform::Transform;
 
+/// Provided for use in hackc, where we have an `ns_env` in hand already.
+/// Expected to behave the same as `elaborate_program` when `po_codegen` is
+/// `true`.
+pub fn elaborate_program_for_codegen(
+    ns_env: RcOc<namespace_env::Env>,
+    path: &RelativePath,
+    program: &mut nast::Program,
+) {
+    assert!(ns_env.is_codegen);
+    let tco = TypecheckerOptions {
+        po_codegen: true,
+        po_disable_xhp_element_mangling: ns_env.disable_xhp_element_mangling,
+        // Do not copy the auto_ns_map; it's not read in this crate except via
+        // elaborate_namespaces_visitor, which uses the one in `ns_env` here
+        ..Default::default()
+    };
+    elaborate_namespaces_visitor::elaborate_program(ns_env, program);
+    let env = make_env(&tco, path);
+    elaborate_common(&env, program);
+    elaborate_package_expr(&env, program);
+    assert!(env.into_errors().is_empty());
+}
+
 pub fn elaborate_program(
     tco: &TypecheckerOptions,
     path: &RelativePath,
@@ -63,8 +88,12 @@ pub fn elaborate_program(
 ) -> Vec<NamingPhaseError> {
     elaborate_namespaces_visitor::elaborate_program(ns_env(tco), program);
     let mut env = make_env(tco, path);
+    elaborate_common(&env, program);
+    if tco.po_codegen {
+        return env.into_errors();
+    }
     lambda_captures::elaborate_program(&mut env, program);
-    elaborate(env, program)
+    elaborate_for_typechecking(env, program)
 }
 
 pub fn elaborate_fun_def(
@@ -74,8 +103,12 @@ pub fn elaborate_fun_def(
 ) -> Vec<NamingPhaseError> {
     elaborate_namespaces_visitor::elaborate_fun_def(ns_env(tco), f);
     let mut env = make_env(tco, path);
+    elaborate_common(&env, f);
+    if tco.po_codegen {
+        return env.into_errors();
+    }
     lambda_captures::elaborate_fun_def(&mut env, f);
-    elaborate(env, f)
+    elaborate_for_typechecking(env, f)
 }
 
 pub fn elaborate_class_(
@@ -85,8 +118,12 @@ pub fn elaborate_class_(
 ) -> Vec<NamingPhaseError> {
     elaborate_namespaces_visitor::elaborate_class_(ns_env(tco), c);
     let mut env = make_env(tco, path);
+    elaborate_common(&env, c);
+    if tco.po_codegen {
+        return env.into_errors();
+    }
     lambda_captures::elaborate_class_(&mut env, c);
-    elaborate(env, c)
+    elaborate_for_typechecking(env, c)
 }
 
 pub fn elaborate_module_def(
@@ -96,8 +133,12 @@ pub fn elaborate_module_def(
 ) -> Vec<NamingPhaseError> {
     elaborate_namespaces_visitor::elaborate_module_def(ns_env(tco), m);
     let mut env = make_env(tco, path);
+    elaborate_common(&env, m);
+    if tco.po_codegen {
+        return env.into_errors();
+    }
     lambda_captures::elaborate_module_def(&mut env, m);
-    elaborate(env, m)
+    elaborate_for_typechecking(env, m)
 }
 
 pub fn elaborate_gconst(
@@ -107,8 +148,12 @@ pub fn elaborate_gconst(
 ) -> Vec<NamingPhaseError> {
     elaborate_namespaces_visitor::elaborate_gconst(ns_env(tco), c);
     let mut env = make_env(tco, path);
+    elaborate_common(&env, c);
+    if tco.po_codegen {
+        return env.into_errors();
+    }
     lambda_captures::elaborate_gconst(&mut env, c);
-    elaborate(env, c)
+    elaborate_for_typechecking(env, c)
 }
 
 pub fn elaborate_typedef(
@@ -118,13 +163,17 @@ pub fn elaborate_typedef(
 ) -> Vec<NamingPhaseError> {
     elaborate_namespaces_visitor::elaborate_typedef(ns_env(tco), t);
     let mut env = make_env(tco, path);
+    elaborate_common(&env, t);
+    if tco.po_codegen {
+        return env.into_errors();
+    }
     lambda_captures::elaborate_typedef(&mut env, t);
-    elaborate(env, t)
+    elaborate_for_typechecking(env, t)
 }
 
 fn ns_env(tco: &TypecheckerOptions) -> RcOc<namespace_env::Env> {
     RcOc::new(namespace_env::Env::empty(
-        vec![],
+        tco.po_auto_namespace_map.clone(),
         tco.po_codegen,
         tco.po_disable_xhp_element_mangling,
     ))
@@ -153,7 +202,22 @@ fn make_env(tco: &TypecheckerOptions, rel_path: &RelativePath) -> Env {
     )
 }
 
-fn elaborate<T: Transform>(env: Env, node: &mut T) -> Vec<NamingPhaseError> {
+/// Run the passes which are common to codegen and typechecking.
+/// For now, these passes may not emit errors.
+fn elaborate_common<T: Transform>(env: &Env, node: &mut T) {
+    #[derive(Copy, Clone)]
+    struct NoopPass;
+    impl Pass for NoopPass {}
+    #[rustfmt::skip]
+    let mut passes = passes![
+        NoopPass
+    ];
+
+    node.transform(env, &mut passes);
+    env.assert_no_errors();
+}
+
+fn elaborate_for_typechecking<T: Transform>(env: Env, node: &mut T) -> Vec<NamingPhaseError> {
     #[rustfmt::skip]
     let mut passes = passes![
         // Stop on `Invalid` expressions
@@ -259,11 +323,11 @@ fn elaborate<T: Transform>(env: Env, node: &mut T) -> Vec<NamingPhaseError> {
 
         // Add `supportdyn` and `Like` wrappers everywhere - under `everything-sdt`
         // typechecker option
-        // passes::elab_everything_sdt::ElabEverythingSdtPass::default(),
+        passes::elab_everything_sdt::ElabEverythingSdtPass::default(),
 
         // Validate use of `Hlike` hints - depends on `enable-like-type-hints`
         // and `everything_sdt` typechecker options
-        // passes::validate_like_hint::ValidateLikeHintPass::default(),
+        passes::validate_like_hint::ValidateLikeHintPass::default(),
 
         // Validate constructors under
         // `consistent-explicit_consistent_constructors` typechecker option
@@ -271,7 +335,7 @@ fn elaborate<T: Transform>(env: Env, node: &mut T) -> Vec<NamingPhaseError> {
 
         // Validate  use of `SupportDyn` class - depends on `enable-supportdyn`
         // and `everything_sdt` typechecker options
-        // passes::validate_supportdyn::ValidateSupportdynPass::default(),
+        passes::validate_supportdyn::ValidateSupportDynPass::default(),
 
         // Validate use of module definitions - depends on:
         // - `allow_all_files_for_module_declarations`
@@ -279,7 +343,7 @@ fn elaborate<T: Transform>(env: Env, node: &mut T) -> Vec<NamingPhaseError> {
         // typechecker options
         passes::validate_module::ValidateModulePass::default(),
 
-        // -- Old 'NAST checks' ------------------------------------------------
+        // // -- Old 'NAST checks' ------------------------------------------------
 
         // Validate use of the `__Const` attribute on classes - depends on
         // `const_attribute` typechecker option
@@ -294,7 +358,7 @@ fn elaborate<T: Transform>(env: Env, node: &mut T) -> Vec<NamingPhaseError> {
         // special semantics or in memoized functions
         passes::validate_fun_param_inout::ValidateFunParamInoutPass::default(),
 
-        // Validate use of `Await` in sync functions and return in generators
+        // Validate use of `Await` in sync functions and return in generators.
         passes::validate_coroutine::ValidateCoroutinePass::default(),
 
         // Checks for the presence of a function body in methods, use of traits
@@ -309,7 +373,7 @@ fn elaborate<T: Transform>(env: Env, node: &mut T) -> Vec<NamingPhaseError> {
 
         passes::validate_class_tparams::ValidateClassTparamsPass::default(),
 
-        passes::validate_user_attribute_dynamically_callable::ValidaetUserAttributeDynamicallyCallable::default(),
+        passes::validate_user_attribute_dynamically_callable::ValidateUserAttributeDynamicallyCallable::default(),
 
         passes::validate_hint_habstr::ValidateHintHabstrPass::default(),
 
@@ -321,14 +385,38 @@ fn elaborate<T: Transform>(env: Env, node: &mut T) -> Vec<NamingPhaseError> {
 
         passes::validate_shape_name::ValidateShapeNamePass::default(),
 
-        passes::validate_function_pointer::ValidateFunctionPointerPass::default(),
-
         passes::validate_php_lambda::ValidatePhpLambdaPass::default(),
 
         passes::validate_xhp_attribute::ValidateXhpAttributePass::default(),
+        passes::validate_user_attribute_arity::ValidateUserAttributeArityPass::default(),
+        passes::validate_user_attribute_deprecated_static::ValidateUserAttributeDeprecatedStaticPass::default(),
+        passes::validate_user_attribute_entry_point::ValidateUserAttributeEntryPointPass::default(),
+        passes::validate_user_attribute_no_auto_dynamic::ValidateUserAttributeNoAutoDynamic::default(),
+        passes::validate_user_attribute_infer_flows::ValidateUserAttributeInferFlowsPass::default(),
+        passes::validate_user_attribute_memoize::ValidateUserAttributeMemoizePass::default(),
+        passes::validate_user_attribute_soft_internal::ValidateUserAttributeSoftInternalPass::default(),
 
+        passes::validate_method_private_final::ValidateMethodPrivateFinalPass::default(),
+
+        passes::validate_trait_internal::ValidateTraitInternalPass::default(),
+
+        passes::validate_hint_hrefinement::ValidateHintHrefinementPass::default(),
+
+        passes::validate_expr_function_pointer::ValidateExprFunctionPointerPass::default(),
+
+        passes::validate_expr_array_get::ValidateExprArrayGetPass::default(),
+
+        passes::validate_expr_list::ValidateExprListPass::default(),
+
+        passes::validate_like_hint::ValidateLikeHintPass::default(),
     ];
 
     node.transform(&env, &mut passes);
     env.into_errors()
+}
+
+fn elaborate_package_expr<T: Transform>(env: &Env, node: &mut T) {
+    let mut passes = passes![passes::elab_expr_package::ElabExprPackagePass::default()];
+    node.transform(env, &mut passes);
+    env.assert_no_errors();
 }

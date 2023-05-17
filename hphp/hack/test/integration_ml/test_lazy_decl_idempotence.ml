@@ -74,8 +74,11 @@ let test () =
       delegate_state
       (Telemetry.create ())
       [bar_path]
+      ~root:None
       ~memory_cap
       ~longlived_workers:false
+      ~use_hh_distc_instead_of_hulk:false
+      ~hh_distc_fanout_threshold:None
       ~check_info
   in
   Test.assert_errors errors "";
@@ -86,8 +89,11 @@ let test () =
       delegate_state
       telemetry
       [bar_path]
+      ~root:None
       ~memory_cap
       ~longlived_workers:false
+      ~use_hh_distc_instead_of_hulk:false
+      ~hh_distc_fanout_threshold:None
       ~check_info
   in
   Test.assert_errors errors "";
@@ -99,8 +105,11 @@ let test () =
       delegate_state
       telemetry
       [foo_path]
+      ~root:None
       ~memory_cap
       ~longlived_workers:false
+      ~use_hh_distc_instead_of_hulk:false
+      ~hh_distc_fanout_threshold:None
       ~check_info
   in
   Test.assert_errors errors expected_errors;
@@ -111,8 +120,11 @@ let test () =
       delegate_state
       telemetry
       [foo_path]
+      ~root:None
       ~memory_cap
       ~longlived_workers:false
+      ~use_hh_distc_instead_of_hulk:false
+      ~hh_distc_fanout_threshold:None
       ~check_info
   in
   Test.assert_errors errors expected_errors;

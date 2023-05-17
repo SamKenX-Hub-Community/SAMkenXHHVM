@@ -753,6 +753,9 @@ module Typing = struct
     | UnsupportedRefinement [@value 4469]
     | InvalidClassRefinement [@value 4470]
     | InvalidRefinedConstKind [@value 4471]
+    | InvalidCrossPackage [@value 4472]
+    | InvalidCrossPackageSoft [@value 4473]
+    | AttributeNoAutoDynamic [@value 4474]
   (* Add new Typing codes here! Comment out when deprecating. *)
   [@@deriving enum, show { with_path = false }]
 

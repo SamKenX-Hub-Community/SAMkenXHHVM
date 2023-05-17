@@ -46,10 +46,10 @@ The following outlines the compatibility for changes to data:
 |Union to struct    |no    |no    |    |
 |Struct to exception    |yes    |yes    |    |
 |Exception to struct    |yes    |yes    |    |
-|Union to exception    |no    |no    |    |
-|Exception to union    |no    |no    |    |
-|Singular to container    |no    |no    |    |
-|Container to singular    |no    |no    |    |
+|Union to exception     |no    |no    |    |
+|Exception to union     |no    |no    |    |
+|Non-container to container |no    |no    |    |
+|Container to non-container |no    |no    |    |
 
 :::note
 
@@ -106,7 +106,7 @@ struct Foo {
 Given the rules above, the following changes to Thrift structs will maintain compatibility between old and new versions:
 
 * Changing a **required** field to **unqualified**
-* Changing a **required** field to [**terse**](./index#optional-fields)
+* Changing a **required** field to **terse**
 * Changing an **optional** field to **unqualified**
 * Changing an **optional** field to **terse**
 * Changing an **unqualified** field to **required**

@@ -126,9 +126,9 @@ module Locl_Inst = struct
     | Tclass (x, exact, tyl) ->
       let tyl = List.map tyl ~f:(instantiate subst) in
       Tclass (x, exact, tyl)
-    | Tshape (shape_kind, fdm) ->
+    | Tshape (_, shape_kind, fdm) ->
       let fdm = ShapeFieldMap.map (instantiate subst) fdm in
-      Tshape (shape_kind, fdm)
+      Tshape (Missing_origin, shape_kind, fdm)
     | Tunapplied_alias _ -> failwith "this shouldn't be here"
     | Tdependent (dep, ty) ->
       let ty = instantiate subst ty in
@@ -195,7 +195,7 @@ let check_typedef_usable_as_hk_type env use_pos typedef_name typedef_info =
     let ((env, ty_err_opt), locl_ty) =
       TUtils.localize_no_subst env ~ignore_errors:true decl_ty
     in
-    Option.iter ~f:Errors.add_typing_error ty_err_opt;
+    Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
     match get_node (TUtils.get_base_type env locl_ty) with
     | Tclass (cls_name, _, tyl) when not (List.is_empty tyl) ->
       (match Env.get_class env (snd cls_name) with
@@ -211,12 +211,12 @@ let check_typedef_usable_as_hk_type env use_pos typedef_name typedef_info =
                   let ((env, ty_err1), cstr_ty) =
                     TUtils.localize ~ety_env env cstr_ty
                   in
-                  Option.iter ~f:Errors.add_typing_error ty_err1;
+                  Option.iter ~f:Typing_error_utils.add_typing_error ty_err1;
                   let (_env, ty_err2) =
                     TGenConstraint.check_constraint env ck ty ~cstr_ty
                     @@ report_constraint ty cls_name x
                   in
-                  Option.iter ty_err2 ~f:Errors.add_typing_error)
+                  Option.iter ty_err2 ~f:Typing_error_utils.add_typing_error)
           end
           tc_tparams
           tyl
@@ -247,13 +247,14 @@ let check_class_usable_as_hk_type pos class_info =
     List.exists tparams ~f:(fun tp -> not (List.is_empty tp.tp_constraints))
   in
   if has_tparam_constraints then
-    Errors.add_naming_error
-    @@ Naming_error.HKT_class_with_constraints_used { pos; class_name }
+    Errors.add_error
+      Naming_error.(
+        to_user_error @@ HKT_class_with_constraints_used { pos; class_name })
 
 let report_kind_error ~use_pos ~def_pos ~tparam_name ~expected ~actual =
   let actual_kind = Simple.description_of_kind actual in
   let expected_kind = Simple.description_of_kind expected in
-  Errors.add_typing_error
+  Typing_error_utils.add_typing_error
   @@ Typing_error.(
        primary
        @@ Primary.Kind_mismatch
@@ -301,7 +302,7 @@ module Simple = struct
     let act_len = List.length tyargs in
     let arity_mistmatch_okay = Int.equal act_len 0 && allow_missing_targs in
     if Int.( <> ) exp_len act_len && not arity_mistmatch_okay then
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(
           primary
           @@ Primary.Type_arity_mismatch
@@ -325,7 +326,7 @@ module Simple = struct
         let pos =
           get_reason tyarg |> Reason.to_pos |> Pos_or_decl.unsafe_to_raw_pos
         in
-        Errors.add_naming_error @@ Naming_error.HKT_wildcard pos;
+        Errors.add_error Naming_error.(to_user_error @@ HKT_wildcard pos);
         check_well_kinded ~in_signature env tyarg nkind
       )
     | _ -> check_well_kinded ~in_signature env tyarg nkind
@@ -382,7 +383,7 @@ module Simple = struct
     | Trefinement (ty, rs) ->
       check ty;
       Class_refinement.iter check rs
-    | Tshape (_, map) -> TShapeMap.iter (fun _ sft -> check sft.sft_ty) map
+    | Tshape (_, _, map) -> TShapeMap.iter (fun _ sft -> check sft.sft_ty) map
     | Tfun ft ->
       check_possibly_enforced_ty ~in_signature env ft.ft_ret;
       List.iter ft.ft_params ~f:(fun p ->
@@ -409,7 +410,7 @@ module Simple = struct
       match Env.get_class_or_typedef env cid with
       | Some (Env.ClassResult class_info) ->
         Option.iter
-          ~f:Errors.add_typing_error
+          ~f:Typing_error_utils.add_typing_error
           (Typing_visibility.check_top_level_access
              ~in_signature
              ~use_pos
@@ -421,7 +422,7 @@ module Simple = struct
         check_against_tparams ~in_signature (Cls.pos class_info) argl tparams
       | Some (Env.TypedefResult typedef) ->
         Option.iter
-          ~f:Errors.add_typing_error
+          ~f:Typing_error_utils.add_typing_error
           (Typing_visibility.check_top_level_access
              ~in_signature
              ~use_pos
@@ -440,7 +441,7 @@ module Simple = struct
       (match Env.get_typedef env name with
       | Some typedef ->
         Option.iter
-          ~f:Errors.add_typing_error
+          ~f:Typing_error_utils.add_typing_error
           (Typing_visibility.check_top_level_access
              ~in_signature
              ~use_pos
@@ -501,12 +502,14 @@ module Simple = struct
       end
       | Tgeneric (_, targs)
       | Tapply (_, targs) ->
-        Errors.add_naming_error
-        @@ Naming_error.HKT_partial_application
-             {
-               pos = Reason.to_pos r |> Pos_or_decl.unsafe_to_raw_pos;
-               count = List.length targs;
-             }
+        Errors.add_error
+          Naming_error.(
+            to_user_error
+            @@ HKT_partial_application
+                 {
+                   pos = Reason.to_pos r |> Pos_or_decl.unsafe_to_raw_pos;
+                   count = List.length targs;
+                 })
       | Tany _ -> ()
       | _ -> kind_error (Simple.fully_applied_type ())
 

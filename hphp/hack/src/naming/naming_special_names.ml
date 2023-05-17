@@ -352,11 +352,15 @@ module UserAttributes = struct
 
   let uaNoFlatten = "__NoFlatten"
 
+  let uaCrossPackage = "__CrossPackage"
+
   (* <<__SafeForGlobalAccessCheck>> marks global variables as safe from mutations.
      This attribute merely ensures that the global_access_check does NOT raise
      errors/warnings from writing to the annotated global variable, and it
      has NO runtime/semantic implication. *)
   let uaSafeGlobalVariable = "__SafeForGlobalAccessCheck"
+
+  let uaModuleLevelTrait = "__ModuleLevelTrait"
 
   type attr_info = {
     contexts: string list;
@@ -728,6 +732,13 @@ module UserAttributes = struct
               doc =
                 "Instead of throwing an exception upon a module boundary violation at this symbol, logs a warning instead.";
             } );
+          ( uaCrossPackage,
+            {
+              contexts = [fn; mthd];
+              autocomplete = true;
+              doc =
+                "Enables access to elements from other package(s), requires `<<file:__EnableUnstableFeatures('package')>>`";
+            } );
         ])
 
   (* These are names which are allowed in the systemlib but not in normal programs *)
@@ -898,8 +909,6 @@ module StdlibFunctions = struct
   let array_mark_legacy = "\\HH\\array_mark_legacy"
 
   let array_unmark_legacy = "\\HH\\array_unmark_legacy"
-
-  let is_php_array = "\\HH\\is_php_array"
 
   let is_any_array = "\\HH\\is_any_array"
 
@@ -1209,6 +1218,12 @@ module Coeffects = struct
   let generated_generic_prefix = "T/"
 
   let is_generated_generic = String.is_prefix ~prefix:generated_generic_prefix
+
+  (** "T/[ctx $foo]" to "ctx $foo". *)
+  let unwrap_generated_generic name =
+    name
+    |> String.chop_prefix_if_exists ~prefix:"T/["
+    |> String.chop_suffix_if_exists ~suffix:"]"
 end
 
 module Readonly = struct

@@ -28,7 +28,6 @@
 
 #include "hphp/util/coro.h"
 #include "hphp/util/extern-worker.h"
-#include "hphp/util/file-cache.h"
 #include "hphp/util/hash-map.h"
 #include "hphp/util/mutex.h"
 #include "hphp/util/optional.h"
@@ -43,6 +42,7 @@ namespace hackc {
 }
 
 struct UnitIndex;
+struct VirtualFileSystemWriter;
 
 struct SymbolRefEdge {
   const StringData* sym;
@@ -53,7 +53,8 @@ struct SymbolRefEdge {
 struct Package {
   Package(const std::string& root,
           coro::TicketExecutor& executor,
-          extern_worker::Client& client);
+          extern_worker::Client& client,
+          bool coredump);
 
   size_t getTotalFiles() const { return m_total.load(); }
 
@@ -70,14 +71,14 @@ struct Package {
   void addDirectory(const std::string& path);
   void addStaticDirectory(const std::string& path);
 
-  std::shared_ptr<FileCache> getFileCache();
+  void writeVirtualFileSystem(const std::string& path);
 
   // Configuration for index & parse workers. This should contain any runtime
   // options which can affect HackC (or the interface to it).
   struct Config {
     Config() = default;
 
-    static Config make() {
+    static Config make(bool coredump) {
       Config c;
       #define R(Opt) c.Opt = RO::Opt;
       UNITCACHEFLAGS()
@@ -86,6 +87,7 @@ struct Package {
       c.EvalAbortBuildOnVerifyError = RO::EvalAbortBuildOnVerifyError;
       c.IncludeRoots = RO::IncludeRoots;
       c.coeffects = CoeffectsConfig::exportForParse();
+      c.CoreDump = coredump;
       return c;
     }
 
@@ -106,8 +108,12 @@ struct Package {
       sd(EvalAbortBuildOnCompilerError)
         (EvalAbortBuildOnVerifyError)
         (IncludeRoots)
-        (coeffects);
+        (coeffects)
+        (CoreDump)
+        ;
     }
+
+    bool CoreDump;
 
   private:
     #define R(Opt) decltype(RuntimeOption::Opt) Opt;
@@ -208,12 +214,17 @@ struct Package {
     // File path copied from UnitEmitter::m_filepath
     const StringData* m_filepath{nullptr};
 
+    // Name of the module that this unit belongs to
+    const StringData* m_module_use{nullptr};
+
     template <typename SerDe> void serde(SerDe& sd) {
       sd(m_missing)
         (m_symbol_refs)
         (m_abort)
         (m_definitions)
-        (m_filepath);
+        (m_filepath)
+        (m_module_use)
+        ;
     }
   };
 
@@ -262,8 +273,10 @@ struct Package {
                                           const std::vector<UnitDecls>&);
 
   using LocalCallback = std::function<coro::Task<void>(UEVec)>;
+  using ParseMetaItemsToSkipSet = hphp_fast_set<size_t>;
+  using EmitCallBackResult = std::pair<ParseMetaVec, ParseMetaItemsToSkipSet>;
   using EmitCallback = std::function<
-    coro::Task<ParseMetaVec>(const std::vector<std::filesystem::path>&)
+    coro::Task<EmitCallBackResult>(const std::vector<std::filesystem::path>&)
   >;
   coro::Task<bool> emit(const UnitIndex&, const EmitCallback&,
                         const LocalCallback&, const std::filesystem::path&);
@@ -338,7 +351,6 @@ private:
   Optional<std::chrono::microseconds> m_ondemandMicros;
 
   folly_concurrent_hash_map_simd<std::string, bool> m_filesToParse;
-  std::shared_ptr<FileCache> m_fileCache;
   std::set<std::string> m_directories;
   std::set<std::string> m_staticDirectories;
   hphp_fast_set<std::string> m_extraStaticFiles;

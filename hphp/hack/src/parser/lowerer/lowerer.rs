@@ -34,6 +34,7 @@ use ocaml_helper::parse_int;
 use ocaml_helper::ParseIntError;
 use ocamlrep::rc::RcOc;
 use oxidized::aast;
+use oxidized::aast::Binop;
 use oxidized::aast_defs::ClassReq;
 use oxidized::aast_defs::DocComment;
 use oxidized::aast_visitor::AstParams;
@@ -1675,6 +1676,7 @@ fn p_expr_impl<'a>(
         AwaitableCreationExpression(c) => p_awaitable_creation_expr(c, env, pos),
         XHPExpression(c) if c.open.is_xhp_open() => p_xhp_expr(c, env),
         EnumClassLabelExpression(c) => p_enum_class_label_expr(c, env),
+        PackageExpression(p) => p_package_expr(p, env),
         _ => {
             raise_missing_syntax("expression", node, env);
             Ok(Expr_::Null)
@@ -2309,15 +2311,21 @@ fn p_upcast_expr<'a>(left: S<'a>, right: S<'a>, env: &mut Env<'a>) -> Result<Exp
     Ok(Expr_::mk_upcast(p_expr(left, env)?, p_hint(right, env)?))
 }
 
+fn p_use_var<'a>(n: S<'a>, e: &mut Env<'a>) -> Result<ast::CaptureLid> {
+    match &n.children {
+        Token(_) => {
+            let lid = mk_name_lid(n, e)?;
+            Ok(ast::CaptureLid((), lid))
+        }
+        _ => missing_syntax("use variable", n, e),
+    }
+}
+
 fn p_anonymous_function<'a>(
     node: S<'a>,
     c: &'a AnonymousFunctionChildren<'_, PositionedToken<'_>, PositionedValue<'_>>,
     env: &mut Env<'a>,
 ) -> Result<Expr_> {
-    let p_arg = |n: S<'a>, e: &mut Env<'a>| match &n.children {
-        Token(_) => mk_name_lid(n, e),
-        _ => missing_syntax("use variable", n, e),
-    };
     let ctxs = p_contexts(
         &c.ctx_list,
         env,
@@ -2329,7 +2337,7 @@ fn p_anonymous_function<'a>(
     );
     let unsafe_ctxs = ctxs.clone();
     let p_use = |n: S<'a>, e: &mut Env<'a>| match &n.children {
-        AnonymousFunctionUseClause(c) => could_map(&c.variables, e, p_arg),
+        AnonymousFunctionUseClause(c) => could_map(&c.variables, e, p_use_var),
         _ => Ok(vec![]),
     };
     let suspension_kind = mk_suspension_kind(&c.async_keyword);
@@ -2458,6 +2466,14 @@ fn p_enum_class_label_expr<'a>(
         ),
     };
     Ok(Expr_::mk_enum_class_label(qual, label_name))
+}
+
+fn p_package_expr<'a>(
+    p: &'a PackageExpressionChildren<'_, PositionedToken<'_>, PositionedValue<'_>>,
+    env: &mut Env<'a>,
+) -> Result<Expr_> {
+    let id = pos_name(&p.name, env)?;
+    Ok(Expr_::mk_package(id))
 }
 
 fn mk_lid(p: Pos, s: String) -> ast::Lid {
@@ -2614,8 +2630,14 @@ fn p_bop<'a>(
     env: &mut Env<'a>,
 ) -> Result<Expr_> {
     use ast::Bop::*;
-    let mk = |op, l, r| Ok(Expr_::mk_binop(op, l, r));
-    let mk_eq = |op, l, r| Ok(Expr_::mk_binop(Eq(Some(Box::new(op))), l, r));
+    let mk = |bop, lhs, rhs| Ok(Expr_::mk_binop(Binop { bop, lhs, rhs }));
+    let mk_eq = |op, lhs, rhs| {
+        Ok(Expr_::mk_binop(Binop {
+            bop: Eq(Some(Box::new(op))),
+            lhs,
+            rhs,
+        }))
+    };
     match token_kind(node) {
         Some(TK::Equal) => mk(Eq(None), lhs, rhs),
         Some(TK::Bar) => mk(Bar, lhs, rhs),
@@ -3021,7 +3043,12 @@ fn p_concurrent_stmt<'a>(
                 if let Some(tv) = tmp_vars.next() {
                     if let Stmt(p1, S_::Expr(expr)) = n {
                         if let Expr(_, p2, Expr_::Binop(bop)) = *expr {
-                            if let (Eq(op), e1, e2) = *bop {
+                            if let Binop {
+                                bop: Eq(op),
+                                lhs: e1,
+                                rhs: e2,
+                            } = *bop
+                            {
                                 let tmp_n = Expr::mk_lvar(&e2.1, &(tv.1));
                                 if tmp_n.lvar_name() != e2.lvar_name() {
                                     let new_n = new(
@@ -3029,7 +3056,11 @@ fn p_concurrent_stmt<'a>(
                                         S_::mk_expr(Expr::new(
                                             (),
                                             p2.clone(),
-                                            Expr_::mk_binop(Eq(None), tmp_n.clone(), e2.clone()),
+                                            Expr_::mk_binop(Binop {
+                                                bop: Eq(None),
+                                                lhs: tmp_n.clone(),
+                                                rhs: e2.clone(),
+                                            }),
                                         )),
                                     );
                                     body_stmts.push(new_n);
@@ -3039,7 +3070,11 @@ fn p_concurrent_stmt<'a>(
                                     S_::mk_expr(Expr::new(
                                         (),
                                         p2,
-                                        Expr_::mk_binop(Eq(op), e1, tmp_n),
+                                        Expr_::mk_binop(Binop {
+                                            bop: Eq(op),
+                                            lhs: e1,
+                                            rhs: tmp_n,
+                                        }),
                                     )),
                                 );
                                 assign_stmts.push(assign_stmt);
@@ -5056,16 +5091,16 @@ fn p_class_elt<'a>(class: &mut ast::Class_, node: S<'a>, env: &mut Env<'a>) {
                 (
                     ast::Stmt::new(
                         p.clone(),
-                        ast::Stmt_::mk_expr(e(Expr_::mk_binop(
-                            ast::Bop::Eq(None),
-                            e(Expr_::mk_obj_get(
+                        ast::Stmt_::mk_expr(e(Expr_::mk_binop(Binop {
+                            bop: ast::Bop::Eq(None),
+                            lhs: e(Expr_::mk_obj_get(
                                 e(Expr_::mk_lvar(lid(special_idents::THIS))),
                                 e(Expr_::mk_id(ast::Id(p.clone(), cvname.to_string()))),
                                 ast::OgNullFlavor::OGNullthrows,
                                 ast::PropOrMethod::IsProp,
                             )),
-                            e(Expr_::mk_lvar(lid(&param.name))),
-                        ))),
+                            rhs: e(Expr_::mk_lvar(lid(&param.name))),
+                        }))),
                     ),
                     ast::ClassVar {
                         final_: false,
@@ -5783,6 +5818,92 @@ fn p_def<'a>(node: S<'a>, env: &mut Env<'a>) -> Result<Vec<ast::Def>> {
                     _ => missing_syntax("kind", &c.keyword, env)?,
                 },
                 kind: p_hint(&c.type_, env)?,
+                span: p_pos(node, env),
+                emit_id: None,
+                is_ctx: false,
+                internal: kinds.has(modifier::INTERNAL),
+                module: None,
+                docs_url,
+            })])
+        }
+        CaseTypeDeclaration(c) => {
+            let kinds = p_kinds(&c.modifiers, env);
+
+            let tparams = p_tparam_l(false, &c.generic_parameter, env)?;
+            for tparam in tparams.iter() {
+                if tparam.reified != ast::ReifyKind::Erased {
+                    raise_parsing_error(node, env, &syntax_error::invalid_reified)
+                }
+            }
+
+            let user_attributes = itertools::concat(
+                c.attribute_spec
+                    .syntax_node_to_list_skip_separator()
+                    .map(|attr| p_user_attribute(attr, env))
+                    .collect::<Result<Vec<ast::UserAttributes>, _>>()?,
+            );
+            let docs_url = p_docs_url(&user_attributes, env);
+
+            let expect_hint = |node, env: &mut _| match p_hint(node, env) {
+                Ok(hint) => Some(hint),
+                Err(e) => {
+                    emit_error(e, env);
+                    None
+                }
+            };
+
+            let as_constraints = c
+                .bounds
+                .syntax_node_to_list_skip_separator()
+                .filter_map(|bound| expect_hint(bound, env))
+                .collect::<Vec<_>>();
+
+            let variants = c
+                .variants
+                .syntax_node_to_list()
+                .filter_map(|variant| {
+                    if let CaseTypeVariant(ctv) = &variant.children {
+                        expect_hint(&ctv.type_, env)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            // If there are more than one constraints create an intersection
+            let as_constraint = if as_constraints.len() > 1 {
+                let hint_ = ast::Hint_::Hintersection(as_constraints);
+                let pos = p_pos(&c.bounds, env);
+                Some(ast::Hint::new(pos, hint_))
+            } else {
+                as_constraints.into_iter().next()
+            };
+
+            // If there are more than one variants create an union
+            let kind = if variants.len() > 1 {
+                let hint_ = ast::Hint_::Hunion(variants);
+                let pos = p_pos(&c.variants, env);
+                ast::Hint::new(pos, hint_)
+            } else {
+                match variants.into_iter().next() {
+                    Some(hint) => hint,
+                    // If there less than one variant it is an ill-defined case type
+                    None => return missing_syntax("case type variant", node, env),
+                }
+            };
+
+            Ok(vec![ast::Def::mk_typedef(ast::Typedef {
+                annotation: (),
+                name: pos_name(&c.name, env)?,
+                tparams,
+                as_constraint,
+                super_constraint: None,
+                user_attributes,
+                file_attributes: vec![],
+                namespace: mk_empty_ns_env(env),
+                mode: env.file_mode(),
+                vis: ast::TypedefVisibility::CaseType,
+                kind,
                 span: p_pos(node, env),
                 emit_id: None,
                 is_ctx: false,

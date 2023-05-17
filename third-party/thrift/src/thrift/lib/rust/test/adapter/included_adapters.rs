@@ -16,11 +16,20 @@
 
 // If you want an adapter to refer to a Thrift struct defined in the Thrift file using the adapter,
 // you have to use `rust_include_srcs` to avoid the target circular dependency.
-use fbthrift::adapter::ThriftAdapter;
+use std::fmt::Debug;
+use std::marker::PhantomData;
 
+use anyhow::Context;
+use fbthrift::adapter::ThriftAdapter;
+use fbthrift::metadata::ThriftAnnotations;
+
+use crate::types as crate_types;
 use crate::types::AdaptedString;
 use crate::types::Foo;
 use crate::types::WrappedAdaptedBytes;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Wrapper<T: Clone + Debug + PartialEq + Sync + Send>(pub T);
 
 pub struct FieldCheckerAdapter {}
 
@@ -38,24 +47,22 @@ impl ThriftAdapter for FieldCheckerAdapter {
         value.clone()
     }
 
-    fn from_thrift_field(
+    fn from_thrift_field<T: ThriftAnnotations>(
         value: Self::StandardType,
         field_id: i16,
-        strct: std::any::TypeId,
     ) -> Result<Self::AdaptedType, Self::Error> {
         assert_eq!(field_id, 8);
-        assert_eq!(std::any::TypeId::of::<Foo>(), strct);
+        assert_eq!(std::any::TypeId::of::<Foo>(), std::any::TypeId::of::<T>());
 
         Self::from_thrift(value)
     }
 
-    fn to_thrift_field(
+    fn to_thrift_field<T: ThriftAnnotations>(
         value: &Self::AdaptedType,
         field_id: i16,
-        strct: std::any::TypeId,
     ) -> Self::StandardType {
         assert_eq!(field_id, 8);
-        assert_eq!(std::any::TypeId::of::<Foo>(), strct);
+        assert_eq!(std::any::TypeId::of::<Foo>(), std::any::TypeId::of::<T>());
 
         Self::to_thrift(value)
     }
@@ -109,5 +116,261 @@ impl ThriftAdapter for AdaptedStringListIdentityAdapter {
 
     fn to_thrift(value: &Self::AdaptedType) -> Self::StandardType {
         value.clone()
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub enum AssetType {
+    #[default]
+    Unknown,
+    Laptop,
+    Server,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Asset {
+    pub type_: AssetType,
+    pub id: u32,
+}
+
+pub struct AssetAdapter {}
+
+impl ThriftAdapter for AssetAdapter {
+    type StandardType = crate_types::unadapted::Asset;
+    type Error = anyhow::Error;
+
+    type AdaptedType = Asset;
+
+    fn from_thrift(value: Self::StandardType) -> Result<Self::AdaptedType, Self::Error> {
+        Ok(Asset {
+            type_: match value.type_ {
+                crate_types::ThriftAssetType::LAPTOP => AssetType::Laptop,
+                crate_types::ThriftAssetType::SERVER => AssetType::Server,
+                // Rust Thrift will NOT use 0 as the default enum value by default, but instead
+                // will use i32::MIN.
+                _ => AssetType::Unknown,
+            },
+            id: value.id.try_into().context("invalid i64 for id")?,
+        })
+    }
+
+    fn to_thrift(value: &Self::AdaptedType) -> Self::StandardType {
+        crate_types::unadapted::Asset {
+            type_: match value.type_ {
+                AssetType::Unknown => crate_types::ThriftAssetType::UNKNOWN,
+                AssetType::Laptop => crate_types::ThriftAssetType::LAPTOP,
+                AssetType::Server => crate_types::ThriftAssetType::SERVER,
+            },
+            id: value.id.into(),
+            ..Default::default()
+        }
+    }
+}
+
+pub struct AdaptedAssetIdentityAdapter;
+
+impl ThriftAdapter for AdaptedAssetIdentityAdapter {
+    type StandardType = Asset;
+    type Error = std::convert::Infallible;
+
+    type AdaptedType = Asset;
+
+    fn from_thrift(value: Self::StandardType) -> Result<Self::AdaptedType, Self::Error> {
+        Ok(value)
+    }
+
+    fn to_thrift(value: &Self::AdaptedType) -> Self::StandardType {
+        value.clone()
+    }
+}
+
+pub struct TransitiveTestAdapter<T>(PhantomData<T>);
+
+impl<T> ThriftAdapter for TransitiveTestAdapter<T>
+where
+    T: Clone + Debug + PartialEq + Send + Sync,
+{
+    type StandardType = T;
+    type AdaptedType = Wrapper<T>;
+
+    type Error = std::convert::Infallible;
+
+    fn from_thrift(value: Self::StandardType) -> Result<Self::AdaptedType, Self::Error> {
+        Ok(Wrapper(value))
+    }
+
+    fn to_thrift(value: &Self::AdaptedType) -> Self::StandardType {
+        value.0.clone()
+    }
+}
+
+pub struct AnnotationTestAdapter;
+
+impl ThriftAdapter for AnnotationTestAdapter {
+    type StandardType = String;
+    type AdaptedType = Wrapper<String>;
+
+    type Error = std::convert::Infallible;
+
+    fn from_thrift(value: Self::StandardType) -> Result<Self::AdaptedType, Self::Error> {
+        Ok(Wrapper(value))
+    }
+
+    fn to_thrift(value: &Self::AdaptedType) -> Self::StandardType {
+        value.0.clone()
+    }
+
+    fn from_thrift_field<T: ThriftAnnotations>(
+        value: Self::StandardType,
+        field_id: i16,
+    ) -> Result<Self::AdaptedType, Self::Error> {
+        assert_eq!(field_id, 1);
+        assert_eq!(
+            std::any::TypeId::of::<crate_types::unadapted::TransitiveStruct>(),
+            std::any::TypeId::of::<T>()
+        );
+
+        assert_eq!(
+            T::get_structured_annotation::<crate_types::unadapted::TransitiveAdapterAnnotation>()
+                .unwrap()
+                .payload,
+            "hello_world"
+        );
+        assert_eq!(
+            T::get_structured_annotation::<crate_types::FirstAnnotation>()
+                .unwrap()
+                .uri,
+            "thrift/test"
+        );
+
+        Self::from_thrift(value)
+    }
+
+    fn to_thrift_field<T: ThriftAnnotations>(
+        value: &Self::AdaptedType,
+        field_id: i16,
+    ) -> Self::StandardType {
+        assert_eq!(field_id, 1);
+        assert_eq!(
+            std::any::TypeId::of::<crate_types::unadapted::TransitiveStruct>(),
+            std::any::TypeId::of::<T>()
+        );
+
+        assert_eq!(
+            T::get_structured_annotation::<crate_types::unadapted::TransitiveAdapterAnnotation>()
+                .unwrap()
+                .payload,
+            "hello_world"
+        );
+        assert_eq!(
+            T::get_structured_annotation::<crate_types::FirstAnnotation>()
+                .unwrap()
+                .uri,
+            "thrift/test"
+        );
+
+        Self::to_thrift(value)
+    }
+}
+
+pub struct TransitiveAnnotationTestAdapter<T>(PhantomData<T>);
+
+impl<T> ThriftAdapter for TransitiveAnnotationTestAdapter<T>
+where
+    T: Clone + Debug + PartialEq + Sync + Send,
+{
+    type StandardType = T;
+    type AdaptedType = Wrapper<T>;
+
+    type Error = std::convert::Infallible;
+
+    fn from_thrift(value: Self::StandardType) -> Result<Self::AdaptedType, Self::Error> {
+        Ok(Wrapper(value))
+    }
+
+    fn to_thrift(value: &Self::AdaptedType) -> Self::StandardType {
+        value.0.clone()
+    }
+
+    fn from_thrift_field<S: ThriftAnnotations>(
+        value: Self::StandardType,
+        field_id: i16,
+    ) -> Result<Self::AdaptedType, Self::Error> {
+        assert_eq!(field_id, 2);
+        assert_eq!(
+            std::any::TypeId::of::<crate_types::unadapted::TransitiveStruct>(),
+            std::any::TypeId::of::<S>()
+        );
+
+        assert_eq!(
+            S::get_structured_annotation::<crate_types::unadapted::TransitiveAdapterAnnotation>()
+                .unwrap()
+                .payload,
+            "hello_world"
+        );
+        assert_eq!(
+            S::get_structured_annotation::<crate_types::FirstAnnotation>()
+                .unwrap()
+                .uri,
+            "thrift/test"
+        );
+
+        assert_eq!(
+            S::get_field_structured_annotation::<
+                crate_types::unadapted::TransitiveFieldAdapterAnnotation,
+            >(field_id)
+            .unwrap()
+            .payload,
+            "foobar"
+        );
+        assert_eq!(
+            S::get_field_structured_annotation::<crate_types::FirstAnnotation>(field_id)
+                .unwrap()
+                .uri,
+            "thrift/transitive_field_test"
+        );
+
+        Self::from_thrift(value)
+    }
+
+    fn to_thrift_field<S: ThriftAnnotations>(
+        value: &Self::AdaptedType,
+        field_id: i16,
+    ) -> Self::StandardType {
+        assert_eq!(field_id, 2);
+        assert_eq!(
+            std::any::TypeId::of::<crate_types::unadapted::TransitiveStruct>(),
+            std::any::TypeId::of::<S>()
+        );
+
+        assert_eq!(
+            S::get_structured_annotation::<crate_types::unadapted::TransitiveAdapterAnnotation>()
+                .unwrap()
+                .payload,
+            "hello_world"
+        );
+        assert_eq!(
+            S::get_structured_annotation::<crate_types::FirstAnnotation>()
+                .unwrap()
+                .uri,
+            "thrift/test"
+        );
+
+        assert_eq!(
+            S::get_field_structured_annotation::<
+                crate_types::unadapted::TransitiveFieldAdapterAnnotation,
+            >(field_id)
+            .unwrap()
+            .payload,
+            "foobar"
+        );
+        assert_eq!(
+            S::get_field_structured_annotation::<crate_types::FirstAnnotation>(field_id)
+                .unwrap()
+                .uri,
+            "thrift/transitive_field_test"
+        );
+
+        Self::to_thrift(value)
     }
 }

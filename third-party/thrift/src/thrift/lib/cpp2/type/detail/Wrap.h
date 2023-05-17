@@ -56,6 +56,8 @@ class BaseDerived {
 template <typename T, typename Tag = infer_tag<T>>
 class Wrap {
  public:
+  static_assert(std::is_same<native_type<Tag>, T>::value, "");
+
   using underlying_type = T;
   using underlying_tag = Tag;
 
@@ -76,11 +78,7 @@ class Wrap {
   }
 
   void reset() { op::clear<underlying_tag>(data_); }
-  bool empty() const {
-    return op::isEmpty<underlying_tag>(data_)
-        // TODO(afuller): Remove when terse_write is enabled:
-        || data_ == T{};
-  }
+  bool empty() const { return op::isEmpty<underlying_tag>(data_); }
 
  protected:
   T data_;

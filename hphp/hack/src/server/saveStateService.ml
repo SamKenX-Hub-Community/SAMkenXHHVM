@@ -9,7 +9,6 @@
 
 open Hh_prelude
 open SaveStateServiceTypes
-open ServerEnv
 
 let get_errors_filename (filename : string) : string = filename ^ ".err"
 
@@ -59,9 +58,8 @@ let partition_error_files_tf
   (fold_error_files errors_in_phases_t, fold_error_files errors_in_phases_f)
 
 (* Loads the file info and the errors, if any. *)
-let load_saved_state
+let load_saved_state_exn
     ~(naming_table_fallback_path : string option)
-    ~(naming_table_path : string)
     ~(errors_path : string)
     (ctx : Provider_context.t) : Naming_table.t * saved_state_errors =
   let old_naming_table =
@@ -78,12 +76,21 @@ let load_saved_state
              nt_path);
       Naming_table.load_from_sqlite ctx nt_path
     | None ->
-      let chan = In_channel.create ~binary:true naming_table_path in
-      let (old_saved : Naming_table.saved_state_info) =
-        Marshal.from_channel chan
+      (*
+        If we reach here, then there was neither a SQLite naming table
+        in the saved state directory, nor was a path provided via
+        genv.local_config.naming_table_path.
+
+        ServerCheckUtils.get_naming_table_fallback_path will return None,
+        in which case we raise a failure, since the OCaml-marshalled
+        naming table no longer exists.
+      *)
+      HackEventLogger.naming_table_sqlite_missing ();
+      let str =
+        "No naming table path found, either from saved state directory or local config"
       in
-      Sys_utils.close_in_no_fail naming_table_path chan;
-      Naming_table.from_saved old_saved
+      Hh_logger.log "%s" str;
+      failwith str
   in
   let (old_errors : saved_state_errors) =
     if not (Sys.file_exists errors_path) then
@@ -115,50 +122,33 @@ let get_hot_classes (filename : string) : SSet.t =
 (** Dumps the naming-table (a saveable form of FileInfo), and errors if any,
 and hot class decls. *)
 let dump_naming_errors_decls
-    (genv : ServerEnv.genv)
     (output_filename : string)
     (naming_table : Naming_table.t)
     (errors : Errors.t) : unit =
-  if
-    genv.local_config
-      .ServerLocalConfig.no_marshalled_naming_table_in_saved_state
-  then
-    Hh_logger.log "Skipping marshalling the naming table..."
-  else (
-    Hh_logger.log "Marshalling the naming table...";
-    let (naming_table_saved : Naming_table.saved_state_info) =
-      Naming_table.to_saved naming_table
-    in
-    save_contents output_filename naming_table_saved
-  );
+  let naming_sql_filename = output_filename ^ "_naming.sql" in
+  let (save_result : Naming_sqlite.save_result) =
+    Naming_table.save naming_table naming_sql_filename
+  in
+  Hh_logger.log
+    "Inserted symbols into the naming table:\n%s"
+    (Naming_sqlite.show_save_result save_result);
+  Hh_logger.log
+    "Finished saving naming table with %d errors."
+    (List.length save_result.Naming_sqlite.errors);
 
-  if genv.ServerEnv.local_config.ServerLocalConfig.naming_sqlite_in_hack_64 then (
-    let naming_sql_filename = output_filename ^ "_naming.sql" in
-    let (save_result : Naming_sqlite.save_result) =
-      Naming_table.save naming_table naming_sql_filename
-    in
-    Hh_logger.log
-      "Inserted symbols into the naming table:\n%s"
-      (Naming_sqlite.show_save_result save_result);
-    Hh_logger.log
-      "Finished saving naming table with %d errors."
-      (List.length save_result.Naming_sqlite.errors);
+  if List.length save_result.Naming_sqlite.errors > 0 then
+    Exit.exit Exit_status.Sql_assertion_failure;
 
-    if List.length save_result.Naming_sqlite.errors > 0 then
-      Exit.exit Exit_status.Sql_assertion_failure;
-
-    assert (Sys.file_exists naming_sql_filename);
-    Hh_logger.log "Saved naming table sqlite to '%s'" naming_sql_filename
-  );
-
+  assert (Sys.file_exists naming_sql_filename);
+  Hh_logger.log "Saved naming table sqlite to '%s'" naming_sql_filename;
   (* Let's not write empty error files. *)
   (if Errors.is_empty errors then
     ()
   else
-    let errors_in_phases =
+    let errors_in_phases : saved_state_errors =
       List.map
         ~f:(fun phase -> (phase, Errors.get_failed_files errors phase))
-        [Errors.Parsing; Errors.Decl; Errors.Naming; Errors.Typing]
+        [Errors.Naming; Errors.Typing]
     in
     save_contents (get_errors_filename output_filename) errors_in_phases);
   ()
@@ -169,7 +159,7 @@ let dump_errors_json (output_filename : string) (errors : Errors.t) : unit =
   let errors_in_phases =
     List.map
       ~f:(fun phase -> (phase, Errors.get_failed_files errors phase))
-      [Errors.Parsing; Errors.Decl; Errors.Naming; Errors.Typing]
+      [Errors.Naming; Errors.Typing]
   in
   let errors = fold_error_files errors_in_phases in
   let errors_json =
@@ -228,8 +218,7 @@ let dump_dep_graph_64bit ~mode ~db_name ~incremental_info_file =
 
 (** Saves the saved state to the given path. Returns number of dependency
 * edges dumped into the database. *)
-let save_state
-    (genv : ServerEnv.genv) (env : ServerEnv.env) (output_filename : string) :
+let save_state (env : ServerEnv.env) (output_filename : string) :
     save_state_result =
   let () = Sys_utils.mkdir_p (Filename.dirname output_filename) in
   let db_name =
@@ -257,7 +246,7 @@ let save_state
     let naming_table = env.ServerEnv.naming_table in
     let errors = env.ServerEnv.errorl in
     let t = Unix.gettimeofday () in
-    dump_naming_errors_decls genv output_filename naming_table errors;
+    dump_naming_errors_decls output_filename naming_table errors;
     Hh_logger.log_duration "Saving saved-state naming/errors/decls took" t
   in
   match env.ServerEnv.deps_mode with
@@ -304,7 +293,7 @@ let go_naming (naming_table : Naming_table.t) (output_filename : string) :
 
 (* If successful, returns the # of edges from the dependency table that were written. *)
 (* TODO: write some other stats, e.g., the number of names, the number of errors, etc. *)
-let go (genv : ServerEnv.genv) (env : ServerEnv.env) (output_filename : string)
-    : (save_state_result, string) result =
-  Utils.try_with_stack (fun () -> save_state genv env output_filename)
+let go (env : ServerEnv.env) (output_filename : string) :
+    (save_state_result, string) result =
+  Utils.try_with_stack (fun () -> save_state env output_filename)
   |> Result.map_error ~f:(fun e -> Exception.get_ctor_string e)

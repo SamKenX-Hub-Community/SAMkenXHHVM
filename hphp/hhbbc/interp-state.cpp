@@ -157,9 +157,11 @@ CollectedInfo::CollectedInfo(const Index& index,
                              Context ctx,
                              ClassAnalysis* cls,
                              CollectionOpts opts,
+                             ClsConstantWork* clsCns,
                              const FuncAnalysis* fa)
     : props{index, ctx, cls}
     , methods{ctx, cls}
+    , clsCns{clsCns}
     , opts{fa ? opts | CollectionOpts::Optimizing : opts}
 {
   if (fa) {
@@ -227,7 +229,7 @@ const PropState& PropertiesInfo::privateStaticsRaw() const {
   return m_privateStatics;
 }
 
-const PropStateElem<>*
+const PropStateElem*
 PropertiesInfo::readPrivateProp(SString name) const {
   if (m_cls != nullptr) {
     auto const it = m_cls->privateProperties.find(name);
@@ -239,7 +241,7 @@ PropertiesInfo::readPrivateProp(SString name) const {
   return it == m_privateProperties.end() ? nullptr : &it->second;
 }
 
-const PropStateElem<>*
+const PropStateElem*
 PropertiesInfo::readPrivateStatic(SString name) const {
   if (m_cls != nullptr) {
     auto const it = m_cls->privateStatics.find(name);

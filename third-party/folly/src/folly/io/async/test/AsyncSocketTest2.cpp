@@ -8496,8 +8496,14 @@ TEST(AsyncSocketTest, SendMessageAncillaryData) {
   // to send ancillary data
   int s_data = 12345;
   WriteCallback wcb;
-  socket->write(&wcb, &s_data, sizeof(s_data));
+  auto ioBuf = folly::IOBuf::wrapBuffer(&s_data, sizeof(s_data));
+  sendMsgCB.expectedTag_ = folly::AsyncSocket::WriteRequestTag{
+      ioBuf.get()}; // Also test write tagging.
+  ASSERT_FALSE(sendMsgCB.tagLastWritten_.has_value());
+  socket->writeChain(&wcb, std::move(ioBuf));
   ASSERT_EQ(wcb.state, STATE_SUCCEEDED);
+  ASSERT_TRUE(sendMsgCB.queriedData_); // Did the tag check run?
+  ASSERT_EQ(sendMsgCB.expectedTag_, *sendMsgCB.tagLastWritten_);
 
   // Receive the message
   union {
@@ -8542,6 +8548,122 @@ TEST(AsyncSocketTest, SendMessageAncillaryData) {
       read(fd, transferredMagicString.data(), transferredMagicString.size()));
   ASSERT_TRUE(std::equal(
       magicString.begin(), magicString.end(), transferredMagicString.begin()));
+}
+
+namespace {
+
+// Child classes of AsyncSocket (e.g. AsyncFdSocket) want to be able to
+// fail reads from the read ancillary data or regular read callback. Test this.
+struct FailableSocket : public AsyncSocket {
+  FailableSocket(EventBase* evb, NetworkSocket fd) : AsyncSocket(evb, fd) {}
+  void testFailRead() {
+    AsyncSocketException ex(
+        AsyncSocketException::INTERNAL_ERROR, "FailableSocket::testFailRead");
+    AsyncSocket::failRead(__func__, ex);
+  }
+};
+
+class TruncateAncillaryDataAndCallFn
+    : public folly::AsyncSocket::ReadAncillaryDataCallback {
+ public:
+  explicit TruncateAncillaryDataAndCallFn(VoidCallback cob)
+      : callback_(std::move(cob)) {}
+
+  void ancillaryData(struct msghdr& msg) noexcept override {
+    sawCtrunc_ = sawCtrunc_ || (msg.msg_flags & MSG_CTRUNC);
+    callback_();
+  }
+  folly::MutableByteRange getAncillaryDataCtrlBuffer() override {
+    return folly::MutableByteRange(ancillaryDataCtrlBuffer_);
+  }
+
+  bool sawCtrunc_{false};
+
+ private:
+  VoidCallback callback_;
+  // Empty to trigger MSG_CTRUNC
+  std::array<uint8_t, 0> ancillaryDataCtrlBuffer_;
+};
+
+// Returns the error string from the read callback (can be "none")
+std::string testTruncateAncillaryDataAndCall(
+    std::function<void(FailableSocket*)> fn,
+    std::function<void(FailableSocket*)> postConditionCheck) {
+  NetworkSocket fds[2];
+  CHECK_EQ(netops::socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+  EventBase evb;
+  std::shared_ptr<AsyncSocket> sendSock = AsyncSocket::newSocket(&evb, fds[0]);
+  ReadCallback rcb; // outlives socket since ~AsyncSocket calls rcb.readEOF
+  FailableSocket recvSock(&evb, fds[1]);
+
+  TruncateAncillaryDataAndCallFn ancillaryCob{[&]() { fn(&recvSock); }};
+  recvSock.setReadAncillaryDataCB(&ancillaryCob);
+
+  // Send the stderr FD with ancillary data
+  int tmpfd = 2;
+  union { // `man cmsg` suggests this idiom for a "large enough" `cmsghdr`
+    char buf[CMSG_SPACE(sizeof(tmpfd))];
+    struct cmsghdr cmh;
+  } u;
+  u.cmh.cmsg_len = CMSG_LEN(sizeof(tmpfd));
+  u.cmh.cmsg_level = SOL_SOCKET;
+  u.cmh.cmsg_type = SCM_RIGHTS;
+  memcpy(CMSG_DATA(&u.cmh), &tmpfd, sizeof(tmpfd));
+
+  TestSendMsgParamsCallback sendMsgCB(
+      MSG_DONTWAIT | MSG_NOSIGNAL, sizeof(u.buf), u.buf);
+  sendSock->setSendMsgParamCB(&sendMsgCB);
+
+  // Transmit at least 1 byte of real data to send ancillary data
+  int s_data = 12345;
+  WriteCallback wcb;
+  sendSock->write(&wcb, &s_data, sizeof(s_data));
+  CHECK_EQ(wcb.state, STATE_SUCCEEDED);
+
+  // The FD will be discarded (MSG_CTRUNC) since our ancillary data callback
+  // deliberately misconfigures the `recvmsg`.
+  recvSock.setReadCB(&rcb);
+  CHECK(!ancillaryCob.sawCtrunc_);
+  evb.loopOnce();
+
+  // Ensure that `ancillaryData()` actually ran, and saw the error condition.
+  CHECK(ancillaryCob.sawCtrunc_);
+  postConditionCheck(&recvSock);
+
+  return rcb.exception.what();
+}
+
+} // namespace
+
+// These tests do double-duty:
+//  - show that `ReadAncillaryDataCallback` can safely close or fail a socket
+//  - exercise getting & handling `MSG_CTRUNC`
+
+TEST(AsyncSocketTest, ReceiveTruncatedAncillaryDataAndFail) {
+  EXPECT_THAT(
+      testTruncateAncillaryDataAndCall(
+          [](FailableSocket* sock) { sock->testFailRead(); },
+          [](FailableSocket* sock) { ASSERT_TRUE(sock->error()); }),
+      testing::HasSubstr("FailableSocket::testFailRead"));
+}
+
+TEST(AsyncSocketTest, ReceiveTruncatedAncillaryDataAndClose) {
+  EXPECT_THAT(
+      testTruncateAncillaryDataAndCall(
+          [](FailableSocket* sock) { sock->close(); },
+          [](FailableSocket* sock) { ASSERT_TRUE(sock->isClosedBySelf()); }),
+      testing::HasSubstr("AsyncSocketException: none, type =")); // no error
+}
+
+TEST(AsyncSocketTest, ReceiveTruncatedAncillaryDataUnhandled) {
+  // Since this `ancillaryData` fails to check MSG_CTRUNG, the last-ditch
+  // check in `AsyncSocket::processNormalRead` will fire.
+  EXPECT_THAT(
+      testTruncateAncillaryDataAndCall(
+          [](FailableSocket*) {},
+          [](FailableSocket* sock) { ASSERT_TRUE(sock->error()); }),
+      testing::HasSubstr("recvmsg() got MSG_CTRUNC"));
 }
 
 TEST(AsyncSocketTest, UnixDomainSocketErrMessageCB) {
@@ -8986,8 +9108,14 @@ TEST(AsyncSocketTest, QueueTimeout) {
 class TestRXTimestampsCallback
     : public folly::AsyncSocket::ReadAncillaryDataCallback {
  public:
-  TestRXTimestampsCallback() {}
+  explicit TestRXTimestampsCallback(AsyncSocket* sock) : socket_(sock) {}
+
   void ancillaryData(struct msghdr& msgh) noexcept override {
+    if (closeSocket_) {
+      socket_->close();
+      return;
+    }
+
     struct cmsghdr* cmsg;
     for (cmsg = CMSG_FIRSTHDR(&msgh); cmsg != nullptr;
          cmsg = CMSG_NXTHDR(&msgh, cmsg)) {
@@ -9006,8 +9134,10 @@ class TestRXTimestampsCallback
 
   uint32_t callCount_{0};
   long actualRxTimestampSec_{0};
+  bool closeSocket_{false};
 
  private:
+  AsyncSocket* socket_;
   std::array<uint8_t, 1024> ancillaryDataCtrlBuffer_;
 };
 
@@ -9041,7 +9171,7 @@ TEST(AsyncSocketTest, readAncillaryData) {
   evb.loop();
   ASSERT_EQ(ccb.state, STATE_SUCCEEDED);
 
-  TestRXTimestampsCallback rxcb;
+  TestRXTimestampsCallback rxcb{socket.get()};
 
   // Set read callback
   ReadCallback rcb(100);
@@ -9072,16 +9202,289 @@ TEST(AsyncSocketTest, readAncillaryData) {
   ASSERT_NE(rcb.buffers.size(), 0);
 
   // Verify that after setting callback, the callback was called
-  ASSERT_NE(rxcb.callCount_, 0);
+  ASSERT_GT(rxcb.callCount_, 0);
   // Compare the received timestamp is within an expected range
   clock_gettime(CLOCK_REALTIME, &currentTime);
   ASSERT_TRUE(rxcb.actualRxTimestampSec_ <= currentTime.tv_sec);
   ASSERT_TRUE(rxcb.actualRxTimestampSec_ >= writeTimestampSec);
 
-  // Close both sockets
-  acceptedSocket->close();
-  socket->close();
-
+  // Check that the callback can close the socket.
+  rxcb.closeSocket_ = true;
+  ASSERT_FALSE(socket->isClosedBySelf());
+  acceptedSocket->write(wbuf.data(), wbuf.size());
+  evb.loopOnce();
   ASSERT_TRUE(socket->isClosedBySelf());
-  ASSERT_FALSE(socket->isClosedByPeer());
+}
+
+class AsyncSocketWriteCallbackTest : public ::testing::Test {
+ protected:
+  using MockDispatcher = ::testing::NiceMock<netops::test::MockDispatcher>;
+  void SetUp() override {
+    socket_ = AsyncSocket::newSocket(&evb_);
+    socket_->setOverrideNetOpsDispatcher(netOpsDispatcher_);
+    netOpsDispatcher_->forwardToDefaultImpl();
+
+    socket_->connect(nullptr, server_.getAddress());
+  }
+
+  void netOpsOnSendmsg() {
+    ON_CALL(*netOpsDispatcher_, sendmsg(_, _, _))
+        .WillByDefault(::testing::Invoke(
+            [this](NetworkSocket s, const msghdr* message, int flags) {
+              sendMsgInvocations_++;
+              return netops::Dispatcher::getDefaultInstance()->sendmsg(
+                  s, message, flags);
+            }));
+  }
+
+  // simulate spliting a write into two parts by returning less than the amount
+  // of bytes that was written if this is the first invocation of sendMsg
+  void netOpsOnSendmsgPartial() {
+    ON_CALL(*netOpsDispatcher_, sendmsg(_, _, _))
+        .WillByDefault(::testing::Invoke(
+            [this](NetworkSocket s, const msghdr* message, int flags) {
+              sendMsgInvocations_++;
+              auto totalWritten =
+                  netops::Dispatcher::getDefaultInstance()->sendmsg(
+                      s, message, flags);
+              if (splitNextWrite_) {
+                splitNextWrite_ = false;
+                return totalWritten - 1;
+              } else {
+                splitNextWrite_ = true;
+                return totalWritten;
+              }
+            }));
+  }
+
+  // simulate a failed write by returning -1 on sendMsg
+  void netOpsOnSendmsgFail() {
+    ON_CALL(*netOpsDispatcher_, sendmsg(_, _, _))
+        .WillByDefault(::testing::Invoke(
+            [this](NetworkSocket s, const msghdr* message, int flags) {
+              sendMsgInvocations_++;
+              netops::Dispatcher::getDefaultInstance()->sendmsg(
+                  s, message, flags);
+              return -1;
+            }));
+  }
+
+  WriteCallback writeCallback1_;
+  WriteCallback writeCallback2_;
+  TestServer server_;
+  std::shared_ptr<AsyncSocket> socket_;
+  folly::EventBase evb_;
+  std::shared_ptr<MockDispatcher> netOpsDispatcher_{
+      std::make_shared<MockDispatcher>()};
+  size_t sendMsgInvocations_{0};
+  bool splitNextWrite_{false};
+};
+
+/**
+ * Call write once successfully and expect `writeStarting` to be called once.
+ */
+TEST_F(AsyncSocketWriteCallbackTest, WriteStartingTests_WriteOnceSuccess) {
+  const std::vector<uint8_t> wbuf(20, 'a');
+  iovec op = {};
+  op.iov_base = const_cast<void*>(static_cast<const void*>(wbuf.data()));
+  op.iov_len = wbuf.size();
+  WriteFlags flags = WriteFlags::NONE;
+
+  netOpsOnSendmsg();
+
+  ASSERT_THAT(writeCallback1_.writeStartingInvocations, Eq(0));
+  ASSERT_THAT(writeCallback2_.writeStartingInvocations, Eq(0));
+  socket_->writev(&writeCallback1_, &op, 1, flags);
+  while (writeCallback1_.state == STATE_WAITING) {
+    socket_->getEventBase()->loopOnce();
+  }
+  ASSERT_EQ(writeCallback1_.state, STATE_SUCCEEDED);
+  ASSERT_EQ(writeCallback2_.state, STATE_WAITING);
+  EXPECT_EQ(writeCallback1_.writeStartingInvocations, 1);
+  EXPECT_EQ(writeCallback2_.writeStartingInvocations, 0);
+  EXPECT_EQ(sendMsgInvocations_, 1);
+}
+
+/**
+ * Call write once but do not write all bytes the first time; expect
+ * `writeStarting` to be called once.
+ */
+TEST_F(AsyncSocketWriteCallbackTest, WriteStartingTests_WriteOnceIncomplete) {
+  const std::vector<uint8_t> wbuf(20, 'a');
+  iovec op = {};
+  op.iov_base = const_cast<void*>(static_cast<const void*>(wbuf.data()));
+  op.iov_len = wbuf.size();
+  WriteFlags flags = WriteFlags::NONE;
+
+  // make sure there are no pending WriteRequests
+  socket_->getEventBase()->loopOnce();
+
+  splitNextWrite_ = true;
+  netOpsOnSendmsgPartial();
+
+  ASSERT_THAT(writeCallback1_.writeStartingInvocations, Eq(0));
+  socket_->writev(&writeCallback1_, &op, 1, flags);
+  while (writeCallback1_.state == STATE_WAITING) {
+    socket_->getEventBase()->loopOnce();
+  }
+
+  ASSERT_EQ(writeCallback1_.state, STATE_SUCCEEDED);
+  EXPECT_EQ(writeCallback1_.writeStartingInvocations, 1);
+  EXPECT_EQ(sendMsgInvocations_, 2);
+}
+
+/**
+ * Call write twice successfully and expect `writeStarting` to be called twice.
+ */
+TEST_F(AsyncSocketWriteCallbackTest, WriteStartingTests_WriteTwiceSuccess) {
+  const std::vector<uint8_t> wbuf(20, 'a');
+  iovec op = {};
+  op.iov_base = const_cast<void*>(static_cast<const void*>(wbuf.data()));
+  op.iov_len = wbuf.size();
+  WriteFlags flags = WriteFlags::NONE;
+
+  netOpsOnSendmsg();
+
+  ASSERT_THAT(writeCallback1_.writeStartingInvocations, Eq(0));
+  socket_->writev(&writeCallback1_, &op, 1, flags);
+  socket_->writev(&writeCallback1_, &op, 1, flags);
+  while (writeCallback1_.state == STATE_WAITING) {
+    socket_->getEventBase()->loopOnce();
+  }
+  ASSERT_EQ(writeCallback1_.state, STATE_SUCCEEDED);
+  EXPECT_EQ(writeCallback1_.writeStartingInvocations, 2);
+  EXPECT_EQ(sendMsgInvocations_, 2);
+}
+
+/**
+ * Call write twice, with the first write incomplete; expect `writeStarting` to
+ * be called twice
+ */
+TEST_F(
+    AsyncSocketWriteCallbackTest,
+    WriteStartingTests_WriteTwiceIncompleteThenSuccess) {
+  const std::vector<uint8_t> wbuf(20, 'a');
+  iovec op = {};
+  op.iov_base = const_cast<void*>(static_cast<const void*>(wbuf.data()));
+  op.iov_len = wbuf.size();
+  WriteFlags flags = WriteFlags::NONE;
+
+  ASSERT_THAT(writeCallback1_.writeStartingInvocations, Eq(0));
+
+  // We split the first write in two parts. The first part is written
+  // immediately and a WriteRequest is created to write the bytes from the
+  // second part
+  splitNextWrite_ = true;
+  netOpsOnSendmsgPartial();
+  socket_->writev(&writeCallback1_, &op, 1, flags);
+  while (writeCallback1_.state == STATE_WAITING) {
+    socket_->getEventBase()->loopOnce();
+  }
+  ASSERT_EQ(writeCallback1_.state, STATE_SUCCEEDED);
+  EXPECT_EQ(writeCallback1_.writeStartingInvocations, 1);
+
+  // We do not split the second write
+  netOpsOnSendmsg();
+  socket_->writev(&writeCallback2_, &op, 1, flags);
+  while (writeCallback2_.state == STATE_WAITING) {
+    socket_->getEventBase()->loopOnce();
+  }
+  ASSERT_EQ(writeCallback1_.state, STATE_SUCCEEDED);
+  EXPECT_EQ(writeCallback1_.writeStartingInvocations, 1);
+  ASSERT_EQ(writeCallback2_.state, STATE_SUCCEEDED);
+  EXPECT_EQ(writeCallback2_.writeStartingInvocations, 1);
+  EXPECT_EQ(sendMsgInvocations_, 3);
+}
+
+/**
+ * Call write twice, both times incomplete; expect `writeStarting` to be called
+ * twice.
+ */
+TEST_F(
+    AsyncSocketWriteCallbackTest,
+    WriteStartingTests_WriteTwiceIncompleteThenIncomplete) {
+  const std::vector<uint8_t> wbuf(20, 'a');
+  iovec op = {};
+  op.iov_base = const_cast<void*>(static_cast<const void*>(wbuf.data()));
+  op.iov_len = wbuf.size();
+  WriteFlags flags = WriteFlags::NONE;
+
+  ASSERT_THAT(writeCallback1_.writeStartingInvocations, Eq(0));
+
+  // We split the first write in two parts. The first part is written
+  // immediately and a WriteRequest is created to write the bytes from the
+  // second part
+  splitNextWrite_ = true;
+  netOpsOnSendmsgPartial();
+  socket_->writev(&writeCallback1_, &op, 1, flags);
+  socket_->getEventBase()->loopOnce();
+
+  EXPECT_EQ(sendMsgInvocations_, 1);
+  ASSERT_EQ(writeCallback1_.state, STATE_WAITING);
+  EXPECT_EQ(writeCallback1_.writeStartingInvocations, 1);
+
+  // We also split the second write. Since the WriteRequest queue is not empty,
+  // a new WriteRequest for all bytes in the second write is created when writev
+  // is called. The write will be split into two parts when we process this
+  // request. The first part is written when the request is processed and
+  // another WriteRequest will be created for the second part. This new
+  // WriteRequest will be processed on the next event loop iteration.
+  socket_->writev(&writeCallback2_, &op, 1, flags);
+  socket_->getEventBase()->loopOnce();
+
+  EXPECT_EQ(sendMsgInvocations_, 3);
+  ASSERT_EQ(writeCallback1_.state, STATE_SUCCEEDED);
+  EXPECT_EQ(writeCallback1_.writeStartingInvocations, 1);
+  ASSERT_EQ(writeCallback2_.state, STATE_WAITING);
+  EXPECT_EQ(writeCallback2_.writeStartingInvocations, 1);
+
+  socket_->getEventBase()->loopOnce();
+
+  ASSERT_EQ(writeCallback1_.state, STATE_SUCCEEDED);
+  EXPECT_EQ(writeCallback1_.writeStartingInvocations, 1);
+  ASSERT_EQ(writeCallback2_.state, STATE_SUCCEEDED);
+  EXPECT_EQ(writeCallback2_.writeStartingInvocations, 1);
+  EXPECT_EQ(sendMsgInvocations_, 4);
+}
+
+/**
+ * Call write once and fail immediately; expect 'writeStarting` to not be
+ * called.
+ */
+TEST_F(
+    AsyncSocketWriteCallbackTest, WriteStartingTests_WriteOnceFailImmediately) {
+  const std::vector<uint8_t> wbuf(20, 'a');
+  iovec op = {};
+  op.iov_base = const_cast<void*>(static_cast<const void*>(wbuf.data()));
+  op.iov_len = wbuf.size();
+  WriteFlags flags = WriteFlags::NONE;
+
+  ASSERT_THAT(writeCallback1_.writeStartingInvocations, Eq(0));
+  socket_->writev(&writeCallback1_, &op, 1, flags);
+  socket_->shutdownWriteNow();
+  ASSERT_EQ(writeCallback1_.state, STATE_FAILED);
+  EXPECT_EQ(writeCallback1_.writeStartingInvocations, 0);
+}
+
+/**
+ * Call write once and fail after `sendMsg` was called; expect 'writeStarting`
+ * to be called once.
+ */
+TEST_F(AsyncSocketWriteCallbackTest, WriteStartingTests_WriteOnceFail) {
+  const std::vector<uint8_t> wbuf(20, 'a');
+  iovec op = {};
+  op.iov_base = const_cast<void*>(static_cast<const void*>(wbuf.data()));
+  op.iov_len = wbuf.size();
+  WriteFlags flags = WriteFlags::NONE;
+
+  netOpsOnSendmsgFail();
+  writeCallback1_.errorCallback = std::bind(&AsyncSocket::close, socket_.get());
+
+  ASSERT_THAT(writeCallback1_.writeStartingInvocations, Eq(0));
+  socket_->writev(&writeCallback1_, &op, 1, flags);
+  while (writeCallback1_.state == STATE_WAITING) {
+    socket_->getEventBase()->loopOnce();
+  }
+  ASSERT_EQ(writeCallback1_.state, STATE_FAILED);
+  EXPECT_EQ(writeCallback1_.writeStartingInvocations, 1);
 }

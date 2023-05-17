@@ -90,6 +90,22 @@ class RoundRobinRequestPile : public RequestPileBase {
     // emulating PriorityQueueThreadManager
     PileSelectionFunction getDefaultPileSelectionFunc(
         unsigned defaultPriority = static_cast<unsigned>(concurrency::NORMAL));
+
+    std::string describe() const {
+      auto numBucketsPerPriorityString = [this]() -> std::string {
+        std::string result = "{";
+        for (std::size_t i = 0; i < numBucketsPerPriority.size(); i++) {
+          result += std::to_string(numBucketsPerPriority[i]);
+        }
+        result += "}";
+        return result;
+      };
+      return fmt::format(
+          "{{Options name={} numBucketsPerPriority={} numMaxRequests={}}}",
+          name,
+          numBucketsPerPriorityString(),
+          numMaxRequests);
+    }
   };
 
   // The default number of buckets for each priority is 1
@@ -100,8 +116,7 @@ class RoundRobinRequestPile : public RequestPileBase {
   std::optional<ServerRequestRejection> enqueue(
       ServerRequest&& request) override;
 
-  std::pair<std::optional<ServerRequest>, std::optional<intptr_t>> dequeue()
-      override;
+  std::optional<ServerRequest> dequeue() override;
 
   uint64_t requestCount() const override;
 

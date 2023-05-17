@@ -103,6 +103,10 @@ type penv =
 let strip_ns id =
   id |> Utils.strip_ns |> Hh_autoimport.strip_HH_namespace_if_autoimport
 
+let show_supportdyn env =
+  (not (TypecheckerOptions.everything_sdt env.genv.tcopt))
+  || Typing_env_types.get_log_level env "show" >= 1
+
 (*****************************************************************************)
 (* Pretty-printer of the "full" type.                                        *)
 (* This is used in server/symbolTypeService and elsewhere                    *)
@@ -116,6 +120,8 @@ module Full = struct
 
   let text_strip_ns s = Doc.text (strip_ns s)
 
+  let text_strip_all_ns s = Doc.text (Utils.strip_all_ns s)
+
   let ( ^^ ) a b = Concat [a; b]
 
   let debug_mode = ref false
@@ -123,6 +129,14 @@ module Full = struct
   let show_verbose penv =
     match penv with
     | Loclenv env -> Typing_env_types.get_log_level env "show" > 1
+    | Declenv -> false
+
+  (* Until we support NoAutoDynamic, all types under everything-sdt
+   * support dynamic so displaying supportdyn is redundant
+   *)
+  let show_supportdyn_penv penv =
+    match penv with
+    | Loclenv env -> show_supportdyn env
     | Declenv -> false
 
   let blank_tyvars = ref false
@@ -198,6 +212,21 @@ module Full = struct
       fields
       ~out_of_fuel_message:"shape was truncated"
 
+  (* Split type parameters [tparams] into normal user-denoted type
+     parameters, and a list of polymorphic context names that were
+     desugared to type parameters. *)
+  let split_desugared_ctx_tparams (tparams : 'a tparam list) :
+      string list * 'a tparam list =
+    let (generated_tparams, other_tparams) =
+      List.partition_tf tparams ~f:(fun { tp_name = (_, name); _ } ->
+          SN.Coeffects.is_generated_generic name)
+    in
+    let desugared_tparams =
+      List.map generated_tparams ~f:(fun { tp_name = (_, name); _ } ->
+          SN.Coeffects.unwrap_generated_generic name)
+    in
+    (desugared_tparams, other_tparams)
+
   let rec fun_type ~fuel ~ty to_doc st penv ft fun_implicit_params =
     let n = List.length ft.ft_params in
     let (fuel, params) =
@@ -209,10 +238,12 @@ module Full = struct
             else
               d ))
     in
+
+    let (_, tparams) = split_desugared_ctx_tparams ft.ft_tparams in
     let (fuel, tparams_doc) =
       (* only print tparams when they have been instantiated with targs
        * so that they correctly express reified parameterization *)
-      match (ft.ft_tparams, get_ft_ftk ft) with
+      match (tparams, get_ft_ftk ft) with
       | ([], _)
       | (_, FTKtparams) ->
         (fuel, Nothing)
@@ -223,7 +254,13 @@ module Full = struct
       possibly_enforced_ty ~fuel ~ty to_doc st penv ft.ft_ret
     in
     let (fuel, capabilities_doc) =
-      fun_implicit_params ~fuel to_doc st penv ft.ft_implicit_params
+      fun_implicit_params
+        ~fuel
+        to_doc
+        st
+        penv
+        ft.ft_tparams
+        ft.ft_implicit_params
     in
     let (fuel, params_doc) = list ~fuel "(" id params ")" in
     let tparams_doc =
@@ -282,7 +319,7 @@ module Full = struct
           | false -> Nothing);
           d;
           (if get_fp_has_default fp then
-            text "=_"
+            text " = _"
           else
             Nothing);
         ]
@@ -320,7 +357,7 @@ module Full = struct
     (fuel, tparam_doc)
 
   and tparam_constraint ~fuel ~ty to_doc st penv (ck, cty) =
-    let (fuel, contraint_ty_doc) = ty ~fuel to_doc st penv cty in
+    let (fuel, constraint_ty_doc) = ty ~fuel to_doc st penv cty in
     let constraint_doc =
       Concat
         [
@@ -331,7 +368,7 @@ module Full = struct
             | Ast_defs.Constraint_super -> "super"
             | Ast_defs.Constraint_eq -> "=");
           Space;
-          contraint_ty_doc;
+          constraint_ty_doc;
         ]
     in
     (fuel, constraint_doc)
@@ -339,16 +376,6 @@ module Full = struct
   let tprim x = text @@ Aast_defs.string_of_tprim x
 
   let tfun ~fuel ~ty to_doc st penv ft fun_implicit_params =
-    let sdt =
-      match penv with
-      | Loclenv env when TypecheckerOptions.enable_sound_dynamic env.genv.tcopt
-        ->
-        if get_ft_support_dynamic_type ft then
-          text "<<__SupportDynamicType>> "
-        else
-          Nothing
-      | _ -> Nothing
-    in
     let (fuel, fun_type_doc) =
       fun_type ~fuel ~ty to_doc st penv ft fun_implicit_params
     in
@@ -360,7 +387,6 @@ module Full = struct
             text "readonly "
           else
             Nothing);
-          sdt;
           text "function";
           fun_type_doc;
           text ")";
@@ -370,7 +396,7 @@ module Full = struct
 
   let ttuple ~fuel k tyl = list ~fuel "(" k tyl ")"
 
-  let tshape ~fuel k to_doc (shape_kind : shape_kind) (fdm : _ TShapeMap.t) =
+  let tshape ~fuel ~open_mixed k to_doc shape_kind (fdm : _ TShapeMap.t) =
     let (fuel, fields_doc) =
       let f_field (shape_map_key, { sft_optional; sft_ty }) ~fuel =
         let key_delim =
@@ -399,10 +425,17 @@ module Full = struct
       in
       shape_map ~fuel fdm f_field
     in
-    let fields_doc =
-      match shape_kind with
-      | Closed_shape -> fields_doc
-      | Open_shape -> fields_doc @ [text "..."]
+    let (fuel, fields_doc) =
+      begin
+        if Typing_defs.is_nothing shape_kind then
+          (fuel, fields_doc)
+        else if open_mixed then
+          (fuel, fields_doc @ [text "..."])
+        else
+          let (fuel, ty_doc) = k ~fuel shape_kind in
+          ( fuel,
+            fields_doc @ [Concat [text "_"; Space; text "=>"; Space; ty_doc]] )
+      end
     in
     list ~fuel "shape(" id fields_doc ")"
 
@@ -584,6 +617,10 @@ module Full = struct
     | Tprim x -> (fuel, tprim x)
     | Tvar x -> (fuel, text (Printf.sprintf "#%d" x))
     | Tfun ft -> tfun ~fuel ~ty to_doc st penv ft fun_decl_implicit_params
+    | Tnewtype (n, _, ty)
+      when String.equal n SN.Classes.cSupportDyn
+           && not (show_supportdyn_penv penv) ->
+      k ~fuel ty
     (* Don't strip_ns here! We want the FULL type, including the initial slash.
       *)
     | Tapply ((_, s), tyl)
@@ -601,10 +638,12 @@ module Full = struct
       let (fuel, tys_doc) = ttuple ~fuel k tyl in
       let intersection_doc = Concat [text "&"; tys_doc] in
       (fuel, intersection_doc)
-    | Tshape (shape_kind, fdm) -> tshape ~fuel k to_doc shape_kind fdm
+    | Tshape (_, shape_kind, fdm) ->
+      tshape ~fuel ~open_mixed:false k to_doc shape_kind fdm
 
   (* TODO (T86471586): Display capabilities that are decls for functions *)
-  and fun_decl_implicit_params ~fuel _to_doc _st _penv _implicit_param =
+  and fun_decl_implicit_params ~fuel _to_doc _st _penv _tparams _implicit_param
+      =
     (fuel, text ":")
 
   (* For a given type parameter, construct a list of its constraints *)
@@ -623,6 +662,15 @@ module Full = struct
       let lower = Typing_env_types.get_lower_bounds penv tparam params in
       let upper = Typing_env_types.get_upper_bounds penv tparam params in
       let equ = Typing_env_types.get_equal_bounds penv tparam params in
+      let upper =
+        if show_supportdyn penv then
+          upper
+        else
+          (* Don't show "as mixed" if we're not printing supportdyn *)
+          TySet.remove
+            Typing_make_type.(supportdyn Reason.Rnone (mixed Reason.Rnone))
+            upper
+      in
       (* If we have an equality we can ignore the other bounds *)
       if not (TySet.is_empty equ) then
         List.map (TySet.elements equ) ~f:(fun ty ->
@@ -632,6 +680,22 @@ module Full = struct
             (tparam, Ast_defs.Constraint_super, ty))
         @ List.map (TySet.elements upper) ~f:(fun ty ->
               (tparam, Ast_defs.Constraint_as, ty))
+
+  let show_likes env =
+    TypecheckerOptions.enable_sound_dynamic env.genv.tcopt
+    || TypecheckerOptions.like_type_hints env.genv.tcopt
+
+  let rec is_open_mixed env t =
+    match get_node t with
+    | Tnewtype (n, _, ty)
+      when String.equal n SN.Classes.cSupportDyn && not (show_supportdyn env) ->
+      is_open_mixed env ty
+    | Toption t ->
+      let (_, t) = Typing_inference_env.expand_type env.inference_env t in
+      (match get_node t with
+      | Tnonnull -> true
+      | _ -> false)
+    | _ -> false
 
   (* Prints a locl_ty. If there isn't enough fuel, the type is omitted. Each
      recursive call to print a type depletes the fuel by one. *)
@@ -666,9 +730,7 @@ module Full = struct
     | Toption ty -> begin
       match deref ty with
       | (_, Tnonnull) -> (fuel, text "mixed")
-      | (r, Tunion tyl)
-        when TypecheckerOptions.like_type_hints env.genv.tcopt
-             && List.exists ~f:is_dynamic tyl ->
+      | (r, Tunion tyl) when show_likes env && List.exists ~f:is_dynamic tyl ->
         (* Unions with null become Toption, which leads to the awkward ?~...
          * The Tunion case can better handle this *)
         k ~fuel (mk (r, Tunion (mk (r, Tprim Nast.Tnull) :: tyl)))
@@ -748,6 +810,10 @@ module Full = struct
     | Tnewtype (s, [], _)
     | Tgeneric (s, []) ->
       (fuel, to_doc s)
+    | Tnewtype (n, _, ty)
+      when String.equal n SN.Classes.cSupportDyn
+           && not (show_supportdyn_penv penv) ->
+      k ~fuel ty
     | Tnewtype (s, tyl, _)
     | Tgeneric (s, tyl) ->
       let (fuel, tys_doc) = list ~fuel "<" k tyl ">" in
@@ -764,7 +830,7 @@ module Full = struct
       *)
     | Ttuple tyl -> ttuple ~fuel k tyl
     | Tunion [] -> (fuel, text "nothing")
-    | Tunion tyl when TypecheckerOptions.like_type_hints env.genv.tcopt ->
+    | Tunion tyl when show_likes env ->
       let tyl =
         List.fold_right tyl ~init:Typing_set.empty ~f:Typing_set.add
         |> Typing_set.elements
@@ -920,33 +986,52 @@ module Full = struct
     | Tintersection [] -> (fuel, text "mixed")
     | Tintersection tyl ->
       delimited_list ~fuel (Space ^^ text "&" ^^ Space) "(" k tyl ")"
-    | Tshape (shape_kind, fdm) -> tshape ~fuel k to_doc shape_kind fdm
+    | Tshape (_, shape_kind, fdm) ->
+      tshape
+        ~fuel
+        ~open_mixed:(is_open_mixed env shape_kind)
+        k
+        to_doc
+        shape_kind
+        fdm
     | Taccess (root_ty, id) ->
       let (fuel, root_ty_doc) = k ~fuel root_ty in
       let access_doc = Concat [root_ty_doc; text "::"; to_doc (snd id)] in
       (fuel, access_doc)
 
-  and fun_locl_implicit_params ~fuel to_doc st penv { capability } =
-    match capability with
-    | CapDefaults _ -> (fuel, text ":")
-    | CapTy t ->
-      let default_capability : locl_ty =
-        Typing_make_type.default_capability Pos_or_decl.none
-      in
-      if ty_equal ~normalize_lists:true t default_capability then
-        (fuel, text ":")
-      else
-        let (fuel, capabilities) =
+  and fun_locl_implicit_params ~fuel to_doc st penv tparams { capability } =
+    let (fuel, capabilities) =
+      match capability with
+      | CapDefaults _ -> (fuel, None)
+      | CapTy t ->
+        let default_capability : locl_ty =
+          Typing_make_type.default_capability Pos_or_decl.none
+        in
+        if ty_equal ~normalize_lists:true t default_capability then
+          (fuel, None)
+        else (
           match get_node t with
-          | Tintersection [] -> (fuel, Nothing)
+          | Tintersection [] -> (fuel, Some [])
           | Toption t -> begin
             match deref t with
-            | (_, Tnonnull) -> (fuel, Nothing)
-            | _ -> locl_ty ~fuel to_doc st penv t
+            | (_, Tnonnull) -> (fuel, Some [])
+            | _ ->
+              let (fuel, cap) = locl_ty ~fuel to_doc st penv t in
+              (fuel, Some [cap])
           end
-          | _ -> locl_ty ~fuel to_doc st penv t
-        in
-        (fuel, Concat [text "["; capabilities; text "]:"])
+          | _ ->
+            let (fuel, cap) = locl_ty ~fuel to_doc st penv t in
+            (fuel, Some [cap])
+        )
+    in
+    let (ctx_names, _) = split_desugared_ctx_tparams tparams in
+    let ctx_names = List.map ctx_names ~f:(fun name -> text name) in
+
+    match (capabilities, ctx_names) with
+    | (None, []) -> (fuel, text ":")
+    | (None, ctx_names) -> (fuel, Concat [text "["; Concat ctx_names; text "]:"])
+    | (Some capabilities, ctx_names) ->
+      (fuel, Concat [text "["; Concat (capabilities @ ctx_names); text "]:"])
 
   let rec constraint_type_ ~fuel to_doc st penv x =
     let k ~fuel lty = locl_ty ~fuel to_doc st penv lty in
@@ -1096,7 +1181,10 @@ module Full = struct
       match (occurrence, get_node x) with
       | ({ type_ = Function | Method _; _ }, Tnewtype (name, [tyarg], _))
         when String.equal name SN.Classes.cSupportDyn ->
-        (text "<<__SupportDynamicType>>" ^^ Newline ^^ prefix, tyarg)
+        if show_supportdyn env then
+          (text "<<__SupportDynamicType>>" ^^ Newline ^^ prefix, tyarg)
+        else
+          (prefix, tyarg)
       | (_, _) -> (prefix, x)
     in
     let (fuel, body_doc) =
@@ -1129,7 +1217,7 @@ module Full = struct
             fun_locl_implicit_params
         in
         let fun_doc =
-          Concat [text "function"; Space; text_strip_ns name; fun_ty_doc]
+          Concat [text "function"; Space; text_strip_all_ns name; fun_ty_doc]
         in
         (fuel, fun_doc)
       | ({ type_ = Property (_, name); _ }, _) ->
@@ -1228,6 +1316,9 @@ module ErrorString = struct
     | Tgeneric _ ->
       let (fuel, ty_str) = ety_to_string ety in
       (fuel, "a value of generic type " ^ ty_str)
+    | Tnewtype (n, _, ty)
+      when String.equal n SN.Classes.cSupportDyn && not (show_supportdyn env) ->
+      type_ ~fuel env ty
     | Tnewtype (x, _, _) when String.equal x SN.Classes.cClassname ->
       (fuel, "a classname string")
     | Tnewtype (x, _, _) when String.equal x SN.Classes.cTypename ->
@@ -1400,6 +1491,9 @@ module Json = struct
     | (p, Tgeneric (s, tyargs)) ->
       obj @@ kind p "generic" @ is_array true @ name s @ args tyargs
     | (p, Tunapplied_alias s) -> obj @@ kind p "unapplied_alias" @ name s
+    | (_, Tnewtype (s, _, ty))
+      when String.equal s SN.Classes.cSupportDyn && not (show_supportdyn env) ->
+      from_type env ty
     | (p, Tnewtype (s, _, ty))
       when Decl_provider.get_class env.decl_env.Decl_env.ctx s
            >>| Cls.enum_type
@@ -1424,12 +1518,8 @@ module Json = struct
     | (p, Tneg (Neg_class (_, c))) -> obj @@ kind p "negation" @ name c
     | (p, Tclass ((_, cid), e, tys)) ->
       obj @@ kind p "class" @ name cid @ args tys @ refs e
-    | (p, Tshape (shape_kind, fl)) ->
-      let fields_known =
-        match shape_kind with
-        | Closed_shape -> true
-        | Open_shape -> false
-      in
+    | (p, Tshape (_, shape_kind, fl)) ->
+      let fields_known = is_nothing shape_kind in
       obj
       @@ kind p "shape"
       @ is_array false
@@ -1437,7 +1527,11 @@ module Json = struct
       @ fields (TShapeMap.bindings fl)
     | (p, Tunion []) -> obj @@ kind p "nothing"
     | (_, Tunion [ty]) -> from_type env ty
-    | (p, Tunion tyl) -> obj @@ kind p "union" @ args tyl
+    | (p, Tunion tyl) -> begin
+      match List.filter tyl ~f:(fun ty -> not (is_dynamic ty)) with
+      | [ty] -> from_type env ty
+      | _ -> obj @@ kind p "union" @ args tyl
+    end
     | (p, Tintersection []) -> obj @@ kind p "mixed"
     | (_, Tintersection [ty]) -> from_type env ty
     | (p, Tintersection tyl) -> obj @@ kind p "intersection" @ args tyl
@@ -1724,15 +1818,15 @@ module Json = struct
             >>= fun (fields_known, _fields_known_keytrace) ->
             let shape_kind =
               if fields_known then
-                Closed_shape
+                Typing_make_type.nothing Reason.Rnone
               else
-                Open_shape
+                Typing_make_type.mixed Reason.Rnone
             in
             let fields =
               List.fold fields ~init:TShapeMap.empty ~f:(fun shape_map (k, v) ->
                   TShapeMap.add k v shape_map)
             in
-            ty (Tshape (shape_kind, fields))
+            ty (Tshape (Missing_origin, shape_kind, fields))
         | "union" ->
           get_array "args" (json, keytrace) >>= fun (args, keytrace) ->
           aux_args args ~keytrace >>= fun tyl -> ty (Tunion tyl)
@@ -1793,6 +1887,7 @@ module Json = struct
                  ft_where_constraints = [];
                  ft_flags = 0;
                  ft_ifc_decl = default_ifc_fun_decl;
+                 ft_cross_package = None;
                })
         | _ ->
           deserialization_error

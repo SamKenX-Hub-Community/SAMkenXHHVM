@@ -19,7 +19,7 @@ let add_local_def vars (pos, lid) : vars =
   { vars with bound = Local_id.Map.add lid pos vars.bound }
 
 let add_local_defs vars lvals : vars =
-  List.fold lvals ~init:vars ~f:add_local_def
+  List.fold lvals ~init:vars ~f:(fun acc ((), lval) -> add_local_def acc lval)
 
 let add_param vars param : vars =
   let lid = Local_id.make_unscoped param.Aast.param_name in
@@ -27,17 +27,18 @@ let add_param vars param : vars =
 
 let add_params vars f : vars = List.fold f.Aast.f_params ~init:vars ~f:add_param
 
-let lvalues (e : Nast.expr) : (Pos.t * Local_id.t) list =
+let lvalues (e : Nast.expr) : Nast.capture_lid list =
   let rec aux acc (_, _, e) =
     match e with
     | Aast.List lv -> List.fold_left ~init:acc ~f:aux lv
-    | Aast.Lvar (pos, lid) -> (pos, lid) :: acc
+    | Aast.Lvar (pos, lid) -> ((), (pos, lid)) :: acc
     | _ -> acc
   in
   aux [] e
 
 let add_local_defs_from_lvalue vars e : vars =
-  List.fold (lvalues e) ~init:vars ~f:add_local_def
+  List.fold (lvalues e) ~init:vars ~f:(fun acc ((), lval) ->
+      add_local_def acc lval)
 
 let add_local_ref vars (pos, lid) : vars =
   if Local_id.Map.mem lid vars.bound then
@@ -71,7 +72,7 @@ let visitor =
       vars := add_local_ref !vars lv;
       super#on_Lvar () e lv
 
-    method! on_Binop () e bop lhs rhs =
+    method! on_Binop () e (Aast.{ bop; lhs; _ } as binop) =
       (match bop with
       | Ast_defs.Eq None ->
         (* Introducing a new local variable.
@@ -79,7 +80,7 @@ let visitor =
            $x = ... *)
         vars := add_local_defs_from_lvalue !vars lhs
       | _ -> ());
-      super#on_Binop () e bop lhs rhs
+      super#on_Binop () e binop
 
     method! on_as_expr () ae =
       (* [as] inside a foreach loop introduces a new local variable.
@@ -141,13 +142,14 @@ let visitor =
          We just check that they haven't tried to explicitly capture
          $this. *)
       let idl =
-        List.filter idl ~f:(fun (p, lid) ->
+        List.filter idl ~f:(fun (_, (p, lid)) ->
             if
               String.equal
                 (Local_id.to_string lid)
                 Naming_special_names.SpecialIdents.this
             then (
-              Errors.add_naming_error @@ Naming_error.This_as_lexical_variable p;
+              Errors.add_error
+                Naming_error.(to_user_error @@ This_as_lexical_variable p);
               false
             ) else
               true)
@@ -166,7 +168,10 @@ let visitor =
         | _ -> assert false
       in
       let idl =
-        Local_id.Map.fold (fun lid pos acc -> (pos, lid) :: acc) !vars.free []
+        Local_id.Map.fold
+          (fun lid pos acc -> ((), (pos, lid)) :: acc)
+          !vars.free
+          []
       in
       vars :=
         { outer_vars with free = Local_id.Map.union outer_vars.free !vars.free };

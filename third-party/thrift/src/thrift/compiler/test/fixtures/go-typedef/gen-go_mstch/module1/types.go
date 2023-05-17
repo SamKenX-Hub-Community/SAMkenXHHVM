@@ -4,10 +4,10 @@
 package module1 // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  module0 "module0"
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    module0 "module0"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = module0.GoUnusedProtection__
@@ -98,7 +98,7 @@ if err != nil {
 type Drivers = []string
 
 func NewDrivers() Drivers {
-  return nil
+  return make([]string, 0)
 }
 
 func WriteDrivers(item Drivers, p thrift.Protocol) error {
@@ -245,14 +245,13 @@ var _ thrift.Struct = &Automobile{}
 
 func NewAutomobile() *Automobile {
     return (&Automobile{}).
-        SetFirstPlate("0000")
+        SetPlateNonCompat(NewPlate()).
+        SetFirstPlateNonCompat("0000").
+        SetYearNonCompat(NewYear()).
+        SetDriversNonCompat(NewDrivers()).
+        SetAccessoriesNonCompat(make([]*Accessory, 0)).
+        SetPartNamesNonCompat(make(map[int32]*CarPartName))
 }
-
-// Deprecated: Use NewAutomobile().PreviousPlate instead.
-var Automobile_PreviousPlate_DEFAULT = NewAutomobile().PreviousPlate
-
-// Deprecated: Use NewAutomobile().FirstPlate instead.
-var Automobile_FirstPlate_DEFAULT = NewAutomobile().FirstPlate
 
 func (x *Automobile) GetPlateNonCompat() Plate {
     return x.Plate
@@ -268,7 +267,7 @@ func (x *Automobile) GetPreviousPlateNonCompat() *Plate {
 
 func (x *Automobile) GetPreviousPlate() Plate {
     if !x.IsSetPreviousPlate() {
-      return NewPlate()
+        return NewPlate()
     }
 
     return *x.PreviousPlate
@@ -280,7 +279,7 @@ func (x *Automobile) GetFirstPlateNonCompat() *Plate {
 
 func (x *Automobile) GetFirstPlate() Plate {
     if !x.IsSetFirstPlate() {
-      return NewPlate()
+        return NewPlate()
     }
 
     return *x.FirstPlate
@@ -300,7 +299,7 @@ func (x *Automobile) GetDriversNonCompat() Drivers {
 
 func (x *Automobile) GetDrivers() Drivers {
     if !x.IsSetDrivers() {
-      return NewDrivers()
+        return NewDrivers()
     }
 
     return x.Drivers
@@ -312,7 +311,7 @@ func (x *Automobile) GetAccessoriesNonCompat() []*Accessory {
 
 func (x *Automobile) GetAccessories() []*Accessory {
     if !x.IsSetAccessories() {
-      return nil
+        return make([]*Accessory, 0)
     }
 
     return x.Accessories
@@ -324,10 +323,15 @@ func (x *Automobile) GetPartNamesNonCompat() map[int32]*CarPartName {
 
 func (x *Automobile) GetPartNames() map[int32]*CarPartName {
     if !x.IsSetPartNames() {
-      return nil
+        return make(map[int32]*CarPartName)
     }
 
     return x.PartNames
+}
+
+func (x *Automobile) SetPlateNonCompat(value Plate) *Automobile {
+    x.Plate = value
+    return x
 }
 
 func (x *Automobile) SetPlate(value Plate) *Automobile {
@@ -335,8 +339,18 @@ func (x *Automobile) SetPlate(value Plate) *Automobile {
     return x
 }
 
-func (x *Automobile) SetPreviousPlate(value Plate) *Automobile {
+func (x *Automobile) SetPreviousPlateNonCompat(value Plate) *Automobile {
     x.PreviousPlate = &value
+    return x
+}
+
+func (x *Automobile) SetPreviousPlate(value *Plate) *Automobile {
+    x.PreviousPlate = value
+    return x
+}
+
+func (x *Automobile) SetFirstPlateNonCompat(value Plate) *Automobile {
+    x.FirstPlate = &value
     return x
 }
 
@@ -345,8 +359,18 @@ func (x *Automobile) SetFirstPlate(value Plate) *Automobile {
     return x
 }
 
+func (x *Automobile) SetYearNonCompat(value Year) *Automobile {
+    x.Year = value
+    return x
+}
+
 func (x *Automobile) SetYear(value Year) *Automobile {
     x.Year = value
+    return x
+}
+
+func (x *Automobile) SetDriversNonCompat(value Drivers) *Automobile {
+    x.Drivers = value
     return x
 }
 
@@ -355,8 +379,18 @@ func (x *Automobile) SetDrivers(value Drivers) *Automobile {
     return x
 }
 
+func (x *Automobile) SetAccessoriesNonCompat(value []*Accessory) *Automobile {
+    x.Accessories = value
+    return x
+}
+
 func (x *Automobile) SetAccessories(value []*Accessory) *Automobile {
     x.Accessories = value
+    return x
+}
+
+func (x *Automobile) SetPartNamesNonCompat(value map[int32]*CarPartName) *Automobile {
+    x.PartNames = value
     return x
 }
 
@@ -365,7 +399,6 @@ func (x *Automobile) SetPartNames(value map[int32]*CarPartName) *Automobile {
     return x
 }
 
-
 func (x *Automobile) IsSetPreviousPlate() bool {
     return x.PreviousPlate != nil
 }
@@ -373,7 +406,6 @@ func (x *Automobile) IsSetPreviousPlate() bool {
 func (x *Automobile) IsSetFirstPlate() bool {
     return x.FirstPlate != nil
 }
-
 
 func (x *Automobile) IsSetDrivers() bool {
     return x.Drivers != nil
@@ -561,7 +593,7 @@ if err != nil {
     return err
 }
 
-    x.SetPlate(result)
+    x.SetPlateNonCompat(result)
     return nil
 }
 
@@ -571,7 +603,7 @@ if err != nil {
     return err
 }
 
-    x.SetPreviousPlate(result)
+    x.SetPreviousPlateNonCompat(result)
     return nil
 }
 
@@ -581,7 +613,7 @@ if err != nil {
     return err
 }
 
-    x.SetFirstPlate(result)
+    x.SetFirstPlateNonCompat(result)
     return nil
 }
 
@@ -591,7 +623,7 @@ if err != nil {
     return err
 }
 
-    x.SetYear(result)
+    x.SetYearNonCompat(result)
     return nil
 }
 
@@ -601,7 +633,7 @@ if err != nil {
     return err
 }
 
-    x.SetDrivers(result)
+    x.SetDriversNonCompat(result)
     return nil
 }
 
@@ -629,7 +661,7 @@ if err := p.ReadListEnd(); err != nil {
 }
 result := listResult
 
-    x.SetAccessories(result)
+    x.SetAccessoriesNonCompat(result)
     return nil
 }
 
@@ -667,9 +699,15 @@ if err := p.ReadMapEnd(); err != nil {
 }
 result := mapResult
 
-    x.SetPartNames(result)
+    x.SetPartNamesNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewAutomobile().GetPreviousPlate() instead.
+var Automobile_PreviousPlate_DEFAULT = NewAutomobile().GetPreviousPlate()
+
+// Deprecated: Use NewAutomobile().GetFirstPlate() instead.
+var Automobile_FirstPlate_DEFAULT = NewAutomobile().GetFirstPlate()
 
 func (x *Automobile) String() string {
     return fmt.Sprintf("%+v", x)
@@ -726,6 +764,7 @@ func (x *AutomobileBuilder) Emit() *Automobile {
     var objCopy Automobile = *x.obj
     return &objCopy
 }
+
 func (x *Automobile) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Automobile"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -831,6 +870,7 @@ func (x *Automobile) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type MapKey struct {
     Num int64 `thrift:"num,1" json:"num" db:"num"`
     Strval string `thrift:"strval,2" json:"strval" db:"strval"`
@@ -839,7 +879,9 @@ type MapKey struct {
 var _ thrift.Struct = &MapKey{}
 
 func NewMapKey() *MapKey {
-    return (&MapKey{})
+    return (&MapKey{}).
+        SetNumNonCompat(0).
+        SetStrvalNonCompat("")
 }
 
 func (x *MapKey) GetNumNonCompat() int64 {
@@ -858,8 +900,18 @@ func (x *MapKey) GetStrval() string {
     return x.Strval
 }
 
+func (x *MapKey) SetNumNonCompat(value int64) *MapKey {
+    x.Num = value
+    return x
+}
+
 func (x *MapKey) SetNum(value int64) *MapKey {
     x.Num = value
+    return x
+}
+
+func (x *MapKey) SetStrvalNonCompat(value string) *MapKey {
+    x.Strval = value
     return x
 }
 
@@ -867,8 +919,6 @@ func (x *MapKey) SetStrval(value string) *MapKey {
     x.Strval = value
     return x
 }
-
-
 
 func (x *MapKey) writeField1(p thrift.Protocol) error {  // Num
     if err := p.WriteFieldBegin("num", thrift.I64, 1); err != nil {
@@ -908,7 +958,7 @@ if err != nil {
     return err
 }
 
-    x.SetNum(result)
+    x.SetNumNonCompat(result)
     return nil
 }
 
@@ -918,7 +968,7 @@ if err != nil {
     return err
 }
 
-    x.SetStrval(result)
+    x.SetStrvalNonCompat(result)
     return nil
 }
 
@@ -952,6 +1002,7 @@ func (x *MapKeyBuilder) Emit() *MapKey {
     var objCopy MapKey = *x.obj
     return &objCopy
 }
+
 func (x *MapKey) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("MapKey"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1017,29 +1068,36 @@ func (x *MapKey) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type MapContainer struct {
-    Mapval map[*MapKey]string `thrift:"mapval,1" json:"mapval" db:"mapval"`
+    Mapval map[MapKey]string `thrift:"mapval,1" json:"mapval" db:"mapval"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &MapContainer{}
 
 func NewMapContainer() *MapContainer {
-    return (&MapContainer{})
+    return (&MapContainer{}).
+        SetMapvalNonCompat(make(map[MapKey]string))
 }
 
-func (x *MapContainer) GetMapvalNonCompat() map[*MapKey]string {
+func (x *MapContainer) GetMapvalNonCompat() map[MapKey]string {
     return x.Mapval
 }
 
-func (x *MapContainer) GetMapval() map[*MapKey]string {
+func (x *MapContainer) GetMapval() map[MapKey]string {
     if !x.IsSetMapval() {
-      return nil
+        return make(map[MapKey]string)
     }
 
     return x.Mapval
 }
 
-func (x *MapContainer) SetMapval(value map[*MapKey]string) *MapContainer {
+func (x *MapContainer) SetMapvalNonCompat(value map[MapKey]string) *MapContainer {
+    x.Mapval = value
+    return x
+}
+
+func (x *MapContainer) SetMapval(value map[MapKey]string) *MapContainer {
     x.Mapval = value
     return x
 }
@@ -1092,16 +1150,16 @@ if err != nil {
     return thrift.PrependError("error reading map begin: ", err)
 }
 
-mapResult := make(map[*MapKey]string, size)
+mapResult := make(map[MapKey]string, size)
 for i := 0; i < size; i++ {
-    var key *MapKey
+    var key MapKey
     {
         result := *NewMapKey()
 err := result.Read(p)
 if err != nil {
     return err
 }
-        key = &result
+        key = result
     }
 
     var value string
@@ -1121,7 +1179,7 @@ if err := p.ReadMapEnd(); err != nil {
 }
 result := mapResult
 
-    x.SetMapval(result)
+    x.SetMapvalNonCompat(result)
     return nil
 }
 
@@ -1141,7 +1199,7 @@ func NewMapContainerBuilder() *MapContainerBuilder {
     }
 }
 
-func (x *MapContainerBuilder) Mapval(value map[*MapKey]string) *MapContainerBuilder {
+func (x *MapContainerBuilder) Mapval(value map[MapKey]string) *MapContainerBuilder {
     x.obj.Mapval = value
     return x
 }
@@ -1150,6 +1208,7 @@ func (x *MapContainerBuilder) Emit() *MapContainer {
     var objCopy MapContainer = *x.obj
     return &objCopy
 }
+
 func (x *MapContainer) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("MapContainer"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1207,6 +1266,7 @@ func (x *MapContainer) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Pair struct {
     Automobile *Automobile `thrift:"automobile,1" json:"automobile" db:"automobile"`
     Car *Car `thrift:"car,2" json:"car" db:"car"`
@@ -1215,14 +1275,10 @@ type Pair struct {
 var _ thrift.Struct = &Pair{}
 
 func NewPair() *Pair {
-    return (&Pair{})
+    return (&Pair{}).
+        SetAutomobileNonCompat(*NewAutomobile()).
+        SetCarNonCompat(*NewCar())
 }
-
-// Deprecated: Use NewPair().Automobile instead.
-var Pair_Automobile_DEFAULT = NewPair().Automobile
-
-// Deprecated: Use NewPair().Car instead.
-var Pair_Car_DEFAULT = NewPair().Car
 
 func (x *Pair) GetAutomobileNonCompat() *Automobile {
     return x.Automobile
@@ -1230,7 +1286,7 @@ func (x *Pair) GetAutomobileNonCompat() *Automobile {
 
 func (x *Pair) GetAutomobile() *Automobile {
     if !x.IsSetAutomobile() {
-      return NewAutomobile()
+        return NewAutomobile()
     }
 
     return x.Automobile
@@ -1242,19 +1298,29 @@ func (x *Pair) GetCarNonCompat() *Car {
 
 func (x *Pair) GetCar() *Car {
     if !x.IsSetCar() {
-      return NewCar()
+        return NewCar()
     }
 
     return x.Car
 }
 
-func (x *Pair) SetAutomobile(value Automobile) *Pair {
+func (x *Pair) SetAutomobileNonCompat(value Automobile) *Pair {
     x.Automobile = &value
     return x
 }
 
-func (x *Pair) SetCar(value Car) *Pair {
+func (x *Pair) SetAutomobile(value *Automobile) *Pair {
+    x.Automobile = value
+    return x
+}
+
+func (x *Pair) SetCarNonCompat(value Car) *Pair {
     x.Car = &value
+    return x
+}
+
+func (x *Pair) SetCar(value *Car) *Pair {
+    x.Car = value
     return x
 }
 
@@ -1314,7 +1380,7 @@ if err != nil {
     return err
 }
 
-    x.SetAutomobile(result)
+    x.SetAutomobileNonCompat(result)
     return nil
 }
 
@@ -1324,8 +1390,30 @@ if err != nil {
     return err
 }
 
-    x.SetCar(result)
+    x.SetCarNonCompat(result)
     return nil
+}
+
+// Deprecated: Use NewPair().GetAutomobile() instead.
+var Pair_Automobile_DEFAULT = NewPair().GetAutomobile()
+
+// Deprecated: Use NewPair().GetAutomobile() instead.
+func (x *Pair) DefaultGetAutomobile() *Automobile {
+    if !x.IsSetAutomobile() {
+        return NewAutomobile()
+    }
+    return x.Automobile
+}
+
+// Deprecated: Use NewPair().GetCar() instead.
+var Pair_Car_DEFAULT = NewPair().GetCar()
+
+// Deprecated: Use NewPair().GetCar() instead.
+func (x *Pair) DefaultGetCar() *Car {
+    if !x.IsSetCar() {
+        return NewCar()
+    }
+    return x.Car
 }
 
 func (x *Pair) String() string {
@@ -1358,6 +1446,7 @@ func (x *PairBuilder) Emit() *Pair {
     var objCopy Pair = *x.obj
     return &objCopy
 }
+
 func (x *Pair) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Pair"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1423,6 +1512,7 @@ func (x *Pair) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Collection struct {
     Automobiles []*Automobile `thrift:"automobiles,1" json:"automobiles" db:"automobiles"`
     Cars []*Car `thrift:"cars,2" json:"cars" db:"cars"`
@@ -1431,7 +1521,9 @@ type Collection struct {
 var _ thrift.Struct = &Collection{}
 
 func NewCollection() *Collection {
-    return (&Collection{})
+    return (&Collection{}).
+        SetAutomobilesNonCompat(make([]*Automobile, 0)).
+        SetCarsNonCompat(make([]*Car, 0))
 }
 
 func (x *Collection) GetAutomobilesNonCompat() []*Automobile {
@@ -1440,7 +1532,7 @@ func (x *Collection) GetAutomobilesNonCompat() []*Automobile {
 
 func (x *Collection) GetAutomobiles() []*Automobile {
     if !x.IsSetAutomobiles() {
-      return nil
+        return make([]*Automobile, 0)
     }
 
     return x.Automobiles
@@ -1452,14 +1544,24 @@ func (x *Collection) GetCarsNonCompat() []*Car {
 
 func (x *Collection) GetCars() []*Car {
     if !x.IsSetCars() {
-      return nil
+        return make([]*Car, 0)
     }
 
     return x.Cars
 }
 
+func (x *Collection) SetAutomobilesNonCompat(value []*Automobile) *Collection {
+    x.Automobiles = value
+    return x
+}
+
 func (x *Collection) SetAutomobiles(value []*Automobile) *Collection {
     x.Automobiles = value
+    return x
+}
+
+func (x *Collection) SetCarsNonCompat(value []*Car) *Collection {
+    x.Cars = value
     return x
 }
 
@@ -1564,7 +1666,7 @@ if err := p.ReadListEnd(); err != nil {
 }
 result := listResult
 
-    x.SetAutomobiles(result)
+    x.SetAutomobilesNonCompat(result)
     return nil
 }
 
@@ -1592,7 +1694,7 @@ if err := p.ReadListEnd(); err != nil {
 }
 result := listResult
 
-    x.SetCars(result)
+    x.SetCarsNonCompat(result)
     return nil
 }
 
@@ -1626,6 +1728,7 @@ func (x *CollectionBuilder) Emit() *Collection {
     var objCopy Collection = *x.obj
     return &objCopy
 }
+
 func (x *Collection) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Collection"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1690,3 +1793,4 @@ func (x *Collection) Read(p thrift.Protocol) error {
 
     return nil
 }
+

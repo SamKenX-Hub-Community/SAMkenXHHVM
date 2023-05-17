@@ -71,6 +71,7 @@
 #include <boost/program_options/variables_map.hpp>
 #include <boost/program_options/parsers.hpp>
 
+#include <cerrno>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -94,6 +95,7 @@ struct CompilerOptions {
   std::vector<std::string> config;
   std::vector<std::string> confStrings;
   std::vector<std::string> iniStrings;
+  std::string repoOptionsDir;
   std::string inputDir;
   std::vector<std::string> inputs;
   std::string inputList;
@@ -478,6 +480,7 @@ RepoGlobalData getGlobalData() {
   gd.EvalCoeffectEnforcementLevels = RO::EvalCoeffectEnforcementLevels;
   gd.EmitBespokeTypeStructures = RO::EvalEmitBespokeTypeStructures;
   gd.ActiveDeployment = RO::EvalActiveDeployment;
+  gd.ModuleLevelTraits = RO::EvalModuleLevelTraits;
 
   if (Option::ConstFoldFileBC) {
     gd.SourceRootForFileBC.emplace(RO::SourceRoot);
@@ -492,8 +495,7 @@ RepoGlobalData getGlobalData() {
   return gd;
 }
 
-void setCoredumps(const CompilerOptions& po) {
-  if (!po.coredump) return;
+void setCoredumps(CompilerOptions& po) {
 #ifdef _MSC_VER
 /**
  * Windows actually does core dump size and control at a system, not an app
@@ -502,6 +504,10 @@ void setCoredumps(const CompilerOptions& po) {
 #elif defined(__APPLE__) || defined(__FreeBSD__)
   struct rlimit rl;
   getrlimit(RLIMIT_CORE, &rl);
+  if (!po.coredump) {
+    po.coredump = rl.rlim_cur > 0;
+    return;
+  }
   rl.rlim_cur = 80000000LL;
   if (rl.rlim_max < rl.rlim_cur) {
     rl.rlim_max = rl.rlim_cur;
@@ -510,6 +516,10 @@ void setCoredumps(const CompilerOptions& po) {
 #else
   struct rlimit64 rl;
   getrlimit64(RLIMIT_CORE, &rl);
+  if (!po.coredump) {
+    po.coredump = rl.rlim_cur > 0;
+    return;
+  }
   rl.rlim_cur = 8000000000LL;
   if (rl.rlim_max < rl.rlim_cur) {
     rl.rlim_max = rl.rlim_cur;
@@ -530,6 +540,8 @@ int prepareOptions(CompilerOptions &po, int argc, char **argv) {
     ("version", "display version number")
     ("format,f", value<std::vector<std::string>>(&formats)->composing(),
      "HHBC Output format: binary (default) | hhas | text")
+    ("repo-options-dir", value<std::string>(&po.repoOptionsDir),
+     "repo options directory")
     ("input-dir", value<std::string>(&po.inputDir), "input directory")
     ("inputs,i", value<std::vector<std::string>>(&po.inputs)->composing(),
      "input file names")
@@ -734,6 +746,12 @@ int prepareOptions(CompilerOptions &po, int argc, char **argv) {
   if (po.inputDir.empty()) po.inputDir = '.';
   po.inputDir = FileUtil::normalizeDir(po.inputDir);
 
+  if (po.repoOptionsDir.empty()) {
+    po.repoOptionsDir = po.inputDir;
+  } else {
+    po.repoOptionsDir = FileUtil::normalizeDir(po.repoOptionsDir);
+  }
+
   for (auto const& dir : po.excludeDirs) {
     Option::PackageExcludeDirs.insert(FileUtil::normalizeDir(dir));
   }
@@ -895,10 +913,10 @@ std::unique_ptr<UnitIndex> computeIndex(
     insert(meta.modules, index->modules, "module");
   };
 
-  Package indexPackage{po.inputDir, executor, client};
+  Package indexPackage{po.inputDir, executor, client, po.coredump};
   Timer indexTimer(Timer::WallTime, "indexing");
 
-  auto const& repoFlags = RepoOptions::forFile(po.inputDir.c_str()).flags();
+  auto const& repoFlags = RepoOptions::forFile(po.repoOptionsDir).flags();
   auto const queryStr = repoFlags.autoloadQuery();
   if (!queryStr.empty()) {
     // Index the files specified by Autoload.Query
@@ -1025,7 +1043,7 @@ using ParsedFiles = folly_concurrent_hash_map_simd<
 
 ///////////////////////////////////////////////////////////////////////////////
 
-bool process(const CompilerOptions &po) {
+bool process(CompilerOptions &po) {
 #ifndef _MSC_VER
   LightProcess::Initialize(RuntimeOption::LightProcessFilePrefix,
                            RuntimeOption::LightProcessCount,
@@ -1116,6 +1134,31 @@ bool process(const CompilerOptions &po) {
       },
       executor->sticky()
     );
+  }
+
+  hphp_fast_set<const StringData*> moduleInDeployment;
+  if (!RO::EvalActiveDeployment.empty()) {
+    // Many files will be in the same module, so it is better to precompute
+    // a mapping of whether a given module is in the current deployment
+    auto const& packageInfo =
+      RepoOptions::forFile(po.repoOptionsDir).packageInfo();
+    auto const it = packageInfo.deployments().find(RO::EvalActiveDeployment);
+    if (it == end(packageInfo.deployments())) {
+      Logger::FError("The active deployment is set to {}; "
+                     "however, it is not defined in the {}/{} file",
+                     RO::EvalActiveDeployment,
+                     po.repoOptionsDir,
+                     kPackagesToml);
+      return false;
+    }
+
+    moduleInDeployment.reserve(index->modules.size());
+    for (auto const& [module, _] : index->modules) {
+      assertx(!moduleInDeployment.contains(module));
+      if (packageInfo.moduleInDeployment(module, it->second)) {
+        moduleInDeployment.insert(module);
+      }
+    }
   }
 
   Optional<RepoAutoloadMapBuilder> autoload;
@@ -1290,14 +1333,22 @@ bool process(const CompilerOptions &po) {
   // Emit a group of files that were parsed remotely
   auto const emitRemoteUnit = [&] (
       const std::vector<std::filesystem::path>& rpaths
-  ) -> coro::Task<Package::ParseMetaVec> {
+  ) -> coro::Task<Package::EmitCallBackResult> {
     Package::ParseMetaVec parseMetas;
-    parseMetas.reserve(rpaths.size());
+    Package::ParseMetaItemsToSkipSet itemsToSkip;
+
+    auto const shouldIncludeInBuild = [&] (const Package::ParseMeta& p) {
+      if (RO::EvalActiveDeployment.empty()) return true;
+      // If the unit defines any modules, then it is always included
+      if (!p.m_definitions.m_modules.empty()) return true;
+      return p.m_module_use && moduleInDeployment.contains(p.m_module_use);
+    };
 
     if (RO::EvalUseHHBBC) {
       // Retrieve HHBBC WPI (Key, Ref<Value>) pairs that were already parsed.
       // No Async I/O is necessary in this case.
-      for (auto& rpath : rpaths) {
+      for (size_t i = 0, n = rpaths.size(); i < n; ++i) {
+        auto& rpath = rpaths[i];
         auto it = parsedFiles->find(rpath.native());
         if (it == parsedFiles->end()) {
           // If you see this error in a test case, add a line to to test.php.hphp_opts:
@@ -1311,6 +1362,15 @@ bool process(const CompilerOptions &po) {
         parseMetas.emplace_back(std::move(pf->parseMeta));
         auto& p = parseMetas.back();
         if (!p.m_filepath) continue;
+        if (!shouldIncludeInBuild(p)) {
+          Logger::FVerbose("Dropping {} from the repo build because module {} is "
+                           "not part of {} deployment",
+                           p.m_filepath,
+                           p.m_module_use ? p.m_module_use->data() : "top-level",
+                           RO::EvalActiveDeployment);
+          itemsToSkip.insert(i);
+          continue;
+        }
         // We don't have unit-emitters to do uniqueness checking, but
         // the parse metadata has the definitions we can use instead.
         unique->add(p.m_definitions, p.m_filepath);
@@ -1319,14 +1379,16 @@ bool process(const CompilerOptions &po) {
           hhbbcInputs->add(std::move(e.first), std::move(e.second));
         }
       }
-      HPHP_CORO_MOVE_RETURN(parseMetas);
+      HPHP_CORO_RETURN(std::make_pair(std::move(parseMetas),
+                                      std::move(itemsToSkip)));
     }
 
-    // Otherwise, retrieve PraseMeta and load unit-emitters from a normal
+    // Otherwise, retrieve ParseMeta and load unit-emitters from a normal
     // ParseJob, then emit the unit-emitters.
     std::vector<Ref<UnitEmitterSerdeWrapper>> ueRefs;
     ueRefs.reserve(rpaths.size());
-    for (auto& rpath : rpaths) {
+    for (size_t i = 0, n = rpaths.size(); i < n; ++i) {
+      auto& rpath = rpaths[i];
       auto it = parsedFiles->find(rpath);
       if (it == parsedFiles->end()) {
         // If you see this error in a test case, add a line to to test.php.hphp_opts:
@@ -1337,6 +1399,16 @@ bool process(const CompilerOptions &po) {
         continue;
       }
       auto& pf = it->second;
+      auto& p = pf->parseMeta;
+      if (!shouldIncludeInBuild(p)) {
+        Logger::FVerbose("Dropping {} from the repo build because module {} is "
+                         "not part of {} deployment",
+                         p.m_filepath,
+                         p.m_module_use ? p.m_module_use->data() : "top-level",
+                         RO::EvalActiveDeployment);
+        itemsToSkip.insert(i);
+        continue;
+      }
       parseMetas.emplace_back(std::move(pf->parseMeta));
       ueRefs.emplace_back(std::move(*pf->ueRef));
     }
@@ -1350,7 +1422,8 @@ bool process(const CompilerOptions &po) {
       if (!wrapper.m_ue) continue;
       emitUnit(std::move(wrapper.m_ue));
     }
-    HPHP_CORO_MOVE_RETURN(parseMetas);
+    HPHP_CORO_RETURN(std::make_pair(std::move(parseMetas),
+                                    std::move(itemsToSkip)));
   };
 
   {
@@ -1361,13 +1434,14 @@ bool process(const CompilerOptions &po) {
     auto parsePackage = std::make_unique<Package>(
       po.inputDir,
       *executor,
-      *client
+      *client,
+      po.coredump
     );
     Timer parseTimer(Timer::WallTime, "parsing");
 
     // Parse the input files specified on the command line
     addInputsToPackage(*parsePackage, po);
-    auto const& repoFlags = RepoOptions::forFile(po.inputDir.c_str()).flags();
+    auto const& repoFlags = RepoOptions::forFile(po.repoOptionsDir).flags();
     auto const queryStr = repoFlags.autoloadQuery();
     if (!queryStr.empty()) {
       // Parse all the files specified by Autoload.Query
@@ -1384,7 +1458,8 @@ bool process(const CompilerOptions &po) {
   auto package = std::make_unique<Package>(
     po.inputDir,
     *executor,
-    *client
+    *client,
+    po.coredump
   );
 
   {
@@ -1426,7 +1501,7 @@ bool process(const CompilerOptions &po) {
       if (po.filecache.empty()) return;
       Timer _{Timer::WallTime, "saving file cache..."};
       HphpSessionAndThread session{Treadmill::SessionKind::CompilerEmit};
-      package->getFileCache()->save(po.filecache.c_str());
+      package->writeVirtualFileSystem(po.filecache.c_str());
       struct stat sb;
       stat(po.filecache.c_str(), &sb);
       Logger::Info("%" PRId64" MB %s saved",
@@ -1466,7 +1541,9 @@ bool process(const CompilerOptions &po) {
   auto const finish = [&] {
     if (!Option::GenerateBinaryHHBC) return true;
     Timer _{Timer::WallTime, "finalizing repo"};
-    repo->finish(getGlobalData(), *autoload);
+    auto const& packageInfo =
+      RepoOptions::forFile(po.repoOptionsDir).packageInfo();
+    repo->finish(getGlobalData(), *autoload, packageInfo);
     return true;
   };
   if (!RO::EvalUseHHBBC) {
@@ -1490,6 +1567,7 @@ bool process(const CompilerOptions &po) {
   if (Option::ConstFoldFileBC) {
     HHBBC::options.SourceRootForFileBC = RO::SourceRoot;
   }
+  HHBBC::options.CoreDump = po.coredump;
 
   Timer timer{Timer::WallTime, "running HHBBC"};
   HphpSession session{Treadmill::SessionKind::HHBBC};
@@ -1531,7 +1609,12 @@ int compiler_main(int argc, char **argv) {
     if (ret != 0) return ret; // command line error
 
     Timer totalTimer(Timer::WallTime, "running hphp");
-    mkdir(po.outputDir.c_str(), 0777);
+    always_assert_flog(
+      mkdir(po.outputDir.c_str(), 0777) == 0 || errno == EEXIST,
+      "Unable to mkdir({}): {}",
+      po.outputDir.c_str(),
+      folly::errnoStr(errno)
+    );
     if (!process(po)) {
       Logger::Error("hphp failed");
       return -1;

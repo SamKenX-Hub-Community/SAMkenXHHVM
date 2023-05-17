@@ -18,7 +18,6 @@ use ir::instr::Terminator;
 use ir::instr::Textual;
 use ir::BlockId;
 use ir::ClassId;
-use ir::ConstId;
 use ir::Constant;
 use ir::Func;
 use ir::FunctionId;
@@ -34,6 +33,7 @@ use ir::StringInterner;
 use ir::ValueId;
 use itertools::Itertools;
 use log::trace;
+use naming_special_names_rust::special_idents;
 
 use crate::class;
 use crate::class::IsStatic;
@@ -42,6 +42,8 @@ use crate::lower;
 use crate::mangle::FunctionName;
 use crate::mangle::GlobalName;
 use crate::mangle::Intrinsic;
+use crate::mangle::TypeName;
+use crate::member_op;
 use crate::state::UnitState;
 use crate::textual;
 use crate::textual::Expr;
@@ -63,14 +65,11 @@ pub(crate) fn write_function(
 ) -> Result {
     trace!("Convert Function {}", function.name.as_bstr(&state.strings));
 
-    let mut func_info = FuncInfo::Function(FunctionInfo {
+    let func_info = FuncInfo::Function(FunctionInfo {
         name: function.name,
     });
 
-    let func = lower::lower_func(function.func, &mut func_info, Arc::clone(&state.strings));
-    ir::verify::verify_func(&func, &Default::default(), &state.strings);
-
-    write_func(txf, state, textual::Ty::VoidPtr, func, Arc::new(func_info))
+    lower_and_write_func(txf, state, textual::Ty::VoidPtr, function.func, func_info)
 }
 
 pub(crate) fn compute_func_params<'a>(
@@ -79,8 +78,8 @@ pub(crate) fn compute_func_params<'a>(
     this_ty: textual::Ty,
 ) -> Result<(Vec<AsciiString>, Vec<textual::Ty>, HashSet<LocalId>)> {
     // Prepend the 'this' parameter.
-    let this_name = AsciiString::from_str("$this").unwrap();
-    let this_lid = LocalId::Named(unit_state.strings.intern_str("$this"));
+    let this_name = AsciiString::from_str(special_idents::THIS).unwrap();
+    let this_lid = LocalId::Named(unit_state.strings.intern_str(special_idents::THIS));
     let mut param_names = vec![this_name];
     let mut param_tys = vec![this_ty];
     let mut param_lids: HashSet<LocalId> = [this_lid].into_iter().collect();
@@ -95,13 +94,126 @@ pub(crate) fn compute_func_params<'a>(
     Ok((param_names, param_tys, param_lids))
 }
 
-pub(crate) fn write_func(
+pub(crate) fn lower_and_write_func(
+    txf: &mut TextualFile<'_>,
+    unit_state: &mut UnitState,
+    this_ty: textual::Ty,
+    func: ir::Func<'_>,
+    func_info: FuncInfo<'_>,
+) -> Result {
+    fn lower_and_write_func_(
+        txf: &mut TextualFile<'_>,
+        unit_state: &mut UnitState,
+        this_ty: textual::Ty,
+        func: ir::Func<'_>,
+        mut func_info: FuncInfo<'_>,
+    ) -> Result {
+        let func = lower::lower_func(func, &mut func_info, Arc::clone(&unit_state.strings));
+        ir::verify::verify_func(&func, &Default::default(), &unit_state.strings);
+
+        write_func(txf, unit_state, this_ty, func, Arc::new(func_info))
+    }
+
+    let has_defaults = func.params.iter().any(|p| p.default_value.is_some());
+    if has_defaults {
+        // When a function has defaults we need to split it into multiple
+        // functions which each take a different number of parameters,
+        // initialize them and then forward on to the function that takes all
+        // the parameters.
+        let inits = split_default_func(&func, &func_info, &unit_state.strings);
+        for init in inits {
+            lower_and_write_func_(txf, unit_state, this_ty.clone(), init, func_info.clone())?;
+        }
+    }
+
+    lower_and_write_func_(txf, unit_state, this_ty, func, func_info)
+}
+
+/// Given a Func that has default parameters make a version of the function with
+/// those parameters stripped out (one version is returned with each successive
+/// parameter removed).
+fn split_default_func<'a>(
+    orig_func: &Func<'a>,
+    func_info: &FuncInfo<'_>,
+    strings: &StringInterner,
+) -> Vec<Func<'a>> {
+    let mut result = Vec::new();
+    let loc = orig_func.loc_id;
+
+    let min_params = orig_func
+        .params
+        .iter()
+        .take_while(|p| p.default_value.is_none())
+        .count();
+    let max_params = orig_func.params.len();
+    for param_count in min_params..max_params {
+        let mut func = orig_func.clone();
+        let target_bid = func.params[param_count].default_value.unwrap().init;
+        func.params.truncate(param_count);
+        for i in min_params..param_count {
+            func.params[i].default_value = None;
+        }
+
+        // replace the entrypoint with a jump to the initializer.
+        let iid = func.alloc_instr(Instr::Terminator(ir::instr::Terminator::Jmp(
+            target_bid, loc,
+        )));
+        func.block_mut(Func::ENTRY_BID).iids = vec![iid];
+
+        // And turn the 'enter' calls into a tail call into the non-default
+        // function.
+        let exit_bid = {
+            let mut block = ir::Block::default();
+            let params = orig_func
+                .params
+                .iter()
+                .map(|param| {
+                    let instr = Instr::Hhbc(Hhbc::CGetL(LocalId::Named(param.name), loc));
+                    let iid = func.alloc_instr(instr);
+                    block.iids.push(iid);
+                    ValueId::from(iid)
+                })
+                .collect_vec();
+            let instr = match func_info {
+                FuncInfo::Function(fi) => Instr::simple_call(fi.name, &params, loc),
+                FuncInfo::Method(mi) => {
+                    let this_str = strings.intern_str(special_idents::THIS);
+                    let instr = Instr::Hhbc(Hhbc::CGetL(LocalId::Named(this_str), loc));
+                    let receiver = func.alloc_instr(instr);
+                    block.iids.push(receiver);
+                    Instr::simple_method_call(mi.name, receiver.into(), &params, loc)
+                }
+            };
+            let iid = func.alloc_instr(instr);
+            block.iids.push(iid);
+            let iid = func.alloc_instr(Instr::ret(iid.into(), loc));
+            block.iids.push(iid);
+
+            func.alloc_bid(block)
+        };
+
+        for instr in func.instrs.iter_mut() {
+            match instr {
+                Instr::Terminator(Terminator::Enter(bid, _)) => *bid = exit_bid,
+                _ => {}
+            }
+        }
+
+        result.push(func);
+    }
+
+    result
+}
+
+fn write_func(
     txf: &mut TextualFile<'_>,
     unit_state: &mut UnitState,
     this_ty: textual::Ty,
     mut func: ir::Func<'_>,
     func_info: Arc<FuncInfo<'_>>,
 ) -> Result {
+    let strings = Arc::clone(&unit_state.strings);
+
     let params = std::mem::take(&mut func.params);
     let (param_names, param_tys, param_lids) = compute_func_params(&params, unit_state, this_ty)?;
     let tx_params = param_names
@@ -110,7 +222,7 @@ pub(crate) fn write_func(
         .zip(param_tys.iter())
         .collect_vec();
 
-    let ret_ty = convert_ty(&func.return_type.enforced, &unit_state.strings);
+    let ret_ty = convert_ty(&func.return_type.enforced, &strings);
 
     let lids = func
         .body_instrs()
@@ -122,31 +234,42 @@ pub(crate) fn write_func(
     let mut locals = lids
         .into_iter()
         .filter(|lid| !param_lids.contains(lid))
-        .sorted_by(|x, y| cmp_lid(&unit_state.strings, x, y))
+        .sorted_by(|x, y| cmp_lid(&strings, x, y))
         .zip(std::iter::repeat(&local_ty))
         .collect::<Vec<_>>();
 
     // See if we need a temp var for use by member_ops.
     let base_ty;
-    if crate::member_op::func_needs_base_var(&func) {
-        let base = crate::member_op::base_var(&unit_state.strings);
+    if member_op::func_needs_base_var(&func) {
+        let base = member_op::base_var(&strings);
         base_ty = textual::Ty::mixed();
         locals.push((base, &base_ty));
     }
 
-    let name_str = match *func_info {
-        FuncInfo::Method(ref mi) => FunctionName::method(mi.class.name, mi.is_static, mi.name),
+    let name = match *func_info {
+        FuncInfo::Method(ref mi) => match mi.name {
+            name if name.is_86cinit(&strings) => {
+                FunctionName::Intrinsic(Intrinsic::ConstInit(mi.class.name))
+            }
+            name if name.is_86pinit(&strings) => {
+                FunctionName::Intrinsic(Intrinsic::PropInit(mi.class.name))
+            }
+            name if name.is_86sinit(&strings) => {
+                FunctionName::Intrinsic(Intrinsic::StaticInit(mi.class.name))
+            }
+            _ => FunctionName::method(mi.class.name, mi.is_static, mi.name),
+        },
         FuncInfo::Function(ref fi) => FunctionName::Function(fi.name),
     };
 
     let span = func.loc(func.loc_id).clone();
-    txf.define_function(&name_str, &span, &tx_params, &ret_ty, &locals, {
+    txf.define_function(&name, Some(&span), &tx_params, &ret_ty, &locals, {
         let func_info = Arc::clone(&func_info);
         |fb| {
             let mut func = rewrite_jmp_ops(func);
             ir::passes::clean::run(&mut func);
 
-            let mut state = FuncState::new(fb, Arc::clone(&unit_state.strings), &func, func_info);
+            let mut state = FuncState::new(fb, Arc::clone(&strings), &func, func_info);
 
             for bid in func.block_ids() {
                 write_block(&mut state, bid)?;
@@ -156,17 +279,59 @@ pub(crate) fn write_func(
         }
     })?;
 
-    // For a static method also generate an instance stub which forwards to the
-    // static method.
+    // For a user static method also generate an instance stub which forwards to
+    // the static method.
 
-    match *func_info {
-        FuncInfo::Method(ref mi) => {
-            if mi.is_static == IsStatic::Static {
-                write_instance_stub(txf, unit_state, mi, &tx_params, &ret_ty, &span)?;
-            }
+    match (&*func_info, name) {
+        (
+            FuncInfo::Method(
+                mi @ MethodInfo {
+                    is_static: IsStatic::Static,
+                    ..
+                },
+            ),
+            FunctionName::Method(..) | FunctionName::Unmangled(..),
+        ) => {
+            write_instance_stub(txf, unit_state, mi, &tx_params, &ret_ty, &span)?;
         }
-        FuncInfo::Function(_) => {}
+        _ => {}
     }
+
+    Ok(())
+}
+
+pub(crate) fn write_func_decl(
+    txf: &mut TextualFile<'_>,
+    unit_state: &mut UnitState,
+    this_ty: textual::Ty,
+    mut func: ir::Func<'_>,
+    func_info: Arc<FuncInfo<'_>>,
+) -> Result {
+    let params = std::mem::take(&mut func.params);
+    let (_, param_tys, _) = compute_func_params(&params, unit_state, this_ty)?;
+
+    let ret_ty = convert_ty(&func.return_type.enforced, &unit_state.strings);
+
+    // See if we need a temp var for use by member_ops.
+    if member_op::func_needs_base_var(&func) {}
+
+    let name = match *func_info {
+        FuncInfo::Method(ref mi) => match mi.name {
+            name if name.is_86cinit(&unit_state.strings) => {
+                FunctionName::Intrinsic(Intrinsic::ConstInit(mi.class.name))
+            }
+            name if name.is_86pinit(&unit_state.strings) => {
+                FunctionName::Intrinsic(Intrinsic::PropInit(mi.class.name))
+            }
+            name if name.is_86sinit(&unit_state.strings) => {
+                FunctionName::Intrinsic(Intrinsic::StaticInit(mi.class.name))
+            }
+            _ => FunctionName::method(mi.class.name, mi.is_static, mi.name),
+        },
+        FuncInfo::Function(ref fi) => FunctionName::Function(fi.name),
+    };
+
+    txf.declare_function(&name, &param_tys, &ret_ty)?;
 
     Ok(())
 }
@@ -194,9 +359,9 @@ fn write_instance_stub(
     tx_params[0].1 = &inst_ty;
 
     let locals = Vec::default();
-    txf.define_function(&name_str, span, &tx_params, ret_ty, &locals, |fb| {
+    txf.define_function(&name_str, Some(span), &tx_params, ret_ty, &locals, |fb| {
         fb.comment("forward to the static method")?;
-        let this_str = strings.intern_str("$this");
+        let this_str = strings.intern_str(special_idents::THIS);
         let this_lid = LocalId::Named(this_str);
         let this = fb.load(&inst_ty, textual::Expr::deref(this_lid))?;
         let static_this = hack::call_builtin(fb, hack::Builtin::GetStaticClass, [this])?;
@@ -261,10 +426,6 @@ fn write_instr(state: &mut FuncState<'_, '_, '_>, iid: InstrId) -> Result {
 
     match *instr {
         Instr::Call(ref call) => write_call(state, iid, call)?,
-        Instr::Hhbc(Hhbc::ClsCnsD(const_id, cid, _)) => {
-            let vid = write_get_class_const(state, cid, const_id)?;
-            state.set_iid(iid, vid);
-        }
         Instr::Hhbc(Hhbc::CreateCl {
             ref operands,
             clsid,
@@ -286,6 +447,52 @@ fn write_instr(state: &mut FuncState<'_, '_, '_>, iid: InstrId) -> Result {
             | Hhbc::CUGetL(lid, _)
             | Hhbc::ConsumeL(lid, _),
         ) => write_load_var(state, iid, lid)?,
+        Instr::Hhbc(Hhbc::CGetS([field, class], _, _)) => {
+            let class_id = lookup_constant_string(state.func, class).map(ClassId::new);
+            let field_str = lookup_constant_string(state.func, field);
+            let output = if let Some(field_str) = field_str {
+                let field = util::escaped_string(&state.strings.lookup_bstr(field_str));
+                let this = match class_id {
+                    None => {
+                        // "C"::foo
+                        state.lookup_vid(class)
+                    }
+                    Some(cid) => {
+                        // C::foo
+                        // This isn't created by HackC but can be created by infer
+                        // lowering.
+                        state.load_static_class(cid)?.into()
+                    }
+                };
+                state.call_builtin(hack::Builtin::FieldGet, (this, field))?
+            } else {
+                // Although the rest of these are technically valid they're
+                // basically impossible to produce with HackC.
+                panic!("Unhandled CGetS");
+            };
+            state.set_iid(iid, output);
+        }
+        Instr::Hhbc(Hhbc::SetS([field, class, value], _, _)) => {
+            let class_str = lookup_constant_string(state.func, class);
+            let field_str = lookup_constant_string(state.func, field);
+            let value = state.lookup_vid(value);
+            match (class_str, field_str) {
+                (None, Some(f)) => {
+                    // "C"::foo
+                    let obj = member_op::base_from_vid(state, class)?;
+                    let field = util::escaped_string(&state.strings.lookup_bstr(f));
+                    let dst = state.call_builtin(hack::Builtin::DimFieldGet, (obj, field))?;
+                    state.store_mixed(dst, value.clone())?;
+                }
+                // Although the rest of these are technically valid they're
+                // basically impossible to produce with HackC.
+                _ => {
+                    panic!("Unhandled SetS");
+                }
+            }
+
+            state.set_iid(iid, value);
+        }
         Instr::Hhbc(Hhbc::IncDecL(lid, op, _)) => write_inc_dec_l(state, iid, lid, op)?,
         Instr::Hhbc(Hhbc::NewObjD(clsid, _)) => {
             // NewObjD allocates a default initialized object; constructor invocation is a
@@ -305,6 +512,29 @@ fn write_instr(state: &mut FuncState<'_, '_, '_>, iid: InstrId) -> Result {
         Instr::Hhbc(Hhbc::ResolveClass(cid, _)) => {
             let vid = state.load_static_class(cid)?;
             state.set_iid(iid, vid);
+        }
+        Instr::Hhbc(Hhbc::ResolveClsMethodD(cid, method, _)) => {
+            let that = state.load_static_class(cid)?;
+            let name = FunctionName::Method(TypeName::StaticClass(cid), method);
+            let curry = textual::Expr::alloc_curry(name, that, ());
+            let expr = state.fb.write_expr_stmt(curry)?;
+            state.set_iid(iid, expr);
+        }
+        Instr::Hhbc(Hhbc::ResolveFunc(func_id, _)) => {
+            let name = FunctionName::Function(func_id);
+            let that = textual::Expr::null();
+            let curry = textual::Expr::alloc_curry(name, that, ());
+            let expr = state.fb.write_expr_stmt(curry)?;
+            state.set_iid(iid, expr);
+        }
+        Instr::Hhbc(Hhbc::ResolveMethCaller(func_id, _)) => {
+            // ResolveMethCaller is weird in that HackC builds a function which
+            // calls the method.
+            let name = FunctionName::Function(func_id);
+            let that = textual::Expr::null();
+            let curry = textual::Expr::alloc_curry(name, that, ());
+            let expr = state.fb.write_expr_stmt(curry)?;
+            state.set_iid(iid, expr);
         }
         Instr::Hhbc(Hhbc::SelfCls(_)) => {
             let method_info = state
@@ -326,7 +556,7 @@ fn write_instr(state: &mut FuncState<'_, '_, '_>, iid: InstrId) -> Result {
                 textual::Expr::Const(textual::Const::Null),
             )?;
         }
-        Instr::MemberOp(ref mop) => crate::member_op::write(state, iid, mop)?,
+        Instr::MemberOp(ref mop) => member_op::write(state, iid, mop)?,
         Instr::Special(Special::Textual(Textual::AssertFalse(vid, _))) => {
             // I think "prune_not" means "stop if this expression IS true"...
             let pred = hack::expr_builtin(hack::Builtin::IsTrue, [state.lookup_vid(vid)]);
@@ -346,8 +576,11 @@ fn write_instr(state: &mut FuncState<'_, '_, '_>, iid: InstrId) -> Result {
             ref values,
             loc: _,
         })) => write_builtin(state, iid, target, values)?,
-        Instr::Special(Special::Textual(Textual::LoadGlobal(id))) => {
-            let name = GlobalName::Global(id);
+        Instr::Special(Special::Textual(Textual::LoadGlobal { id, is_const })) => {
+            let name = match is_const {
+                false => GlobalName::Global(id),
+                true => GlobalName::GlobalConst(id),
+            };
             let var = textual::Var::global(name);
             let expr = state.load_mixed(textual::Expr::deref(var))?;
             state.set_iid(iid, expr);
@@ -357,7 +590,7 @@ fn write_instr(state: &mut FuncState<'_, '_, '_>, iid: InstrId) -> Result {
                 let s = state.strings.lookup_bstr(s);
                 let s = util::escaped_string(&s);
                 let s = hack::expr_builtin(hack::Builtin::String, [s]);
-                state.fb.copy(s)?
+                state.fb.write_expr_stmt(s)?
             };
             state.set_iid(iid, expr);
         }
@@ -370,7 +603,7 @@ fn write_instr(state: &mut FuncState<'_, '_, '_>, iid: InstrId) -> Result {
         Instr::Special(Special::Select(vid, _idx)) => {
             textual_todo! {
                 let vid = state.lookup_vid(vid);
-                let expr = state.fb.copy(vid)?;
+                let expr = state.fb.write_expr_stmt(vid)?;
                 state.set_iid(iid, expr);
             }
         }
@@ -382,7 +615,8 @@ fn write_instr(state: &mut FuncState<'_, '_, '_>, iid: InstrId) -> Result {
             // a simpler form (like control flow and generic calls). Everything
             // else should be handled in lower().
             textual_todo! {
-                message = ("Non-lowered hhbc instr: {hhbc:?}"),
+                message = ("Non-lowered hhbc instr: {hhbc:?} (from {})",
+                           ir::print::formatters::FmtFullLoc(state.func.loc(hhbc.loc_id()), &state.strings)),
                 use ir::instr::HasOperands;
                 let name = FunctionName::Unmangled(format!("TODO_hhbc_{}", hhbc));
                 let operands = instr
@@ -436,19 +670,6 @@ fn write_copy(state: &mut FuncState<'_, '_, '_>, iid: InstrId, vid: ValueId) -> 
         ir::FullInstrId::None => unreachable!(),
     }
     Ok(())
-}
-
-fn write_get_class_const(
-    state: &mut FuncState<'_, '_, '_>,
-    class: ClassId,
-    cid: ConstId,
-) -> Result<Sid> {
-    // TODO: should we load the class static to ensure that the constants are initialized?
-    // let this = state.load_static_class(class)?;
-
-    let name = GlobalName::StaticConst(class, cid);
-    let var = textual::Var::global(name);
-    state.load_mixed(textual::Expr::deref(var))
 }
 
 fn write_terminator(state: &mut FuncState<'_, '_, '_>, iid: InstrId) -> Result {
@@ -588,24 +809,23 @@ fn write_call(state: &mut FuncState<'_, '_, '_>, iid: InstrId, call: &ir::Call) 
         }
     }
 
-    {
-        let context = state.strings.lookup_bytes_or_none(context);
-        if let Some(context) = context {
-            if !context.is_empty() {
-                textual_todo! {
-                    state.fb.comment("TODO: write_call(Context: {context:?})")?;
-                }
-            }
-        }
-    }
-
     // flags &= FCallArgsFlags::LockWhileUnwinding - ignored
     let is_async = flags & FCallArgsFlags::HasAsyncEagerOffset != 0;
 
+    let args = detail.args(operands);
+    let mut args = args
+        .iter()
+        .copied()
+        .map(|vid| state.lookup_vid(vid))
+        .collect_vec();
+
+    // A 'splat' is a call with an expanded array:
+    //   foo(1, 2, ...$a)
+    let mut splat = None;
+
     if flags & FCallArgsFlags::HasUnpack != 0 {
-        textual_todo! {
-            state.fb.comment("TODO: FCallArgsFlags::HasUnpack")?;
-        }
+        // 'unpack' means that the last arg was a splat.
+        splat = args.pop();
     }
     if flags & FCallArgsFlags::HasGenerics != 0 {
         textual_todo! {
@@ -631,8 +851,11 @@ fn write_call(state: &mut FuncState<'_, '_, '_>, iid: InstrId, call: &ir::Call) 
         }
     }
     if flags & FCallArgsFlags::ExplicitContext != 0 {
-        textual_todo! {
-            state.fb.comment("TODO: FCallArgsFlags::ExplicitContext")?;
+        if let Some(context) = state.strings.lookup_bytes_or_none(context) {
+            // For analysis context shouldn't really matter. For now with a
+            // calling context just report it as a comment.
+            let context = util::escaped_string(&context);
+            state.fb.comment(&format!("ExplicitContext: {context}"))?;
         }
     }
     if flags & FCallArgsFlags::HasInOut != 0 {
@@ -656,12 +879,12 @@ fn write_call(state: &mut FuncState<'_, '_, '_>, iid: InstrId, call: &ir::Call) 
         }
     }
 
-    let args = detail.args(operands);
-    let args = args
-        .iter()
-        .copied()
-        .map(|vid| state.lookup_vid(vid))
-        .collect_vec();
+    if let Some(splat) = splat {
+        // For a splat we'll pass the splat through a function that the model
+        // can recognize so it understands that it needs some extra analysis.
+        let splat = hack::call_builtin(state.fb, hack::Builtin::SilSplat, [splat])?;
+        args.push(splat.into());
+    }
 
     let mut output = match *detail {
         CallDetail::FCallClsMethod { .. } => write_todo(state.fb, "FCallClsMethod")?,
@@ -671,7 +894,16 @@ fn write_call(state: &mut FuncState<'_, '_, '_>, iid: InstrId, call: &ir::Call) 
             let this = state.load_static_class(clsid)?;
             state.fb.call_static(&target, this.into(), args)?
         }
-        CallDetail::FCallClsMethodM { .. } => state.write_todo("TODO_FCallClsMethodM")?,
+        CallDetail::FCallClsMethodM { method, log: _ } => {
+            // $c::foo()
+
+            // TODO: figure out better typing. If this is coming from a
+            // `classname` parameter we at least have a lower-bound.
+            let ty = ClassId::from_str("HackMixed", &state.strings);
+            let target = FunctionName::method(ty, IsStatic::Static, method);
+            let obj = state.lookup_vid(detail.class(operands));
+            state.fb.call_virtual(&target, obj, args)?
+        }
         CallDetail::FCallClsMethodS { .. } => state.write_todo("TODO_FCallClsMethodS")?,
         CallDetail::FCallClsMethodSD { clsref, method } => match clsref {
             SpecialClsRef::SelfCls => {
@@ -706,7 +938,13 @@ fn write_call(state: &mut FuncState<'_, '_, '_>, iid: InstrId, call: &ir::Call) 
             _ => unreachable!(),
         },
         CallDetail::FCallCtor => unreachable!(),
-        CallDetail::FCallFunc => state.write_todo("TODO_FCallFunc")?,
+        CallDetail::FCallFunc => {
+            // $foo()
+            let target = detail.target(operands);
+            let target = state.lookup_vid(target);
+            let name = FunctionName::Intrinsic(Intrinsic::Invoke(TypeName::HackMixed));
+            state.fb.call_virtual(&name, target, args)?
+        }
         CallDetail::FCallFuncD { func } => {
             // foo()
             let target = FunctionName::Function(func);
@@ -813,8 +1051,27 @@ impl<'a, 'b, 'c> FuncState<'a, 'b, 'c> {
         self.func_info.expect_method("not in class context")
     }
 
+    /// Loads the static singleton for a class.
     fn load_static_class(&mut self, cid: ClassId) -> Result<textual::Sid> {
-        class::load_static_class(self.fb, cid, &self.strings)
+        match *self.func_info {
+            FuncInfo::Method(MethodInfo {
+                class, is_static, ..
+            }) if class.name == cid => {
+                // If we're already in a member of the class then use '$this'.
+                match is_static {
+                    IsStatic::Static => self.load_this(),
+                    IsStatic::NonStatic => {
+                        let this = self.load_this()?;
+                        hack::call_builtin(self.fb, hack::Builtin::GetStaticClass, [this])
+                    }
+                }
+            }
+            _ => {
+                let cname = TypeName::Class(cid);
+                let ty = textual::Ty::Type(cname);
+                self.fb.lazy_class_initialize(&ty)
+            }
+        }
     }
 
     pub(crate) fn load_mixed(&mut self, src: impl Into<textual::Expr>) -> Result<Sid> {
@@ -822,7 +1079,7 @@ impl<'a, 'b, 'c> FuncState<'a, 'b, 'c> {
     }
 
     fn load_this(&mut self) -> Result<textual::Sid> {
-        let var = LocalId::Named(self.strings.intern_str("$this"));
+        let var = LocalId::Named(self.strings.intern_str(special_idents::THIS));
         let mi = self.expect_method_info();
         let ty = mi.class_ty();
         let this = self.fb.load(&ty, textual::Expr::deref(var))?;
@@ -873,7 +1130,6 @@ impl<'a, 'b, 'c> FuncState<'a, 'b, 'c> {
                     Constant::File => textual_todo! { textual::Expr::null() },
                     Constant::FuncCred => textual_todo! { textual::Expr::null() },
                     Constant::Method => textual_todo! { textual::Expr::null() },
-                    Constant::Named(..) => textual_todo! { textual::Expr::null() },
                     Constant::NewCol(CollectionType::ImmMap) => {
                         hack::expr_builtin(Builtin::Hhbc(hack::Hhbc::NewColImmMap), ())
                     }
@@ -895,8 +1151,8 @@ impl<'a, 'b, 'c> FuncState<'a, 'b, 'c> {
                     Constant::NewCol(CollectionType::Vector) => {
                         hack::expr_builtin(Builtin::Hhbc(hack::Hhbc::NewColVector), ())
                     }
-                    Constant::NewCol(_) => unreachable!(),
-                    Constant::Uninit => textual_todo! { textual::Expr::null() },
+                    Constant::Uninit => textual::Expr::null(),
+                    Constant::Named(..) | Constant::NewCol(_) => unreachable!(),
                 }
             }
             ir::FullInstrId::None => unreachable!(),
@@ -978,6 +1234,7 @@ fn rewrite_jmp_ops<'a>(mut func: ir::Func<'a>) -> ir::Func<'a> {
     func
 }
 
+#[derive(Clone)]
 pub(crate) enum FuncInfo<'a> {
     Function(FunctionInfo),
     Method(MethodInfo<'a>),
@@ -991,7 +1248,7 @@ impl<'a> FuncInfo<'a> {
         }
     }
 
-    pub(crate) fn _name_id(&self) -> ir::UnitBytesId {
+    pub(crate) fn name_id(&self) -> ir::UnitBytesId {
         match self {
             FuncInfo::Function(fi) => fi.name.id,
             FuncInfo::Method(mi) => mi.name.id,
@@ -1001,11 +1258,13 @@ impl<'a> FuncInfo<'a> {
 
 // Extra data associated with a (non-class) function that aren't stored on the
 // Func.
+#[derive(Clone)]
 pub(crate) struct FunctionInfo {
     pub(crate) name: FunctionId,
 }
 
 // Extra data associated with class methods that aren't stored on the Func.
+#[derive(Clone)]
 pub(crate) struct MethodInfo<'a> {
     pub(crate) name: MethodId,
     pub(crate) class: &'a ir::Class<'a>,
@@ -1046,5 +1305,34 @@ pub(crate) fn write_todo(fb: &mut textual::FuncBuilder<'_, '_>, msg: &str) -> Re
     textual_todo! {
         let target = FunctionName::Unmangled(format!("$todo.{msg}"));
         fb.call(&target, ())
+    }
+}
+
+pub(crate) fn lookup_constant_string(func: &Func<'_>, mut vid: ValueId) -> Option<ir::UnitBytesId> {
+    use ir::FullInstrId;
+    loop {
+        match vid.full() {
+            FullInstrId::Instr(iid) => {
+                let instr = func.instr(iid);
+                match instr {
+                    // If the pointed-at instr is a copy then follow it and try
+                    // again.
+                    Instr::Special(Special::Copy(copy)) => {
+                        vid = *copy;
+                    }
+                    _ => return None,
+                }
+            }
+            FullInstrId::Constant(cid) => {
+                let constant = func.constant(cid);
+                match constant {
+                    Constant::String(id) => return Some(*id),
+                    _ => return None,
+                }
+            }
+            FullInstrId::None => {
+                return None;
+            }
+        }
     }
 }

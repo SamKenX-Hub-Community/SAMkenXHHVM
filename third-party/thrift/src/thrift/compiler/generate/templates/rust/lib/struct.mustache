@@ -53,7 +53,13 @@ pub struct {{struct:rust_name}} {{>lib/block}}{{!
     }}{{#struct:serde?}}
     #[serde(skip, default = "self::dot_dot::default_for_serde_deserialize")]{{!
     }}{{/struct:serde?}}
-    pub _dot_dot_Default_default: self::dot_dot::OtherFields,{{!
+    pub _dot_dot_Default_default: {{!
+      }}{{#struct:has_adapter?}}{{!
+      }}super::dot_dot::OtherFields,{{!
+      }}{{/struct:has_adapter?}}{{!
+      }}{{^struct:has_adapter?}}{{!
+      }}self::dot_dot::OtherFields,{{!
+      }}{{/struct:has_adapter?}}{{!
 }}{{/struct:exhaustive?}}
 }
 {{#struct:exception?}}
@@ -71,19 +77,24 @@ impl ::std::error::Error for {{struct:rust_name}} {}
 
 impl ::std::fmt::Display for {{struct:rust_name}} {{>lib/block}}
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        {{#struct:exception?}}
         write!(f, {{!
             }}{{#struct:has_exception_message?}}{{!
                 }}{{#struct:is_exception_message_optional?}}{{!
-                    }}"{{struct:rust_name}}: {:?}: {:?}", self.{{struct:exception_message}}, self{{!
+                    }}"{{struct:rust_name}}: {:?}", self.{{struct:exception_message}}{{!
                 }}{{/struct:is_exception_message_optional?}}{{!
                 }}{{^struct:is_exception_message_optional?}}{{!
-                    }}"{{struct:rust_name}}: {}: {:?}", self.{{struct:exception_message}}, self{{!
+                    }}"{{struct:rust_name}}: {}", self.{{struct:exception_message}}{{!
                 }}{{/struct:is_exception_message_optional?}}{{!
             }}{{/struct:has_exception_message?}}{{!
             }}{{^struct:has_exception_message?}}{{!
                 }}"{:?}", self{{!
             }}{{/struct:has_exception_message?}}{{!
         }})
+        {{/struct:exception?}}
+        {{^struct:exception?}}
+        write!(f, "{:?}", self)
+        {{/struct:exception?}}
     }
 }
 {{/struct:exception?}}

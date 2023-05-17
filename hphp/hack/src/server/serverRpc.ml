@@ -46,8 +46,7 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
   | STATUS { max_errors; _ } ->
     HackEventLogger.check_response
       (Errors.get_error_list env.errorl |> List.map ~f:User_error.get_code);
-    let error_list = Errors.get_sorted_error_list env.errorl in
-    let error_list = List.map ~f:User_error.to_absolute error_list in
+    let error_list = Errors.sort_and_finalize env.errorl in
     let (error_list, dropped_count) = take_max_errors error_list max_errors in
     let liveness =
       if is_stale then
@@ -72,10 +71,6 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
   | STATUS_SINGLE { file_names; max_errors } ->
     let ctx = Provider_utils.ctx_from_server_env env in
     (env, take_max_errors (ServerStatusSingle.go file_names ctx) max_errors)
-  | COVERAGE_LEVELS (path, file_input) ->
-    let path = Relative_path.create_detect_prefix path in
-    let (ctx, entry) = single_ctx env path file_input in
-    (env, ServerColorFile.go_quarantined ~ctx ~entry)
   | INFER_TYPE (file_input, line, column) ->
     let path =
       match file_input with
@@ -195,6 +190,7 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
         ~entry
         ~sienv
         ~autocomplete_context
+        ~naming_table:env.naming_table
     in
     (env, result.With_complete_flag.value)
   | IDENTIFY_SYMBOL arg ->
@@ -285,6 +281,14 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
             map_env
               ~f:(ServerFindRefs.to_ide name)
               (ServerFindRefs.go ctx action include_defs genv env)))
+  | IDE_FIND_REFS_BY_SYMBOL (find_refs_action, name) ->
+    let ctx = Provider_utils.ctx_from_server_env env in
+    Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
+        let open Done_or_retry in
+        let include_defs = false in
+        map_env
+          ~f:(ServerFindRefs.to_ide name)
+          (ServerFindRefs.go ctx find_refs_action include_defs genv env))
   | IDE_GO_TO_IMPL (labelled_file, line, column) ->
     Done_or_retry.(
       let (path, file_input) =
@@ -306,43 +310,62 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
           (env, ServerHighlightRefs.go_quarantined ~ctx ~entry ~line ~column))
     in
     r
-  | REFACTOR refactor_action ->
+  | RENAME rename_action ->
     let ctx = Provider_utils.ctx_from_server_env env in
     Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
-        ServerRefactor.go ctx refactor_action genv env)
-  | REFACTOR_CHECK_SD refactor_action ->
+        ServerRename.go ctx rename_action genv env)
+  | RENAME_CHECK_SD rename_action ->
     let ctx = Provider_utils.ctx_from_server_env env in
-    ServerRefactor.go_sound_dynamic ctx refactor_action genv env
-  | IDE_REFACTOR
-      { ServerCommandTypes.Ide_refactor_type.filename; line; char; new_name } ->
+    ServerRename.go_sound_dynamic ctx rename_action genv env
+  | IDE_RENAME
+      { ServerCommandTypes.Ide_rename_type.filename; line; char; new_name } ->
     let ctx = Provider_utils.ctx_from_server_env env in
     Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
         let open Done_or_retry in
         match
-          ServerRefactor.go_ide ctx (filename, line, char) new_name genv env
+          ServerRename.go_ide ctx (filename, line, char) new_name genv env
         with
         | Error e -> (env, Done (Error e))
         | Ok r -> map_env r ~f:(fun x -> Ok x))
+  | IDE_RENAME_BY_SYMBOL (action, new_name, filename, symbol_definition) ->
+    let ctx = Provider_utils.ctx_from_server_env env in
+    Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
+        let open Done_or_retry in
+        match
+          ServerRename.go_ide_with_find_refs_action
+            ctx
+            ~find_refs_action:action
+            ~new_name
+            ~filename
+            ~symbol_definition
+            genv
+            env
+        with
+        | Error e -> (env, Done (Error e))
+        | Ok r -> map_env r ~f:(fun x -> Ok x))
+  | CODEMOD_SDT codemod_line ->
+    let patches = Sdt_analysis.patches_of_codemod_line codemod_line in
+    (env, patches)
   | REMOVE_DEAD_FIXMES codes ->
     if genv.ServerEnv.options |> ServerArgs.no_load then (
       HackEventLogger.check_response
         (Errors.get_error_list env.errorl |> List.map ~f:User_error.get_code);
-      (env, `Ok (ServerRefactor.get_fixme_patches codes env))
+      (env, `Ok (ServerRename.get_fixme_patches codes env))
     ) else
       (env, `Error (remove_dead_warning "fixme"))
   | REMOVE_DEAD_UNSAFE_CASTS ->
     if genv.ServerEnv.options |> ServerArgs.no_load then (
       HackEventLogger.check_response
         (Errors.get_error_list env.errorl |> List.map ~f:User_error.get_code);
-      (env, `Ok (ServerRefactor.get_dead_unsafe_cast_patches env))
+      (env, `Ok (ServerRename.get_dead_unsafe_cast_patches env))
     ) else
       (env, `Error (remove_dead_warning "unsafe cast"))
   | REWRITE_LAMBDA_PARAMETERS files ->
     let ctx = Provider_utils.ctx_from_server_env env in
-    (env, ServerRefactor.get_lambda_parameter_rewrite_patches ctx files)
+    (env, ServerRename.get_lambda_parameter_rewrite_patches ctx files)
   | REWRITE_TYPE_PARAMS_TYPE files ->
     let ctx = Provider_utils.ctx_from_server_env env in
-    (env, ServerRefactor.get_type_params_type_rewrite_patches ctx files)
+    (env, ServerRename.get_type_params_type_rewrite_patches ctx files)
   | DUMP_SYMBOL_INFO file_list ->
     (env, SymbolInfoService.go genv.workers file_list env)
   | IN_MEMORY_DEP_TABLE_SIZE ->
@@ -352,14 +375,13 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
     (env, SaveStateService.go_naming env.naming_table filename)
   | SAVE_STATE (filename, gen_saved_ignore_type_errors) ->
     if Errors.is_empty env.errorl || gen_saved_ignore_type_errors then
-      (env, SaveStateService.go genv env filename)
+      (env, SaveStateService.go env filename)
     else
       (env, Error "There are typecheck errors; cannot generate saved state.")
   | SEARCH (query, type_) ->
     let ctx = Provider_utils.ctx_from_server_env env in
     let lst = env.ServerEnv.local_symbol_table in
     (env, ServerSearch.go ctx query ~kind_filter:type_ lst)
-  | COVERAGE_COUNTS path -> (env, ServerCoverageMetric.go path genv env)
   | LINT fnl ->
     let ctx = Provider_utils.ctx_from_server_env env in
     (env, ServerLint.go genv ctx fnl)
@@ -406,7 +428,8 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
             ~sienv:env.ServerEnv.local_symbol_table
             ~is_manually_invoked
             ~line:pos.File_content.line
-            ~column:pos.File_content.column)
+            ~column:pos.File_content.column
+            ~naming_table:env.naming_table)
     in
     (env, results)
   | CODE_ACTIONS (path, range) ->
@@ -445,12 +468,6 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
     (* TODO(bobren) remove dir entirely from saved state job invocation *)
     let _ = dir in
     (env, ServerGenPrefetchDir.go env genv genv.workers)
-  | GEN_REMOTE_DECLS_FULL ->
-    (env, ServerGenRemoteDecls.go env genv genv.workers ~incremental:false)
-  | GEN_REMOTE_DECLS_INCREMENTAL ->
-    (env, ServerGenRemoteDecls.go env genv genv.workers ~incremental:true)
-  | GEN_SHALLOW_DECLS_DIR dir ->
-    (env, ServerGenShallowDeclsToDir.go env genv genv.workers dir)
   | FUN_DEPS_BATCH positions ->
     (env, ServerFunDepsBatch.go genv.workers positions env)
   | LIST_FILES_WITH_ERRORS -> (env, ServerEnv.list_files env)

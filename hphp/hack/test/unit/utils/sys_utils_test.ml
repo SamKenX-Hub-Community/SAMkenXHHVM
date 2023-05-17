@@ -107,6 +107,66 @@ let test_redirect_stdout_and_stderr_to_file_success () =
       ());
   true
 
+let test_non_intr () =
+  Tempfile.with_real_tempdir (fun dir ->
+      let path = Path.concat dir "a.txt" |> Path.to_string in
+      let buf1a = Bytes.make 100000 'h' in
+      let buf1b = Bytes.make 200000 'w' in
+      let fd = Unix.openfile path [Unix.O_WRONLY; Unix.O_CREAT] 0o666 in
+      Sys_utils.write_non_intr fd buf1a 0 0;
+      Sys_utils.write_non_intr fd buf1a 0 (Bytes.length buf1a);
+      Sys_utils.write_non_intr fd buf1b 0 (Bytes.length buf1b);
+      Unix.close fd;
+      (* can we read it okay? *)
+      let fd = Unix.openfile path [Unix.O_RDONLY] 0o666 in
+      let buf2x = Sys_utils.read_non_intr fd 0 in
+      let buf2a = Sys_utils.read_non_intr fd (Bytes.length buf1a) in
+      let buf2b = Sys_utils.read_non_intr fd (Bytes.length buf1b) in
+      let buf2y = Sys_utils.read_non_intr fd 0 in
+      let buf2z = Sys_utils.read_non_intr fd 1 in
+      Unix.close fd;
+      assert (buf2x |> Option.value_exn |> Bytes.length = 0);
+      assert (Bytes.equal buf1a (Option.value_exn buf2a));
+      assert (Bytes.equal buf1b (Option.value_exn buf2b));
+      assert (buf2y |> Option.value_exn |> Bytes.length = 0);
+      assert (Option.is_none buf2z);
+      ());
+  true
+
+let test_atomically_create () =
+  Tempfile.with_real_tempdir (fun dir ->
+      let buf = Bytes.of_string "hello" in
+      let len = Bytes.length buf in
+
+      (* Does it create ok in the success path? *)
+      let path = Path.concat dir "test.txt" |> Path.to_string in
+      let fd =
+        Sys_utils.atomically_create_and_init_file
+          path
+          ~rd:true
+          ~wr:true
+          0o666
+          ~init:(fun fd -> Sys_utils.write_non_intr fd buf 0 len)
+      in
+      Unix.close (Option.value_exn fd);
+      let fd = Unix.openfile path [Unix.O_RDONLY] 0o666 in
+      let buf2 = Sys_utils.read_non_intr fd len in
+      assert (Bytes.equal buf (Option.value_exn buf2));
+      Unix.close fd;
+
+      (* Does it fail to create if a file pre-exists? *)
+      let fd =
+        Sys_utils.atomically_create_and_init_file
+          path
+          ~rd:true
+          ~wr:true
+          0o666
+          ~init:(fun _fd -> ())
+      in
+      assert (Option.is_none fd);
+      ());
+  true
+
 let tests =
   [
     ("test_freopen_failure1", test_freopen_failure1);
@@ -116,6 +176,8 @@ let tests =
       test_redirect_stdout_and_stderr_to_file_failure );
     ( "test_redirect_stdout_and_stderr_to_file_success",
       test_redirect_stdout_and_stderr_to_file_success );
+    ("test_non_intr", test_non_intr);
+    ("test_atomically_create", test_atomically_create);
   ]
 
 let () = Unit_test.run_all tests

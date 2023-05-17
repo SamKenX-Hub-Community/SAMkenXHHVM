@@ -1424,8 +1424,9 @@ private:
     int64_t m_dynCallSampleRate;
     uint32_t m_softMakeICInaccessibleSampleRate;
     LowStringPtr m_docComment;
+    LowStringPtr m_originalModuleName;
   };
-  static_assert(CheckSize<ExtendedSharedData, use_lowptr ? 288 : 320>(), "");
+  static_assert(CheckSize<ExtendedSharedData, use_lowptr ? 296 : 328>(), "");
 
   /*
    * SharedData accessors for internal use.
@@ -1833,13 +1834,6 @@ inline tracing::Props traceProps(const Func* f) {
 
 ///////////////////////////////////////////////////////////////////////////////
 // Bytecode
-
-/*
- * Report capacity of RepoAuthoritative mode bytecode arena.
- *
- * Returns 0 if !RuntimeOption::RepoAuthoritative.
- */
-size_t hhbc_arena_capacity();
 
 unsigned char* allocateBCRegion(const unsigned char* bc, size_t bclen);
 void freeBCRegion(const unsigned char* bc, size_t bclen);

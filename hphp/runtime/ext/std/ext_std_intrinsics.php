@@ -19,6 +19,9 @@ function trigger_break(bool $break): void;
 <<__Native>>
 function trigger_crash(): void;
 
+<<__Native>>
+function memory_manager_stats(): dict;
+
 /**
  * Return the given value. This function is purposefully not optimized. It can
  * be used to hide information about values from the optimizer for unit testing.
@@ -97,6 +100,9 @@ function apc_fetch_no_check(mixed $key) {
   $ignored = false;
   return \apc_fetch($key, inout $ignored);
 }
+
+<<__Native>>
+function is_module_in_deployment(string $module, string $deployment): bool;
 
 <<__Native, __IsFoldable>>
 function builtin_io_foldable(

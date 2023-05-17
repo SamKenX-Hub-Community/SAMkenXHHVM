@@ -34,6 +34,7 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <set>
 
 #include <boost/algorithm/string/join.hpp>
 #include <boost/algorithm/string/split.hpp>
@@ -45,7 +46,7 @@
 #include <thrift/compiler/diagnostic.h>
 #include <thrift/compiler/generate/t_generator.h>
 #include <thrift/compiler/mutator/mutator.h>
-#include <thrift/compiler/parse/parsing_driver.h>
+#include <thrift/compiler/parse/parse_ast.h>
 #include <thrift/compiler/sema/standard_mutator.h>
 #include <thrift/compiler/sema/standard_validator.h>
 #include <thrift/compiler/validator/validator.h>
@@ -103,10 +104,6 @@ void usage() {
       "  --allow-64bit-consts  Do not print warnings about using 64-bit constants\n");
   fprintf(
       stderr,
-      "  --allow-experimental-features feature[,feature]\n"
-      "              Enable experimental features. Use 'all' to enable all experimental features.\n");
-  fprintf(
-      stderr,
       "  --gen STR   Generate code with a dynamically-registered generator.\n"
       "              STR has the form language[:key1=val1[,key2,[key3=val3]]].\n"
       "              Keys and values are options passed to the generator.\n"
@@ -136,10 +133,6 @@ bool isPathSeparator(const char& c) {
 #endif
 }
 
-bool isComma(const char& c) {
-  return c == ',';
-}
-
 // Returns the input file name if successful, otherwise returns an empty
 // string.
 std::string parse_args(
@@ -149,7 +142,7 @@ std::string parse_args(
     diagnostic_params& dparams) {
   // Check for necessary arguments, you gotta have at least a filename and
   // an output language flag.
-  if (arguments.size() < 2) {
+  if (arguments.size() < 3 && gparams.targets.empty()) {
     usage();
     return {};
   }
@@ -190,14 +183,7 @@ std::string parse_args(
     }
 
     // Interpret flag.
-    if (flag == "allow-experimental-features") {
-      auto* arg = consume_arg("feature");
-      if (arg == nullptr) {
-        return {};
-      }
-      boost::algorithm::split(
-          pparams.allow_experimental_features, *arg, isComma);
-    } else if (flag == "debug") {
+    if (flag == "debug") {
       dparams.debug = true;
     } else if (flag == "nowarn") {
       dparams.warn_level = 0;
@@ -457,16 +443,16 @@ std::unique_ptr<t_program_bundle> parse_and_mutate_program(
     const std::string& filename,
     parsing_params params,
     bool return_nullptr_on_failure) {
-  parsing_driver driver(sm, ctx, filename, std::move(params));
-  auto program = driver.parse();
-  if (program != nullptr) {
-    auto result = standard_mutators()(ctx, *program);
-    if (result.unresolvable_typeref && return_nullptr_on_failure) {
-      // Stop processing if there is unresolvable typeref
-      program = nullptr;
-    }
+  auto programs = parse_ast(sm, ctx, filename, std::move(params));
+  if (!programs) {
+    return {};
   }
-  return program;
+  auto result = standard_mutators()(ctx, *programs);
+  if (result.unresolvable_typeref && return_nullptr_on_failure) {
+    // Stop processing if there is unresolvable typeref.
+    programs = nullptr;
+  }
+  return programs;
 }
 
 std::pair<std::unique_ptr<t_program_bundle>, diagnostic_results>
@@ -500,15 +486,20 @@ std::unique_ptr<t_program_bundle> parse_and_get_program(
     source_manager& sm, const std::vector<std::string>& arguments) {
   // Parse arguments.
   parsing_params pparams;
+  pparams.allow_missing_includes = true;
   gen_params gparams;
   diagnostic_params dparams;
+  gparams.targets.push_back(""); // Avoid needing to pass --gen
   std::string filename = parse_args(arguments, pparams, gparams, dparams);
-
   if (filename.empty()) {
     return {};
   }
-  auto ctx = diagnostic_context::ignore_all(sm);
-  return parse_and_mutate_program(sm, ctx, filename, std::move(pparams));
+
+  diagnostic_context ctx(
+      sm,
+      [](const diagnostic& d) { fmt::print(stderr, "{}\n", d.str()); },
+      diagnostic_params::only_errors());
+  return parse_ast(sm, ctx, filename, std::move(pparams));
 }
 
 compile_result compile(const std::vector<std::string>& arguments) {

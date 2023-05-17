@@ -26,7 +26,15 @@
 #include <unordered_map>
 #include <utility>
 
+#include <boost/functional/hash.hpp>
 #include <thrift/compiler/diagnostic.h>
+
+template <>
+struct std::hash<fmt::string_view> {
+  size_t operator()(fmt::string_view s) const {
+    return boost::hash_range(s.begin(), s.end());
+  }
+};
 
 namespace apache {
 namespace thrift {
@@ -54,6 +62,28 @@ bool is_dec_digit(char c) {
 bool is_hex_digit(char c) {
   return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
       (c >= 'A' && c <= 'F');
+}
+
+boost::optional<unsigned> lex_hex_integer(
+    const char* begin, const char* end, int size) {
+  if (end - begin < size) {
+    return {};
+  }
+  unsigned result = 0;
+  for (int i = 0; i < size; ++i) {
+    char c = begin[i];
+    result <<= 4;
+    if (c >= '0' && c <= '9') {
+      result |= c - '0';
+    } else if (c >= 'a' && c <= 'f') {
+      result |= 10 + (c - 'a');
+    } else if (c >= 'A' && c <= 'F') {
+      result |= 10 + (c - 'A');
+    } else {
+      return {};
+    }
+  }
+  return result;
 }
 
 bool is_id_start(char c) {
@@ -104,7 +134,7 @@ const char* lex_float_literal(const char* p) {
   return p ? lex_float_exponent(p, p) : nullptr;
 }
 
-const std::unordered_map<std::string, tok> keywords = {
+const std::unordered_map<fmt::string_view, tok> keywords = {
     {"false", tok::bool_literal},
     {"true", tok::bool_literal},
     {"include", tok::kw_include},
@@ -153,8 +183,12 @@ const std::unordered_map<std::string, tok> keywords = {
 
 } // namespace
 
-lexer::lexer(source src, lex_handler& handler, diagnostics_engine& diags)
-    : source_(src.text), start_(src.start), handler_(&handler), diags_(&diags) {
+lexer::lexer(
+    source src, diagnostics_engine& diags, doc_comment_handler on_doc_comment)
+    : source_(src.text),
+      start_(src.start),
+      diags_(&diags),
+      on_doc_comment_(on_doc_comment) {
   ptr_ = source_.data();
   token_start_ = ptr_;
 }
@@ -227,7 +261,7 @@ bool lexer::lex_doc_comment() {
     }
   } while (strncmp(ptr_, prefix, prefix_size) == 0);
   if (!is_inline) {
-    handler_->on_doc_comment(token_text(), location(ptr_));
+    on_doc_comment_(token_text(), location(ptr_));
   }
   return is_inline;
 }
@@ -252,7 +286,7 @@ lexer::comment_lex_result lexer::lex_block_comment() {
     auto non_star = std::find_if(
         token_start_ + 2, ptr_ - 1, [](char c) { return c != '*'; });
     if (non_star != ptr_ - 1) {
-      handler_->on_doc_comment(token_text(), location(ptr_));
+      on_doc_comment_(token_text(), location(ptr_));
     }
   }
   return comment_lex_result::skipped;
@@ -297,6 +331,91 @@ lexer::comment_lex_result lexer::lex_whitespace_or_comment() {
   }
 }
 
+boost::optional<std::string> lexer::lex_string_literal(token literal) {
+  auto str = literal.string_value();
+  auto size = str.size();
+  assert(size >= 2);
+
+  char c = str[0];
+  assert((c == '"' || c == '\'') && c == str[size - 1]);
+
+  std::string result;
+  result.reserve(size - 2);
+
+  auto begin = str.data() + 1, end = begin + (size - 2);
+  for (;;) {
+    auto p = std::find(begin, end, '\\');
+    result.append(begin, p);
+    if (p == end) {
+      break;
+    }
+    // Lex escape sequences.
+    ++p;
+    c = *p++;
+    switch (c) {
+      case '\n':
+        begin = p;
+        continue;
+      case '\\':
+        break;
+      case '\'':
+        break;
+      case '"':
+        break;
+      case 'n':
+        c = '\n';
+        break;
+      case 'r':
+        c = '\r';
+        break;
+      case 't':
+        c = '\t';
+        break;
+      case 'x':
+        if (auto n = lex_hex_integer(p, end, 2)) {
+          c = static_cast<char>(*n);
+          p += 2;
+          break;
+        }
+        diags_->error(literal.range.begin, "invalid `\\x` escape sequence");
+        return {};
+      case 'u':
+        if (auto n = lex_hex_integer(p, end, 4)) {
+          if (*n < 0x80) {
+            c = static_cast<unsigned char>(*n);
+          } else if (*n < 0x800) {
+            result.push_back(0b1100'0000 | ((*n >> 6) & 0b1'1111));
+            c = 0b1000'0000 | (*n & 0b111111);
+          } else if (*n >= 0xd800 && *n <= 0xdfff) {
+            diags_->error(
+                literal.range.begin, "surrogate in `\\u` escape sequence");
+            return {};
+          } else {
+            result.push_back(0b1110'0000 | ((*n >> 12) & 0b1'1111));
+            result.push_back(0b1000'0000 | ((*n >> 6) & 0b11'1111));
+            c = 0b1000'0000 | (*n & 0b11'1111);
+          }
+          p += 4;
+          break;
+        }
+        diags_->error(literal.range.begin, "invalid `\\u` escape sequence");
+        return {};
+      default:
+        if (c < 'A' || c > 'Z') {
+          diags_->error(
+              literal.range.begin, "invalid escape sequence `\\{}`", c);
+          return {};
+        }
+        c = '\\';
+        --p; // Put an unlexed character back.
+        break;
+    }
+    result.push_back(c);
+    begin = p;
+  }
+  return result;
+}
+
 token lexer::get_next_token() {
   if (lex_whitespace_or_comment() == comment_lex_result::doc_comment) {
     return token::make_inline_doc(token_source_range(), token_text());
@@ -315,7 +434,7 @@ token lexer::get_next_token() {
       return token::make_identifier(token_source_range(), token_text());
     }
     auto text = token_text();
-    auto it = keywords.find(std::string(text.data(), text.size()));
+    auto it = keywords.find(text);
     if (it != keywords.end()) {
       return it->second == tok::bool_literal
           ? token::make_bool_literal(token_source_range(), it->first == "true")
@@ -385,13 +504,25 @@ token lexer::get_next_token() {
         ? make_int_literal(1, 8)
         : token::make_int_literal(token_source_range(), 0);
   } else if (c == '"' || c == '\'') {
-    // Lex a string literal.
-    const char* p = std::find(ptr_, end(), c);
-    if (*p) {
+    // Lex the boundaries of a string literal. The content is lexed by
+    // lex_string_literal.
+    for (;;) {
+      const char* p = std::find(ptr_, end(), c);
+      if (!*p) {
+        break;
+      }
+      // Count any backslashes preceding the ending quote.
+      const char* before_backslashes = p - 1;
+      while (before_backslashes >= ptr_ && *before_backslashes == '\\') {
+        --before_backslashes;
+      }
       ptr_ = p + 1;
-      const char* begin = token_start_ + 1;
-      return token::make_string_literal(
-          token_source_range(), {begin, static_cast<size_t>(p - begin)});
+      if ((p - before_backslashes) % 2 != 0) {
+        // Even number of backslashes means that the quote is unescaped.
+        return token::make_string_literal(
+            token_source_range(),
+            {token_start_, static_cast<size_t>(ptr_ - token_start_)});
+      }
     }
   } else if (!c && ptr_ > end()) {
     --ptr_; // Put '\0' back in case get_next_token() is called again.

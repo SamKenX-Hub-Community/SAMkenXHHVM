@@ -17,17 +17,17 @@ let is_sub_dynamic env t =
   let (r, e) =
     Typing_solver.is_sub_type env t (MakeType.dynamic Reason.Rnone)
   in
-  Option.iter ~f:Errors.add_typing_error e;
+  Option.iter ~f:Typing_error_utils.add_typing_error e;
   r
 
 let is_float env t =
   let (r, e) = Typing_solver.is_sub_type env t (MakeType.float Reason.Rnone) in
-  Option.iter ~f:Errors.add_typing_error e;
+  Option.iter ~f:Typing_error_utils.add_typing_error e;
   r
 
 let is_int env t =
   let (r, e) = Typing_solver.is_sub_type env t (MakeType.int Reason.Rnone) in
-  Option.iter ~f:Errors.add_typing_error e;
+  Option.iter ~f:Typing_error_utils.add_typing_error e;
   r
 
 (* Checking of numeric operands for arithmetic operators that work only
@@ -47,7 +47,7 @@ let check_dynamic_or_enforce_int env p t r err =
       { et_type; et_enforced = Enforced }
       err
   in
-  Option.iter ty_err_opt ~f:Errors.add_typing_error;
+  Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
   let ty_mismatch = Option.map ty_err_opt ~f:Fn.(const (t, et_type)) in
   (env, Typing_utils.is_dynamic env t, ty_mismatch)
 
@@ -152,14 +152,14 @@ let check_for_float_result p env p1 ty1 p2 ty2 =
   let ((env, ty_err_opt), ty1) =
     expand_type_and_try_narrow_to_float env p1 ty1
   in
-  Option.iter ty_err_opt ~f:Errors.add_typing_error;
+  Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
   if Typing_subtype.is_sub_type env ty1 float_no_reason then
     (env, make_float_type ~use_ty1_reason:true)
   else
     let ((env, ty_err_opt), ty2) =
       expand_type_and_try_narrow_to_float env p2 ty2
     in
-    Option.iter ty_err_opt ~f:Errors.add_typing_error;
+    Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
     if Typing_subtype.is_sub_type env ty2 float_no_reason then
       (env, make_float_type ~use_ty1_reason:false)
     else
@@ -174,7 +174,14 @@ let binop p env bop p1 te1 ty1 p2 te2 ty2 =
         (env, ty)
     in
     let hte1 = hole_on_err te1 err_opt1 and hte2 = hole_on_err te2 err_opt2 in
-    (env, Tast.make_typed_expr p ty (Aast.Binop (bop, hte1, hte2)), ty)
+    let (env, te) =
+      Typing_utils.make_simplify_typed_expr
+        env
+        p
+        ty
+        Aast.(Binop { bop; lhs = hte1; rhs = hte2 })
+    in
+    (env, te, ty)
   in
   let int_no_reason = MakeType.int Reason.none in
   let num_no_reason = MakeType.num Reason.none in
@@ -255,7 +262,7 @@ let binop p env bop p1 te1 ty1 p2 te2 ty2 =
                 p1
                 ty1
             in
-            Option.iter ty_err_opt ~f:Errors.add_typing_error;
+            Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
             (* If the first type solved a subtype of int, and the second was
                already int, then it is sound to return int. *)
             let is_int1 = Typing_subtype.is_sub_type env ty1 int_no_reason in
@@ -275,7 +282,7 @@ let binop p env bop p1 te1 ty1 p2 te2 ty2 =
                     p2
                     ty2
                 in
-                Option.iter ty_err_opt ~f:Errors.add_typing_error;
+                Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
                 if
                   Typing_subtype.is_sub_type env ty1 nothing_no_reason
                   && Typing_subtype.is_sub_type env ty2 nothing_no_reason
@@ -321,11 +328,11 @@ let binop p env bop p1 te1 ty1 p2 te2 ty2 =
           let ((env, ty_err_opt), ty1) =
             expand_type_and_try_narrow_to_nothing env p1 ty1
           in
-          Option.iter ty_err_opt ~f:Errors.add_typing_error;
+          Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
           let ((env, ty_err_opt), ty2) =
             expand_type_and_try_narrow_to_nothing env p2 ty2
           in
-          Option.iter ty_err_opt ~f:Errors.add_typing_error;
+          Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
           if
             Typing_subtype.is_sub_type env ty1 nothing_no_reason
             && Typing_subtype.is_sub_type env ty2 nothing_no_reason
@@ -448,7 +455,7 @@ let binop p env bop p1 te1 ty1 p2 te2 ty2 =
       then
         let tys1 = lazy (Typing_print.error env ty1)
         and tys2 = lazy (Typing_print.error env ty2) in
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Strict_eq_value_incompatible_types
@@ -515,7 +522,7 @@ let binop p env bop p1 te1 ty1 p2 te2 ty2 =
       and ty2 = lazy (Typing_expand.fully_expand env ty2) in
       let tys1 = Lazy.map ty1 ~f:(fun ty -> (ty, Typing_print.error env ty))
       and tys2 = Lazy.map ty2 ~f:(fun ty -> (ty, Typing_print.error env ty)) in
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(
           primary
           @@ Primary.Comparison_invalid_types
@@ -559,7 +566,7 @@ let binop p env bop p1 te1 ty1 p2 te2 ty2 =
         let ty_mismatch =
           Option.map ty_err_opt ~f:(Fn.const (ty, stringlike))
         in
-        Option.iter ty_err_opt ~f:Errors.add_typing_error;
+        Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
         (env, ty_mismatch)
       in
 
@@ -589,7 +596,14 @@ let binop p env bop p1 te1 ty1 p2 te2 ty2 =
 let unop p env uop te ty =
   let make_result env te err_opt result_ty =
     let hte = hole_on_err te err_opt in
-    (env, Tast.make_typed_expr p result_ty (Aast.Unop (uop, hte)), result_ty)
+    let (env, te) =
+      Typing_utils.make_simplify_typed_expr
+        env
+        p
+        result_ty
+        (Aast.Unop (uop, hte))
+    in
+    (env, te, result_ty)
   in
   let is_any = Typing_utils.is_any env in
   match uop with
@@ -648,7 +662,7 @@ let unop p env uop te ty =
       let ((env, ty_err_opt), (ty : locl_ty)) =
         expand_type_and_narrow_to_numeric ~allow_nothing env p ty
       in
-      Option.iter ty_err_opt ~f:Errors.add_typing_error;
+      Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
       let result_ty =
         if Typing_subtype.is_sub_type env ty (MakeType.nothing Reason.none) then
           MakeType.nothing (get_reason ty)

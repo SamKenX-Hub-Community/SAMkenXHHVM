@@ -61,14 +61,16 @@ let rec of_decl_ty (ty : decl_ty) : string =
   | Ttuple args ->
     let args = List.map args ~f:of_decl_ty in
     Printf.sprintf "(%s)" (String.concat ~sep:", " args)
-  | Tshape (kind, fields) ->
+  | Tshape (_, kind, fields) ->
     let fields =
       TShapeMap.fold (fun key ty acc -> of_shape_field key ty :: acc) fields []
     in
     let fields_with_ellipsis =
-      match kind with
-      | Closed_shape -> fields
-      | Open_shape -> fields @ ["..."]
+      if is_nothing kind (* Closed shape *) then
+        fields
+      (* Open shape TODO akenn non-mixed open *)
+      else
+        fields @ ["..."]
     in
     Printf.sprintf "shape(%s)" (String.concat ~sep:", " fields_with_ellipsis)
   | Tvar _ -> "mixed"
@@ -160,7 +162,7 @@ let of_method (name : string) (meth : class_elt) ~is_static ~is_override :
   in
 
   Printf.sprintf
-    "\n%s  %s %s%sfunction %s(%s)%s: %s {}\n\n"
+    "\n%s  %s %s%sfunction %s(%s)%s: %s {}\n"
     (if is_override then
       "  <<__Override>>\n"
     else

@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<3611e481c0b06c93284ade11eb42b299>>
+// @generated SignedSource<<a4c5bf9eaa0c0dff42bcc3607d98c32e>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -19,7 +19,7 @@ pub use crate::pos::map;
 #[allow(unused_imports)]
 use crate::*;
 
-#[rust_to_ocaml(attr = "deriving (eq, ord, show)")]
+#[rust_to_ocaml(attr = "deriving (eq, hash, ord, show)")]
 pub type PosOrDecl<'a> = pos::Pos<'a>;
 
 /// The decl and file of a position.
@@ -37,6 +37,7 @@ pub type PosOrDecl<'a> = pos::Pos<'a>;
     Serialize,
     ToOcamlRep
 )]
+#[rust_to_ocaml(attr = "deriving show")]
 #[repr(C)]
 pub struct Ctx<'a> {
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]

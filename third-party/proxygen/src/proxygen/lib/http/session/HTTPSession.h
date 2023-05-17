@@ -1114,6 +1114,37 @@ class HTTPSession
   bool writeBufSplit_ : 1;
 
   bool abortPushesOnRST_{false};
+
+  /**
+   * Accessor implementation for HTTPSessionObserver.
+   */
+  class ObserverAccessor : public HTTPSessionObserverAccessor {
+   public:
+    explicit ObserverAccessor(HTTPSessionBase* sessionBasePtr)
+        : sessionBasePtr_(sessionBasePtr) {
+      (void)sessionBasePtr_; // silence unused variable warnings
+    }
+    ~ObserverAccessor() override = default;
+
+   private:
+    HTTPSessionBase* sessionBasePtr_{nullptr};
+  };
+
+  ObserverAccessor sessionObserverAccessor_;
+
+  // Container of observers for a HTTP session
+  //
+  // This member MUST be last in the list of members to ensure it is destroyed
+  // first, before any other members are destroyed. This ensures that observers
+  // can inspect any session state available through public methods
+  // when destruction of the session begins.
+  HTTPSessionObserverContainer sessionObserverContainer_;
+
+  HTTPSessionObserverContainer* getHTTPSessionObserverContainer()
+      const override {
+    return const_cast<HTTPSessionObserverContainer*>(
+        &sessionObserverContainer_);
+  }
 };
 
 } // namespace proxygen

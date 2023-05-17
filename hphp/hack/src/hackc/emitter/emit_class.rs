@@ -42,13 +42,11 @@ use hhvm_types_ffi::ffi::TypeConstraintFlags;
 use instruction_sequence::instr;
 use instruction_sequence::InstrSeq;
 use itertools::Itertools;
-use naming_special_names_rust as special_names;
 use oxidized::ast;
 use oxidized::ast::ClassReq;
 use oxidized::ast::Hint;
 use oxidized::ast::ReifyKind;
 use oxidized::ast::RequireKind;
-use oxidized::namespace_env;
 
 use super::TypeRefinementInHint;
 use crate::emit_adata;
@@ -206,8 +204,6 @@ fn from_type_constant<'a, 'arena, 'decl>(
                 &[],
                 &BTreeMap::new(),
                 init,
-                false,
-                false,
                 TypeRefinementInHint::Disallowed,
             )?)
         }
@@ -368,43 +364,6 @@ fn from_enum_type<'arena>(
     .transpose()
 }
 
-fn validate_class_name(ns: &namespace_env::Env, ast::Id(p, class_name): &ast::Id) -> Result<()> {
-    let is_global_namespace = |ns: &namespace_env::Env| ns.name.is_none();
-    let is_hh_namespace = |ns: &namespace_env::Env| {
-        ns.name
-            .as_ref()
-            .map_or(false, |x| x.eq_ignore_ascii_case("hh"))
-    };
-
-    // global names are always reserved in any namespace.
-    // hh_reserved names are checked either if
-    // - class is in global namespace
-    // - class is in HH namespace *)
-    let is_special_class = class_name.contains('$');
-    let check_hh_name = is_global_namespace(ns) || is_hh_namespace(ns);
-    let name = string_utils::strip_ns(class_name);
-    let lower_name = name.to_ascii_lowercase();
-    let is_reserved_global_name = special_names::typehints::is_reserved_global_name(&lower_name);
-    let name_is_reserved = !is_special_class
-        && (is_reserved_global_name
-            || (check_hh_name && special_names::typehints::is_reserved_hh_name(&lower_name)));
-    if name_is_reserved {
-        Err(Error::fatal_parse(
-            p,
-            format!(
-                "Cannot use '{}' as class name as it is reserved",
-                if is_reserved_global_name {
-                    name
-                } else {
-                    string_utils::strip_global_ns(class_name)
-                }
-            ),
-        ))
-    } else {
-        Ok(())
-    }
-}
-
 fn emit_reified_extends_params<'a, 'arena, 'decl>(
     e: &mut Emitter<'arena, 'decl>,
     env: &Env<'a, 'arena>,
@@ -535,30 +494,28 @@ fn emit_reified_init_method<'a, 'arena, 'decl>(
     }
 }
 
-fn make_init_method<'a, 'arena, 'decl, F>(
+fn make_init_method<'arena, 'decl>(
     alloc: &'arena bumpalo::Bump,
     emitter: &mut Emitter<'arena, 'decl>,
     properties: &mut [PropAndInit<'arena>],
-    filter: F,
+    filter: impl Fn(&Property<'arena>) -> bool,
     name: &'static str,
     span: Span,
-) -> Result<Option<Method<'arena>>>
-where
-    F: Fn(&Property<'arena>) -> bool,
-{
-    if properties
-        .iter()
-        .any(|p| p.init.is_some() && filter(&p.prop))
-    {
-        let instrs = InstrSeq::gather(
-            properties
-                .iter_mut()
-                .filter_map(|p| match p.init {
-                    Some(_) if filter(&p.prop) => p.init.take(),
-                    Some(_) | None => None,
-                })
-                .collect(),
-        );
+) -> Result<Option<Method<'arena>>> {
+    let mut has_inits = false;
+    let instrs = InstrSeq::gather(
+        properties
+            .iter_mut()
+            .filter_map(|p| match p.init {
+                Some(_) if filter(&p.prop) => {
+                    has_inits = true;
+                    p.init.take()
+                }
+                _ => None,
+            })
+            .collect(),
+    );
+    if has_inits {
         let instrs = InstrSeq::gather(vec![instrs, instr::null(), instr::ret_c()]);
         Ok(Some(make_86method(
             alloc,
@@ -582,8 +539,6 @@ pub fn emit_class<'a, 'arena, 'decl>(
     emitter: &mut Emitter<'arena, 'decl>,
     ast_class: &'a ast::Class_,
 ) -> Result<Class<'arena>> {
-    let namespace = &ast_class.namespace;
-    validate_class_name(namespace, &ast_class.name)?;
     let mut env = Env::make_class_env(alloc, ast_class);
     // TODO: communicate this without looking at the name
     let is_closure = ast_class.name.1.starts_with("Closure$");
@@ -731,15 +686,11 @@ pub fn emit_class<'a, 'arena, 'decl>(
 
     let requirements = from_class_elt_requirements(alloc, ast_class);
 
-    let pinit_filter = |p: &Property<'_>| !p.flags.is_static();
-    let sinit_filter = |p: &Property<'_>| p.flags.is_static() && !p.flags.is_lsb();
-    let linit_filter = |p: &Property<'_>| p.flags.is_static() && p.flags.is_lsb();
-
     let pinit_method = make_init_method(
         alloc,
         emitter,
         &mut properties,
-        pinit_filter,
+        |p| !p.flags.is_static(),
         "86pinit",
         span,
     )?;
@@ -747,7 +698,7 @@ pub fn emit_class<'a, 'arena, 'decl>(
         alloc,
         emitter,
         &mut properties,
-        sinit_filter,
+        |p| p.flags.is_static() && !p.flags.is_lsb(),
         "86sinit",
         span,
     )?;
@@ -755,7 +706,7 @@ pub fn emit_class<'a, 'arena, 'decl>(
         alloc,
         emitter,
         &mut properties,
-        linit_filter,
+        |p| p.flags.is_static() && p.flags.is_lsb(),
         "86linit",
         span,
     )?;

@@ -23,9 +23,11 @@ let error_list_to_string errors =
 let create_path x = Relative_path.(create Root ("/" ^ x))
 
 let error_in file =
-  Errors.add_parsing_error
-  @@ Parsing_error.Parsing_error
-       { pos = Pos.make_from (create_path file); msg = ""; quickfixes = [] }
+  Errors.add_error
+    Parsing_error.(
+      to_user_error
+      @@ Parsing_error
+           { pos = Pos.make_from (create_path file); msg = ""; quickfixes = [] })
 
 let expect_error_in =
   Printf.sprintf "File \"/%s\", line 0, characters 0-0:\n (Parsing[1002])\n\n"
@@ -139,7 +141,7 @@ let test_get_sorted_error_list () =
   let key_pos2 = Pos.make_from (create_path "K2") |> Pos_or_decl.of_raw_pos in
   let (errors, ()) =
     Errors.do_with_context file_with_errors Errors.Typing (fun () ->
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Invalid_arraykey
@@ -151,7 +153,7 @@ let test_get_sorted_error_list () =
                    key_pos = key_pos2;
                    key_ty_name = lazy "K2_Type";
                  });
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Invalid_arraykey
@@ -164,7 +166,7 @@ let test_get_sorted_error_list () =
                    key_ty_name = lazy "K1_Type";
                  });
         error_in "FileWithErrors.php";
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Invalid_arraykey
@@ -176,7 +178,7 @@ let test_get_sorted_error_list () =
                    key_pos = key_pos2;
                    key_ty_name = lazy "K2_Type";
                  });
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(
             primary
             @@ Primary.Invalid_arraykey
@@ -288,12 +290,14 @@ let test_phases () =
   let a_path = create_path "A" in
   let (errors, ()) =
     Errors.do_ (fun () ->
-        Errors.run_in_context a_path Errors.Parsing (fun () ->
-            Errors.add_parsing_error
-            @@ Parsing_error.Parsing_error
-                 { pos = Pos.make_from a_path; msg = ""; quickfixes = [] });
         Errors.run_in_context a_path Errors.Typing (fun () ->
-            Errors.add_typing_error
+            Errors.add_error
+              Parsing_error.(
+                to_user_error
+                @@ Parsing_error
+                     { pos = Pos.make_from a_path; msg = ""; quickfixes = [] }));
+        Errors.run_in_context a_path Errors.Typing (fun () ->
+            Typing_error_utils.add_typing_error
               Typing_error.(
                 primary
                 @@ Primary.Generic_unify
@@ -314,19 +318,19 @@ let test_incremental_update () =
   let a_path = create_path "A" in
   let b_path = create_path "B" in
   let (foo_error_a, ()) =
-    Errors.do_with_context a_path Errors.Parsing (fun () ->
+    Errors.do_with_context a_path Errors.Typing (fun () ->
         error_in "foo1";
         error_in "foo2";
         ())
   in
   let (bar_error_a, ()) =
-    Errors.do_with_context a_path Errors.Parsing (fun () ->
+    Errors.do_with_context a_path Errors.Typing (fun () ->
         error_in "bar1";
         error_in "bar2";
         ())
   in
   let (baz_error_b, ()) =
-    Errors.do_with_context b_path Errors.Parsing (fun () ->
+    Errors.do_with_context b_path Errors.Typing (fun () ->
         error_in "baz1";
         error_in "baz2";
         ())
@@ -336,7 +340,7 @@ let test_incremental_update () =
       ~old:foo_error_a
       ~new_:bar_error_a
       ~rechecked:(Relative_path.Set.singleton a_path)
-      Errors.Parsing
+      Errors.Typing
   in
   let expected =
     "File \"/bar2\", line 0, characters 0-0:\n (Parsing[1002])\n\n"
@@ -352,7 +356,7 @@ let test_incremental_update () =
       ~old:foo_error_a
       ~new_:baz_error_b
       ~rechecked:(Relative_path.Set.singleton b_path)
-      Errors.Parsing
+      Errors.Typing
   in
   let expected =
     "File \"/foo1\", line 0, characters 0-0:\n (Parsing[1002])\n\n"
@@ -370,7 +374,7 @@ let test_incremental_update () =
       ~old:foo_error_a
       ~new_:Errors.empty
       ~rechecked:(Relative_path.Set.singleton a_path)
-      Errors.Parsing
+      Errors.Typing
   in
   Asserter.Bool_asserter.assert_equals
     true

@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<39fcc2765d5a92c0d77f866eb374f3c2>>
+// @generated SignedSource<<ff9f9949cce9bb0397807cd2baaa0a12>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -670,11 +670,6 @@ pub enum Expr_<Ex, En> {
     ArrayGet(Box<(Expr<Ex, En>, Option<Expr<Ex, En>>)>),
     /// Instance property or method access.
     ///
-    /// prop_or_method is:
-    ///   - Is_prop for property access
-    ///   - Is_method for method call, only possible when the node is
-    ///   - the receiver in a Call node.
-    ///
     ///     $foo->bar      // OG_nullthrows, Is_prop: access named property
     ///     ($foo->bar)()  // OG_nullthrows, Is_prop: call lambda stored in named property
     ///     $foo?->bar     // OG_nullsafe,   Is_prop
@@ -684,6 +679,10 @@ pub enum Expr_<Ex, En> {
     ///     $foo->$bar()   // OG_nullthrows, Is_method: dynamic call, method name stored in local $bar
     ///     $foo?->bar()   // OG_nullsafe,   Is_method
     ///     $foo?->$bar()  // OG_nullsafe,   Is_method
+    ///
+    /// prop_or_method is:
+    ///   - Is_prop for property access
+    ///   - Is_method for method call, only possible when the node is the receiver in a Call node.
     #[rust_to_ocaml(name = "Obj_get")]
     #[rust_to_ocaml(inline_tuple)]
     ObjGet(Box<(Expr<Ex, En>, Expr<Ex, En>, OgNullFlavor, PropOrMethod)>),
@@ -833,8 +832,7 @@ pub enum Expr_<Ex, En> {
     /// Binary operator.
     ///
     ///     $foo + $bar
-    #[rust_to_ocaml(inline_tuple)]
-    Binop(Box<(ast_defs::Bop, Expr<Ex, En>, Expr<Ex, En>)>),
+    Binop(Box<Binop<Ex, En>>),
     /// Pipe expression. The lid is the ID of the $$ that is implicitly
     /// declared by this pipe.
     ///
@@ -901,7 +899,7 @@ pub enum Expr_<Ex, En> {
     ///     (int $x): int ==> $x + $other
     ///     ($x, $y) ==> { return $x + $y; }
     #[rust_to_ocaml(inline_tuple)]
-    Lfun(Box<(Fun_<Ex, En>, Vec<Lid>)>),
+    Lfun(Box<(Fun_<Ex, En>, Vec<CaptureLid<Ex>>)>),
     /// XHP expression. May contain interpolated expressions.
     ///
     ///     <foo x="hello" y={$foo}>hello {$bar}</foo>
@@ -1002,6 +1000,10 @@ pub enum Expr_<Ex, En> {
     /// ```
     #[rust_to_ocaml(inline_tuple)]
     Hole(Box<(Expr<Ex, En>, Ex, Ex, HoleSource)>),
+    /// Expression used to check whether a package exists.
+    ///
+    ///     package package-name
+    Package(Box<Sid>),
 }
 
 #[derive(
@@ -1025,6 +1027,31 @@ pub enum HoleSource {
     UnsafeCast(Vec<Hint>),
     UnsafeNonnullCast,
     EnforcedCast(Vec<Hint>),
+}
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    FromOcamlRep,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
+#[rust_to_ocaml(and)]
+#[repr(C)]
+pub struct Binop<Ex, En> {
+    #[rust_to_ocaml(attr = "transform.opaque")]
+    pub bop: ast_defs::Bop,
+    #[rust_to_ocaml(attr = "transform.explicit")]
+    pub lhs: Expr<Ex, En>,
+    #[rust_to_ocaml(attr = "transform.explicit")]
+    pub rhs: Expr<Ex, En>,
 }
 
 #[derive(
@@ -1303,11 +1330,29 @@ pub struct Fun_<Ex, En> {
     ToOcamlRep
 )]
 #[rust_to_ocaml(and)]
+#[repr(C)]
+pub struct CaptureLid<Ex>(pub Ex, pub Lid);
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    FromOcamlRep,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
+#[rust_to_ocaml(and)]
 #[rust_to_ocaml(prefix = "ef_")]
 #[repr(C)]
 pub struct Efun<Ex, En> {
     pub fun: Fun_<Ex, En>,
-    pub use_: Vec<Lid>,
+    pub use_: Vec<CaptureLid<Ex>>,
     pub closure_class_name: Option<String>,
 }
 
@@ -1731,6 +1776,7 @@ pub struct ClassConst<Ex, En> {
 pub struct ClassAbstractTypeconst {
     pub as_constraint: Option<Hint>,
     pub super_constraint: Option<Hint>,
+    #[rust_to_ocaml(attr = "transform.explicit")]
     pub default: Option<Hint>,
 }
 
@@ -1937,6 +1983,7 @@ pub struct Typedef<Ex, En> {
     pub tparams: Vec<Tparam<Ex, En>>,
     pub as_constraint: Option<Hint>,
     pub super_constraint: Option<Hint>,
+    #[rust_to_ocaml(attr = "transform.explicit")]
     pub kind: Hint,
     pub user_attributes: UserAttributes<Ex, En>,
     pub file_attributes: Vec<FileAttribute<Ex, En>>,
@@ -2639,7 +2686,7 @@ pub struct Enum_ {
     ToOcamlRep
 )]
 #[rust_to_ocaml(and)]
-#[rust_to_ocaml(attr = r#"deriving ((show { with_path = false }), eq, ord, map,
+#[rust_to_ocaml(attr = r#"deriving ((show { with_path = false }), eq, hash, ord, map,
     (transform ~restart:(`Disallow `Encode_as_result)),
     (visitors
        {

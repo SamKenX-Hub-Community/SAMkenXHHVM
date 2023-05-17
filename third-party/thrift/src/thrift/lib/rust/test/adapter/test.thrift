@@ -15,9 +15,12 @@
  */
 
 include "thrift/annotation/rust.thrift"
+include "thrift/annotation/scope.thrift"
 
 @rust.Adapter{name = "::adapters::StringAdapter"}
 typedef string AdaptedString
+
+typedef AdaptedString WrappedAdaptedString (rust.newtype, rust.ord)
 
 @rust.Adapter{name = "::adapters::NonZeroI64Adapter"}
 typedef i64 AdaptedI64
@@ -44,6 +47,40 @@ typedef PassThroughAdaptedWrappedAdaptedBytes WrappedAdaptedWrappedAdaptedBytes 
   rust.newtype,
 )
 
+const AdaptedI64 adapted_int = 5;
+const PassThroughAdaptedI64 pass_through_adapted_int = 6;
+const WrappedAdaptedWrappedAdaptedBytes adapted_bytes_const = "some_bytes";
+const AdaptedListNewType adapted_list_const = ["hello", "world"];
+
+enum AssetType {
+  UNKNOWN = 0,
+  LAPTOP = 1,
+  SERVER = 2,
+} (rust.name = "ThriftAssetType")
+
+@rust.Adapter{name = "crate::AssetAdapter"}
+struct Asset {
+  1: AssetType type_;
+  2: i64 id;
+  @rust.Adapter{name = "::adapters::NonZeroI64Adapter"}
+  3: i64 id1 = 1;
+  4: AdaptedI64 id2 = 2;
+  @rust.Adapter{name = "::adapters::IdentityAdapter<>"}
+  5: AdaptedI64 id3 = 3;
+  6: string comment;
+}
+
+const Asset adapted_struct_const = {
+  "type_": AssetType.SERVER,
+  "id": 42,
+  "comment": "foobar",
+};
+
+struct TestAnnotation {
+  1: string payload;
+}
+
+@TestAnnotation{payload = "some_payload"}
 struct Foo {
   1: string str_val;
   2: i64 int_val;
@@ -79,6 +116,19 @@ struct Foo {
   };
   @rust.Adapter{name = "crate::AdaptedStringListIdentityAdapter"}
   17: list<AdaptedString> field_adapted_adapted_string_list = ["zucc"];
+  18: Asset adapted_struct;
+  @rust.Adapter{name = "crate::AdaptedAssetIdentityAdapter"}
+  19: Asset double_adapted_struct;
+  20: list<Asset> adapted_struct_list = [{"type_": AssetType.LAPTOP, "id": 10}];
+  21: AdaptedListNewType adapted_list_new_type = ["hi", "there"];
+  22: map<
+    AdaptedString,
+    WrappedAdaptedWrappedAdaptedBytes
+  > map_with_adapted_key_val = {"what": "are those?"};
+  23: map<
+    WrappedAdaptedString,
+    WrappedAdaptedWrappedAdaptedBytes
+  > map_with_adapted_wrapped_key_val = {"marco": "polo"};
 }
 
 union Bar {
@@ -90,3 +140,31 @@ union Bar {
   @rust.Adapter{name = "::adapters::NonZeroI64Adapter"}
   4: i64 validated_int_val = 1;
 }
+
+struct FirstAnnotation {
+  1: string uri;
+}
+
+@rust.Adapter{name = "crate::TransitiveTestAdapter<>"}
+@FirstAnnotation{uri = "thrift/test"}
+@scope.Transitive
+struct TransitiveAdapterAnnotation {
+  1: string payload;
+}
+
+@rust.Adapter{name = "crate::TransitiveAnnotationTestAdapter<>"}
+@FirstAnnotation{uri = "thrift/transitive_field_test"}
+@scope.Transitive
+struct TransitiveFieldAdapterAnnotation {
+  1: string payload;
+}
+
+@TransitiveAdapterAnnotation{payload = "hello_world"}
+struct TransitiveStruct {
+  @rust.Adapter{name = "crate::AnnotationTestAdapter"}
+  1: string test_field;
+  @TransitiveFieldAdapterAnnotation{payload = "foobar"}
+  2: string test_field_2;
+}
+
+typedef TransitiveStruct TransitiveStructWrapper (rust.newtype)

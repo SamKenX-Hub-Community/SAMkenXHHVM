@@ -32,6 +32,9 @@ val temp_dir_name : string
 
 val getenv_path : unit -> string option
 
+(** This is a string "fd123:456" which uniquely identifies this file's inode *)
+val show_inode : Unix.file_descr -> string
+
 val open_in_no_fail : string -> in_channel
 
 val open_in_bin_no_fail : string -> in_channel
@@ -246,6 +249,18 @@ val select_non_intr :
   float ->
   Unix.file_descr list * Unix.file_descr list * Unix.file_descr list
 
+(** "restart_on_EINTR f x" will do "f x", but if it throws EINTR then it will retry.
+See https://ocaml.github.io/ocamlunix/ocamlunix.html#sec88 for explanation. *)
+val restart_on_EINTR : ('a -> 'b) -> 'a -> 'b
+
+(** Like Unix.write, but ignores EINTR. *)
+val write_non_intr : Unix.file_descr -> bytes -> int -> int -> unit
+
+(** Reads specified number of bytes from the file descriptor through repeated calls to Unix.read.
+Ignores EINTR. If ever a call to Unix.read returns 0 bytes (e.g. end of file),
+then this function will return None. *)
+val read_non_intr : Unix.file_descr -> int -> bytes option
+
 (** Flow uses lwt, which installs a sigchld handler. So the old pattern of
 fork & waitpid will hit an EINTR when the forked process dies and the parent
 gets a sigchld signal.
@@ -282,6 +297,20 @@ external get_gc_time : unit -> float * float = "hh_get_gc_time"
 module For_test : sig
   val find_oom_in_dmesg_output : int -> string -> string list -> bool
 end
+
+(** [atomically_create_and_init_file file ~rd ~wr perm ~init] will
+(1) create an anomymous FD using [rd], [wr] and [perm],
+(2) call the [init] callback allowing you to write contents or lock that FD,
+(3) attempt to atomically place that FD at the specified filename [file].
+If this third step fails because a file already exists there, the function
+will return None. Otherwise, it will return Some fd. *)
+val atomically_create_and_init_file :
+  string ->
+  rd:bool ->
+  wr:bool ->
+  Unix.file_perm ->
+  init:(Unix.file_descr -> unit) ->
+  Unix.file_descr option
 
 (** This will acquire a reader-lock on the file then read its content.
 Locks in unix are advisory, so this only works if writing is done by

@@ -41,12 +41,14 @@ add_library(
 target_link_libraries(
   compiler_ast
   ${OPENSSL_LIBRARIES}
+  Boost::boost
   fmt::fmt
 )
 
 # The base library.
 add_library(
   compiler_base
+  STATIC
 
   detail/system.cc
   diagnostic.cc
@@ -57,7 +59,8 @@ add_library(
   parse/lexer.h
   parse/parser.cc
   parse/parser.h
-  parse/parsing_driver.cc
+  parse/parse_ast.cc
+  parse/parse_ast.h
   parse/token.cc
   parse/token.h
   sema/const_checker.cc
@@ -73,7 +76,7 @@ target_compile_definitions(
 target_link_libraries(
   compiler_base
   compiler_ast
-  ${Boost_LIBRARIES}
+  Boost::filesystem
   fmt::fmt
 )
 
@@ -89,11 +92,12 @@ add_library(
   lib/cpp2/util.cc
   lib/go/util.cc
   lib/java/util.cc
+  lib/rust/util.cc
 )
 target_link_libraries(
   compiler
   compiler_ast
-  ${Boost_LIBRARIES}
+  Boost::filesystem
   fmt::fmt
 )
 
@@ -107,7 +111,7 @@ add_library(
   detail/mustache/token.cpp
   detail/mustache/utils.cpp
 )
-target_link_libraries(mustache ${Boost_LIBRARIES})
+target_link_libraries(mustache Boost::boost)
 
 add_subdirectory(generate)
 
@@ -134,7 +138,6 @@ target_link_libraries(
   compiler_ast
   compiler_base
   ${GENERATE_LINKED}
-  ${Boost_LIBRARIES}
 )
 # Force compiler_generators linking (compiler will optimize it out otherwise).
 if (MSVC)

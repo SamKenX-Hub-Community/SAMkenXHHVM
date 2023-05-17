@@ -144,7 +144,7 @@ class DeterministicAccumulator {
   };
 
   HasherGenerator generator_;
-  std::stack<Context> context_;
+  std::stack<Context, std::vector<Context>> context_;
   Hasher result_ = generator_();
 
   constexpr auto& context() {
@@ -181,7 +181,7 @@ template <typename HasherGenerator>
 void DeterministicAccumulator<HasherGenerator>::beginOrdered() {
   // If the context stack is empty, push new context to the stack and use it.
   if (context_.empty()) {
-    context_.emplace(Context{});
+    context_.emplace();
   }
   auto& ctx = context();
   // If the previous context is not an ordered context, insert a new hasher
@@ -268,6 +268,7 @@ void DeterministicAccumulator<HasherGenerator>::combine(const T& val) {
   // and combine with the new hasher.
   ctx.hashers.push_back(generator_());
   ctx.hashers.back().combine(val);
+  ctx.hashers.back().finalize();
 }
 
 } // namespace op

@@ -19,6 +19,8 @@ type ce_visibility =
   | Vinternal of string
 [@@deriving eq, ord, show]
 
+type cross_package_decl = string option [@@deriving eq, ord]
+
 (* Represents <<Policied()>> or <<InferFlows>> attribute *)
 type ifc_fun_decl =
   | FDPolicied of string option
@@ -58,9 +60,18 @@ type fun_tparams_kind =
       explicit type argument must be reified. *)
 [@@deriving eq]
 
-type shape_kind =
-  | Closed_shape
-  | Open_shape
+(** The origin of a type is a succinct key that is unique to the
+    type containing it. Consequently, two types with the same
+    origin are necessarily identical. Any change to a type with
+    origin needs to come with a *reset* of its origin. For example,
+    all type mappers have to reset origins to [Missing_origin]. *)
+type type_origin =
+  | Missing_origin
+      (** When we do not have any origin for the type. It is always
+          correct to use [Missing_origin]; so when in doubt, use it. *)
+  | From_alias of string
+      (** A type with origin [From_alias orig] is equivalent to
+           the expansion of the alias [orig]. *)
 [@@deriving eq, ord, show]
 
 type pos_string = Pos_or_decl.t * string [@@deriving eq, ord, show]
@@ -250,7 +261,9 @@ and _ ty_ =
   (* Whether all fields of this shape are known, types of each of the
    * known arms.
    *)
-  | Tshape : shape_kind * 'phase shape_field_type TShapeMap.t -> 'phase ty_
+  | Tshape :
+      type_origin * 'phase ty * 'phase shape_field_type TShapeMap.t
+      -> 'phase ty_
   | Tvar : Ident.t -> 'phase ty_
   (* The type of a generic parameter. The constraints on a generic parameter
    * are accessed through the lenv.tpenv component of the environment, which
@@ -350,6 +363,7 @@ and 'ty fun_type = {
   (* Carries through the sync/async information from the aast *)
   ft_flags: int;
   ft_ifc_decl: ifc_fun_decl;
+  ft_cross_package: cross_package_decl;
 }
 
 and 'ty possibly_enforced_ty = {
@@ -364,7 +378,7 @@ and 'ty fun_param = {
   fp_flags: int;
 }
 
-and 'ty fun_params = 'ty fun_param list
+and 'ty fun_params = 'ty fun_param list [@@deriving hash]
 
 val nonexact : exact
 
@@ -470,6 +484,8 @@ module Pp : sig
   val show_locl_ty : locl_ty -> string
 
   val pp_ifc_fun_decl : Format.formatter -> ifc_fun_decl -> unit
+
+  val pp_cross_package_decl : Format.formatter -> cross_package_decl -> unit
 end
 
 include module type of Pp

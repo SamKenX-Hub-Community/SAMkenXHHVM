@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<6a5659add5f46c9fdc4636a39f7d52f1>>
+// @generated SignedSource<<1a44ccaa1355ef6618dc0312ae7b40cc>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -62,12 +62,15 @@ pub enum CeVisibility {
     Serialize,
     ToOcamlRep
 )]
-#[rust_to_ocaml(attr = "deriving (eq, ord)")]
+#[rust_to_ocaml(attr = "deriving (eq, hash, ord)")]
 #[repr(C, u8)]
 pub enum IfcFunDecl {
     FDPolicied(Option<String>),
     FDInferFlows,
 }
+
+#[rust_to_ocaml(attr = "deriving (eq, hash, ord)")]
+pub type CrossPackageDecl = Option<String>;
 
 #[derive(
     Clone,
@@ -133,13 +136,11 @@ arena_deserializer::impl_deserialize_in_arena!(FunTparamsKind);
 
 #[derive(
     Clone,
-    Copy,
     Debug,
     Deserialize,
     Eq,
     EqModuloPos,
     FromOcamlRep,
-    FromOcamlRepIn,
     Hash,
     NoPosHash,
     Ord,
@@ -148,16 +149,14 @@ arena_deserializer::impl_deserialize_in_arena!(FunTparamsKind);
     Serialize,
     ToOcamlRep
 )]
-#[rust_to_ocaml(attr = "deriving (eq, ord, show)")]
-#[repr(u8)]
-pub enum ShapeKind {
-    #[rust_to_ocaml(name = "Closed_shape")]
-    ClosedShape,
-    #[rust_to_ocaml(name = "Open_shape")]
-    OpenShape,
+#[rust_to_ocaml(attr = "deriving (eq, hash, ord, show)")]
+#[repr(C, u8)]
+pub enum TypeOrigin {
+    #[rust_to_ocaml(name = "Missing_origin")]
+    MissingOrigin,
+    #[rust_to_ocaml(name = "From_alias")]
+    FromAlias(String),
 }
-impl TrivialDrop for ShapeKind {}
-arena_deserializer::impl_deserialize_in_arena!(ShapeKind);
 
 #[derive(
     Clone,
@@ -174,11 +173,11 @@ arena_deserializer::impl_deserialize_in_arena!(ShapeKind);
     Serialize,
     ToOcamlRep
 )]
-#[rust_to_ocaml(attr = "deriving (eq, ord, show)")]
+#[rust_to_ocaml(attr = "deriving (eq, hash, ord, show)")]
 #[repr(C)]
 pub struct PosString(pub pos_or_decl::PosOrDecl, pub String);
 
-#[rust_to_ocaml(attr = "deriving (eq, ord, show)")]
+#[rust_to_ocaml(attr = "deriving (eq, hash, ord, show)")]
 pub type TByteString = String;
 
 #[derive(
@@ -196,7 +195,7 @@ pub type TByteString = String;
     Serialize,
     ToOcamlRep
 )]
-#[rust_to_ocaml(attr = "deriving (eq, ord, show)")]
+#[rust_to_ocaml(attr = "deriving (eq, hash, ord, show)")]
 #[repr(C)]
 pub struct PosByteString(pub pos_or_decl::PosOrDecl, pub bstr::BString);
 
@@ -215,7 +214,7 @@ pub struct PosByteString(pub pos_or_decl::PosOrDecl, pub bstr::BString);
     Serialize,
     ToOcamlRep
 )]
-#[rust_to_ocaml(attr = "deriving (eq, ord, show)")]
+#[rust_to_ocaml(attr = "deriving (eq, hash, ord, show)")]
 #[repr(C, u8)]
 pub enum TshapeFieldName {
     #[rust_to_ocaml(name = "TSFlit_int")]
@@ -304,7 +303,7 @@ arena_deserializer::impl_deserialize_in_arena!(ConsistentKind);
     Serialize,
     ToOcamlRep
 )]
-#[rust_to_ocaml(attr = "deriving (eq, ord, show)")]
+#[rust_to_ocaml(attr = "deriving (eq, hash, ord, show)")]
 #[repr(C, u8)]
 pub enum DependentType {
     DTexpr(ident::Ident),
@@ -325,7 +324,7 @@ pub enum DependentType {
     Serialize,
     ToOcamlRep
 )]
-#[rust_to_ocaml(attr = "deriving (eq, show)")]
+#[rust_to_ocaml(attr = "deriving (eq, hash, show)")]
 #[rust_to_ocaml(prefix = "ua_")]
 #[repr(C)]
 pub struct UserAttribute {
@@ -348,7 +347,7 @@ pub struct UserAttribute {
     Serialize,
     ToOcamlRep
 )]
-#[rust_to_ocaml(attr = "deriving (eq, show)")]
+#[rust_to_ocaml(attr = "deriving (eq, hash, show)")]
 #[rust_to_ocaml(prefix = "tp_")]
 #[repr(C)]
 pub struct Tparam {
@@ -375,7 +374,7 @@ pub struct Tparam {
     Serialize,
     ToOcamlRep
 )]
-#[rust_to_ocaml(attr = "deriving (eq, show)")]
+#[rust_to_ocaml(attr = "deriving (eq, hash, show)")]
 #[repr(C)]
 pub struct WhereConstraint(pub Ty, pub ast_defs::ConstraintKind, pub Ty);
 
@@ -396,7 +395,7 @@ pub struct WhereConstraint(pub Ty, pub ast_defs::ConstraintKind, pub Ty);
     Serialize,
     ToOcamlRep
 )]
-#[rust_to_ocaml(attr = "deriving (eq, show, ord)")]
+#[rust_to_ocaml(attr = "deriving (eq, hash, show, ord)")]
 #[repr(u8)]
 pub enum Enforcement {
     Unenforced,
@@ -554,7 +553,7 @@ pub enum Ty_ {
     Ttuple(Vec<Ty>),
     /// Whether all fields of this shape are known, types of each of the
     /// known arms.
-    Tshape(ShapeKind, t_shape_map::TShapeMap<ShapeFieldType>),
+    Tshape(TypeOrigin, Ty, t_shape_map::TShapeMap<ShapeFieldType>),
     Tvar(ident::Ident),
     /// The type of a generic parameter. The constraints on a generic parameter
     /// are accessed through the lenv.tpenv component of the environment, which
@@ -821,6 +820,7 @@ pub struct FunType {
     pub ret: PossiblyEnforcedTy,
     pub flags: typing_defs_flags::FunTypeFlags,
     pub ifc_decl: IfcFunDecl,
+    pub cross_package: CrossPackageDecl,
 }
 
 #[derive(
@@ -873,6 +873,7 @@ pub struct FunParam {
 }
 
 #[rust_to_ocaml(and)]
+#[rust_to_ocaml(attr = "deriving hash")]
 pub type FunParams = Vec<FunParam>;
 
 #[derive(

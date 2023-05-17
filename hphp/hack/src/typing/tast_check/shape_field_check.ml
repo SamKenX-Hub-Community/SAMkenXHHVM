@@ -18,11 +18,11 @@ module SN = Naming_special_names
 let shapes_key_exists env shape field_name =
   let check pos shape_kind fields =
     match TShapeMap.find_opt field_name fields with
-    | None -> begin
-      match shape_kind with
-      | Closed_shape -> `DoesNotExist (pos, `Undefined)
-      | Open_shape -> `Unknown
-    end
+    | None ->
+      if is_nothing shape_kind then
+        `DoesNotExist (pos, `Undefined)
+      else
+        `Unknown
     | Some { sft_optional; sft_ty } ->
       if not sft_optional then
         `DoesExist (get_pos sft_ty)
@@ -41,12 +41,12 @@ let shapes_key_exists env shape field_name =
   let (_, _, shape) = Typing_utils.strip_supportdyn tenv shape in
   let (_, shape) = Tast_env.expand_type env shape in
   match get_node shape with
-  | Tshape (shape_kind, fields) ->
+  | Tshape (_, shape_kind, fields) ->
     (check (get_pos shape) shape_kind fields, false)
   | Toption maybe_shape ->
     let (_, shape) = Tast_env.expand_type env maybe_shape in
     (match get_node shape with
-    | Tshape (shape_kind, fields) ->
+    | Tshape (_, shape_kind, fields) ->
       (check (get_pos shape) shape_kind fields, true)
     | _ -> (`Unknown, true))
   | _ -> (`Unknown, false)
@@ -61,13 +61,13 @@ let trivial_shapes_key_exists_check pos1 env (shape, _, _) field_name =
   if not optional then
     match status with
     | `DoesExist decl_pos ->
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(
           shape
           @@ Primary.Shape.Shapes_key_exists_always_true
                { pos = pos1; field_name = snd field_name; decl_pos })
     | `DoesNotExist (decl_pos, reason) ->
-      Errors.add_typing_error
+      Typing_error_utils.add_typing_error
         Typing_error.(
           shape
           @@ Primary.Shape.Shapes_key_exists_always_false
@@ -83,7 +83,7 @@ let shapes_method_access_with_non_existent_field
   | (`DoesExist _, false) ->
     Lint.shape_idx_access_required_field pos1 (snd field_name)
   | (`DoesNotExist (decl_pos, reason), _) ->
-    Errors.add_typing_error
+    Typing_error_utils.add_typing_error
       Typing_error.(
         shape
         @@ Primary.Shape.Shapes_method_access_with_non_existent_field
@@ -104,7 +104,7 @@ let shape_access_with_non_existent_field pos1 env (shape, _, _) field_name =
   in
   match (status, optional) with
   | (`DoesNotExist (decl_pos, reason), _) ->
-    Errors.add_typing_error
+    Typing_error_utils.add_typing_error
       Typing_error.(
         shape
         @@ Primary.Shape.Shapes_access_with_non_existent_field
@@ -159,9 +159,11 @@ let handler =
       | ( _,
           p,
           Binop
-            ( Ast_defs.QuestionQuestion,
-              (_, _, Array_get (shape, Some (_, pos, String field_name))),
-              _ ) ) ->
+            {
+              bop = Ast_defs.QuestionQuestion;
+              lhs = (_, _, Array_get (shape, Some (_, pos, String field_name)));
+              _;
+            } ) ->
         shape_access_with_non_existent_field
           p
           env

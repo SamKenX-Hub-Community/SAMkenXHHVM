@@ -1984,12 +1984,10 @@ const char* iconv_version() { return "2.5"; }
 #endif
 
 struct iconvExtension final : Extension {
-  iconvExtension() : Extension("iconv") {}
+  iconvExtension() : Extension("iconv", NO_EXTENSION_VERSION_YET, NO_ONCALL_YET) {}
 
   void moduleInit() override {
     HHVM_RC_STR(ICONV_IMPL, iconv_impl());
-    HHVM_RC_INT(ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 2);
-    HHVM_RC_INT(ICONV_MIME_DECODE_STRICT, 1);
     HHVM_RC_STR(ICONV_VERSION, iconv_version());
 
     HHVM_FE(iconv_get_encoding);

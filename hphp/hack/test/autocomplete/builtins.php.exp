@@ -1,16 +1,24 @@
 valid
-  (function(): bool)
+  INSERT valid()
+  function(): bool
 send
-  (function(?Ts $v): void)
+  INSERT send(${1:\$v})
+  function(?Ts $v): void
 rewind
-  (function(): void)
+  INSERT rewind()
+  function(): void
 raise
-  (function(Exception $e): void)
+  INSERT raise(${1:\$e})
+  function(Exception $e): void
 next
-  (function(): void)
+  INSERT next()
+  function(): void
 key
-  (function(): Tk)
+  INSERT key()
+  function(): Tk
 getOrigFuncName
-  (function(): string)
+  INSERT getOrigFuncName()
+  function(): string
 current
-  (function(): Tv)
+  INSERT current()
+  function(): Tv

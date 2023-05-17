@@ -678,12 +678,29 @@ let set_current_module env m =
 
 let get_current_module env = Option.map env.genv.current_module ~f:snd
 
-let get_package_for_module env md =
-  Option.bind env.genv.get_package_for_module ~f:(fun f -> f md)
-
 let set_internal env b = { env with genv = { env.genv with this_internal = b } }
 
 let get_internal env = env.genv.this_internal
+
+let get_package_for_module env md =
+  let info = env.genv.package_info in
+  Package.Info.get_package_for_module info md
+
+let get_package_by_name env pkg_name =
+  let info = env.genv.package_info in
+  Package.Info.get_package info pkg_name
+
+let is_package_loaded env package = SSet.mem package env.loaded_packages
+
+let load_packages env packages =
+  { env with loaded_packages = SSet.union env.loaded_packages packages }
+
+let with_packages env packages f =
+  let old_loaded_packages = env.loaded_packages in
+  let env = load_packages env packages in
+  let (env, result) = f env in
+  let env = { env with loaded_packages = old_loaded_packages } in
+  (env, result)
 
 let get_typedef env x =
   let res =
@@ -720,6 +737,7 @@ let is_typedef_visible env ?(expand_visible_newtype = true) ~name td =
          (get_current_module env)
          (Option.map td_module ~f:snd)
   | Aast.Transparent -> true
+  | Aast.CaseType -> false
 
 let get_class (env : env) (name : Decl_provider.type_key) : Cls.t option =
   let res =
@@ -974,16 +992,36 @@ let with_origin2 env origin f =
   let env = { env with tracing_info = ti1 } in
   (env, r1, r2)
 
-let with_in_expr_tree env in_expr_tree f =
+let inside_expr_tree env expr_tree_hint =
+  let outer_locals =
+    match next_cont_opt env with
+    | None -> Local_id.Map.empty
+    | Some cont -> cont.LEnvC.local_types
+  in
+  { env with in_expr_tree = Some { dsl = expr_tree_hint; outer_locals } }
+
+let outside_expr_tree env = { env with in_expr_tree = None }
+
+let with_inside_expr_tree env expr_tree_hint f =
   let old_in_expr_tree = env.in_expr_tree in
-  let env = { env with in_expr_tree } in
+  let env = inside_expr_tree env expr_tree_hint in
   let (env, r1, r2) = f env in
   let env = { env with in_expr_tree = old_in_expr_tree } in
   (env, r1, r2)
 
-let is_in_expr_tree env = env.in_expr_tree
+let with_outside_expr_tree env f =
+  let old_in_expr_tree = env.in_expr_tree in
+  let dsl =
+    match old_in_expr_tree with
+    | Some { dsl = (_, Happly (cls, _)); outer_locals = _ } -> Some cls
+    | _ -> None
+  in
+  let env = outside_expr_tree env in
+  let (env, r1, r2) = f env dsl in
+  let env = { env with in_expr_tree = old_in_expr_tree } in
+  (env, r1, r2)
 
-let set_in_expr_tree env b = { env with in_expr_tree = b }
+let is_in_expr_tree env = Option.is_some env.in_expr_tree
 
 let is_static env = env.genv.static
 
@@ -1137,34 +1175,69 @@ let unset_local env local =
 
 let tany _env = Typing_defs.make_tany ()
 
-let get_local_in_ctx ?error_if_undef_at_pos:p x ctx_opt =
-  let not_found_is_ok x ctx = Fake.is_valid ctx.LEnvC.fake_members x in
-  let error_if_pos_provided posopt ctx =
-    match posopt with
-    | Some p ->
-      let lid = LID.to_string x in
-      let suggest_most_similar lid =
-        (* Ignore fake locals *)
-        let all_locals =
-          LID.Map.fold
-            (fun k v acc ->
-              if LID.is_user_denotable k then
-                (k, v) :: acc
-              else
-                acc)
-            ctx.LEnvC.local_types
-            []
-        in
-        let var_name (k, _) = LID.to_string k in
-        match most_similar lid all_locals var_name with
-        | Some (k, (_, pos, _)) -> Some (LID.to_string k, pos)
-        | None -> None
-      in
-      Errors.add_naming_error
-      @@ Naming_error.Undefined
-           { pos = p; var_name = lid; did_you_mean = suggest_most_similar lid }
-    | None -> ()
+let local_undefined_error ~env p x ctx =
+  let open Option.Let_syntax in
+  (* When inside an expression tree, the user may forget to splice in a
+     variable. If that happens we want to suggest splicing in that
+     variable. *)
+  let all_outer_locals () =
+    Option.value ~default:[]
+    @@ let* { outer_locals; dsl } = env.in_expr_tree in
+       let locals =
+         LID.Map.fold
+           (fun k ((_, p, _) as v) acc ->
+             (* $this doesn't have a position. In general best to avoid
+                suggestions that lack positions. *)
+             if LID.is_user_denotable k && (not @@ Pos.equal p Pos.none) then
+               (k, v, Some dsl) :: acc
+             else
+               acc)
+           outer_locals
+           []
+       in
+       return locals
   in
+  match p with
+  | Some p ->
+    let lid = LID.to_string x in
+    let suggest_most_similar lid =
+      (* Ignore fake locals *)
+      let all_locals =
+        LID.Map.fold
+          (fun k v acc ->
+            if LID.is_user_denotable k then
+              (k, v, None) :: acc
+            else
+              acc)
+          ctx.LEnvC.local_types
+          (* Prefer suggesting variables within the current scope *)
+          (all_outer_locals ())
+      in
+      let var_name (k, _, _) = LID.to_string k in
+      match most_similar lid all_locals var_name with
+      | Some (k, (_, pos, _), dsl) -> (Some (LID.to_string k, pos), dsl)
+      | None -> (None, None)
+    in
+    let (most_similar, in_dsl) = suggest_most_similar lid in
+    let error =
+      match in_dsl with
+      | None ->
+        Naming_error.Undefined
+          { pos = p; var_name = lid; did_you_mean = most_similar }
+      | Some dsl ->
+        let dsl =
+          match dsl with
+          | (_, Happly ((_, cls), _)) -> Some cls
+          | _ -> None
+        in
+        Naming_error.Undefined_in_expr_tree
+          { pos = p; var_name = lid; dsl; did_you_mean = most_similar }
+    in
+    Errors.add_error (Naming_error.to_user_error error)
+  | None -> ()
+
+let get_local_in_ctx ~undefined_err_fun x ctx_opt =
+  let not_found_is_ok x ctx = Fake.is_valid ctx.LEnvC.fake_members x in
   match ctx_opt with
   | None ->
     (* If the continuation is absent, we are in dead code so the variable should
@@ -1178,19 +1251,20 @@ let get_local_in_ctx ?error_if_undef_at_pos:p x ctx_opt =
         if not_found_is_ok x ctx then
           ()
         else
-          error_if_pos_provided p ctx
+          undefined_err_fun x ctx
       | Some _ -> ()
     end;
     lcl
 
-let get_local_ty_in_ctx env ?error_if_undef_at_pos x ctx_opt =
-  match get_local_in_ctx ?error_if_undef_at_pos x ctx_opt with
+let get_local_ty_in_ctx env ~undefined_err_fun x ctx_opt =
+  match get_local_in_ctx ~undefined_err_fun x ctx_opt with
   | None -> (false, mk (Reason.Rnone, tany env), Pos.none)
   | Some (x, pos, _) -> (true, x, pos)
 
 let get_local_in_next_continuation ?error_if_undef_at_pos:p env x =
+  let undefined_err_fun = local_undefined_error ~env p in
   let next_cont = next_cont_opt env in
-  get_local_ty_in_ctx env ?error_if_undef_at_pos:p x next_cont
+  get_local_ty_in_ctx env ~undefined_err_fun x next_cont
 
 let get_local_ ?error_if_undef_at_pos:p env x =
   let (mut, ty, _) =
@@ -1206,14 +1280,17 @@ let get_local_pos env x =
 
 let get_locals ?(quiet = false) env plids =
   let next_cont = next_cont_opt env in
-  List.fold plids ~init:LID.Map.empty ~f:(fun locals (p, lid) ->
+  List.fold plids ~init:LID.Map.empty ~f:(fun locals (_, (p, lid)) ->
       let error_if_undef_at_pos =
         if quiet then
           None
         else
           Some p
       in
-      match get_local_in_ctx ?error_if_undef_at_pos lid next_cont with
+      let undefined_err_fun =
+        local_undefined_error ~env error_if_undef_at_pos
+      in
+      match get_local_in_ctx ~undefined_err_fun lid next_cont with
       | None -> locals
       | Some ty_eid -> LID.Map.add lid ty_eid locals)
 
@@ -1236,7 +1313,7 @@ let set_local_expr_id env x new_eid =
     | Some (type_, pos, eid)
       when not (Typing_local_types.equal_expression_id eid new_eid) ->
       if Ident.is_immutable eid then
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(primary @@ Primary.Immutable_local pos);
       let local = (type_, pos, new_eid) in
       let per_cont_env = LEnvC.add_to_cont C.Next x local per_cont_env in
@@ -1458,7 +1535,7 @@ and get_tyvars_i env (ty : internal_type) =
     | Tunion tyl
     | Tintersection tyl ->
       List.fold_left tyl ~init:(env, ISet.empty, ISet.empty) ~f:get_tyvars_union
-    | Tshape (_, m) ->
+    | Tshape (_, _, m) ->
       TShapeMap.fold
         (fun _ { sft_ty; _ } res -> get_tyvars_union res sft_ty)
         m

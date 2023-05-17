@@ -465,6 +465,7 @@ pub enum Hhbc {
         loc: LocId,
     },
     CreateCont(LocId),
+    CreateSpecialImplicitContext([ValueId; 2], LocId),
     Div([ValueId; 2], LocId),
     GetClsRGProp(ValueId, LocId),
     GetMemoKeyL(LocalId, LocId),
@@ -868,6 +869,10 @@ impl Call {
     pub fn obj(&self) -> ValueId {
         self.detail.obj(&self.operands)
     }
+
+    pub fn target(&self) -> ValueId {
+        self.detail.target(&self.operands)
+    }
 }
 
 impl CanThrow for Call {
@@ -1129,7 +1134,7 @@ pub enum Textual {
     #[has_operands(none)]
     #[has_loc(none)]
     #[has_locals(none)]
-    LoadGlobal(GlobalId),
+    LoadGlobal { id: GlobalId, is_const: bool },
     /// Literal String
     #[has_operands(none)]
     #[has_loc(none)]
@@ -1175,6 +1180,47 @@ impl Instr {
             operands: operands.into(),
             context: UnitBytesId::NONE,
             detail: CallDetail::FCallFuncD { func },
+            flags: FCallArgsFlags::default(),
+            num_rets: 0,
+            inouts: None,
+            readonly: None,
+            loc,
+        })
+    }
+
+    pub fn simple_method_call(
+        method: MethodId,
+        receiver: ValueId,
+        operands: &[ValueId],
+        loc: LocId,
+    ) -> Instr {
+        Self::call(Call {
+            operands: std::iter::once(receiver)
+                .chain(operands.iter().copied())
+                .collect(),
+            context: UnitBytesId::NONE,
+            detail: CallDetail::FCallObjMethodD {
+                flavor: ObjMethodOp::NullThrows,
+                method,
+            },
+            flags: FCallArgsFlags::default(),
+            num_rets: 0,
+            inouts: None,
+            readonly: None,
+            loc,
+        })
+    }
+
+    pub fn method_call_special(
+        clsref: SpecialClsRef,
+        method: MethodId,
+        operands: &[ValueId],
+        loc: LocId,
+    ) -> Instr {
+        Self::call(Call {
+            operands: operands.into(),
+            context: UnitBytesId::NONE,
+            detail: CallDetail::FCallClsMethodSD { clsref, method },
             flags: FCallArgsFlags::default(),
             num_rets: 0,
             inouts: None,

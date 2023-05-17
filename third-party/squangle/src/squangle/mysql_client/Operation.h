@@ -56,6 +56,7 @@
 #include <folly/io/async/Request.h>
 #include <folly/io/async/SSLContext.h>
 #include <folly/ssl/OpenSSLPtrTypes.h>
+#include <folly/stop_watch.h>
 #include "squangle/logger/DBEventLogger.h"
 #include "squangle/mysql_client/Compression.h"
 #include "squangle/mysql_client/DbResult.h"
@@ -63,6 +64,7 @@
 #include "squangle/mysql_client/Query.h"
 #include "squangle/mysql_client/Row.h"
 
+DECLARE_int64(async_mysql_max_connect_timeout_micros);
 namespace facebook {
 namespace common {
 namespace mysql_client {
@@ -442,9 +444,14 @@ class Operation : public std::enable_shared_from_this<Operation> {
     return max_thread_block_time_;
   }
 
-  Operation* setMaxThreadBlockTime(Duration max_thread_block_time) {
-    max_thread_block_time_ = max_thread_block_time;
-    return this;
+  Duration getTotalThreadBlockTime() {
+    return total_thread_block_time_;
+  }
+
+  void logThreadBlockTime(const folly::stop_watch<Duration> sw) {
+    auto block_time = sw.elapsed();
+    max_thread_block_time_ = std::max(max_thread_block_time_, block_time);
+    total_thread_block_time_ += block_time;
   }
 
   // Did the operation succeed?
@@ -762,6 +769,7 @@ class Operation : public std::enable_shared_from_this<Operation> {
 
   // This will contain the max block time of the thread
   Duration max_thread_block_time_ = Duration(0);
+  Duration total_thread_block_time_ = Duration(0);
 
   // Our Connection object.  Created by ConnectOperation and moved
   // into QueryOperations.
@@ -1186,6 +1194,10 @@ class FetchOperation : public Operation {
     return no_index_used_;
   }
 
+  bool wasSlow() const {
+    return was_slow_;
+  }
+
   int numCurrentQuery() const {
     return num_current_query_;
   }
@@ -1266,6 +1278,7 @@ class FetchOperation : public Operation {
   bool query_executed_ = false;
   bool no_index_used_ = false;
   bool use_checksum_ = false;
+  bool was_slow_ = false;
   // TODO: Rename `executed` to `succeeded`
   int num_queries_executed_ = 0;
   // During a `notify` call, the consumer might want to know the index of the

@@ -32,21 +32,36 @@ struct PackageInfo {
   struct Package {
     hphp_vector_string_set m_uses;
     hphp_vector_string_set m_includes;
+    hphp_vector_string_set m_soft_includes;
 
     template <typename SerDe> void serde(SerDe& sd) {
       sd(m_uses, stdltstr{})
         (m_includes, stdltstr{})
+        (m_soft_includes, stdltstr{})
         ;
     }
   };
 
   struct Deployment {
     hphp_vector_string_set m_packages;
+    hphp_vector_string_set m_soft_packages;
     std::vector<std::shared_ptr<re2::RE2>> m_domains;
 
     template <typename SerDe> void serde(SerDe& sd) {
-      // m_domains omitted on purpose, as it is not needed to be serialized
-      sd(m_packages, stdltstr{});
+      sd(m_packages, stdltstr{})
+        (m_soft_packages, stdltstr{})
+        ;
+
+      std::vector<std::string> patterns;
+      if constexpr (SerDe::deserializing) {
+        sd(patterns);
+        for (auto& s : patterns) {
+          m_domains.push_back(std::make_shared<re2::RE2>(s));
+        }
+      } else {
+        for (auto const& p : m_domains) patterns.push_back(p->pattern());
+        sd(patterns);
+      }
     }
   };
 
@@ -58,6 +73,13 @@ struct PackageInfo {
 
   const Deployment* getActiveDeployment() const;
   bool isPackageInActiveDeployment(const StringData* package) const;
+
+  bool moduleInPackage(const StringData* module,
+                       const Package& package) const;
+
+  bool moduleInDeployment(const StringData* module,
+                          const Deployment& deployment,
+                          bool allowSoft = true) const;
 
   std::string mangleForCacheKey() const;
 

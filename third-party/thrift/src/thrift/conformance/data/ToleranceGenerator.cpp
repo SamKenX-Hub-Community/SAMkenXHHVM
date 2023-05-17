@@ -37,8 +37,8 @@ namespace apache::thrift::conformance::data {
 
 namespace {
 template <class T>
-[[nodiscard]] Object toObject(const T& t) {
-  Value v;
+[[nodiscard]] protocol::Object toObject(const T& t) {
+  protocol::Value v;
   ::apache::thrift::protocol::detail::ObjectWriter writer{&v};
   t.write(&writer);
   return std::move(*v.objectValue_ref());
@@ -54,10 +54,11 @@ template <class TT>
 
     // Create a union object with both fields active
     data.field_1_ref() = value.value;
-    Object obj = toObject(data);
+    protocol::Object obj = toObject(data);
 
     data.field_2_ref() = value.value;
-    obj.members()->merge(*toObject(data).members());
+    auto map = *toObject(data).members();
+    obj.members()->insert(map.begin(), map.end());
     CHECK_EQ(obj.members()->size(), 2);
 
     auto testCase = genCompatibilityRoundTripTestCase(

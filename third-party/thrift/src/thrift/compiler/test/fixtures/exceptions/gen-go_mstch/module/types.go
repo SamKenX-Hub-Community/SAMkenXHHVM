@@ -4,10 +4,10 @@
 package module // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  thrift0 "thrift/annotation/thrift"
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift0 "thrift/annotation/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = thrift0.GoUnusedProtection__
@@ -24,7 +24,8 @@ type Fiery struct {
 var _ thrift.Struct = &Fiery{}
 
 func NewFiery() *Fiery {
-    return (&Fiery{})
+    return (&Fiery{}).
+        SetMessageNonCompat("")
 }
 
 func (x *Fiery) GetMessageNonCompat() string {
@@ -35,11 +36,15 @@ func (x *Fiery) GetMessage() string {
     return x.Message
 }
 
-func (x *Fiery) SetMessage(value string) *Fiery {
+func (x *Fiery) SetMessageNonCompat(value string) *Fiery {
     x.Message = value
     return x
 }
 
+func (x *Fiery) SetMessage(value string) *Fiery {
+    x.Message = value
+    return x
+}
 
 func (x *Fiery) writeField1(p thrift.Protocol) error {  // Message
     if err := p.WriteFieldBegin("message", thrift.STRING, 1); err != nil {
@@ -63,7 +68,7 @@ if err != nil {
     return err
 }
 
-    x.SetMessage(result)
+    x.SetMessageNonCompat(result)
     return nil
 }
 
@@ -96,6 +101,7 @@ func (x *FieryBuilder) Emit() *Fiery {
     var objCopy Fiery = *x.obj
     return &objCopy
 }
+
 func (x *Fiery) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Fiery"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -153,6 +159,7 @@ func (x *Fiery) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Serious struct {
     Sonnet *string `thrift:"sonnet,1,optional" json:"sonnet,omitempty" db:"sonnet"`
 }
@@ -163,23 +170,25 @@ func NewSerious() *Serious {
     return (&Serious{})
 }
 
-// Deprecated: Use NewSerious().Sonnet instead.
-var Serious_Sonnet_DEFAULT = NewSerious().Sonnet
-
 func (x *Serious) GetSonnetNonCompat() *string {
     return x.Sonnet
 }
 
 func (x *Serious) GetSonnet() string {
     if !x.IsSetSonnet() {
-      return ""
+        return ""
     }
 
     return *x.Sonnet
 }
 
-func (x *Serious) SetSonnet(value string) *Serious {
+func (x *Serious) SetSonnetNonCompat(value string) *Serious {
     x.Sonnet = &value
+    return x
+}
+
+func (x *Serious) SetSonnet(value *string) *Serious {
+    x.Sonnet = value
     return x
 }
 
@@ -213,9 +222,12 @@ if err != nil {
     return err
 }
 
-    x.SetSonnet(result)
+    x.SetSonnetNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewSerious().GetSonnet() instead.
+var Serious_Sonnet_DEFAULT = NewSerious().GetSonnet()
 
 func (x *Serious) String() string {
     return fmt.Sprintf("%+v", x)
@@ -246,6 +258,7 @@ func (x *SeriousBuilder) Emit() *Serious {
     var objCopy Serious = *x.obj
     return &objCopy
 }
+
 func (x *Serious) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Serious"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -303,6 +316,7 @@ func (x *Serious) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type ComplexFieldNames struct {
     ErrorMessage string `thrift:"error_message,1" json:"error_message" db:"error_message"`
     InternalErrorMessage string `thrift:"internal_error_message,2" json:"internal_error_message" db:"internal_error_message"`
@@ -311,7 +325,9 @@ type ComplexFieldNames struct {
 var _ thrift.Struct = &ComplexFieldNames{}
 
 func NewComplexFieldNames() *ComplexFieldNames {
-    return (&ComplexFieldNames{})
+    return (&ComplexFieldNames{}).
+        SetErrorMessageNonCompat("").
+        SetInternalErrorMessageNonCompat("")
 }
 
 func (x *ComplexFieldNames) GetErrorMessageNonCompat() string {
@@ -330,8 +346,18 @@ func (x *ComplexFieldNames) GetInternalErrorMessage() string {
     return x.InternalErrorMessage
 }
 
+func (x *ComplexFieldNames) SetErrorMessageNonCompat(value string) *ComplexFieldNames {
+    x.ErrorMessage = value
+    return x
+}
+
 func (x *ComplexFieldNames) SetErrorMessage(value string) *ComplexFieldNames {
     x.ErrorMessage = value
+    return x
+}
+
+func (x *ComplexFieldNames) SetInternalErrorMessageNonCompat(value string) *ComplexFieldNames {
+    x.InternalErrorMessage = value
     return x
 }
 
@@ -339,8 +365,6 @@ func (x *ComplexFieldNames) SetInternalErrorMessage(value string) *ComplexFieldN
     x.InternalErrorMessage = value
     return x
 }
-
-
 
 func (x *ComplexFieldNames) writeField1(p thrift.Protocol) error {  // ErrorMessage
     if err := p.WriteFieldBegin("error_message", thrift.STRING, 1); err != nil {
@@ -380,7 +404,7 @@ if err != nil {
     return err
 }
 
-    x.SetErrorMessage(result)
+    x.SetErrorMessageNonCompat(result)
     return nil
 }
 
@@ -390,7 +414,7 @@ if err != nil {
     return err
 }
 
-    x.SetInternalErrorMessage(result)
+    x.SetInternalErrorMessageNonCompat(result)
     return nil
 }
 
@@ -428,6 +452,7 @@ func (x *ComplexFieldNamesBuilder) Emit() *ComplexFieldNames {
     var objCopy ComplexFieldNames = *x.obj
     return &objCopy
 }
+
 func (x *ComplexFieldNames) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("ComplexFieldNames"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -493,6 +518,7 @@ func (x *ComplexFieldNames) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type CustomFieldNames struct {
     ErrorMessage string `thrift:"error_message,1" json:"error_message" db:"error_message"`
     InternalErrorMessage string `thrift:"internal_error_message,2" json:"internal_error_message" db:"internal_error_message"`
@@ -501,7 +527,9 @@ type CustomFieldNames struct {
 var _ thrift.Struct = &CustomFieldNames{}
 
 func NewCustomFieldNames() *CustomFieldNames {
-    return (&CustomFieldNames{})
+    return (&CustomFieldNames{}).
+        SetErrorMessageNonCompat("").
+        SetInternalErrorMessageNonCompat("")
 }
 
 func (x *CustomFieldNames) GetErrorMessageNonCompat() string {
@@ -520,8 +548,18 @@ func (x *CustomFieldNames) GetInternalErrorMessage() string {
     return x.InternalErrorMessage
 }
 
+func (x *CustomFieldNames) SetErrorMessageNonCompat(value string) *CustomFieldNames {
+    x.ErrorMessage = value
+    return x
+}
+
 func (x *CustomFieldNames) SetErrorMessage(value string) *CustomFieldNames {
     x.ErrorMessage = value
+    return x
+}
+
+func (x *CustomFieldNames) SetInternalErrorMessageNonCompat(value string) *CustomFieldNames {
+    x.InternalErrorMessage = value
     return x
 }
 
@@ -529,8 +567,6 @@ func (x *CustomFieldNames) SetInternalErrorMessage(value string) *CustomFieldNam
     x.InternalErrorMessage = value
     return x
 }
-
-
 
 func (x *CustomFieldNames) writeField1(p thrift.Protocol) error {  // ErrorMessage
     if err := p.WriteFieldBegin("error_message", thrift.STRING, 1); err != nil {
@@ -570,7 +606,7 @@ if err != nil {
     return err
 }
 
-    x.SetErrorMessage(result)
+    x.SetErrorMessageNonCompat(result)
     return nil
 }
 
@@ -580,7 +616,7 @@ if err != nil {
     return err
 }
 
-    x.SetInternalErrorMessage(result)
+    x.SetInternalErrorMessageNonCompat(result)
     return nil
 }
 
@@ -618,6 +654,7 @@ func (x *CustomFieldNamesBuilder) Emit() *CustomFieldNames {
     var objCopy CustomFieldNames = *x.obj
     return &objCopy
 }
+
 func (x *CustomFieldNames) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("CustomFieldNames"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -683,6 +720,7 @@ func (x *CustomFieldNames) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type ExceptionWithPrimitiveField struct {
     Message string `thrift:"message,1" json:"message" db:"message"`
     ErrorCode int32 `thrift:"error_code,2" json:"error_code" db:"error_code"`
@@ -691,7 +729,9 @@ type ExceptionWithPrimitiveField struct {
 var _ thrift.Struct = &ExceptionWithPrimitiveField{}
 
 func NewExceptionWithPrimitiveField() *ExceptionWithPrimitiveField {
-    return (&ExceptionWithPrimitiveField{})
+    return (&ExceptionWithPrimitiveField{}).
+        SetMessageNonCompat("").
+        SetErrorCodeNonCompat(0)
 }
 
 func (x *ExceptionWithPrimitiveField) GetMessageNonCompat() string {
@@ -710,8 +750,18 @@ func (x *ExceptionWithPrimitiveField) GetErrorCode() int32 {
     return x.ErrorCode
 }
 
+func (x *ExceptionWithPrimitiveField) SetMessageNonCompat(value string) *ExceptionWithPrimitiveField {
+    x.Message = value
+    return x
+}
+
 func (x *ExceptionWithPrimitiveField) SetMessage(value string) *ExceptionWithPrimitiveField {
     x.Message = value
+    return x
+}
+
+func (x *ExceptionWithPrimitiveField) SetErrorCodeNonCompat(value int32) *ExceptionWithPrimitiveField {
+    x.ErrorCode = value
     return x
 }
 
@@ -719,8 +769,6 @@ func (x *ExceptionWithPrimitiveField) SetErrorCode(value int32) *ExceptionWithPr
     x.ErrorCode = value
     return x
 }
-
-
 
 func (x *ExceptionWithPrimitiveField) writeField1(p thrift.Protocol) error {  // Message
     if err := p.WriteFieldBegin("message", thrift.STRING, 1); err != nil {
@@ -760,7 +808,7 @@ if err != nil {
     return err
 }
 
-    x.SetMessage(result)
+    x.SetMessageNonCompat(result)
     return nil
 }
 
@@ -770,7 +818,7 @@ if err != nil {
     return err
 }
 
-    x.SetErrorCode(result)
+    x.SetErrorCodeNonCompat(result)
     return nil
 }
 
@@ -808,6 +856,7 @@ func (x *ExceptionWithPrimitiveFieldBuilder) Emit() *ExceptionWithPrimitiveField
     var objCopy ExceptionWithPrimitiveField = *x.obj
     return &objCopy
 }
+
 func (x *ExceptionWithPrimitiveField) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("ExceptionWithPrimitiveField"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -873,6 +922,7 @@ func (x *ExceptionWithPrimitiveField) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type ExceptionWithStructuredAnnotation struct {
     MessageField string `thrift:"message_field,1" json:"message_field" db:"message_field"`
     ErrorCode int32 `thrift:"error_code,2" json:"error_code" db:"error_code"`
@@ -881,7 +931,9 @@ type ExceptionWithStructuredAnnotation struct {
 var _ thrift.Struct = &ExceptionWithStructuredAnnotation{}
 
 func NewExceptionWithStructuredAnnotation() *ExceptionWithStructuredAnnotation {
-    return (&ExceptionWithStructuredAnnotation{})
+    return (&ExceptionWithStructuredAnnotation{}).
+        SetMessageFieldNonCompat("").
+        SetErrorCodeNonCompat(0)
 }
 
 func (x *ExceptionWithStructuredAnnotation) GetMessageFieldNonCompat() string {
@@ -900,8 +952,18 @@ func (x *ExceptionWithStructuredAnnotation) GetErrorCode() int32 {
     return x.ErrorCode
 }
 
+func (x *ExceptionWithStructuredAnnotation) SetMessageFieldNonCompat(value string) *ExceptionWithStructuredAnnotation {
+    x.MessageField = value
+    return x
+}
+
 func (x *ExceptionWithStructuredAnnotation) SetMessageField(value string) *ExceptionWithStructuredAnnotation {
     x.MessageField = value
+    return x
+}
+
+func (x *ExceptionWithStructuredAnnotation) SetErrorCodeNonCompat(value int32) *ExceptionWithStructuredAnnotation {
+    x.ErrorCode = value
     return x
 }
 
@@ -909,8 +971,6 @@ func (x *ExceptionWithStructuredAnnotation) SetErrorCode(value int32) *Exception
     x.ErrorCode = value
     return x
 }
-
-
 
 func (x *ExceptionWithStructuredAnnotation) writeField1(p thrift.Protocol) error {  // MessageField
     if err := p.WriteFieldBegin("message_field", thrift.STRING, 1); err != nil {
@@ -950,7 +1010,7 @@ if err != nil {
     return err
 }
 
-    x.SetMessageField(result)
+    x.SetMessageFieldNonCompat(result)
     return nil
 }
 
@@ -960,7 +1020,7 @@ if err != nil {
     return err
 }
 
-    x.SetErrorCode(result)
+    x.SetErrorCodeNonCompat(result)
     return nil
 }
 
@@ -998,6 +1058,7 @@ func (x *ExceptionWithStructuredAnnotationBuilder) Emit() *ExceptionWithStructur
     var objCopy ExceptionWithStructuredAnnotation = *x.obj
     return &objCopy
 }
+
 func (x *ExceptionWithStructuredAnnotation) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("ExceptionWithStructuredAnnotation"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1063,6 +1124,7 @@ func (x *ExceptionWithStructuredAnnotation) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Banal struct {
 }
 // Compile time interface enforcer
@@ -1096,6 +1158,7 @@ func (x *BanalBuilder) Emit() *Banal {
     var objCopy Banal = *x.obj
     return &objCopy
 }
+
 func (x *Banal) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Banal"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1144,3 +1207,4 @@ func (x *Banal) Read(p thrift.Protocol) error {
 
     return nil
 }
+

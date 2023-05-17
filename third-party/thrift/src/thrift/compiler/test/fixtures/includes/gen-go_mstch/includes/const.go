@@ -4,8 +4,8 @@
 package includes // [[[ program thrift source path ]]]
 
 import (
-  transitive "transitive"
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    transitive "transitive"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = transitive.GoUnusedProtection__
@@ -14,5 +14,5 @@ var _ = thrift.ZERO
 
 var GoUnusedProtection__ int
 
-var ExampleIncluded Included = *NewIncluded()
+var ExampleIncluded *Included = NewIncluded()
 const IncludedConstant int64 = 42

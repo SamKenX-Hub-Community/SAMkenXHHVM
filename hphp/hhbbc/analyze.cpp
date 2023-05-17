@@ -68,8 +68,8 @@ uint32_t rpoId(const FuncAnalysis& ai, BlockId blk) {
 const StaticString s_reified_generics_var("0ReifiedGenerics");
 const StaticString s_coeffects_var("0Coeffects");
 
-State entry_state(const Index& index, CollectedInfo& collect,
-                  const Context& ctx, const KnownArgs* knownArgs) {
+Optional<State> entry_state(const Index& index, CollectedInfo& collect,
+                            const Context& ctx, const KnownArgs* knownArgs) {
   auto ret = State{};
   ret.initialized = true;
   ret.thisType = [&] {
@@ -85,7 +85,11 @@ State entry_state(const Index& index, CollectedInfo& collect,
     }
     auto const maybeThisType = thisType(index, ctx);
     auto thisType = maybeThisType ? *maybeThisType : TObj;
-    if (index.lookup_this_available(ctx.func)) return thisType;
+    if (ctx.func->cls &&
+        !(ctx.func->cls->attrs & AttrTrait) &&
+        !(ctx.func->attrs & AttrStatic)) {
+      return thisType;
+    }
     return opt(std::move(thisType));
   }();
   ret.locals.resize(ctx.func->locals.size());
@@ -102,8 +106,15 @@ State entry_state(const Index& index, CollectedInfo& collect,
           ret.locals[locId] = vec(std::move(pack));
         } else {
           auto [ty, _, effectFree] =
-            index.verify_param_type(ctx, locId, unctx(knownArgs->args[locId]));
-          ret.unreachable |= ty.subtypeOf(BBottom);
+            verify_param_type(index, ctx, locId, unctx(knownArgs->args[locId]));
+
+          if (ty.subtypeOf(BBottom)) {
+            ret.unreachable = true;
+            if (ctx.func->params[locId].dvEntryPoint == NoBlockId) {
+              return std::nullopt;
+            }
+          }
+
           ret.locals[locId] = std::move(ty);
           collect.effectFree &= effectFree;
         }
@@ -120,10 +131,15 @@ State entry_state(const Index& index, CollectedInfo& collect,
 
     // Because we throw a non-recoverable error for having fewer than the
     // required number of args, all function parameters must be initialized.
+    auto [ty, _, effectFree] = verify_param_type(index, ctx, locId, TInitCell);
 
-    auto [ty, _, effectFree] =
-      index.verify_param_type(ctx, locId, TInitCell);
-    ret.unreachable |= ty.subtypeOf(BBottom);
+    if (ty.subtypeOf(BBottom)) {
+      ret.unreachable = true;
+      if (ctx.func->params[locId].dvEntryPoint == NoBlockId) {
+        return std::nullopt;
+      }
+    }
+
     ret.locals[locId] = std::move(ty);
     collect.effectFree &= effectFree;
   }
@@ -206,6 +222,7 @@ prepare_incompleteQ(const Index& index,
   auto const numParams = ctx.func->params.size();
 
   auto const entryState = entry_state(index, collect, ctx, knownArgs);
+  if (!entryState) return incompleteQ;
 
   if (knownArgs) {
     // When we have known args, we only need to add one of the entry points to
@@ -215,7 +232,8 @@ prepare_incompleteQ(const Index& index,
       for (auto i = knownArgs->args.size(); i < numParams; ++i) {
         auto const dv = ctx.func->params[i].dvEntryPoint;
         if (dv != NoBlockId) {
-          ai.bdata[dv].stateIn.copy_from(entryState);
+          ai.bdata[dv].stateIn.copy_from(*entryState);
+          ai.bdata[dv].stateIn.unreachable = false;
           incompleteQ.push(rpoId(ai, dv));
           return true;
         }
@@ -223,8 +241,8 @@ prepare_incompleteQ(const Index& index,
       return false;
     }();
 
-    if (!useDvInit) {
-      ai.bdata[ctx.func->mainEntry].stateIn.copy_from(entryState);
+    if (!useDvInit && !entryState->unreachable) {
+      ai.bdata[ctx.func->mainEntry].stateIn.copy_from(*entryState);
       incompleteQ.push(rpoId(ai, ctx.func->mainEntry));
     }
 
@@ -234,7 +252,8 @@ prepare_incompleteQ(const Index& index,
   for (auto paramId = uint32_t{0}; paramId < numParams; ++paramId) {
     auto const dv = ctx.func->params[paramId].dvEntryPoint;
     if (dv != NoBlockId) {
-      ai.bdata[dv].stateIn.copy_from(entryState);
+      ai.bdata[dv].stateIn.copy_from(*entryState);
+      ai.bdata[dv].stateIn.unreachable = false;
       incompleteQ.push(rpoId(ai, dv));
       for (auto locId = paramId; locId < numParams; ++locId) {
         ai.bdata[dv].stateIn.locals[locId] =
@@ -243,8 +262,10 @@ prepare_incompleteQ(const Index& index,
     }
   }
 
-  ai.bdata[ctx.func->mainEntry].stateIn.copy_from(entryState);
-  incompleteQ.push(rpoId(ai, ctx.func->mainEntry));
+  if (!entryState->unreachable) {
+    ai.bdata[ctx.func->mainEntry].stateIn.copy_from(*entryState);
+    incompleteQ.push(rpoId(ai, ctx.func->mainEntry));
+  }
 
   return incompleteQ;
 }
@@ -473,22 +494,70 @@ FuncAnalysis do_analyze_collect(const Index& index,
 FuncAnalysis do_analyze(const Index& index,
                         const AnalysisContext& inputCtx,
                         ClassAnalysis* clsAnalysis,
+                        ClsConstantWork* clsCnsWork = nullptr,
                         const KnownArgs* knownArgs = nullptr,
                         CollectionOpts opts = CollectionOpts{}) {
   auto const ctx = adjust_closure_context(index, inputCtx);
-  auto collect = CollectedInfo { index, ctx, clsAnalysis, opts };
 
-  auto ret = do_analyze_collect(index, ctx, collect, knownArgs);
-  if (ctx.func->name == s_86cinit.get() && !knownArgs) {
-    // We need to try to resolve any dynamic constants
-    size_t idx = 0;
-    for (auto const& c : ctx.cls->constants) {
-      if (c.val && c.val->m_type == KindOfUninit) {
-        auto const fa = analyze_func_inline(index, ctx, TCls, { sval(c.name) });
-        ret.resolvedConstants.emplace_back(idx, unctx(fa.inferredReturn));
-      }
-      ++idx;
-    }
+  // If this isn't an 86cinit, or if we're inline interping, just do a
+  // normal analyze.
+  if (ctx.func->name != s_86cinit.get() || knownArgs) {
+    auto collect = CollectedInfo { index, ctx, clsAnalysis, opts, clsCnsWork };
+    return do_analyze_collect(index, ctx, collect, knownArgs);
+  }
+
+  // Otherwise this is an 86cinit. We want to inline interp it for
+  // each constant to resolve them. Since a constant can be defined in
+  // terms of another, we want to repeat this until we reach a fixed
+  // point.
+
+  // Use a scratch ClsConstantWork if one hasn't been provided (this
+  // is the case when we're the analyzing constants phase).
+  Optional<ClsConstantWork> temp;
+  if (!clsCnsWork) {
+    temp.emplace(index, *ctx.cls);
+    clsCnsWork = temp.get_pointer();
+  }
+  assertx(!clsCnsWork->next());
+
+  // Schedule initial work
+  for (auto const& cns : ctx.cls->constants) {
+    if (cns.kind != ConstModifiers::Kind::Value) continue;
+    if (!cns.val) continue;
+    if (cns.val->m_type != KindOfUninit) continue;
+    clsCnsWork->add(cns.name);
+  }
+
+  // Inline interp for this constant, and reschedule interp for any
+  // constants which rely on this constant. Continue until there's no
+  // more work.
+  while (auto const cns = clsCnsWork->next()) {
+    clsCnsWork->setCurrent(cns);
+    SCOPE_EXIT { clsCnsWork->clearCurrent(cns); };
+    auto fa = analyze_func_inline(
+      index,
+      ctx,
+      TCls,
+      { sval(cns) },
+      clsCnsWork
+    );
+    clsCnsWork->update(cns, unctx(std::move(fa.inferredReturn)));
+  }
+
+  // Analyze the 86cinit as a normal functions. We do this last so it
+  // can take advantage of any resolved constants in clsCnsWork.
+  auto collect = CollectedInfo { index, ctx, clsAnalysis, opts, clsCnsWork };
+  auto ret = do_analyze_collect(index, ctx, collect, nullptr);
+
+  // Propagate out the resolved constants so they can be reflected
+  // into the Index.
+  for (size_t i = 0, size = ctx.cls->constants.size(); i < size; ++i) {
+    auto const& cns = ctx.cls->constants[i];
+    if (cns.kind != ConstModifiers::Kind::Value) continue;
+    if (!cns.val) continue;
+    if (cns.val->m_type != KindOfUninit) continue;
+    auto& info = clsCnsWork->constants.at(cns.name);
+    ret.resolvedConstants.emplace_back(i, std::move(info));
   }
   return ret;
 }
@@ -587,6 +656,77 @@ void ClassAnalysisWorklist::scheduleForReturnType(const php::Func& callee) {
 
 //////////////////////////////////////////////////////////////////////
 
+ClsConstantWork::ClsConstantWork(const Index& index,
+                                 const php::Class& cls): cls{cls} {
+  auto initial = index.lookup_class_constants(cls);
+  for (auto& [name, info] : initial) constants.emplace(name, std::move(info));
+}
+
+ClsConstLookupResult ClsConstantWork::lookup(SString name) {
+  auto const it = constants.find(name);
+  if (it == end(constants)) {
+    return ClsConstLookupResult{ TBottom, TriBool::No, true };
+  }
+  if (current) deps[name].emplace(current);
+  return ClsConstLookupResult{
+    it->second.type,
+    TriBool::Yes,
+    !is_scalar(it->second.type) || bool(cls.attrs & AttrInternal)
+  };
+}
+
+void ClsConstantWork::update(SString name, Type t) {
+  auto& old = constants.at(name);
+  if (t.strictlyMoreRefined(old.type)) {
+    if (old.refinements < options.returnTypeRefineLimit) {
+      old.type = std::move(t);
+      ++old.refinements;
+      schedule(name);
+    } else {
+      FTRACE(
+        1, "maxed out refinements for class constant {}::{}\n",
+        cls.name, name
+      );
+    }
+  } else {
+    always_assert_flog(
+      t.moreRefined(old.type),
+      "Class constant type invariant violated for {}::{}.\n"
+      "   {} is not at least as refined as {}\n",
+      cls.name,
+      name,
+      show(t),
+      show(old.type)
+    );
+  }
+}
+
+void ClsConstantWork::add(SString name) {
+  auto const emplaced = inWorklist.emplace(name);
+  if (!emplaced.second) return;
+  worklist.emplace_back(name);
+}
+
+void ClsConstantWork::schedule(SString name) {
+  auto const it = deps.find(name);
+  if (it == end(deps)) return;
+  for (auto const d : it->second) {
+    FTRACE(2, "Scheduling {}::{} because of {}::{}\n",
+           cls.name, d, cls.name, name);
+    add(d);
+  }
+}
+
+SString ClsConstantWork::next() {
+  if (worklist.empty()) return nullptr;
+  auto n = worklist.front();
+  inWorklist.erase(n);
+  worklist.pop_front();
+  return n;
+}
+
+//////////////////////////////////////////////////////////////////////
+
 FuncAnalysisResult::FuncAnalysisResult(AnalysisContext ctx)
   : ctx(ctx)
   , inferredReturn(TBottom)
@@ -605,20 +745,21 @@ FuncAnalysis::FuncAnalysis(AnalysisContext ctx)
 
 FuncAnalysis analyze_func(const Index& index, const AnalysisContext& ctx,
                           CollectionOpts opts) {
-  return do_analyze(index, ctx, nullptr, nullptr, opts);
+  return do_analyze(index, ctx, nullptr, nullptr, nullptr, opts);
 }
 
 FuncAnalysis analyze_func_inline(const Index& index,
                                  const AnalysisContext& ctx,
                                  const Type& thisType,
                                  const CompactVector<Type>& args,
+                                 ClsConstantWork* clsCnsWork,
                                  CollectionOpts opts) {
   auto const knownArgs = KnownArgs {
     ctx.func->isClosureBody ? TBottom : thisType,
     args
   };
 
-  return do_analyze(index, ctx, nullptr, &knownArgs,
+  return do_analyze(index, ctx, nullptr, clsCnsWork, &knownArgs,
                     opts | CollectionOpts::Inlining);
 }
 
@@ -725,6 +866,8 @@ ClassAnalysis analyze_class(const Index& index, const Context& ctx) {
    */
   if (isHNIBuiltin) expand_hni_prop_types(clsAnalysis);
 
+  ClsConstantWork clsCnsWork{index, *ctx.cls};
+
   /*
    * For classes with non-scalar initializers, the 86pinit, 86sinit,
    * 86linit, 86cinit, and 86reifiedinit methods are guaranteed to run
@@ -734,11 +877,13 @@ ClassAnalysis analyze_class(const Index& index, const Context& ctx) {
    * be run again as part of the fixedpoint computation.
    */
   CompactVector<FuncAnalysis> initResults;
-  auto analyze_86init = [&](const StaticString &name) {
+  auto const analyze_86init = [&] (const StaticString& name) {
     if (auto func = find_method(ctx.cls, name.get())) {
       auto const wf = php::WideFunc::cns(func);
       auto const context = AnalysisContext { ctx.unit, wf, ctx.cls };
-      initResults.push_back(do_analyze(index, context, &clsAnalysis));
+      initResults.emplace_back(
+        do_analyze(index, context, &clsAnalysis, &clsCnsWork)
+      );
     }
   };
   analyze_86init(s_86pinit);
@@ -846,7 +991,7 @@ ClassAnalysis analyze_class(const Index& index, const Context& ctx) {
 
       auto const wf = php::WideFunc::cns(f);
       auto const context = AnalysisContext { meta.unit, wf, meta.cls };
-      auto results = do_analyze(index, context, &clsAnalysis);
+      auto results = do_analyze(index, context, &clsAnalysis, &clsCnsWork);
 
       if (meta.output) {
         if (meta.outputIdx < 0) {
@@ -928,7 +1073,7 @@ ClassAnalysis analyze_class(const Index& index, const Context& ctx) {
       auto const context = AnalysisContext { meta.unit, wf, meta.cls };
 
       work.propsRefined = false;
-      auto results = do_analyze(index, context, &clsAnalysis);
+      auto results = do_analyze(index, context, &clsAnalysis, &clsCnsWork);
       assertx(!work.propsRefined);
 
       if (!meta.output) continue;
@@ -1165,6 +1310,261 @@ State locally_propagated_bid_state(const Index& index,
   run(interp, originalState, propagate);
 
   ret.stack.compact();
+  return ret;
+}
+
+//////////////////////////////////////////////////////////////////////
+
+namespace {
+
+template <typename Resolve, typename Self>
+ConstraintType type_from_constraint_impl(const TypeConstraint& tc,
+                                         const Type& candidate,
+                                         const Resolve& resolve,
+                                         const Self& self) {
+  using C = ConstraintType;
+
+  assertx(IMPLIES(
+    !tc.isCheckable(),
+    tc.isMixed() || (tc.isUpperBound() && RO::EvalEnforceGenericsUB == 0)
+  ));
+
+  auto ty = [&] {
+    auto const exact = [&] (const Type& t) {
+      return C{ t, t };
+    };
+
+    switch (getAnnotMetaType(tc.type())) {
+      case AnnotMetaType::Precise: {
+        switch (getAnnotDataType(tc.type())) {
+          case KindOfNull:         return exact(TInitNull);
+          case KindOfBoolean:      return exact(TBool);
+          case KindOfInt64:        return exact(TInt);
+          case KindOfDouble:       return exact(TDbl);
+          case KindOfPersistentVec:
+          case KindOfVec:          return exact(TVec);
+          case KindOfPersistentDict:
+          case KindOfDict:         return exact(TDict);
+          case KindOfPersistentKeyset:
+          case KindOfKeyset:       return exact(TKeyset);
+          case KindOfResource:     return exact(TRes);
+          case KindOfClsMeth:      return exact(TClsMeth);
+          case KindOfObject: {
+            auto const cls = resolve(tc.clsName());
+            auto lower = subObj(cls);
+            auto upper = lower;
+
+            // The "magic" interfaces cannot be represented with a single
+            // type. Obj=Foo|Str, for example, is not a valid type. It is
+            // safe to only provide a subset as the lower bound. We can
+            // use any provided candidate type to refine the lower bound
+            // and supply the subset which would allow us to optimize away
+            // the check.
+            if (interface_supports_arrlike(cls.name())) {
+              if (candidate.subtypeOf(BArrLike)) lower = TArrLike;
+              upper |= TArrLike;
+            }
+            if (interface_supports_int(cls.name())) {
+              if (candidate.subtypeOf(BInt)) lower = TInt;
+              upper |= TInt;
+            }
+            if (interface_supports_double(cls.name())) {
+              if (candidate.subtypeOf(BDbl)) lower = TDbl;
+              upper |= TDbl;
+            }
+
+            if (interface_supports_string(cls.name())) {
+              if (candidate.subtypeOf(BStr)) lower = TStr;
+              upper |= union_of(TStr, TCls, TLazyCls);
+              return C{
+                std::move(lower),
+                std::move(upper),
+                TriBool::Yes
+              };
+            }
+
+            return C{ std::move(lower), std::move(upper) };
+          }
+          case KindOfPersistentString:
+          case KindOfString:
+            return C{
+              TStr,
+              union_of(TStr, TCls, TLazyCls),
+              TriBool::Yes
+            };
+          case KindOfUninit:
+          case KindOfRFunc:
+          case KindOfFunc:
+          case KindOfRClsMeth:
+          case KindOfClass:
+          case KindOfLazyClass:    break;
+        }
+        always_assert(false);
+      }
+      case AnnotMetaType::Mixed:
+        return C{ TInitCell, TInitCell, TriBool::No, true };
+      case AnnotMetaType::Nothing:
+      case AnnotMetaType::NoReturn:   return exact(TBottom);
+      case AnnotMetaType::Nonnull:    return exact(TNonNull);
+      case AnnotMetaType::Number:     return exact(TNum);
+      case AnnotMetaType::VecOrDict:  return exact(TKVish);
+      case AnnotMetaType::ArrayLike:  return exact(TArrLike);
+      case AnnotMetaType::Unresolved:
+        return C{ TBottom, TBottom };
+      case AnnotMetaType::This:
+        if (auto const s = self()) {
+          auto obj = subObj(*s);
+          if (!s->couldBeMocked()) return exact(setctx(obj));
+          return C{ setctx(obj), obj };
+        }
+        return C{ TBottom, TObj };
+      case AnnotMetaType::Callable:
+        return C{
+          TBottom,
+          union_of(TStr, TVec, TDict, TFunc, TRFunc, TObj, TClsMeth, TRClsMeth)
+        };
+      case AnnotMetaType::ArrayKey:
+        return C{
+          TArrKey,
+          union_of(TArrKey, TCls, TLazyCls),
+          TriBool::Yes
+        };
+      case AnnotMetaType::Classname:
+        return C{
+          RO::EvalClassnameNotices ? TStr : union_of(TStr, TCls, TLazyCls),
+          union_of(TStr, TCls, TLazyCls)
+        };
+    }
+
+    always_assert(false);
+  }();
+
+  // Nullable constraint always includes TInitNull.
+  if (tc.isNullable()) {
+    ty.lower = opt(std::move(ty.lower));
+    ty.upper = opt(std::move(ty.upper));
+  }
+  // We cannot ever say an upper-bound check will succeed, so its
+  // lower-bound is always empty.
+  if (tc.isUpperBound()) ty.lower = TBottom;
+  // Soft type-constraints can potentially allow anything, so its
+  // upper-bound is maximal. We might still be able to optimize away
+  // the check if the lower bound is satisfied.
+  if (tc.isSoft() || (RO::EvalEnforceGenericsUB < 2 && tc.isUpperBound())) {
+    ty.upper = TInitCell;
+    ty.maybeMixed = true;
+  }
+  return ty;
+}
+
+}
+
+ConstraintType type_from_constraint(
+  const TypeConstraint& tc,
+  const Type& candidate,
+  const std::function<res::Class(SString)>& resolve,
+  const std::function<Optional<res::Class>()>& self)
+{
+  return type_from_constraint_impl(tc, candidate, resolve, self);
+}
+
+ConstraintType
+lookup_constraint(const Index& index,
+                  const Context& ctx,
+                  const TypeConstraint& tc,
+                  const Type& candidate) {
+  return type_from_constraint_impl(
+    tc, candidate,
+    [&] (SString name) {
+      auto const cls = index.resolve_class(name);
+      // At this point we shouldn't have type constraints with
+      // non-existent classes.
+      assertx(cls.has_value());
+      return *cls;
+    },
+    [&] { return index.selfCls(ctx); }
+  );
+}
+
+std::tuple<Type, bool, bool> verify_param_type(const Index& index,
+                                               const Context& ctx,
+                                               uint32_t paramId,
+                                               const Type& t) {
+  // Builtins verify parameter types differently.
+  if (ctx.func->isNative) return { t, true, true };
+
+  assertx(paramId < ctx.func->params.size());
+  auto const& pinfo = ctx.func->params[paramId];
+
+  std::vector<const TypeConstraint*> tcs{&pinfo.typeConstraint};
+  for (auto const& tc : pinfo.upperBounds) tcs.push_back(&tc);
+
+  auto refined = TInitCell;
+  auto noop = true;
+  auto effectFree = true;
+  for (auto const tc : tcs) {
+    auto const lookup = lookup_constraint(index, ctx, *tc, t);
+    if (t.moreRefined(lookup.lower)) {
+      refined = intersection_of(std::move(refined), t);
+      continue;
+    }
+
+    if (!t.couldBe(lookup.upper)) return { TBottom, false, false };
+
+    noop = false;
+
+    auto result = intersection_of(t, lookup.upper);
+    if (lookup.coerceClassToString == TriBool::Yes) {
+      assertx(!lookup.lower.couldBe(BCls | BLazyCls));
+      assertx(lookup.upper.couldBe(BStr | BCls | BLazyCls));
+      if (result.couldBe(BCls | BLazyCls)) {
+        result = promote_classish(std::move(result));
+        if (effectFree && (RO::EvalClassStringHintNotices ||
+                           !promote_classish(t).moreRefined(lookup.lower))) {
+          effectFree = false;
+        }
+      } else {
+        effectFree = false;
+      }
+    } else if (lookup.coerceClassToString == TriBool::Maybe) {
+      if (result.couldBe(BCls | BLazyCls)) result |= TSStr;
+      effectFree = false;
+    } else {
+      effectFree = false;
+    }
+
+    refined = intersection_of(std::move(refined), std::move(result));
+    if (refined.is(BBottom)) return { TBottom, false, false };
+  }
+
+  return { std::move(refined), noop, effectFree };
+}
+
+Type adjust_type_for_prop(const Index& index,
+                          const php::Class& propCls,
+                          const TypeConstraint* tc,
+                          const Type& ty) {
+  if (!tc) return ty;
+  assertx(tc->validForProp());
+  if (RO::EvalCheckPropTypeHints <= 2) return ty;
+  auto lookup = lookup_constraint(
+    index,
+    Context { nullptr, nullptr, &propCls },
+    *tc,
+    ty
+  );
+  auto upper = unctx(lookup.upper);
+  // A property with a mixed type-hint can be unset and therefore by
+  // Uninit. Any other type-hint forbids unsetting.
+  if (lookup.maybeMixed) upper |= TUninit;
+  auto ret = intersection_of(std::move(upper), ty);
+  if (lookup.coerceClassToString == TriBool::Yes) {
+    assertx(!lookup.lower.couldBe(BCls | BLazyCls));
+    assertx(lookup.upper.couldBe(BStr | BCls | BLazyCls));
+    ret = promote_classish(std::move(ret));
+  } else if (lookup.coerceClassToString == TriBool::Maybe) {
+    if (ret.couldBe(BCls | BLazyCls)) ret |= TSStr;
+  }
   return ret;
 }
 

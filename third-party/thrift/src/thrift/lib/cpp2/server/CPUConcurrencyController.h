@@ -16,8 +16,10 @@
 
 #pragma once
 
+#include <atomic>
 #include <chrono>
 
+#include <folly/Synchronized.h>
 #include <folly/experimental/FunctionScheduler.h>
 #include <folly/experimental/observer/Observer.h>
 #include <folly/experimental/observer/SimpleObservable.h>
@@ -96,6 +98,8 @@ class CPUConcurrencyController {
     // Don't go below this concurrency limit, ever.
     uint32_t concurrencyLowerBound = 1;
 
+    bool enabled() const;
+
     // Returns a string representation of the Config mode
     std::string_view modeName() const;
 
@@ -118,7 +122,8 @@ class CPUConcurrencyController {
   class EventHandler {
    public:
     virtual ~EventHandler() = default;
-    virtual void onCycle(int64_t limit, int64_t load) = 0;
+    virtual void configUpdated(std::shared_ptr<const Config>) {}
+    virtual void onCycle(int64_t limit, int64_t limitUsage, int64_t load) = 0;
     virtual void limitIncreased() = 0;
     virtual void limitDecreased() = 0;
   };
@@ -133,33 +138,33 @@ class CPUConcurrencyController {
   }
 
   bool isRefractoryPeriod() const {
-    return (std::chrono::steady_clock::now() - lastOverloadStart_) <=
-        std::chrono::milliseconds(config().refractoryPeriodMs);
+    return isRefractoryPeriodInternal(config());
   }
 
-  int64_t getLoad() const {
-    return std::clamp<int64_t>(
-        detail::getCPULoadCounter(
-            config().refreshPeriodMs, config().cpuLoadSource),
-        0,
-        100);
-  }
+  int64_t getLoad() const { return getLoadInternal(config()); }
 
-  bool enabled() const { return config().mode != Mode::DISABLED; }
+  bool enabled() const { return (*config_.rlock())->enabled(); }
 
-  const Config& config() const { return **config_; }
+  std::shared_ptr<const Config> config() const { return config_.copy(); }
 
  private:
   void cycleOnce();
 
-  void schedule();
+  void schedule(std::shared_ptr<const Config> config);
   void cancel();
 
-  uint32_t getLimit() const;
-  void setLimit(uint32_t newLimit);
-  uint32_t getLimitUsage();
+  bool enabled_fast() const;
 
-  folly::observer::TLObserver<Config> config_;
+  uint32_t getLimit(const std::shared_ptr<const Config>& config) const;
+  void setLimit(const std::shared_ptr<const Config>& config, uint32_t newLimit);
+  uint32_t getLimitUsage(const std::shared_ptr<const Config>& config);
+  bool isRefractoryPeriodInternal(
+      const std::shared_ptr<const Config>& config) const;
+  int64_t getLoadInternal(const std::shared_ptr<const Config>& config) const;
+
+  folly::Synchronized<std::shared_ptr<const Config>> config_;
+  std::atomic<bool> enabled_;
+
   folly::observer::CallbackHandle configSchedulerCallback_;
   folly::observer::SimpleObservable<std::optional<uint32_t>>
       activeRequestsLimit_{std::nullopt};
@@ -170,7 +175,7 @@ class CPUConcurrencyController {
   apache::thrift::ThriftServerConfig& thriftServerConfig_;
 
   folly::FunctionScheduler scheduler_;
-  std::shared_ptr<EventHandler> eventHandler_{nullptr};
+  folly::Synchronized<std::shared_ptr<EventHandler>> eventHandler_{nullptr};
 
   std::chrono::steady_clock::time_point lastOverloadStart_{
       std::chrono::steady_clock::now()};
@@ -188,9 +193,12 @@ class CPUConcurrencyController {
       std::chrono::steady_clock::now()};
 };
 
+class BaseThriftServer;
+
 namespace detail {
 THRIFT_PLUGGABLE_FUNC_DECLARE(
     folly::observer::Observer<CPUConcurrencyController::Config>,
-    makeCPUConcurrencyControllerConfig);
+    makeCPUConcurrencyControllerConfig,
+    BaseThriftServer*);
 } // namespace detail
 } // namespace apache::thrift

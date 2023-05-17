@@ -36,6 +36,15 @@ DEFINE_int64(
     10 * 1000 * 1000,
     "default timeout, in micros, for mysql operations");
 
+DEFINE_int64(
+    async_mysql_max_connect_timeout_micros,
+#if defined(FOLLY_SANITIZE_ADDRESS) || (FOLLY_SANITIZE_THREAD)
+    30 * 1000 * 1000,
+#else
+    3 * 1000 * 1000,
+#endif
+    "The maximum connect timeout, to protect customers from themselves");
+
 namespace facebook {
 namespace common {
 namespace mysql_client {
@@ -45,6 +54,19 @@ const std::string kQueryChecksumKey = "checksum";
 
 using MysqlCertValidatorCallback =
     int (*)(X509* server_cert, const void* context, const char** errptr);
+
+class OperationGuard {
+ public:
+  using Func = std::function<void()>;
+
+  explicit OperationGuard(Func func) : func_(std::move(func)) {}
+  ~OperationGuard() {
+    func_();
+  }
+
+ private:
+  Func func_;
+};
 } // namespace
 
 namespace chrono = std::chrono;
@@ -204,6 +226,10 @@ Operation* Operation::run() {
     CHECK_THROW(
         state() == OperationState::Unstarted, db::OperationStateException);
     state_ = OperationState::Pending;
+  }
+  if (getOperationType() == db::OperationType::Connect) {
+    timeout_ = std::min(
+        Duration(FLAGS_async_mysql_max_connect_timeout_micros), timeout_);
   }
   return specializedRun();
 }
@@ -694,14 +720,9 @@ ConnectOperation::~ConnectOperation() {
 void ConnectOperation::socketActionable() {
   DCHECK(isInEventBaseThread());
 
-  Timepoint started = chrono::steady_clock::now();
-  SCOPE_EXIT {
-    auto thread_time = std::chrono::duration_cast<Duration>(
-        chrono::steady_clock::now() - started);
-    if (getMaxThreadBlockTime() < thread_time) {
-      setMaxThreadBlockTime(thread_time);
-    }
-  };
+  folly::stop_watch<Duration> sw;
+  auto logThreadBlockTimeGuard =
+      std::make_unique<OperationGuard>([&]() { logThreadBlockTime(sw); });
 
   auto& handler = conn()->client()->getMysqlHandler();
   MYSQL* mysql = conn()->mysql();
@@ -711,6 +732,7 @@ void ConnectOperation::socketActionable() {
 
   if (status == MysqlHandler::ERROR) {
     snapshotMysqlErrors();
+    logThreadBlockTimeGuard.reset();
     attemptFailed(OperationResult::Failed);
   } else {
     if ((isDoneWithTcpHandShake() || usingUnixSocket) &&
@@ -727,12 +749,14 @@ void ConnectOperation::socketActionable() {
       setAsyncClientError(
           "mysql_get_socket_descriptor returned an invalid "
           "descriptor");
+      logThreadBlockTimeGuard.reset();
       attemptFailed(OperationResult::Failed);
     } else if (status == MysqlHandler::DONE) {
       auto socket = folly::NetworkSocket::fromFd(fd);
       conn()->socketHandler()->changeHandlerFD(socket);
       conn()->mysqlConnection()->setConnectionContext(connection_context_);
       conn()->mysqlConnection()->connectionOpened();
+      logThreadBlockTimeGuard.reset();
       attemptSucceeded(OperationResult::Succeeded);
     } else {
       conn()->socketHandler()->changeHandlerFD(
@@ -815,7 +839,11 @@ void ConnectOperation::logConnectCompleted(OperationResult result) {
     }
     client()->logConnectionSuccess(
         db::CommonLoggingData(
-            getOperationType(), elapsed, timeout_, getMaxThreadBlockTime()),
+            getOperationType(),
+            elapsed,
+            timeout_,
+            getMaxThreadBlockTime(),
+            getTotalThreadBlockTime()),
         *conn()->getKey(),
         context);
   } else {
@@ -827,7 +855,11 @@ void ConnectOperation::logConnectCompleted(OperationResult result) {
     }
     client()->logConnectionFailure(
         db::CommonLoggingData(
-            getOperationType(), elapsed, timeout_, getMaxThreadBlockTime()),
+            getOperationType(),
+            elapsed,
+            timeout_,
+            getMaxThreadBlockTime(),
+            getTotalThreadBlockTime()),
         reason,
         *conn()->getKey(),
         mysql_errno(),
@@ -1152,15 +1184,9 @@ void FetchOperation::socketActionable() {
   DCHECK(isInEventBaseThread());
   DCHECK(active_fetch_action_ != FetchAction::WaitForConsumer);
 
-  Timepoint started = chrono::steady_clock::now();
-
-  SCOPE_EXIT {
-    auto thread_time = std::chrono::duration_cast<Duration>(
-        chrono::steady_clock::now() - started);
-    if (getMaxThreadBlockTime() < thread_time) {
-      setMaxThreadBlockTime(thread_time);
-    }
-  };
+  folly::stop_watch<Duration> sw;
+  auto logThreadBlockTimeGuard =
+      std::make_unique<OperationGuard>([&]() { logThreadBlockTime(sw); });
 
   auto& handler = conn()->client()->getMysqlHandler();
   MYSQL* mysql = conn()->mysql();
@@ -1313,6 +1339,7 @@ void FetchOperation::socketActionable() {
         }
         ++num_queries_executed_;
         no_index_used_ |= mysql->server_status & SERVER_QUERY_NO_INDEX_USED;
+        was_slow_ |= mysql->server_status & SERVER_QUERY_WAS_SLOW;
         notifyQuerySuccess(more_results);
       }
       current_row_stream_.reset();
@@ -1321,6 +1348,7 @@ void FetchOperation::socketActionable() {
     // Once this action is set, the operation is going to be completed no matter
     // the reason it was called. It exists the loop.
     if (active_fetch_action_ == FetchAction::CompleteOperation) {
+      logThreadBlockTimeGuard.reset();
       if (cancel_) {
         state_ = OperationState::Cancelling;
         completeOperation(OperationResult::Cancelled);
@@ -1483,7 +1511,9 @@ void FetchOperation::specializedCompleteOperation() {
         use_checksum_ || conn()->getConnectionOptions().getUseChecksum(),
         attributes_,
         readResponseAttributes(),
-        getMaxThreadBlockTime());
+        getMaxThreadBlockTime(),
+        getTotalThreadBlockTime(),
+        was_slow_);
     client()->logQuerySuccess(logging_data, *conn().get());
   } else {
     db::FailureReason reason = db::FailureReason::DATABASE_ERROR;
@@ -1505,7 +1535,9 @@ void FetchOperation::specializedCompleteOperation() {
             use_checksum_ || conn()->getConnectionOptions().getUseChecksum(),
             attributes_,
             readResponseAttributes(),
-            getMaxThreadBlockTime()),
+            getMaxThreadBlockTime(),
+            getTotalThreadBlockTime(),
+            was_slow_),
         reason,
         mysql_errno(),
         mysql_error(),
@@ -1662,6 +1694,7 @@ void QueryOperation::notifyQuerySuccess(bool more_results) {
   query_result_->setNumRowsAffected(FetchOperation::currentAffectedRows());
   query_result_->setLastInsertId(FetchOperation::currentLastInsertId());
   query_result_->setRecvGtid(FetchOperation::currentRecvGtid());
+  query_result_->setWasSlow(FetchOperation::wasSlow());
   query_result_->setResponseAttributes(FetchOperation::currentRespAttrs());
 
   query_result_->setPartial(false);

@@ -223,6 +223,33 @@ where
         Self::make(syntax, value)
     }
 
+    fn make_case_type_declaration(_: &C, case_type_attribute_spec: Self, case_type_modifiers: Self, case_type_case_keyword: Self, case_type_type_keyword: Self, case_type_name: Self, case_type_generic_parameter: Self, case_type_as: Self, case_type_bounds: Self, case_type_equal: Self, case_type_variants: Self, case_type_semicolon: Self) -> Self {
+        let syntax = SyntaxVariant::CaseTypeDeclaration(Box::new(CaseTypeDeclarationChildren {
+            case_type_attribute_spec,
+            case_type_modifiers,
+            case_type_case_keyword,
+            case_type_type_keyword,
+            case_type_name,
+            case_type_generic_parameter,
+            case_type_as,
+            case_type_bounds,
+            case_type_equal,
+            case_type_variants,
+            case_type_semicolon,
+        }));
+        let value = V::from_values(syntax.iter_children().map(|child| &child.value));
+        Self::make(syntax, value)
+    }
+
+    fn make_case_type_variant(_: &C, case_type_variant_bar: Self, case_type_variant_type: Self) -> Self {
+        let syntax = SyntaxVariant::CaseTypeVariant(Box::new(CaseTypeVariantChildren {
+            case_type_variant_bar,
+            case_type_variant_type,
+        }));
+        let value = V::from_values(syntax.iter_children().map(|child| &child.value));
+        Self::make(syntax, value)
+    }
+
     fn make_property_declaration(_: &C, property_attribute_spec: Self, property_modifiers: Self, property_type: Self, property_declarators: Self, property_semicolon: Self) -> Self {
         let syntax = SyntaxVariant::PropertyDeclaration(Box::new(PropertyDeclarationChildren {
             property_attribute_spec,
@@ -1909,6 +1936,15 @@ where
         Self::make(syntax, value)
     }
 
+    fn make_package_expression(_: &C, package_expression_keyword: Self, package_expression_name: Self) -> Self {
+        let syntax = SyntaxVariant::PackageExpression(Box::new(PackageExpressionChildren {
+            package_expression_keyword,
+            package_expression_name,
+        }));
+        let value = V::from_values(syntax.iter_children().map(|child| &child.value));
+        Self::make(syntax, value)
+    }
+
  }
 
 impl<T, V> Syntax<T, V>
@@ -2072,6 +2108,27 @@ where
                 let acc = f(ctx_alias_equal, acc);
                 let acc = f(ctx_alias_context, acc);
                 let acc = f(ctx_alias_semicolon, acc);
+                acc
+            },
+            SyntaxVariant::CaseTypeDeclaration(x) => {
+                let CaseTypeDeclarationChildren { case_type_attribute_spec, case_type_modifiers, case_type_case_keyword, case_type_type_keyword, case_type_name, case_type_generic_parameter, case_type_as, case_type_bounds, case_type_equal, case_type_variants, case_type_semicolon } = *x;
+                let acc = f(case_type_attribute_spec, acc);
+                let acc = f(case_type_modifiers, acc);
+                let acc = f(case_type_case_keyword, acc);
+                let acc = f(case_type_type_keyword, acc);
+                let acc = f(case_type_name, acc);
+                let acc = f(case_type_generic_parameter, acc);
+                let acc = f(case_type_as, acc);
+                let acc = f(case_type_bounds, acc);
+                let acc = f(case_type_equal, acc);
+                let acc = f(case_type_variants, acc);
+                let acc = f(case_type_semicolon, acc);
+                acc
+            },
+            SyntaxVariant::CaseTypeVariant(x) => {
+                let CaseTypeVariantChildren { case_type_variant_bar, case_type_variant_type } = *x;
+                let acc = f(case_type_variant_bar, acc);
+                let acc = f(case_type_variant_type, acc);
                 acc
             },
             SyntaxVariant::PropertyDeclaration(x) => {
@@ -3295,6 +3352,12 @@ where
                 let acc = f(module_membership_declaration_semicolon, acc);
                 acc
             },
+            SyntaxVariant::PackageExpression(x) => {
+                let PackageExpressionChildren { package_expression_keyword, package_expression_name } = *x;
+                let acc = f(package_expression_keyword, acc);
+                let acc = f(package_expression_name, acc);
+                acc
+            },
 
         }
     }
@@ -3322,6 +3385,8 @@ where
             SyntaxVariant::EnumClassEnumerator {..} => SyntaxKind::EnumClassEnumerator,
             SyntaxVariant::AliasDeclaration {..} => SyntaxKind::AliasDeclaration,
             SyntaxVariant::ContextAliasDeclaration {..} => SyntaxKind::ContextAliasDeclaration,
+            SyntaxVariant::CaseTypeDeclaration {..} => SyntaxKind::CaseTypeDeclaration,
+            SyntaxVariant::CaseTypeVariant {..} => SyntaxKind::CaseTypeVariant,
             SyntaxVariant::PropertyDeclaration {..} => SyntaxKind::PropertyDeclaration,
             SyntaxVariant::PropertyDeclarator {..} => SyntaxKind::PropertyDeclarator,
             SyntaxVariant::NamespaceDeclaration {..} => SyntaxKind::NamespaceDeclaration,
@@ -3477,6 +3542,7 @@ where
             SyntaxVariant::ModuleExports {..} => SyntaxKind::ModuleExports,
             SyntaxVariant::ModuleImports {..} => SyntaxKind::ModuleImports,
             SyntaxVariant::ModuleMembershipDeclaration {..} => SyntaxKind::ModuleMembershipDeclaration,
+            SyntaxVariant::PackageExpression {..} => SyntaxKind::PackageExpression,
         }
     }
 
@@ -3608,6 +3674,25 @@ where
                  ctx_alias_name: ts.pop().unwrap(),
                  ctx_alias_keyword: ts.pop().unwrap(),
                  ctx_alias_attribute_spec: ts.pop().unwrap(),
+                 
+             })),
+             (SyntaxKind::CaseTypeDeclaration, 11) => SyntaxVariant::CaseTypeDeclaration(Box::new(CaseTypeDeclarationChildren {
+                 case_type_semicolon: ts.pop().unwrap(),
+                 case_type_variants: ts.pop().unwrap(),
+                 case_type_equal: ts.pop().unwrap(),
+                 case_type_bounds: ts.pop().unwrap(),
+                 case_type_as: ts.pop().unwrap(),
+                 case_type_generic_parameter: ts.pop().unwrap(),
+                 case_type_name: ts.pop().unwrap(),
+                 case_type_type_keyword: ts.pop().unwrap(),
+                 case_type_case_keyword: ts.pop().unwrap(),
+                 case_type_modifiers: ts.pop().unwrap(),
+                 case_type_attribute_spec: ts.pop().unwrap(),
+                 
+             })),
+             (SyntaxKind::CaseTypeVariant, 2) => SyntaxVariant::CaseTypeVariant(Box::new(CaseTypeVariantChildren {
+                 case_type_variant_type: ts.pop().unwrap(),
+                 case_type_variant_bar: ts.pop().unwrap(),
                  
              })),
              (SyntaxKind::PropertyDeclaration, 5) => SyntaxVariant::PropertyDeclaration(Box::new(PropertyDeclarationChildren {
@@ -4676,6 +4761,11 @@ where
                  module_membership_declaration_module_keyword: ts.pop().unwrap(),
                  
              })),
+             (SyntaxKind::PackageExpression, 2) => SyntaxVariant::PackageExpression(Box::new(PackageExpressionChildren {
+                 package_expression_name: ts.pop().unwrap(),
+                 package_expression_keyword: ts.pop().unwrap(),
+                 
+             })),
              _ => panic!("from_children called with wrong number of children"),
          }
     }
@@ -4703,6 +4793,8 @@ where
             SyntaxVariant::EnumClassEnumerator(x) => unsafe { std::slice::from_raw_parts(&x.enum_class_enumerator_modifiers, 5) },
             SyntaxVariant::AliasDeclaration(x) => unsafe { std::slice::from_raw_parts(&x.alias_attribute_spec, 10) },
             SyntaxVariant::ContextAliasDeclaration(x) => unsafe { std::slice::from_raw_parts(&x.ctx_alias_attribute_spec, 8) },
+            SyntaxVariant::CaseTypeDeclaration(x) => unsafe { std::slice::from_raw_parts(&x.case_type_attribute_spec, 11) },
+            SyntaxVariant::CaseTypeVariant(x) => unsafe { std::slice::from_raw_parts(&x.case_type_variant_bar, 2) },
             SyntaxVariant::PropertyDeclaration(x) => unsafe { std::slice::from_raw_parts(&x.property_attribute_spec, 5) },
             SyntaxVariant::PropertyDeclarator(x) => unsafe { std::slice::from_raw_parts(&x.property_name, 2) },
             SyntaxVariant::NamespaceDeclaration(x) => unsafe { std::slice::from_raw_parts(&x.namespace_header, 2) },
@@ -4858,6 +4950,7 @@ where
             SyntaxVariant::ModuleExports(x) => unsafe { std::slice::from_raw_parts(&x.module_exports_exports_keyword, 4) },
             SyntaxVariant::ModuleImports(x) => unsafe { std::slice::from_raw_parts(&x.module_imports_imports_keyword, 4) },
             SyntaxVariant::ModuleMembershipDeclaration(x) => unsafe { std::slice::from_raw_parts(&x.module_membership_declaration_module_keyword, 3) },
+            SyntaxVariant::PackageExpression(x) => unsafe { std::slice::from_raw_parts(&x.package_expression_keyword, 2) },
         }
     }
 
@@ -4884,6 +4977,8 @@ where
             SyntaxVariant::EnumClassEnumerator(x) => unsafe { std::slice::from_raw_parts_mut(&mut x.enum_class_enumerator_modifiers, 5) },
             SyntaxVariant::AliasDeclaration(x) => unsafe { std::slice::from_raw_parts_mut(&mut x.alias_attribute_spec, 10) },
             SyntaxVariant::ContextAliasDeclaration(x) => unsafe { std::slice::from_raw_parts_mut(&mut x.ctx_alias_attribute_spec, 8) },
+            SyntaxVariant::CaseTypeDeclaration(x) => unsafe { std::slice::from_raw_parts_mut(&mut x.case_type_attribute_spec, 11) },
+            SyntaxVariant::CaseTypeVariant(x) => unsafe { std::slice::from_raw_parts_mut(&mut x.case_type_variant_bar, 2) },
             SyntaxVariant::PropertyDeclaration(x) => unsafe { std::slice::from_raw_parts_mut(&mut x.property_attribute_spec, 5) },
             SyntaxVariant::PropertyDeclarator(x) => unsafe { std::slice::from_raw_parts_mut(&mut x.property_name, 2) },
             SyntaxVariant::NamespaceDeclaration(x) => unsafe { std::slice::from_raw_parts_mut(&mut x.namespace_header, 2) },
@@ -5039,6 +5134,7 @@ where
             SyntaxVariant::ModuleExports(x) => unsafe { std::slice::from_raw_parts_mut(&mut x.module_exports_exports_keyword, 4) },
             SyntaxVariant::ModuleImports(x) => unsafe { std::slice::from_raw_parts_mut(&mut x.module_imports_imports_keyword, 4) },
             SyntaxVariant::ModuleMembershipDeclaration(x) => unsafe { std::slice::from_raw_parts_mut(&mut x.module_membership_declaration_module_keyword, 3) },
+            SyntaxVariant::PackageExpression(x) => unsafe { std::slice::from_raw_parts_mut(&mut x.package_expression_keyword, 2) },
         }
     }
 }
@@ -5203,6 +5299,29 @@ pub struct ContextAliasDeclarationChildren<T, V> {
     pub ctx_alias_equal: Syntax<T, V>,
     pub ctx_alias_context: Syntax<T, V>,
     pub ctx_alias_semicolon: Syntax<T, V>,
+}
+
+#[derive(Debug, Clone)]
+#[repr(C)]
+pub struct CaseTypeDeclarationChildren<T, V> {
+    pub case_type_attribute_spec: Syntax<T, V>,
+    pub case_type_modifiers: Syntax<T, V>,
+    pub case_type_case_keyword: Syntax<T, V>,
+    pub case_type_type_keyword: Syntax<T, V>,
+    pub case_type_name: Syntax<T, V>,
+    pub case_type_generic_parameter: Syntax<T, V>,
+    pub case_type_as: Syntax<T, V>,
+    pub case_type_bounds: Syntax<T, V>,
+    pub case_type_equal: Syntax<T, V>,
+    pub case_type_variants: Syntax<T, V>,
+    pub case_type_semicolon: Syntax<T, V>,
+}
+
+#[derive(Debug, Clone)]
+#[repr(C)]
+pub struct CaseTypeVariantChildren<T, V> {
+    pub case_type_variant_bar: Syntax<T, V>,
+    pub case_type_variant_type: Syntax<T, V>,
 }
 
 #[derive(Debug, Clone)]
@@ -6581,6 +6700,13 @@ pub struct ModuleMembershipDeclarationChildren<T, V> {
     pub module_membership_declaration_semicolon: Syntax<T, V>,
 }
 
+#[derive(Debug, Clone)]
+#[repr(C)]
+pub struct PackageExpressionChildren<T, V> {
+    pub package_expression_keyword: Syntax<T, V>,
+    pub package_expression_name: Syntax<T, V>,
+}
+
 
 #[derive(Debug, Clone)]
 pub enum SyntaxVariant<T, V> {
@@ -6605,6 +6731,8 @@ pub enum SyntaxVariant<T, V> {
     EnumClassEnumerator(Box<EnumClassEnumeratorChildren<T, V>>),
     AliasDeclaration(Box<AliasDeclarationChildren<T, V>>),
     ContextAliasDeclaration(Box<ContextAliasDeclarationChildren<T, V>>),
+    CaseTypeDeclaration(Box<CaseTypeDeclarationChildren<T, V>>),
+    CaseTypeVariant(Box<CaseTypeVariantChildren<T, V>>),
     PropertyDeclaration(Box<PropertyDeclarationChildren<T, V>>),
     PropertyDeclarator(Box<PropertyDeclaratorChildren<T, V>>),
     NamespaceDeclaration(Box<NamespaceDeclarationChildren<T, V>>),
@@ -6760,6 +6888,7 @@ pub enum SyntaxVariant<T, V> {
     ModuleExports(Box<ModuleExportsChildren<T, V>>),
     ModuleImports(Box<ModuleImportsChildren<T, V>>),
     ModuleMembershipDeclaration(Box<ModuleMembershipDeclarationChildren<T, V>>),
+    PackageExpression(Box<PackageExpressionChildren<T, V>>),
 }
 
 impl<'a, T, V> SyntaxChildrenIterator<'a, T, V> {
@@ -6958,6 +7087,31 @@ impl<'a, T, V> SyntaxChildrenIterator<'a, T, V> {
                     5 => Some(&x.ctx_alias_equal),
                     6 => Some(&x.ctx_alias_context),
                     7 => Some(&x.ctx_alias_semicolon),
+                        _ => None,
+                    }
+                })
+            },
+            CaseTypeDeclaration(x) => {
+                get_index(11).and_then(|index| { match index {
+                        0 => Some(&x.case_type_attribute_spec),
+                    1 => Some(&x.case_type_modifiers),
+                    2 => Some(&x.case_type_case_keyword),
+                    3 => Some(&x.case_type_type_keyword),
+                    4 => Some(&x.case_type_name),
+                    5 => Some(&x.case_type_generic_parameter),
+                    6 => Some(&x.case_type_as),
+                    7 => Some(&x.case_type_bounds),
+                    8 => Some(&x.case_type_equal),
+                    9 => Some(&x.case_type_variants),
+                    10 => Some(&x.case_type_semicolon),
+                        _ => None,
+                    }
+                })
+            },
+            CaseTypeVariant(x) => {
+                get_index(2).and_then(|index| { match index {
+                        0 => Some(&x.case_type_variant_bar),
+                    1 => Some(&x.case_type_variant_type),
                         _ => None,
                     }
                 })
@@ -8489,6 +8643,14 @@ impl<'a, T, V> SyntaxChildrenIterator<'a, T, V> {
                         0 => Some(&x.module_membership_declaration_module_keyword),
                     1 => Some(&x.module_membership_declaration_name),
                     2 => Some(&x.module_membership_declaration_semicolon),
+                        _ => None,
+                    }
+                })
+            },
+            PackageExpression(x) => {
+                get_index(2).and_then(|index| { match index {
+                        0 => Some(&x.package_expression_keyword),
+                    1 => Some(&x.package_expression_name),
                         _ => None,
                     }
                 })

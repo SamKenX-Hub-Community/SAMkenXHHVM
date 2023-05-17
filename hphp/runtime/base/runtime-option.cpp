@@ -53,7 +53,6 @@
 #include "hphp/util/bump-mapper.h"
 #include "hphp/util/cpuid.h"
 #include "hphp/util/current-executable.h" // @donotremove
-#include "hphp/util/file-cache.h"
 #include "hphp/util/gzip.h"
 #include "hphp/util/hardware-counter.h"
 #include "hphp/util/hdf.h"
@@ -271,8 +270,7 @@ using RepoOptionCache = tbb::concurrent_hash_map<
 >;
 RepoOptionCache s_repoOptionCache;
 
-constexpr char* kHhvmConfigHdf = ".hhvmconfig.hdf";
-constexpr char* kPackagesToml = "PACKAGES.toml";
+constexpr const char* kHhvmConfigHdf = ".hhvmconfig.hdf";
 
 template<class F>
 bool walkDirTree(std::string fpath, F func) {
@@ -311,7 +309,9 @@ RepoOptionStats::RepoOptionStats(const std::string& configPath,
   auto const packagePath = repo / kPackagesToml;
   if (std::filesystem::exists(packagePath)) {
     struct stat package;
-    if (wrapped_stat(packagePath.string().data(), &package) == 0) m_packageStat = config;
+    if (wrapped_stat(packagePath.string().data(), &package) == 0) {
+      m_packageStat = package;
+    }
   }
 }
 
@@ -364,26 +364,21 @@ void RepoOptionsFlags::initParserFlags(hackc::ParserFlags& flags) const {
   flags.disable_lval_as_an_expression = DisableLvalAsAnExpression;
   flags.disable_xhp_element_mangling = DisableXHPElementMangling;
   flags.disallow_func_ptrs_in_constants = DisallowFuncPtrsInConstants;
-  flags.enable_enum_classes = EnableEnumClasses;
   flags.enable_xhp_class_modifier = EnableXHPClassModifier;
 }
 
-const RepoOptions& RepoOptions::forFile(const char* path) {
+const RepoOptions& RepoOptions::forFile(const std::string& path) {
   tracing::BlockNoTrace _{"repo-options"};
 
   std::string fpath{path};
   if (boost::starts_with(fpath, "/:")) return defaults();
 
-  auto const isParentOf = [] (const std::string& p1, const std::string& p2) {
-    return boost::starts_with(
-      std::filesystem::path{p2},
-      std::filesystem::path{p1}.parent_path()
-    );
+  auto const isParentOf = [] (const std::filesystem::path& p1, const std::string& p2) {
+    return boost::starts_with(std::filesystem::path{p2}, p1.parent_path());
   };
 
   // Fast path: we have an active request and it has cached a RepoOptions
-  // which has not been modified. This only works when the runtime option
-  // Eval.FatalOnParserOptionMismatch is set. It can cause us to miss out on
+  // which has not been modified. It can cause us to miss out on
   // configs that were added between the current directory and the source file.
   // (Loading these configs would result in a fatal anyway with this option)
   if (!g_context.isNull()) {
@@ -553,10 +548,13 @@ AUTOLOADFLAGS();
 #undef H
 #undef E
 
+  hdfExtract(autoloadConfig, "CacheBreaker", m_flags.m_factsCacheBreaker,
+             "d6ede7d391");
+
   filterNamespaces();
-  calcCacheKey();
-  if (!m_path.empty()) m_repo = std::filesystem::path(m_path).parent_path();
+  if (!m_path.empty()) m_repo = std::filesystem::canonical(m_path.parent_path());
   m_flags.m_packageInfo = PackageInfo::fromFile(m_repo / kPackagesToml);
+  calcCacheKey();
 }
 
 void RepoOptions::initDefaults(const Hdf& hdf, const IniSettingMap& ini) {
@@ -573,8 +571,8 @@ AUTOLOADFLAGS()
 
   filterNamespaces();
   m_path.clear();
-  calcCacheKey();
   m_flags.m_packageInfo = PackageInfo::defaults();
+  calcCacheKey();
 }
 
 void RepoOptions::setDefaults(const Hdf& hdf, const IniSettingMap& ini) {
@@ -768,6 +766,8 @@ bool RuntimeOption::PathDebug = false;
 
 int64_t RuntimeOption::RequestBodyReadLimit = -1;
 
+bool RuntimeOption::AllowNonBlockingPosts = true;
+
 bool RuntimeOption::EnableSSL = false;
 int RuntimeOption::SSLPort = 443;
 int RuntimeOption::SSLPortFd = -1;
@@ -812,7 +812,6 @@ std::string RuntimeOption::SourceRoot = Process::GetCurrentDirectory() + '/';
 std::vector<std::string> RuntimeOption::IncludeSearchPaths;
 std::map<std::string, std::string> RuntimeOption::IncludeRoots;
 bool RuntimeOption::AutoloadEnabled;
-bool RuntimeOption::AutoloadUserlandEnabled;
 bool RuntimeOption::AutoloadEnableExternFactExtractor;
 std::string RuntimeOption::AutoloadDBPath;
 bool RuntimeOption::AutoloadDBCanCreate;
@@ -820,7 +819,6 @@ std::string RuntimeOption::AutoloadUpdateSuppressionPath;
 std::string RuntimeOption::AutoloadDBPerms{"0644"};
 std::string RuntimeOption::AutoloadDBGroup;
 std::string RuntimeOption::AutoloadLogging;
-std::vector<std::string> RuntimeOption::AutoloadExcludedRepos;
 bool RuntimeOption::AutoloadLoggingAllowPropagation;
 bool RuntimeOption::AutoloadRethrowExceptions = true;
 std::string RuntimeOption::FileCache;
@@ -1223,7 +1221,7 @@ std::string RuntimeOption::DebuggerSessionAuthScriptBin;
 std::string RuntimeOption::SendmailPath = "sendmail -t -i";
 std::string RuntimeOption::MailForceExtraParameters;
 
-int64_t RuntimeOption::PregBacktraceLimit = 1000000;
+int64_t RuntimeOption::PregBacktrackLimit = 1000000;
 int64_t RuntimeOption::PregRecursionLimit = 100000;
 bool RuntimeOption::EnablePregErrorLog = true;
 
@@ -2329,6 +2327,8 @@ void RuntimeOption::Load(
                  "");
     Config::Bind(RequestBodyReadLimit, ini, config,
                  "Server.RequestBodyReadLimit", -1);
+    Config::Bind(AllowNonBlockingPosts, ini, config,
+                 "Server.AllowNonBlockingPosts", true);
     Config::Bind(EnableSSL, ini, config, "Server.EnableSSL");
     Config::Bind(SSLPort, ini, config, "Server.SSLPort", 443);
     Config::Bind(SSLCertificateFile, ini, config, "Server.SSLCertificateFile");
@@ -2403,7 +2403,6 @@ void RuntimeOption::Load(
     if (SourceRoot.empty()) {
       SourceRoot = defSourceRoot;
     }
-    FileCache::SourceRoot = SourceRoot;
 
     Config::Bind(IncludeSearchPaths, ini, config, "Server.IncludeSearchPaths");
     for (unsigned int i = 0; i < IncludeSearchPaths.size(); i++) {
@@ -2412,9 +2411,9 @@ void RuntimeOption::Load(
     IncludeSearchPaths.insert(IncludeSearchPaths.begin(), ".");
 
     Config::Bind(AutoloadEnabled, ini, config, "Autoload.Enabled", true);
-    Config::Bind(AutoloadUserlandEnabled, ini, config, "Autoload.UserlandEnabled", true);
     Config::Bind(AutoloadDBPath, ini, config, "Autoload.DB.Path");
-    Config::Bind(AutoloadEnableExternFactExtractor, ini, config, "Autoload.EnableExternFactExtractor", true);
+    Config::Bind(AutoloadEnableExternFactExtractor, ini, config,
+                 "Autoload.EnableExternFactExtractor", true);
 
     /**
      * If this option is nonempty, Facts will check if a file exists at the
@@ -2440,7 +2439,6 @@ void RuntimeOption::Load(
     Config::Bind(AutoloadDBGroup, ini, config, "Autoload.DB.Group");
     Config::Bind(AutoloadLogging, ini, config, "Autoload.Logging",
       "hphp.runtime.ext.facts:=CRITICAL:slog;slog=hhvm");
-    Config::Bind(AutoloadExcludedRepos, ini, config, "Autoload.ExcludedRepos");
     Config::Bind(AutoloadLoggingAllowPropagation, ini, config,
                  "Autoload.AllowLoggingPropagation", false);
     Config::Bind(AutoloadRethrowExceptions, ini, config,
@@ -2756,8 +2754,12 @@ void RuntimeOption::Load(
   }
   {
     // Preg
-    Config::Bind(PregBacktraceLimit, ini, config, "Preg.BacktraceLimit",
-                 1000000);
+    // TODO: T58241504 delete this default once config is migrated.
+    auto const backtrackDefault = Config::GetInt64(
+        ini, config, "Preg.BacktraceLimit", 1000000
+    );
+    Config::Bind(PregBacktrackLimit, ini, config, "Preg.BacktrackLimit",
+                 backtrackDefault);
     Config::Bind(PregRecursionLimit, ini, config, "Preg.RecursionLimit",
                  100000);
     Config::Bind(EnablePregErrorLog, ini, config, "Preg.ErrorLog", true);

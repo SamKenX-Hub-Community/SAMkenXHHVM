@@ -189,6 +189,8 @@ and hint_ p env = function
             ~variadic;
         (* TODO: handle function parameters with <<CanCall>> *)
         ft_ifc_decl = default_ifc_fun_decl;
+        (* TODO *)
+        ft_cross_package = None;
       }
   | Happly (id, argl) ->
     let id = Decl_env.make_decl_posed env id in
@@ -253,10 +255,13 @@ and hint_ p env = function
     Tintersection tyl
   | Hshape { nsi_allows_unknown_fields; nsi_field_map } ->
     let shape_kind =
-      if nsi_allows_unknown_fields then
-        Open_shape
-      else
-        Closed_shape
+      hint
+        env
+        ( p,
+          if nsi_allows_unknown_fields then
+            Hmixed
+          else
+            Hnothing )
     in
     let fdm =
       List.fold_left
@@ -268,7 +273,7 @@ and hint_ p env = function
         ~init:TShapeMap.empty
         nsi_field_map
     in
-    Tshape (shape_kind, fdm)
+    Tshape (Missing_origin, shape_kind, fdm)
   | Hsoft (p, h_) -> hint_ p env h_
   | Hfun_context _
   | Hvar _ ->

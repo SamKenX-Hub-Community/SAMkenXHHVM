@@ -136,6 +136,7 @@ inline bool validate_bool(uint8_t value) {
   return value;
 invalid:
   LOG(FATAL) << "invalid bool value";
+  return false;
 #else
   // Store in a volatile variable to prevent the compiler from optimizing the
   // check away.
@@ -277,7 +278,7 @@ inline bool canReadNElements(
 }
 
 /*
- * Skip n tuples - used for skpping lists, sets, maps.
+ * Skip n tuples - used for skipping lists, sets, maps.
  *
  * As with skip(), protocols can specialize.
  */

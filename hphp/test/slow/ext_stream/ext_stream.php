@@ -77,7 +77,7 @@ function retry_bind_server6($udp = false) {
 
 function test_stream_copy_to_stream() {
   $src = fopen(__DIR__."/../ext_file/test_ext_file.txt", "r");
-  $dtmp = tempnam('/tmp', 'vmcopystream');
+  $dtmp = tempnam(sys_get_temp_dir(), 'vmcopystream');
   $dest = fopen($dtmp, "w");
   stream_copy_to_stream($src, $dest);
   fclose($dest);
@@ -217,7 +217,8 @@ function test_stream_socket_recvfrom_udp6() {
 
 
 function test_stream_socket_recvfrom_unix() {
-  $tmpsock = tempnam('/tmp', 'vmstreamtest');
+  $sockdir = getenv('HPHP_TEST_SOCKETDIR') ?? sys_get_temp_dir();
+  $tmpsock = tempnam($sockdir, 'vmstreamtest');
   unlink($tmpsock);
 
   $address = "unix://$tmpsock";

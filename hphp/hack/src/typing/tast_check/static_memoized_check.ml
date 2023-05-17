@@ -16,8 +16,9 @@ let attribute_exists x1 attrs =
 
 let static_memoized_check m =
   if attribute_exists SN.UserAttributes.uaMemoize m.m_user_attributes then
-    Errors.add_nast_check_error
-    @@ Nast_check_error.Static_memoized_function (fst m.m_name)
+    Errors.add_error
+      Nast_check_error.(
+        to_user_error @@ Static_memoized_function (fst m.m_name))
 
 let unnecessary_memoize_lsb c m =
   let attr = SN.UserAttributes.uaMemoizeLSB in
@@ -31,9 +32,11 @@ let unnecessary_memoize_lsb c m =
            "Try using the attribute `%s` instead"
            SN.UserAttributes.uaMemoize)
     in
-    Errors.add_naming_error
-      (Naming_error.Unnecessary_attribute
-         { pos; attr; class_pos; class_name; suggestion })
+    Errors.add_error
+      Naming_error.(
+        to_user_error
+        @@ Unnecessary_attribute
+             { pos; attr; class_pos; class_name; suggestion })
 
 let handler =
   object

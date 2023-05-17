@@ -22,6 +22,7 @@
 #include <fatal/type/same_reference_as.h>
 #include <folly/CPortability.h>
 #include <folly/Utility.h>
+#include <thrift/lib/cpp2/op/Encode.h>
 #include <thrift/lib/cpp2/protocol/FieldMask.h>
 #include <thrift/lib/cpp2/protocol/GetStandardProtocol.h>
 #include <thrift/lib/cpp2/type/Any.h>
@@ -180,7 +181,8 @@ class ObjectWriter : public BaseObjectAdapter {
     // insert elements from buffer into mapValue
     std::vector<Value> mapKeyAndValues = getBufferFromStack();
     assert(mapKeyAndValues.size() % 2 == 0);
-    std::map<Value, Value>& mapVal = cur().mapValue_ref().ensure();
+    auto& mapVal = cur().mapValue_ref().ensure();
+    mapVal.reserve(mapKeyAndValues.size() / 2);
     for (size_t i = 0; i < mapKeyAndValues.size(); i += 2) {
       mapVal.emplace(
           std::move(mapKeyAndValues[i]), std::move(mapKeyAndValues[i + 1]));
@@ -324,11 +326,9 @@ template <typename TT>
 struct ValueHelper<TT, type::if_structured<TT>> {
   template <typename T>
   static void set(Value& result, T&& value) {
-    // TODO(afuller): Using the Visitor reflection API + ValueHelper instead.
-    // This method loses type information (the enum or struct type for
-    // example).
     ObjectWriter writer(&result);
-    value.write(&writer);
+    op::detail::RecursiveEncode<type::infer_tag<folly::remove_cvref_t<T>>>{}(
+        writer, value);
   }
 };
 
@@ -416,6 +416,7 @@ Value parseValue(Protocol& prot, TType arg_type, bool string_to_binary = true) {
       uint32_t size;
       auto& mapValue = result.mapValue_ref().ensure();
       prot.readMapBegin(keyType, valType, size);
+      mapValue.reserve(size);
       for (uint32_t i = 0; i < size; i++) {
         auto key = parseValue(prot, keyType, string_to_binary);
         mapValue[std::move(key)] = parseValue(prot, valType, string_to_binary);
@@ -554,9 +555,9 @@ MaskedDecodeResultValue parseValueWithMask(
       for (uint32_t i = 0; i < size; i++) {
         auto keyValue = parseValue(prot, keyType, string_to_binary);
         MaskRef nextRead =
-            readMask.get(findMapIdByValue(readMask.mask, keyValue));
+            readMask.get(findMapIdByValueAddress(readMask.mask, keyValue));
         MaskRef nextWrite =
-            writeMask.get(findMapIdByValue(writeMask.mask, keyValue));
+            writeMask.get(findMapIdByValueAddress(writeMask.mask, keyValue));
         MaskedDecodeResultValue nestedResult =
             parseValueWithMask<KeepExcludedData>(
                 prot,

@@ -35,7 +35,8 @@ let handle_unbound_name env (pos, name) kind =
   if String.equal name Naming_special_names.Classes.cUnknown then
     ()
   else begin
-    Errors.add_naming_error @@ Naming_error.Unbound_name { pos; name; kind };
+    Errors.add_error
+      Naming_error.(to_user_error @@ Unbound_name { pos; name; kind });
     (* In addition to reporting errors, we also add to the global dependency table *)
     let dep =
       let open Name_context in
@@ -46,6 +47,8 @@ let handle_unbound_name env (pos, name) kind =
       | TraitContext -> Typing_deps.Dep.Type name
       | ClassContext -> Typing_deps.Dep.Type name
       | ModuleNamespace -> Typing_deps.Dep.Module name
+      | PackageNamespace ->
+        failwith "impossible match case" (* TODO (T148526825) *)
     in
     Typing_deps.add_idep (Provider_context.get_deps_mode env.ctx) env.droot dep
   end
@@ -57,8 +60,9 @@ let has_canon_name env get_name get_pos (pos, name) =
     match get_pos env.ctx suggest_name with
     | None -> false
     | Some suggest_pos ->
-      Errors.add_naming_error
-      @@ Naming_error.Did_you_mean { pos; name; suggest_pos; suggest_name };
+      Errors.add_error
+        Naming_error.(
+          to_user_error @@ Did_you_mean { pos; name; suggest_pos; suggest_name });
       true
   end
 
@@ -93,6 +97,17 @@ let check_module_name env ((_, name) as id) =
 let check_module_if_present env id_opt =
   Option.iter id_opt ~f:(check_module_name env)
 
+let check_package_name env (pos, name) =
+  if
+    Package.Info.package_exists (Provider_context.get_package_info env.ctx) name
+  then
+    ()
+  else
+    Errors.add_error
+      Naming_error.(
+        to_user_error
+        @@ Unbound_name { pos; name; kind = Name_context.PackageNamespace })
+
 let check_type_name
     ?(kind = Name_context.TypeNamespace)
     env
@@ -106,16 +121,16 @@ let check_type_name
     | Some reified ->
       (* TODO: These throw typing errors instead of naming errors *)
       if not allow_generics then
-        Errors.add_typing_error
+        Typing_error_utils.add_typing_error
           Typing_error.(primary @@ Primary.Generics_not_allowed pos);
       begin
         match reified with
         | Aast.Erased ->
-          Errors.add_typing_error
+          Typing_error_utils.add_typing_error
             Typing_error.(
               primary @@ Primary.Generic_at_runtime { pos; prefix = "Erased" })
         | Aast.SoftReified ->
-          Errors.add_typing_error
+          Typing_error_utils.add_typing_error
             Typing_error.(
               primary
               @@ Primary.Generic_at_runtime { pos; prefix = "Soft reified" })
@@ -130,9 +145,10 @@ let check_type_name
         let (decl_pos, _) =
           Naming_global.GEnv.get_type_full_pos env.ctx (def_pos, name)
         in
-        Errors.add_naming_error
-        @@ Naming_error.Unexpected_typedef
-             { pos; decl_pos; expected_kind = kind }
+        Errors.add_error
+          Naming_error.(
+            to_user_error
+            @@ Unexpected_typedef { pos; decl_pos; expected_kind = kind })
       | Some _ -> ()
       | None ->
         if
@@ -286,6 +302,9 @@ let handler ctx =
             cname
         in
         env
+      | Aast.Package pkg ->
+        let () = check_package_name env pkg in
+        env
       | _ -> env
 
     method! at_shape_field_name env sfn =
@@ -302,7 +321,7 @@ let handler ctx =
       in
       env
 
-    method! at_user_attribute env { Aast.ua_name; _ } =
+    method! at_user_attribute env { Aast.ua_name; Aast.ua_params; _ } =
       let () =
         if not @@ Naming_special_names.UserAttributes.is_reserved (snd ua_name)
         then
@@ -312,6 +331,19 @@ let handler ctx =
             ~allow_generics:false
             ~kind:Name_context.ClassContext
             ua_name
+      in
+      let () =
+        if
+          String.equal
+            (snd ua_name)
+            Naming_special_names.UserAttributes.uaCrossPackage
+        then
+          List.iter
+            ~f:(function
+              | (_, pos, Aast.String pkg_name) ->
+                check_package_name env (pos, pkg_name)
+              | _ -> ())
+            ua_params
       in
       env
 

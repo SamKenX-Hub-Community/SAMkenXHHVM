@@ -28,6 +28,7 @@ namespace py3 thrift.test
 
 enum MyEnum {
   MyValue0 = 0,
+  MyValue9 = 9,
 }
 
 typedef list<i64> (cpp.template = "std::deque") LongList
@@ -68,7 +69,11 @@ struct MyStruct {
 }
 
 // Intentionally defined after MyStruct, so it's patch types are generated after MyStruct's.
-struct LateDefStruct {}
+struct LateDefStruct {
+  // TODO: There is a bug that `apache::thrift::clear` won't unset field with empty struct
+  // we should remove this after the bug is fixed.
+  i32 field_do_not_use;
+}
 
 // AssignOnlyPatch annotation is required on struct level to avoid generating patchPrior
 // and patch operation support. Because they will require FieldPatch types to be present,
@@ -79,9 +84,34 @@ struct Bar {
   MapStruct extraCycle;
 }
 
+struct WithRequiredFields {
+  required i64 requrired_int;
+}
+
+@cpp.Frozen2Exclude
 struct MapStruct {
   @patch.AssignOnlyPatch
   1: map<i32, MapStruct> rabbitHole;
   @thrift.Box
   2: optional Bar bar;
+}
+
+struct InvalidMapMaskKeyStruct {
+  1: map<double, i32> field1;
+}
+
+@cpp.Frozen2Exclude
+@patch.AssignOnlyPatch
+struct IncludePatchStruct {
+  1: StructPatchTestInclude.MyDataPatch patch (py3.hidden);
+}
+
+@cpp.Frozen2Exclude
+@patch.AssignOnlyPatch
+union IncludePatchUnion {
+  1: StructPatchTestInclude.MyDataPatch patch (py3.hidden);
+} (py3.hidden)
+
+struct Strings {
+  list<string> strings;
 }

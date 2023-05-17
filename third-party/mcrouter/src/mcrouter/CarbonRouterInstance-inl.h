@@ -14,11 +14,9 @@
 #include <folly/Singleton.h>
 #include <folly/Synchronized.h>
 #include <folly/executors/IOThreadPoolExecutor.h>
+#include <folly/executors/ThreadPoolExecutor.h>
 #include <folly/fibers/FiberManager.h>
 #include <folly/io/async/EventBase.h>
-
-#include <folly/executors/IOThreadPoolExecutor.h>
-#include <folly/executors/ThreadPoolExecutor.h>
 
 #include "mcrouter/AsyncWriter.h"
 #include "mcrouter/CarbonRouterInstanceBase.h"
@@ -33,6 +31,7 @@
 #include "mcrouter/ServiceInfo.h"
 #include "mcrouter/TargetHooks.h"
 #include "mcrouter/ThreadUtil.h"
+#include "mcrouter/lib/AuxiliaryCPUThreadPool.h"
 #include "mcrouter/routes/McRouteHandleProvider.h"
 #include "mcrouter/stats.h"
 
@@ -93,6 +92,13 @@ CarbonRouterInstance<RouterInfo>* CarbonRouterInstance<RouterInfo>::createRaw(
     McrouterOptions input_options,
     std::shared_ptr<folly::IOThreadPoolExecutor> ioThreadPool) {
   extraValidateOptions(input_options);
+  folly::Executor::KeepAlive<> auxThreadPool;
+  if (auto threadPool = AuxiliaryCPUThreadPoolSingleton::try_get()) {
+    auxThreadPool = &threadPool->getThreadPool();
+  } else {
+    throw std::runtime_error(
+        "Not creating CarbonRouterInstance. Process is being shutdown");
+  }
 
   if (!detail::isValidRouterName(input_options.service_name) ||
       !detail::isValidRouterName(input_options.router_name)) {
@@ -146,6 +152,16 @@ CarbonRouterInstance<RouterInfo>* CarbonRouterInstance<RouterInfo>::createRaw(
       router->opts().flavor_name,
       router->opts().service_name,
       result.error());
+
+  // If router cannot be spun up, reset the references to
+  // the SR client factories so that SR-related singletons
+  // can be released.
+  // We schedule the deletion on auxiliary thread pool
+  // to avoid potential deadlock with the current thread.
+  auxThreadPool->add([router, auxThreadPool]() mutable {
+    router->resetMetadata();
+    router->resetAxonProxyClientFactory();
+  });
 
   throw std::runtime_error(std::move(result.error()));
 }
@@ -212,6 +228,10 @@ CarbonRouterInstance<RouterInfo>::setupProxy(
 template <class RouterInfo>
 folly::Expected<folly::Unit, std::string>
 CarbonRouterInstance<RouterInfo>::spinUp() {
+  if (opts_.force_same_thread && opts_.thread_affinity) {
+    return folly::makeUnexpected(std::string(
+        "force_same_thread and thread_affinity may not both be true"));
+  }
   // Must init compression before creating proxies.
   if (opts_.enable_compression) {
     initCompression(*this);
@@ -640,7 +660,7 @@ CarbonRouterInstance<RouterInfo>::createConfigBuilder() {
     try {
       // assume default_route, default_region and default_cluster are same for
       // each proxy
-      return ProxyConfigBuilder(opts_, configApi(), config);
+      return ProxyConfigBuilder(opts_, configApi(), config, RouterInfo::name);
     } catch (const std::exception& e) {
       MC_LOG_FAILURE(
           opts(),

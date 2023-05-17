@@ -48,8 +48,8 @@ let visitor ctx =
     @ List.filter_map
         ~f:Fn.id
         [
-          Xhp_required_check.make_handler ctx;
-          Redundant_generics_check.make_handler ctx;
+          Xhp_required_check.create_handler ctx;
+          Redundant_generics_check.create_handler ctx;
           Some Shape_field_check.handler;
           Some String_cast_check.handler;
           Some Tautology_check.handler;
@@ -80,7 +80,6 @@ let visitor ctx =
           Some Meth_caller_check.handler;
           Some Expression_tree_check.handler;
           hierarchy_check Class_const_origin_check.handler;
-          Some Enum_classes_check.handler;
           (if TypecheckerOptions.global_access_check_enabled tcopt then
             Some Global_access_check.handler
           else

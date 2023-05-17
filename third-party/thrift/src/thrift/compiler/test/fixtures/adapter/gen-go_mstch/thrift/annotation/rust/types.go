@@ -4,10 +4,10 @@
 package rust // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  scope "thrift/annotation/scope"
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    scope "thrift/annotation/scope"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = scope.GoUnusedProtection__
@@ -24,7 +24,8 @@ type Adapter struct {
 var _ thrift.Struct = &Adapter{}
 
 func NewAdapter() *Adapter {
-    return (&Adapter{})
+    return (&Adapter{}).
+        SetNameNonCompat("")
 }
 
 func (x *Adapter) GetNameNonCompat() string {
@@ -35,11 +36,15 @@ func (x *Adapter) GetName() string {
     return x.Name
 }
 
-func (x *Adapter) SetName(value string) *Adapter {
+func (x *Adapter) SetNameNonCompat(value string) *Adapter {
     x.Name = value
     return x
 }
 
+func (x *Adapter) SetName(value string) *Adapter {
+    x.Name = value
+    return x
+}
 
 func (x *Adapter) writeField1(p thrift.Protocol) error {  // Name
     if err := p.WriteFieldBegin("name", thrift.STRING, 1); err != nil {
@@ -63,7 +68,7 @@ if err != nil {
     return err
 }
 
-    x.SetName(result)
+    x.SetNameNonCompat(result)
     return nil
 }
 
@@ -92,6 +97,7 @@ func (x *AdapterBuilder) Emit() *Adapter {
     var objCopy Adapter = *x.obj
     return &objCopy
 }
+
 func (x *Adapter) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Adapter"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -148,3 +154,323 @@ func (x *Adapter) Read(p thrift.Protocol) error {
 
     return nil
 }
+
+
+type Derive struct {
+    Derives []string `thrift:"derives,1" json:"derives" db:"derives"`
+}
+// Compile time interface enforcer
+var _ thrift.Struct = &Derive{}
+
+func NewDerive() *Derive {
+    return (&Derive{}).
+        SetDerivesNonCompat(make([]string, 0))
+}
+
+func (x *Derive) GetDerivesNonCompat() []string {
+    return x.Derives
+}
+
+func (x *Derive) GetDerives() []string {
+    if !x.IsSetDerives() {
+        return make([]string, 0)
+    }
+
+    return x.Derives
+}
+
+func (x *Derive) SetDerivesNonCompat(value []string) *Derive {
+    x.Derives = value
+    return x
+}
+
+func (x *Derive) SetDerives(value []string) *Derive {
+    x.Derives = value
+    return x
+}
+
+func (x *Derive) IsSetDerives() bool {
+    return x.Derives != nil
+}
+
+func (x *Derive) writeField1(p thrift.Protocol) error {  // Derives
+    if !x.IsSetDerives() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("derives", thrift.LIST, 1); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetDerivesNonCompat()
+    if err := p.WriteListBegin(thrift.STRING, len(item)); err != nil {
+    return thrift.PrependError("error writing list begin: ", err)
+}
+for _, v := range item {
+    {
+        item := v
+        if err := p.WriteString(item); err != nil {
+    return err
+}
+    }
+}
+if err := p.WriteListEnd(); err != nil {
+    return thrift.PrependError("error writing list end: ", err)
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *Derive) readField1(p thrift.Protocol) error {  // Derives
+    _ /* elemType */, size, err := p.ReadListBegin()
+if err != nil {
+    return thrift.PrependError("error reading list begin: ", err)
+}
+
+listResult := make([]string, 0, size)
+for i := 0; i < size; i++ {
+    var elem string
+    {
+        result, err := p.ReadString()
+if err != nil {
+    return err
+}
+        elem = result
+    }
+    listResult = append(listResult, elem)
+}
+
+if err := p.ReadListEnd(); err != nil {
+    return thrift.PrependError("error reading list end: ", err)
+}
+result := listResult
+
+    x.SetDerivesNonCompat(result)
+    return nil
+}
+
+func (x *Derive) String() string {
+    return fmt.Sprintf("%+v", x)
+}
+
+
+// Deprecated: Use Derive.Set* methods instead or set the fields directly.
+type DeriveBuilder struct {
+    obj *Derive
+}
+
+func NewDeriveBuilder() *DeriveBuilder {
+    return &DeriveBuilder{
+        obj: NewDerive(),
+    }
+}
+
+func (x *DeriveBuilder) Derives(value []string) *DeriveBuilder {
+    x.obj.Derives = value
+    return x
+}
+
+func (x *DeriveBuilder) Emit() *Derive {
+    var objCopy Derive = *x.obj
+    return &objCopy
+}
+
+func (x *Derive) Write(p thrift.Protocol) error {
+    if err := p.WriteStructBegin("Derive"); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
+    }
+
+    if err := x.writeField1(p); err != nil {
+        return err
+    }
+
+    if err := p.WriteFieldStop(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field stop error: ", x), err)
+    }
+
+    if err := p.WriteStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *Derive) Read(p thrift.Protocol) error {
+    if _, err := p.ReadStructBegin(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
+    }
+
+    for {
+        _, typ, id, err := p.ReadFieldBegin()
+        if err != nil {
+            return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", x, id), err)
+        }
+
+        if typ == thrift.STOP {
+            break;
+        }
+
+        switch id {
+        case 1:  // derives
+            if err := x.readField1(p); err != nil {
+                return err
+            }
+        default:
+            if err := p.Skip(typ); err != nil {
+                return err
+            }
+        }
+
+        if err := p.ReadFieldEnd(); err != nil {
+            return err
+        }
+    }
+
+    if err := p.ReadStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", x), err)
+    }
+
+    return nil
+}
+
+
+type ServiceExn struct {
+    AnyhowToApplicationExn bool `thrift:"anyhow_to_application_exn,1" json:"anyhow_to_application_exn" db:"anyhow_to_application_exn"`
+}
+// Compile time interface enforcer
+var _ thrift.Struct = &ServiceExn{}
+
+func NewServiceExn() *ServiceExn {
+    return (&ServiceExn{}).
+        SetAnyhowToApplicationExnNonCompat(false)
+}
+
+func (x *ServiceExn) GetAnyhowToApplicationExnNonCompat() bool {
+    return x.AnyhowToApplicationExn
+}
+
+func (x *ServiceExn) GetAnyhowToApplicationExn() bool {
+    return x.AnyhowToApplicationExn
+}
+
+func (x *ServiceExn) SetAnyhowToApplicationExnNonCompat(value bool) *ServiceExn {
+    x.AnyhowToApplicationExn = value
+    return x
+}
+
+func (x *ServiceExn) SetAnyhowToApplicationExn(value bool) *ServiceExn {
+    x.AnyhowToApplicationExn = value
+    return x
+}
+
+func (x *ServiceExn) writeField1(p thrift.Protocol) error {  // AnyhowToApplicationExn
+    if err := p.WriteFieldBegin("anyhow_to_application_exn", thrift.BOOL, 1); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetAnyhowToApplicationExnNonCompat()
+    if err := p.WriteBool(item); err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *ServiceExn) readField1(p thrift.Protocol) error {  // AnyhowToApplicationExn
+    result, err := p.ReadBool()
+if err != nil {
+    return err
+}
+
+    x.SetAnyhowToApplicationExnNonCompat(result)
+    return nil
+}
+
+func (x *ServiceExn) String() string {
+    return fmt.Sprintf("%+v", x)
+}
+
+
+// Deprecated: Use ServiceExn.Set* methods instead or set the fields directly.
+type ServiceExnBuilder struct {
+    obj *ServiceExn
+}
+
+func NewServiceExnBuilder() *ServiceExnBuilder {
+    return &ServiceExnBuilder{
+        obj: NewServiceExn(),
+    }
+}
+
+func (x *ServiceExnBuilder) AnyhowToApplicationExn(value bool) *ServiceExnBuilder {
+    x.obj.AnyhowToApplicationExn = value
+    return x
+}
+
+func (x *ServiceExnBuilder) Emit() *ServiceExn {
+    var objCopy ServiceExn = *x.obj
+    return &objCopy
+}
+
+func (x *ServiceExn) Write(p thrift.Protocol) error {
+    if err := p.WriteStructBegin("ServiceExn"); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
+    }
+
+    if err := x.writeField1(p); err != nil {
+        return err
+    }
+
+    if err := p.WriteFieldStop(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field stop error: ", x), err)
+    }
+
+    if err := p.WriteStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *ServiceExn) Read(p thrift.Protocol) error {
+    if _, err := p.ReadStructBegin(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
+    }
+
+    for {
+        _, typ, id, err := p.ReadFieldBegin()
+        if err != nil {
+            return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", x, id), err)
+        }
+
+        if typ == thrift.STOP {
+            break;
+        }
+
+        switch id {
+        case 1:  // anyhow_to_application_exn
+            if err := x.readField1(p); err != nil {
+                return err
+            }
+        default:
+            if err := p.Skip(typ); err != nil {
+                return err
+            }
+        }
+
+        if err := p.ReadFieldEnd(); err != nil {
+            return err
+        }
+    }
+
+    if err := p.ReadStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", x), err)
+    }
+
+    return nil
+}
+

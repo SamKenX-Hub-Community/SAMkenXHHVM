@@ -31,11 +31,12 @@ std::locale defaultLocale;
 
 namespace proxygen {
 
-std::string httpPriorityToString(uint8_t urgency, bool incremental) {
+std::string httpPriorityToString(const HTTPPriority& pri) {
   return folly::to<std::string>(
       "u=",
-      std::min(static_cast<uint8_t>(proxygen::kMaxPriority), urgency),
-      incremental ? ",i" : "");
+      std::min(static_cast<uint8_t>(proxygen::kMaxPriority), pri.urgency),
+      pri.incremental ? ",i" : "",
+      pri.orderId > 0 ? folly::to<std::string>(",o=", pri.orderId) : "");
 }
 
 std::mutex HTTPMessage::mutexDump_;
@@ -852,7 +853,7 @@ bool HTTPMessage::doHeaderTokenCheck(const HTTPHeaders& headers,
                                      bool caseSensitive) const {
   return headers.forEachValueOfHeader(headerCode, [&](const string& value) {
     std::vector<folly::StringPiece> tokens;
-    folly::split(",", value, tokens);
+    folly::split(',', value, tokens);
     for (auto t : tokens) {
       t = trim(t);
       if (caseSensitive) {
@@ -993,13 +994,11 @@ ParseURL HTTPMessage::setURLImplInternal(bool unparse, bool strict) {
 
 void HTTPMessage::setHTTPPriority(uint8_t urgency, bool incremental) {
   headers_.set(HTTP_HEADER_PRIORITY,
-               httpPriorityToString(urgency, incremental));
+               httpPriorityToString(HTTPPriority(urgency, incremental)));
 }
 
 void HTTPMessage::setHTTPPriority(HTTPPriority httpPriority) {
-  headers_.set(
-      HTTP_HEADER_PRIORITY,
-      httpPriorityToString(httpPriority.urgency, httpPriority.incremental));
+  headers_.set(HTTP_HEADER_PRIORITY, httpPriorityToString(httpPriority));
 }
 
 } // namespace proxygen

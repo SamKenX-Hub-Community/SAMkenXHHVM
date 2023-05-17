@@ -13,7 +13,8 @@ open Hh_prelude
 
 module Utils = struct
   let get_hh_version () =
-    let repo = Wwwroot.get None in
+    (* TODO: the following is a bug! *)
+    let repo = Wwwroot.interpret_command_line_root_parameter [] in
     let hhconfig_path =
       Path.to_string
         (Path.concat repo Config_file.file_path_relative_to_repo_root)
@@ -88,25 +89,6 @@ let fetch_async ~hhconfig_version ~destination_path ~no_limit decl_hashes =
        fetch_entry
        { hhconfig_version; destination_path; no_limit; decl_hashes })
     (fun _output -> Hh_logger.log "Finished fetching remote old decls")
-
-let fetch_old_decl_hashes_and_blobs ~hhconfig_version ~no_limit ~decl_hashes =
-  let tmp_dir = Tempfile.mkdtemp ~skip_mocking:false in
-  let destination_path = Path.(to_string @@ concat tmp_dir "decl_blobs") in
-  let decl_fetch_future =
-    fetch_async ~hhconfig_version ~destination_path ~no_limit decl_hashes
-  in
-  match Future.get ~timeout:12000 decl_fetch_future with
-  | Error e ->
-    Hh_logger.log
-      "Failed to fetch decl hashes and blobs from remote decl store: %s"
-      (Future.error_to_string e);
-    exit 1
-  | Ok () ->
-    let chan = Stdlib.open_in_bin destination_path in
-    let decl_hashes_and_blobs : (string * string) list =
-      Marshal.from_channel chan
-    in
-    decl_hashes_and_blobs
 
 let fetch_old_decls ~(ctx : Provider_context.t) (names : string list) :
     Shallow_decl_defs.shallow_class option SMap.t =

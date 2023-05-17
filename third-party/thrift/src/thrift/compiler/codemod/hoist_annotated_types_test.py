@@ -37,15 +37,16 @@ class HoistAnnotatedTypes(unittest.TestCase):
             "foo.thrift",
             textwrap.dedent(
                 """\
-                typedef map<i32 (cpp.type = 'uint32_t'), S> MyMap;
+                typedef map<i32 (cpp.type = "uint32_t"), S> MyMap;
 
                 struct S {
                     1: list<S (annotated)> (annotated) foo;
                     2: map<string, map<i32, i32> (annotated)> bar;
+                    3: set<set<i16 (annotated)> (annotated)> nested;
                 }
 
                 service X {
-                    i32 (cpp.type = 'uint32_t') foo(1: S (annotated) s);
+                    i32 (cpp.type = "uint32_t") foo(1: S (annotated) s);
                 }
 
                 const S (moar_annotated) c = {};
@@ -60,24 +61,27 @@ class HoistAnnotatedTypes(unittest.TestCase):
             read_file("foo.thrift"),
             textwrap.dedent(
                 """\
-                typedef map<i32_cpptype_uint32_t_475, S> MyMap;
+                typedef map<i32_7683, S> MyMap;
 
                 struct S {
-                    1: list<S_annotated_1_475> (annotated) foo;
-                    2: map<string, mapi32i32_annotated_1_475> bar;
+                    1: list<S_866> (annotated) foo;
+                    2: map<string, map_i32_i32_7359> bar;
+                    3: set<set_i16_5922> nested;
                 }
 
                 service X {
-                    i32_cpptype_uint32_t_475 foo(1:S_annotated_1_475 s);
+                    i32_7683 foo(1:S_866 s);
                 }
 
-                const S_moar_annotated_1_475 c = {};
+                const S_8730 c = {};
 
                 // The following were automatically generated and may benefit from renaming.
-                typedef S (annotated = '1') S_annotated_1_475
-                typedef S (moar_annotated = '1') S_moar_annotated_1_475
-                typedef i32 (cpp.type = 'uint32_t') i32_cpptype_uint32_t_475
-                typedef map<i32, i32> (annotated = '1') mapi32i32_annotated_1_475
+                typedef S (annotated = "1") S_866
+                typedef S (moar_annotated = "1") S_8730
+                typedef i16 (annotated = "1") i16_2065
+                typedef i32 (cpp.type = "uint32_t") i32_7683
+                typedef map<i32, i32> (annotated = "1") map_i32_i32_7359
+                typedef set<i16_2065> (annotated = "1") set_i16_5922
                 """
             ),
         )

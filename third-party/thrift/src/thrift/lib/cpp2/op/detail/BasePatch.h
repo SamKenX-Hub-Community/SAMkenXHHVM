@@ -23,6 +23,7 @@
 #include <folly/Traits.h>
 #include <thrift/lib/cpp2/FieldRef.h>
 #include <thrift/lib/cpp2/op/Clear.h>
+#include <thrift/lib/cpp2/protocol/Object.h>
 #include <thrift/lib/cpp2/type/Id.h>
 #include <thrift/lib/cpp2/type/detail/Wrap.h>
 
@@ -37,19 +38,6 @@ class bad_patch_access : public std::runtime_error {
 };
 
 namespace detail {
-
-template <typename T, typename U>
-if_opt_type<T, bool> sameType(const T& opt1, const U& opt2) {
-  return opt1.has_value() == opt2.has_value();
-}
-template <typename T, typename U>
-bool sameType(field_ref<T> unn1, const U& unn2) {
-  return unn1->getType() == unn2.getType();
-}
-template <typename T, typename U>
-bool sameType(terse_field_ref<T> unn1, const U& unn2) {
-  return unn1->getType() == unn2.getType();
-}
 
 /// Base class for all patch types.
 /// - Patch: The Thrift struct representation for the patch.
@@ -77,6 +65,11 @@ class BasePatch : public type::detail::EqWrap<Derived, Patch> {
   void apply(terse_field_ref<U> field) const {
     derived().apply(*field);
   }
+  /// Applies patches to a Thrift value.
+  template <typename U>
+  void apply(required_field_ref<U> field) const {
+    derived().apply(*field);
+  }
   /// Replaces the existing value.
   template <typename U>
   type::if_not_id<U> assign(field_ref<U> val) {
@@ -98,6 +91,25 @@ class BasePatch : public type::detail::EqWrap<Derived, Patch> {
   Derived& operator=(terse_field_ref<U> field) {
     derived().assign(std::forward<U>(*field));
     return derived();
+  }
+
+  /// Merges another patch into the current patch. After the merge
+  /// (`patch.merge(next)`), `patch.apply(value)` is equivalent to
+  /// `next.apply(patch.apply(value))`.
+  template <typename U>
+  void merge(U&& next) {
+    if (this == std::addressof(next)) {
+      auto copy = next;
+      std::forward<U>(copy).customVisit(derived());
+    } else {
+      std::forward<U>(next).customVisit(derived());
+    }
+  }
+
+  // Convert Static Patch to Dynamic Patch.
+  protocol::Object toObject() const {
+    return protocol::asValueStruct<type::struct_c>(Base::toThrift())
+        .as_object();
   }
 
  protected:
@@ -172,27 +184,6 @@ class BaseAssignPatch : public BasePatch<Patch, Derived> {
   FOLLY_NODISCARD value_type& assignOr(value_type& value) noexcept {
     return hasAssign() ? *data_.assign() : value;
   }
-
-  bool applyAssign(value_type& val) const {
-    if (hasAssign()) {
-      val = *data_.assign();
-      return true;
-    }
-    return false;
-  }
-
-  template <typename U>
-  bool mergeAssign(U&& next) {
-    if (hasValue(next.toThrift().assign())) {
-      data_ = std::forward<U>(next).toThrift();
-      return true;
-    }
-    if (hasAssign()) {
-      next.apply(*data_.assign());
-      return true;
-    }
-    return false;
-  }
 };
 
 /// Base class for clearable patch types.
@@ -236,35 +227,20 @@ class BaseClearPatch : public BaseAssignPatch<Patch, Derived> {
  protected:
   template <typename, typename>
   friend class BaseEnsurePatch;
-  using Base::applyAssign;
   using Base::data_;
   using Base::derived;
   using Base::hasAssign;
-  using Base::mergeAssign;
   using Base::resetAnd;
   ~BaseClearPatch() = default;
 
-  template <typename U>
-  bool mergeAssignAndClear(U&& next) {
-    // Clear is slightly stronger than assigning a 'cleared' value in some
-    // cases. For example a struct with non-terse, non-optional fields with
-    // custom defaults and missmatched schemas... it's also smaller, so prefer
-    // it.
-    if (*next.toThrift().clear() && !hasValue(next.toThrift().assign())) {
-      // Next patch completely replaces this one.
-      data_ = std::forward<U>(next).toThrift();
-      return true;
-    }
-    return mergeAssign(std::forward<U>(next));
-  }
-
-  template <typename Tag>
-  bool applyAssignAndClear(T& val) const {
-    if (applyAssign(val)) {
+  template <typename Visitor>
+  bool customVisitAssignAndClear(Visitor&& v) const {
+    if (hasAssign()) {
+      std::forward<Visitor>(v).assign(*data_.assign());
       return true;
     }
     if (data_.clear() == true) {
-      op::clear<Tag>(val);
+      std::forward<Visitor>(v).clear();
     }
     return false;
   }
@@ -290,20 +266,8 @@ class BaseContainerPatch : public BaseClearPatch<Patch, Derived> {
   using Base::clear;
 
  protected:
-  using Base::applyAssign;
   using Base::data_;
   ~BaseContainerPatch() = default; // Abstract base class.
-
-  /// Returns true if assign was applied, and no more patchs should be applied.
-  bool applyAssignOrClear(T& val) const {
-    if (applyAssign(val)) {
-      return true;
-    }
-    if (data_.clear() == true) {
-      val.clear();
-    }
-    return false;
-  }
 };
 
 } // namespace detail

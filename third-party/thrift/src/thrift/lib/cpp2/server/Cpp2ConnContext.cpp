@@ -129,5 +129,21 @@ ClientMetadataRef::getFields() const {
                                                     : emptyFields;
 }
 
+namespace detail {
+THRIFT_PLUGGABLE_FUNC_REGISTER(
+    ConnectionInternalFieldsT, createPerConnectionInternalFields) {
+  return ConnectionInternalFieldsT::make<std::monostate>();
+}
+THRIFT_PLUGGABLE_FUNC_REGISTER(
+    RequestInternalFieldsT, createPerRequestInternalFields) {
+  return RequestInternalFieldsT::make<std::monostate>();
+}
+
+THRIFT_PLUGGABLE_FUNC_REGISTER(
+    std::vector<EkmInfo>, populateCachedEkms, const folly::AsyncTransport&) {
+  return std::vector<EkmInfo>();
+}
+} // namespace detail
+
 } // namespace thrift
 } // namespace apache

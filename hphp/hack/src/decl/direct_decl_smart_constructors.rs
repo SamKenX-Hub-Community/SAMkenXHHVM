@@ -72,12 +72,12 @@ use oxidized_by_ref::typing_defs::RefinedConst;
 use oxidized_by_ref::typing_defs::RefinedConstBound;
 use oxidized_by_ref::typing_defs::RefinedConstBounds;
 use oxidized_by_ref::typing_defs::ShapeFieldType;
-use oxidized_by_ref::typing_defs::ShapeKind;
 use oxidized_by_ref::typing_defs::TaccessType;
 use oxidized_by_ref::typing_defs::Tparam;
 use oxidized_by_ref::typing_defs::TshapeFieldName;
 use oxidized_by_ref::typing_defs::Ty;
 use oxidized_by_ref::typing_defs::Ty_;
+use oxidized_by_ref::typing_defs::TypeOrigin;
 use oxidized_by_ref::typing_defs::Typeconst;
 use oxidized_by_ref::typing_defs::TypedefType;
 use oxidized_by_ref::typing_defs::WhereConstraint;
@@ -911,6 +911,12 @@ mod fixed_width_token {
 use fixed_width_token::FixedWidthToken;
 
 #[derive(Copy, Clone, Debug)]
+pub enum XhpChildrenKind {
+    Empty,
+    Other,
+}
+
+#[derive(Copy, Clone, Debug)]
 pub enum Node<'a> {
     // Nodes which are not useful in constructing a decl are ignored. We keep
     // track of the SyntaxKind for two reasons.
@@ -966,6 +972,7 @@ pub enum Node<'a> {
     XhpClassAttributeDeclaration(&'a XhpClassAttributeDeclarationNode<'a>),
     XhpClassAttribute(&'a XhpClassAttributeNode<'a>),
     XhpAttributeUse(&'a Node<'a>),
+    XhpChildrenDeclaration(XhpChildrenKind),
     TypeConstant(&'a ShallowTypeconst<'a>),
     ContextConstraint(&'a (ConstraintKind, Node<'a>)),
     RequireClause(&'a RequireClause<'a>),
@@ -1154,6 +1161,7 @@ struct Attributes<'a> {
     soft: bool,
     support_dynamic_type: bool,
     safe_global_variable: bool,
+    cross_package: Option<&'a str>,
 }
 
 impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> Impl<'a, 'o, 't, S> {
@@ -1376,7 +1384,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                         | KeyValCollection(_) | Lfun(_) | List(_) | Lplaceholder(_) | Lvar(_)
                         | MethodCaller(_) | New(_) | ObjGet(_) | Omitted | Pair(_) | Pipe(_)
                         | ReadonlyExpr(_) | Shape(_) | Tuple(_) | Upcast(_) | ValCollection(_)
-                        | Varray(_) | Xml(_) | Yield(_) | Invalid(_) => None,
+                        | Varray(_) | Xml(_) | Yield(_) | Invalid(_) | Package(_) => None,
                     }
                 }
                 Some(self.alloc(Ty(
@@ -1628,6 +1636,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
             soft: false,
             support_dynamic_type: false,
             safe_global_variable: false,
+            cross_package: None,
         };
 
         let nodes = match node {
@@ -1696,6 +1705,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                             ));
                         ifc_already_policied = true;
                     }
+
                     "__InferFlows" => {
                         if !ifc_already_policied {
                             attributes.ifc_attribute = IfcFunDecl::FDInferFlows;
@@ -1715,6 +1725,12 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                     }
                     "__SafeForGlobalAccessCheck" => {
                         attributes.safe_global_variable = true;
+                    }
+                    "__CrossPackage" => {
+                        attributes.cross_package = attribute
+                            .string_literal_params
+                            .first()
+                            .map(|&(_, x)| self.str_from_utf8_for_bytes_in_arena(x));
                     }
                     _ => {}
                 }
@@ -1899,6 +1915,8 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
 
         let ifc_decl = attributes.ifc_attribute;
 
+        let cross_package = attributes.cross_package;
+
         // Pop the type params stack only after creating all inner types.
         let tparams = self.pop_type_params(header.type_params);
 
@@ -1922,6 +1940,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
             }),
             flags,
             ifc_decl,
+            cross_package,
         });
 
         let ty = self.alloc(Ty(
@@ -2212,7 +2231,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                     ..*fun_type
                 }))
             }
-            Ty_::Tshape(&(kind, fields)) => {
+            Ty_::Tshape(&(_, kind, fields)) => {
                 let mut converted_fields = AssocListMut::with_capacity_in(fields.len(), self.arena);
                 for (&name, ty) in fields.iter() {
                     converted_fields.insert(
@@ -2223,7 +2242,8 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                         }),
                     );
                 }
-                Ty_::Tshape(self.alloc((kind, converted_fields.into())))
+                let origin = TypeOrigin::MissingOrigin;
+                Ty_::Tshape(self.alloc((origin, kind, converted_fields.into())))
             }
             Ty_::TvecOrDict(&(tk, tv)) => Ty_::TvecOrDict(self.alloc((
                 self.convert_tapply_to_tgeneric(tk),
@@ -3192,7 +3212,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         Node::Expr(self.alloc(aast::Expr(
             (),
             pos,
-            aast::Expr_::Binop(self.alloc((op, lhs, rhs))),
+            aast::Expr_::Binop(self.alloc(aast::Binop { bop: op, lhs, rhs })),
         )))
     }
 
@@ -3461,6 +3481,119 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         this.add_typedef(name, typedef);
 
         Node::Ignored(SK::ContextAliasDeclaration)
+    }
+
+    fn make_case_type_declaration(
+        &mut self,
+        attribute_spec: Self::Output,
+        modifiers: Self::Output,
+        _case_keyword: Self::Output,
+        _type_keyword: Self::Output,
+        name: Self::Output,
+        generic_parameter: Self::Output,
+        _as: Self::Output,
+        bounds: Self::Output,
+        _equal: Self::Output,
+        variants: Self::Output,
+        _semicolon: Self::Output,
+    ) -> Self::Output {
+        if name.is_ignored() {
+            return Node::Ignored(SK::CaseTypeDeclaration);
+        }
+        let Id(pos, name) = match self.elaborate_defined_id(name) {
+            Some(id) => id,
+            None => return Node::Ignored(SK::CaseTypeDeclaration),
+        };
+
+        let as_constraint = match bounds.len() {
+            0 => None,
+            1 => self.node_to_ty(*bounds.iter().next().unwrap()),
+            _ => {
+                let pos = self.get_pos(bounds);
+                let tys = self.slice(bounds.iter().filter_map(|x| match x {
+                    Node::ListItem(&(ty, _commas)) => self.node_to_ty(ty),
+                    &x => self.node_to_ty(x),
+                }));
+                Some(self.alloc(Ty(self.alloc(Reason::hint(pos)), Ty_::Tintersection(tys))))
+            }
+        };
+
+        let ty = match variants.len() {
+            0 => None,
+            1 => self.node_to_ty(*variants.iter().next().unwrap()),
+            _ => {
+                let pos = self.get_pos(variants);
+                let tys = self.slice(variants.iter().filter_map(|x| self.node_to_ty(*x)));
+                Some(self.alloc(Ty(self.alloc(Reason::hint(pos)), Ty_::Tunion(tys))))
+            }
+        };
+
+        let type_ = match ty {
+            Some(x) => x,
+            None => return Node::Ignored(SK::CaseTypeDeclaration),
+        };
+
+        // Pop the type params stack only after creating all inner types.
+        let tparams = self.pop_type_params(generic_parameter);
+
+        // Parse the user attributes
+        // in facts-mode all attributes are saved, otherwise only __NoAutoDynamic is
+        let user_attributes = self.slice(attribute_spec.iter().rev().filter_map(|attribute| {
+            if let Node::Attribute(attr) = attribute {
+                if self.retain_or_omit_user_attributes_for_facts || attr.name.1 == "__NoAutoDynamic"
+                {
+                    Some(self.user_attribute_to_decl(attr))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }));
+
+        let mut docs_url = None;
+        for attribute in attribute_spec.iter() {
+            match attribute {
+                Node::Attribute(attr) => {
+                    if attr.name.1 == "__Docs" {
+                        if let Some((_, bstr)) = attr.string_literal_params.first() {
+                            docs_url = Some(self.str_from_utf8_for_bytes_in_arena(bstr));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let internal = modifiers
+            .iter()
+            .any(|m| m.as_visibility() == Some(aast::Visibility::Internal));
+        let typedef = self.alloc(TypedefType {
+            module: self.module,
+            pos,
+            vis: aast::TypedefVisibility::CaseType,
+            tparams,
+            as_constraint,
+            super_constraint: None,
+            type_,
+            is_ctx: false,
+            attributes: user_attributes,
+            internal,
+            docs_url,
+        });
+
+        let this = Rc::make_mut(&mut self.state);
+        this.add_typedef(name, typedef);
+
+        Node::Ignored(SK::CaseTypeDeclaration)
+    }
+
+    fn make_case_type_variant(&mut self, _bar: Self::Output, type_: Self::Output) -> Self::Output {
+        if type_.is_ignored() {
+            Node::Ignored(SK::CaseTypeVariant)
+        } else {
+            type_
+        }
     }
 
     fn make_type_constraint(&mut self, kind: Self::Output, value: Self::Output) -> Self::Output {
@@ -4146,6 +4279,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         let mut uses_len = 0;
         let mut xhp_attr_uses_len = 0;
         let mut xhp_enum_values = SMap::empty();
+        let mut xhp_marked_empty = false;
         let mut req_extends_len = 0;
         let mut req_implements_len = 0;
         let mut req_class_len = 0;
@@ -4178,6 +4312,9 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
                     for (name, values) in xhp_attr_enum_values {
                         xhp_enum_values = xhp_enum_values.add(self.arena, name, *values);
                     }
+                }
+                Node::XhpChildrenDeclaration(XhpChildrenKind::Empty) => {
+                    xhp_marked_empty = true;
                 }
                 Node::TypeConstant(..) => typeconsts_len += 1,
                 Node::RequireClause(require) => match require.require_type.token_kind() {
@@ -4382,6 +4519,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             uses,
             xhp_attr_uses,
             xhp_enum_values,
+            xhp_marked_empty,
             req_extends,
             req_implements,
             req_class,
@@ -4475,6 +4613,20 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             decls: declarators,
             is_static: modifiers.is_static,
         }))
+    }
+
+    fn make_xhp_children_declaration(
+        &mut self,
+        _keyword: Self::Output,
+        expression: Self::Output,
+        _semicolon: Self::Output,
+    ) -> Self::Output {
+        match expression {
+            Node::IgnoredToken(token) if token.kind() == TokenKind::Empty => {
+                Node::XhpChildrenDeclaration(XhpChildrenKind::Empty)
+            }
+            _ => Node::XhpChildrenDeclaration(XhpChildrenKind::Other),
+        }
     }
 
     fn make_xhp_class_attribute_declaration(
@@ -4829,6 +4981,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             uses: &[],
             xhp_attr_uses: &[],
             xhp_enum_values: SMap::empty(),
+            xhp_marked_empty: false,
             req_extends: &[],
             req_implements: &[],
             req_class: &[],
@@ -5025,6 +5178,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             uses: &[],
             xhp_attr_uses: &[],
             xhp_enum_values: SMap::empty(),
+            xhp_marked_empty: false,
             req_extends: &[],
             req_implements: &[],
             req_class: &[],
@@ -5178,17 +5332,24 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
                 fields.insert(self.make_t_shape_field_name(name), type_)
             }
         }
-        let (kind, is_open) = match open.token_kind() {
-            Some(TokenKind::DotDotDot) => (ShapeKind::OpenShape, true),
-            _ => (ShapeKind::ClosedShape, false),
+        let pos = self.get_pos(open);
+        let reason = self.alloc(Reason::hint(pos));
+        let kind = match open.token_kind() {
+            // Type of unknown fields is mixed, or supportdyn<mixed> under implicit SD
+            Some(TokenKind::DotDotDot) => self.alloc(Ty(
+                reason,
+                if self.implicit_sdt() {
+                    self.make_supportdyn(pos, Ty_::Tmixed)
+                } else {
+                    Ty_::Tmixed
+                },
+            )),
+            // Closed shapes are expressed using `nothing` (empty union) as the type of unknown fields
+            _ => self.alloc(Ty(reason, Ty_::Tunion(&[]))),
         };
         let pos = self.merge_positions(shape, rparen);
-        let ty_ = Ty_::Tshape(self.alloc((kind, fields.into())));
-        if is_open && self.implicit_sdt() {
-            self.hint_ty(pos, self.make_supportdyn(pos, ty_))
-        } else {
-            self.hint_ty(pos, ty_)
-        }
+        let origin = TypeOrigin::MissingOrigin;
+        self.hint_ty(pos, Ty_::Tshape(self.alloc((origin, kind, fields.into()))))
     }
 
     fn make_classname_type_specifier(
@@ -5419,15 +5580,24 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         }));
 
         let string_literal_params = if match name.1 {
-            "__Deprecated" | "__Cipp" | "__CippLocal" | "__Policied" | "__Docs" => true,
+            "__Deprecated" | "__Cipp" | "__CippLocal" | "__Policied" | "__Docs"
+            | "__CrossPackage" => true,
             _ => false,
         } {
             fn fold_string_concat<'a>(expr: &nast::Expr<'a>, acc: &mut bump::Vec<'a, u8>) {
                 match *expr {
                     aast::Expr(_, _, aast::Expr_::String(val)) => acc.extend_from_slice(val),
-                    aast::Expr(_, _, aast::Expr_::Binop(&(Bop::Dot, e1, e2))) => {
-                        fold_string_concat(e1, acc);
-                        fold_string_concat(e2, acc);
+                    aast::Expr(
+                        _,
+                        _,
+                        aast::Expr_::Binop(&aast::Binop {
+                            bop: Bop::Dot,
+                            lhs,
+                            rhs,
+                        }),
+                    ) => {
+                        fold_string_concat(lhs, acc);
+                        fold_string_concat(rhs, acc);
                     }
                     _ => {}
                 }
@@ -5585,6 +5755,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             }),
             flags,
             ifc_decl: default_ifc_fun_decl(),
+            cross_package: None,
         }));
 
         if self.implicit_sdt() {

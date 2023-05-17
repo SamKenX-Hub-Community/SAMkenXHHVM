@@ -53,7 +53,7 @@ let rec walk_and_gather_xhp_ ~env ~pos cty =
       pos
       cty
   in
-  Option.iter ~f:Errors.add_typing_error ty_err_opt;
+  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
   match get_node cty with
   | Tany _
   | Tdynamic ->
@@ -206,3 +206,16 @@ let rewrite_xml_into_new pos sid attributes children =
   let args = [attributes; children; file; line] in
   let sid_ann = fst sid in
   ((), sid_ann, New (((), sid_ann, cid), [], args, None, ()))
+
+let rewrite_attribute_access_into_call pos exp nullflavor =
+  let obj_get_exp =
+    ( (),
+      pos,
+      Aast.Obj_get
+        (exp, ((), pos, Id (pos, "getAttribute")), nullflavor, Is_method) )
+  in
+  ( (),
+    pos,
+    Aast.Call
+      (obj_get_exp, [], [(Ast_defs.Pnormal, ((), pos, Aast.String ""))], None)
+  )

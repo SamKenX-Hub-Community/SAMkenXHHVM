@@ -44,10 +44,9 @@ req::ptr<MemFile> FileStreamWrapper::openFromCache(const String& filename,
     return nullptr;
   }
 
-  String relative =
-    FileCache::GetRelativePath(File::TranslatePath(filename).c_str());
+  String path = File::TranslatePath(filename);
   auto file = req::make<MemFile>();
-  bool ret = file->open(relative, mode);
+  bool ret = file->open(path, mode);
   if (ret) {
     return file;
   }
@@ -157,10 +156,8 @@ int FileStreamWrapper::mkdir_recursive(const String& path, int mode) {
   for (p = dir + 1; *p; p++) {
     if (FileUtil::isDirSeparator(*p)) {
       *p = '\0';
-      if (::access(dir, F_OK) < 0) {
-        if (::mkdir(dir, mode) < 0) {
-          return -1;
-        }
+      if (::mkdir(dir, mode) < 0) {
+        if (!*(p+1) || errno != EEXIST) return -1;
       }
       *p = FileUtil::getDirSeparator();
     }

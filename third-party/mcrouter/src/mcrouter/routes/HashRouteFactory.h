@@ -44,19 +44,45 @@ BucketHashSelector<HashFunc, RouterInfo> createBucketHashSelector(
 }
 
 template <class RouterInfo, class HashFunc>
-typename RouterInfo::RouteHandlePtr createHashRoute(
-    std::vector<typename RouterInfo::RouteHandlePtr> rh,
-    std::string salt,
-    HashFunc func,
-    bool bucketized = false) {
-  if (bucketized) {
-    return createSelectionRoute<
-        RouterInfo,
-        BucketHashSelector<HashFunc, RouterInfo>>(
-        std::move(rh),
-        createBucketHashSelector<HashFunc, RouterInfo>(
-            std::move(salt), std::move(func)));
+typename std::
+    enable_if_t<!RouterInfo::bucketization, typename RouterInfo::RouteHandlePtr>
+    createHashRoute(
+        std::vector<typename RouterInfo::RouteHandlePtr> rh,
+        std::string salt,
+        HashFunc func,
+        bool bucketized = false) {
+  checkLogic(
+      !bucketized,
+      "Bucketization not implemented for router info: {}",
+      RouterInfo::name);
+
+  return createSelectionRoute<RouterInfo, HashSelector<HashFunc>>(
+      std::move(rh),
+      createHashSelector<HashFunc>(std::move(salt), std::move(func)));
+}
+
+template <class RouterInfo, class HashFunc>
+typename std::
+    enable_if_t<RouterInfo::bucketization, typename RouterInfo::RouteHandlePtr>
+    createHashRoute(
+        std::vector<typename RouterInfo::RouteHandlePtr> rh,
+        std::string salt,
+        HashFunc func,
+        bool bucketized = false) {
+  if (folly::IsOneOf<HashFunc, WeightedCh3HashFunc>::value) {
+    if (bucketized) {
+      return createSelectionRoute<
+          RouterInfo,
+          BucketHashSelector<HashFunc, RouterInfo>>(
+          std::move(rh),
+          createBucketHashSelector<HashFunc, RouterInfo>(
+              std::move(salt), std::move(func)));
+    }
   }
+  checkLogic(
+      !bucketized,
+      "Bucketization not implemented for this ch type: {}",
+      HashFunc::type());
   return createSelectionRoute<RouterInfo, HashSelector<HashFunc>>(
       std::move(rh),
       createHashSelector<HashFunc>(std::move(salt), std::move(func)));
@@ -86,7 +112,19 @@ std::shared_ptr<typename RouterInfo::RouteHandleIf> createHashRoute(
 
   auto n = rh.size();
   if (n == 0) {
-    return createNullRoute<typename RouterInfo::RouteHandleIf>();
+    auto errorOnEmpty = true;
+    folly::StringPiece name{nullptr, nullptr};
+    if (json.isObject()) {
+      if (auto* jErrorOnEmpty = json.get_ptr("error_on_empty")) {
+        errorOnEmpty = parseBool(*jErrorOnEmpty, "error_on_empty");
+      }
+      if (auto* jName = json.get_ptr("name")) {
+        name = jName->stringPiece();
+      }
+    }
+    return errorOnEmpty ? createErrorRoute<RouterInfo>(folly::sformat(
+                              "HashRoute with empty children, name: {}", name))
+                        : createNullRoute<typename RouterInfo::RouteHandleIf>();
   }
   if (n == 1) {
     return std::move(rh[0]);

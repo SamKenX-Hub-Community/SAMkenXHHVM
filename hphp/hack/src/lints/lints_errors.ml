@@ -11,6 +11,19 @@ module Codes = Lints_codes.Codes
 open Lints_core
 module Lints = Lints_core
 
+let quickfix ~can_be_captured ~original_pos ~replacement_pos =
+  let path = Pos.filename (Pos.to_absolute original_pos) in
+  let lines = Errors.read_lines path in
+  let content = String.concat ~sep:"\n" lines in
+  let modified = Pos.get_text_from_pos ~content replacement_pos in
+  let modified =
+    if can_be_captured then
+      "(" ^ modified ^ ")"
+    else
+      modified
+  in
+  (modified, original_pos)
+
 let clone_use p =
   Lints.add
     Codes.clone_use
@@ -75,37 +88,6 @@ let invalid_contains_key_check p trv_key_ty key_ty =
        trv_key_ty
        (Markdown_lite.md_codify key_ty)
 
-let non_equatable_due_to_opaque_types p ty1 ty2 enums =
-  Lints.add Codes.non_equatable_comparison Lint_warning p
-  @@ Printf.sprintf
-       "Invalid comparison:\nA value of type %s should not be compared to a value of type %s%s"
-       (Markdown_lite.md_codify ty1)
-       (Markdown_lite.md_codify ty2)
-       begin
-         match enums with
-         | [] -> ""
-         | enums ->
-           Printf.sprintf
-             " because the enum type%s %s %s opaque.\nUse functions like `%s::coerce` and `%s::assert` to convert values to the appropriate type before comparing."
-             (if List.length enums = 1 then
-               ""
-             else
-               "s")
-             (match enums with
-             | [a; b] ->
-               Printf.sprintf
-                 "%s and %s"
-                 (Markdown_lite.md_codify a)
-                 (Markdown_lite.md_codify b)
-             | _ -> String.concat ~sep:", " enums)
-             (if List.length enums = 1 then
-               "is"
-             else
-               "are")
-             (List.hd_exn enums)
-             (List.hd_exn enums)
-       end
-
 let is_always_true p lhs_class rhs_class =
   let lhs_class = Markdown_lite.md_codify lhs_class in
   let rhs_class = Markdown_lite.md_codify rhs_class in
@@ -134,7 +116,8 @@ let is_always_false p lhs_class rhs_class =
        lhs_class
        rhs_class)
 
-let as_always_succeeds p lhs_class rhs_class =
+let as_always_succeeds
+    ~can_be_captured ~as_pos ~child_expr_pos lhs_class rhs_class =
   let lhs_class = Markdown_lite.md_codify lhs_class in
   let rhs_class = Markdown_lite.md_codify rhs_class in
 
@@ -148,10 +131,18 @@ let as_always_succeeds p lhs_class rhs_class =
         lhs_class
         rhs_class
   in
+  let autofix =
+    Some
+      (quickfix
+         ~can_be_captured
+         ~original_pos:as_pos
+         ~replacement_pos:child_expr_pos)
+  in
   Lints.add
+    ~autofix
     Codes.as_always_succeeds
     Lint_warning
-    p
+    as_pos
     (Printf.sprintf
        "This `as` assertion will always succeed and hence is redundant. The expression on the left is an instance of %s%s."
        lhs_class
@@ -212,8 +203,15 @@ let invalid_null_check p ret ty =
        (string_of_bool ret |> Markdown_lite.md_codify)
        (Markdown_lite.md_codify ty)
 
-let redundant_nonnull_assertion p ty =
-  Lints.add Codes.redundant_nonnull_assertion Lint_warning p
+let redundant_nonnull_assertion ~can_be_captured ~as_pos ~child_expr_pos ty =
+  let autofix =
+    Some
+      (quickfix
+         ~can_be_captured
+         ~original_pos:as_pos
+         ~replacement_pos:child_expr_pos)
+  in
+  Lints.add ~autofix Codes.redundant_nonnull_assertion Lint_warning as_pos
   @@ Printf.sprintf
        "This `as` assertion will always succeed and hence is redundant. A value of type %s can never be null."
        (Markdown_lite.md_codify ty)
@@ -427,17 +425,11 @@ let redundant_cast_common
       ^ " Please be prudent when acting on this lint."
   in
   let autofix =
-    let path = Pos.filename (Pos.to_absolute cast_pos) in
-    let lines = Errors.read_lines path in
-    let content = String.concat ~sep:"\n" lines in
-    let modified = Pos.get_text_from_pos ~content expr_pos in
-    let modified =
-      if can_be_captured then
-        "(" ^ modified ^ ")"
-      else
-        modified
-    in
-    Some (modified, cast_pos)
+    Some
+      (quickfix
+         ~can_be_captured
+         ~original_pos:cast_pos
+         ~replacement_pos:expr_pos)
   in
   Lints.add ~check_status ~autofix code severity cast_pos msg
 
@@ -549,3 +541,29 @@ let internal_classname p =
     ("This is a classname of an `internal` class. Internal classnames are dangerous because they are effectively raw strings. "
     ^ "Please avoid them, or make sure that they are never used outside of the module."
     )
+
+let async_lambda pos =
+  Lints.add
+    Codes.async_lambda
+    Lint_advice
+    pos
+    "Use `async ... ==> await ...` for lambdas that directly return `Awaitable`s, so stack traces include the lambda position."
+
+let awaitable_awaitable pos =
+  Lints.add
+    Codes.awaitable_awaitable
+    Lint_warning
+    pos
+    ("This lambda returns an Awaitable of Awaitable."
+    ^ " You probably want to use await inside this async lambda,"
+    ^ " so stack traces include the lambda position."
+    ^ " If this is intentional, please annotate the return type.")
+
+let cast_non_primitive pos =
+  Lints.add
+    Codes.cast_non_primitive
+    Lint_error
+    pos
+    ("Casting a non-primitive to a primitive rarely yields a "
+    ^ "useful value. Did you mean to extract a value from this object "
+    ^ "before casting it, or to do a null-check?")

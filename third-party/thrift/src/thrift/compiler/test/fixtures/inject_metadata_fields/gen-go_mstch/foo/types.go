@@ -4,10 +4,10 @@
 package foo // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  thrift0 "thrift/annotation/thrift"
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift0 "thrift/annotation/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = thrift0.GoUnusedProtection__
@@ -26,14 +26,9 @@ type Fields struct {
 var _ thrift.Struct = &Fields{}
 
 func NewFields() *Fields {
-    return (&Fields{})
+    return (&Fields{}).
+        SetInjectedFieldNonCompat("")
 }
-
-// Deprecated: Use NewFields().InjectedStructuredAnnotationField instead.
-var Fields_InjectedStructuredAnnotationField_DEFAULT = NewFields().InjectedStructuredAnnotationField
-
-// Deprecated: Use NewFields().InjectedUnstructuredAnnotationField instead.
-var Fields_InjectedUnstructuredAnnotationField_DEFAULT = NewFields().InjectedUnstructuredAnnotationField
 
 func (x *Fields) GetInjectedFieldNonCompat() string {
     return x.InjectedField
@@ -49,7 +44,7 @@ func (x *Fields) GetInjectedStructuredAnnotationFieldNonCompat() *string {
 
 func (x *Fields) GetInjectedStructuredAnnotationField() string {
     if !x.IsSetInjectedStructuredAnnotationField() {
-      return ""
+        return ""
     }
 
     return *x.InjectedStructuredAnnotationField
@@ -61,10 +56,15 @@ func (x *Fields) GetInjectedUnstructuredAnnotationFieldNonCompat() *string {
 
 func (x *Fields) GetInjectedUnstructuredAnnotationField() string {
     if !x.IsSetInjectedUnstructuredAnnotationField() {
-      return ""
+        return ""
     }
 
     return *x.InjectedUnstructuredAnnotationField
+}
+
+func (x *Fields) SetInjectedFieldNonCompat(value string) *Fields {
+    x.InjectedField = value
+    return x
 }
 
 func (x *Fields) SetInjectedField(value string) *Fields {
@@ -72,16 +72,25 @@ func (x *Fields) SetInjectedField(value string) *Fields {
     return x
 }
 
-func (x *Fields) SetInjectedStructuredAnnotationField(value string) *Fields {
+func (x *Fields) SetInjectedStructuredAnnotationFieldNonCompat(value string) *Fields {
     x.InjectedStructuredAnnotationField = &value
     return x
 }
 
-func (x *Fields) SetInjectedUnstructuredAnnotationField(value string) *Fields {
+func (x *Fields) SetInjectedStructuredAnnotationField(value *string) *Fields {
+    x.InjectedStructuredAnnotationField = value
+    return x
+}
+
+func (x *Fields) SetInjectedUnstructuredAnnotationFieldNonCompat(value string) *Fields {
     x.InjectedUnstructuredAnnotationField = &value
     return x
 }
 
+func (x *Fields) SetInjectedUnstructuredAnnotationField(value *string) *Fields {
+    x.InjectedUnstructuredAnnotationField = value
+    return x
+}
 
 func (x *Fields) IsSetInjectedStructuredAnnotationField() bool {
     return x.InjectedStructuredAnnotationField != nil
@@ -153,7 +162,7 @@ if err != nil {
     return err
 }
 
-    x.SetInjectedField(result)
+    x.SetInjectedFieldNonCompat(result)
     return nil
 }
 
@@ -163,7 +172,7 @@ if err != nil {
     return err
 }
 
-    x.SetInjectedStructuredAnnotationField(result)
+    x.SetInjectedStructuredAnnotationFieldNonCompat(result)
     return nil
 }
 
@@ -173,9 +182,15 @@ if err != nil {
     return err
 }
 
-    x.SetInjectedUnstructuredAnnotationField(result)
+    x.SetInjectedUnstructuredAnnotationFieldNonCompat(result)
     return nil
 }
+
+// Deprecated: Use NewFields().GetInjectedStructuredAnnotationField() instead.
+var Fields_InjectedStructuredAnnotationField_DEFAULT = NewFields().GetInjectedStructuredAnnotationField()
+
+// Deprecated: Use NewFields().GetInjectedUnstructuredAnnotationField() instead.
+var Fields_InjectedUnstructuredAnnotationField_DEFAULT = NewFields().GetInjectedUnstructuredAnnotationField()
 
 func (x *Fields) String() string {
     return fmt.Sprintf("%+v", x)
@@ -212,6 +227,7 @@ func (x *FieldsBuilder) Emit() *Fields {
     var objCopy Fields = *x.obj
     return &objCopy
 }
+
 func (x *Fields) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Fields"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -284,3 +300,4 @@ func (x *Fields) Read(p thrift.Protocol) error {
 
     return nil
 }
+

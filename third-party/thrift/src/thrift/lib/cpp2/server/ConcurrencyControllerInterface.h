@@ -46,6 +46,10 @@ class ConcurrencyControllerInterface : public RequestCompletionCallback {
   // indicates unlimited. This is thread safe.
   virtual uint64_t getExecutionLimitRequests() const = 0;
 
+  virtual void setQpsLimit(uint64_t limit) = 0;
+
+  virtual uint64_t getQpsLimit() const = 0;
+
   // Returns the current number of requests being processed by this concurrency
   // controller. This is only intended for monitoring. This is thread safe.
   virtual uint64_t requestCount() const = 0;
@@ -68,7 +72,17 @@ class ConcurrencyControllerInterface : public RequestCompletionCallback {
   // in ParallelConcurrencyController
   virtual uint64_t numPendingDequeRequest() const { return 0; }
 
-  virtual std::string describe() const;
+  virtual std::string describe() const = 0;
+
+  // ConcurrencyController can notify an observer when request execution is
+  // completed
+  class Observer {
+   public:
+    virtual ~Observer() {}
+    virtual void onFinishExecution(ServerRequest& request) = 0;
+  };
+
+  virtual void setObserver(std::shared_ptr<Observer> observer) = 0;
 };
 
 } // namespace apache::thrift

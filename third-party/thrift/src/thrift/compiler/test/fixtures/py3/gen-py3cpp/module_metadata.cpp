@@ -128,7 +128,7 @@ StructMetadata<::py3::simple::SimpleStruct>::gen(ThriftMetadata& metadata) {
     {5, "big_int", false, std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_I64_TYPE), std::vector<ThriftConstStruct>{}},
     {6, "real", false, std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_DOUBLE_TYPE), std::vector<ThriftConstStruct>{}},
     {7, "smaller_real", false, std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_FLOAT_TYPE), std::vector<ThriftConstStruct>{}},
-    {8, "hidden_field", false, std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_I16_TYPE), std::vector<ThriftConstStruct>{}},
+    {8, "hidden_field", false, std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_I16_TYPE), std::vector<ThriftConstStruct>{*cvStruct("python.Hidden", {}).cv_struct_ref(), }},
   }};
   for (const auto& f : *module_SimpleStruct_fields) {
     ::apache::thrift::metadata::ThriftField field;
@@ -152,9 +152,9 @@ StructMetadata<::py3::simple::HiddenTypeFieldsStruct>::gen(ThriftMetadata& metad
   module_HiddenTypeFieldsStruct.is_union() = false;
   static const auto* const
   module_HiddenTypeFieldsStruct_fields = new std::array<EncodedThriftField, 3>{{
-    {1, "field1", false, std::make_unique<Typedef>("module.AdaptedTypeDef", std::make_unique<Struct<::py3::simple::SimpleStruct>>("module.SimpleStruct"), std::vector<ThriftConstStruct>{*cvStruct("cpp.Adapter", {{"name", cvString(R"(Adapter)")}}).cv_struct_ref(), }), std::vector<ThriftConstStruct>{}},
-    {2, "field2", false, std::make_unique<List>(std::make_unique<Typedef>("module.AdaptedTypeDef", std::make_unique<Struct<::py3::simple::SimpleStruct>>("module.SimpleStruct"), std::vector<ThriftConstStruct>{*cvStruct("cpp.Adapter", {{"name", cvString(R"(Adapter)")}}).cv_struct_ref(), })), std::vector<ThriftConstStruct>{}},
-    {3, "field3", false, std::make_unique<Map>(std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_I32_TYPE), std::make_unique<Typedef>("module.AdaptedTypeDef", std::make_unique<Struct<::py3::simple::SimpleStruct>>("module.SimpleStruct"), std::vector<ThriftConstStruct>{*cvStruct("cpp.Adapter", {{"name", cvString(R"(Adapter)")}}).cv_struct_ref(), })), std::vector<ThriftConstStruct>{}},
+    {1, "field1", false, std::make_unique<Typedef>("module.AdaptedTypeDef", std::make_unique<Struct<::py3::simple::SimpleStruct>>("module.SimpleStruct"), std::vector<ThriftConstStruct>{*cvStruct("cpp.Adapter", {{"name", cvString("Adapter")}}).cv_struct_ref(), }), std::vector<ThriftConstStruct>{}},
+    {2, "field2", false, std::make_unique<List>(std::make_unique<Typedef>("module.AdaptedTypeDef", std::make_unique<Struct<::py3::simple::SimpleStruct>>("module.SimpleStruct"), std::vector<ThriftConstStruct>{*cvStruct("cpp.Adapter", {{"name", cvString("Adapter")}}).cv_struct_ref(), })), std::vector<ThriftConstStruct>{}},
+    {3, "field3", false, std::make_unique<Map>(std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_I32_TYPE), std::make_unique<Typedef>("module.AdaptedTypeDef", std::make_unique<Struct<::py3::simple::SimpleStruct>>("module.SimpleStruct"), std::vector<ThriftConstStruct>{*cvStruct("cpp.Adapter", {{"name", cvString("Adapter")}}).cv_struct_ref(), })), std::vector<ThriftConstStruct>{}},
   }};
   for (const auto& f : *module_HiddenTypeFieldsStruct_fields) {
     ::apache::thrift::metadata::ThriftField field;
@@ -165,31 +165,6 @@ StructMetadata<::py3::simple::HiddenTypeFieldsStruct>::gen(ThriftMetadata& metad
     field.structured_annotations() = f.structured_annotations;
     module_HiddenTypeFieldsStruct.fields()->push_back(std::move(field));
   }
-  return res.first->second;
-}
-const ::apache::thrift::metadata::ThriftStruct&
-StructMetadata<::py3::simple::GeneratedStruct>::gen(ThriftMetadata& metadata) {
-  auto res = metadata.structs()->emplace("module.GeneratedStruct", ::apache::thrift::metadata::ThriftStruct{});
-  if (!res.second) {
-    return res.first->second;
-  }
-  ::apache::thrift::metadata::ThriftStruct& module_GeneratedStruct = res.first->second;
-  module_GeneratedStruct.name() = "module.GeneratedStruct";
-  module_GeneratedStruct.is_union() = false;
-  static const auto* const
-  module_GeneratedStruct_fields = new std::array<EncodedThriftField, 1>{{
-    {1, "the", false, std::make_unique<Primitive>(ThriftPrimitiveType::THRIFT_I16_TYPE), std::vector<ThriftConstStruct>{}},
-  }};
-  for (const auto& f : *module_GeneratedStruct_fields) {
-    ::apache::thrift::metadata::ThriftField field;
-    field.id() = f.id;
-    field.name() = f.name;
-    field.is_optional() = f.is_optional;
-    f.metadata_type_interface->writeAndGenType(*field.type(), metadata);
-    field.structured_annotations() = f.structured_annotations;
-    module_GeneratedStruct.fields()->push_back(std::move(field));
-  }
-  module_GeneratedStruct.structured_annotations()->push_back(*cvStruct("meta.SetGenerated", {}).cv_struct_ref());
   return res.first->second;
 }
 const ::apache::thrift::metadata::ThriftStruct&
@@ -214,7 +189,7 @@ StructMetadata<::py3::simple::detail::AdaptedUnion>::gen(ThriftMetadata& metadat
     field.structured_annotations() = f.structured_annotations;
     module_AdaptedUnion.fields()->push_back(std::move(field));
   }
-  module_AdaptedUnion.structured_annotations()->push_back(*cvStruct("cpp.Adapter", {{"name", cvString(R"(Adapter)")}}).cv_struct_ref());
+  module_AdaptedUnion.structured_annotations()->push_back(*cvStruct("cpp.Adapter", {{"name", cvString("Adapter")}}).cv_struct_ref());
   return res.first->second;
 }
 const ::apache::thrift::metadata::ThriftStruct&

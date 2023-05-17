@@ -530,6 +530,7 @@ class MyServiceClient extends \ThriftClientBase implements MyServiceClientIf {
 abstract class MyServiceAsyncProcessorBase extends \ThriftAsyncProcessor {
   abstract const type TThriftIf as MyServiceAsyncIf;
   const classname<\IThriftServiceStaticMetadata> SERVICE_METADATA_CLASS = MyServiceStaticMetadata::class;
+  const string THRIFT_SVC_NAME = 'MyService';
 
   protected async function process_ping(int $seqid, \TProtocol $input, \TProtocol $output): Awaitable<void> {
     $handler_ctx = $this->eventHandler_->getHandlerContext('ping');
@@ -867,6 +868,7 @@ class MyServiceAsyncProcessor extends MyServiceAsyncProcessorBase {
 abstract class MyServiceSyncProcessorBase extends \ThriftSyncProcessor {
   abstract const type TThriftIf as MyServiceIf;
   const classname<\IThriftServiceStaticMetadata> SERVICE_METADATA_CLASS = MyServiceStaticMetadata::class;
+  const string THRIFT_SVC_NAME = 'MyService';
 
   protected function process_ping(int $seqid, \TProtocol $input, \TProtocol $output): void {
     $handler_ctx = $this->eventHandler_->getHandlerContext('ping');
@@ -1356,7 +1358,7 @@ class MyService_ping_result extends \ThriftSyncStructWithoutResult implements \I
         'myExcept' => shape(
           'field' => dict[],
           'type' => dict[
-            '\thrift\annotation\cpp\Adapter' => \thrift\annotation\cpp\Adapter::fromShape(
+            '\facebook\thrift\annotation\cpp\Adapter' => \facebook\thrift\annotation\cpp\Adapter::fromShape(
               shape(
                 "name" => "::StaticCast",
               )

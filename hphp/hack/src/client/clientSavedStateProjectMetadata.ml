@@ -47,18 +47,10 @@ let main (env : ClientEnv.client_check_env) (config : ServerLocalConfig.t) :
   let%lwt result =
     State_loader_lwt.get_project_metadata
       ~progress_callback:(fun _ -> ())
-      ~saved_state_type:
-        (Saved_state_loader.Naming_and_dep_table
-           { naming_sqlite = config.ServerLocalConfig.use_hack_64_naming_table })
+      ~saved_state_type:Saved_state_loader.Naming_and_dep_table
       ~repo:root
-      ~saved_state_manifold_api_key:
-        config.ServerLocalConfig.saved_state.GlobalOptions.loading
-          .GlobalOptions.saved_state_manifold_api_key
       ~ignore_hh_version
-      ~rollouts:config.ServerLocalConfig.saved_state.GlobalOptions.rollouts
-      ~project_metadata_w_flags:
-        config.ServerLocalConfig.saved_state
-          .GlobalOptions.project_metadata_w_flags
+      ~opts:config.ServerLocalConfig.saved_state
   in
   match result with
   | Error (error, _telemetry) ->

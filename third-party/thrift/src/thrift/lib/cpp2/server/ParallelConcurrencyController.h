@@ -20,41 +20,54 @@
 
 #include <folly/executors/MeteredExecutor.h>
 #include <folly/lang/Align.h>
+#include <folly/logging/xlog.h>
 #include <folly/synchronization/RelaxedAtomic.h>
 
+#include <thrift/lib/cpp/concurrency/ThreadManager.h>
 #include <thrift/lib/cpp2/server/ConcurrencyControllerBase.h>
 #include <thrift/lib/cpp2/server/RequestPileInterface.h>
 
 namespace apache::thrift {
 
-class ParallelConcurrencyController : public ConcurrencyControllerBase {
+class ParallelConcurrencyControllerBase : public ConcurrencyControllerBase {
  public:
-  ParallelConcurrencyController(RequestPileInterface& pile, folly::Executor& ex)
-      : pile_(pile), executor_(ex) {}
+  explicit ParallelConcurrencyControllerBase(RequestPileInterface& pile)
+      : pile_(pile) {}
 
-  void setExecutionLimitRequests(uint64_t limit) override;
+  void setExecutionLimitRequests(uint64_t limit) override final;
 
   using ConcurrencyControllerBase::setObserver;
 
-  uint64_t getExecutionLimitRequests() const override {
+  uint64_t getExecutionLimitRequests() const override final {
     return executionLimit_.load();
   }
 
-  uint64_t requestCount() const override {
+  void setQpsLimit(uint64_t) override final {
+    XLOG_EVERY_MS(WARNING, 1000)
+        << "ParallelConcurrencyControllerBase does not support QPS limit";
+  }
+
+  uint64_t getQpsLimit() const override final {
+    XLOG_EVERY_MS(WARNING, 1000)
+        << "ParallelConcurrencyControllerBase does not support QPS limit";
+    return 0;
+  }
+
+  uint64_t requestCount() const override final {
     return counters_.load().requestInExecution;
   }
 
-  void onEnqueued() override;
+  void onEnqueued() override final;
 
   void onRequestFinished(ServerRequestData&) override;
 
-  void stop() override;
+  void stop() override final;
 
-  uint64_t numPendingDequeRequest() const override {
+  uint64_t numPendingDequeRequest() const override final {
     return counters_.load().pendingDequeCalls;
   }
 
- private:
+ protected:
   struct Counters {
     constexpr Counters() noexcept = default;
     // Number of requests that are being executed
@@ -72,19 +85,27 @@ class ParallelConcurrencyController : public ConcurrencyControllerBase {
 
   bool executorSupportPriority{true};
   RequestPileInterface& pile_;
-  folly::Executor& executor_;
 
   bool trySchedule(bool onEnqueued = false);
+  void executeRequest(std::optional<ServerRequest> req);
 
-  void executeRequest();
+  virtual void scheduleOnExecutor() = 0;
 
   bool isRequestActive(const ServerRequest& req);
 
   void onExecuteFinish(bool dequeueSuccess);
-
-  std::string describe() const override;
 };
 
-using StandardConcurrencyController = ParallelConcurrencyController;
+class ParallelConcurrencyController : public ParallelConcurrencyControllerBase {
+ public:
+  ParallelConcurrencyController(RequestPileInterface& pile, folly::Executor& ex)
+      : ParallelConcurrencyControllerBase(pile), executor_(ex) {}
+  std::string describe() const override;
+
+ private:
+  folly::Executor& executor_;
+
+  void scheduleOnExecutor() override;
+};
 
 } // namespace apache::thrift

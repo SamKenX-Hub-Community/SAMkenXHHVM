@@ -23,8 +23,9 @@ File root|module_enums.php--X.php
             [(Rhint ([5:15-16]), (Tapply (([5:15-16], "\\X"), [])))])))
          ];
        sc_uses = []; sc_xhp_attr_uses = []; sc_xhp_enum_values = {};
-       sc_req_extends = []; sc_req_implements = []; sc_req_class = [];
-       sc_implements = []; sc_support_dynamic_type = false;
+       sc_xhp_marked_empty = false; sc_req_extends = [];
+       sc_req_implements = []; sc_req_class = []; sc_implements = [];
+       sc_support_dynamic_type = false;
        sc_consts =
        [{ Shallow_decl_defs.scc_abstract = Typing_defs.CCConcrete;
           scc_name = ([6:3-4], "A");
@@ -74,7 +75,7 @@ File root|module_enums.php--X.php
               (make_ft_flags FSync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC} }));
+              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
         fe_pos = [12:19-21]; fe_php_std_lib = false;
         fe_support_dynamic_type = false; fe_no_auto_dynamic = false }));
   ("\\f2",
@@ -105,7 +106,7 @@ File root|module_enums.php--X.php
               (make_ft_flags FSync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC} }));
+              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
         fe_pos = [15:10-12]; fe_php_std_lib = false;
         fe_support_dynamic_type = false; fe_no_auto_dynamic = false }));
   ("\\f5",
@@ -124,7 +125,7 @@ File root|module_enums.php--X.php
               (make_ft_flags FSync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC} }));
+              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
         fe_pos = [18:19-21]; fe_php_std_lib = false;
         fe_support_dynamic_type = false; fe_no_auto_dynamic = false }));
   ("\\f6",
@@ -143,7 +144,7 @@ File root|module_enums.php--X.php
               (make_ft_flags FSync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC} }));
+              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
         fe_pos = [23:10-12]; fe_php_std_lib = false;
         fe_support_dynamic_type = false; fe_no_auto_dynamic = false }))
   ]
@@ -177,7 +178,7 @@ File root|module_enums.php--Y.php
              (make_ft_flags FSync ~return_disposable:false
                ~returns_readonly:false ~support_dynamic_type:false
                ~readonly_this:false ~is_memoized:false ~variadic:false);
-             ft_ifc_decl = FDPolicied {PUBLIC} }));
+             ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
        fe_pos = [6:10-12]; fe_php_std_lib = false;
        fe_support_dynamic_type = false; fe_no_auto_dynamic = false }));
   ("\\f7",
@@ -196,7 +197,7 @@ File root|module_enums.php--Y.php
               (make_ft_flags FSync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC} }));
+              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
         fe_pos = [10:10-12]; fe_php_std_lib = false;
         fe_support_dynamic_type = false; fe_no_auto_dynamic = false }))
   ]
@@ -230,7 +231,7 @@ File root|module_enums.php--no-module.php
              (make_ft_flags FSync ~return_disposable:false
                ~returns_readonly:false ~support_dynamic_type:false
                ~readonly_this:false ~is_memoized:false ~variadic:false);
-             ft_ifc_decl = FDPolicied {PUBLIC} }));
+             ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
        fe_pos = [3:10-12]; fe_php_std_lib = false;
        fe_support_dynamic_type = false; fe_no_auto_dynamic = false }));
   ("\\f8",
@@ -249,7 +250,7 @@ File root|module_enums.php--no-module.php
               (make_ft_flags FSync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC} }));
+              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
         fe_pos = [5:10-12]; fe_php_std_lib = false;
         fe_support_dynamic_type = false; fe_no_auto_dynamic = false }))
   ]

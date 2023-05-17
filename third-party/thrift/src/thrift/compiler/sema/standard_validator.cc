@@ -624,6 +624,15 @@ void validate_uri_uniqueness(diagnostic_context& ctx, const t_program& prog) {
   visit(prog);
 }
 
+void limit_terse_write_on_experimental_mode(
+    diagnostic_context& ctx, const t_named& node) {
+  ctx.check(
+      !node.find_structured_annotation_or_null(kTerseWriteUri) ||
+          node.release_state() <= t_release_state::experimental,
+      "Using @thrift.TerseWrite on field `{}` is only allowed in the experimental mode.",
+      node.name());
+}
+
 void validate_field_id(diagnostic_context& ctx, const t_field& node) {
   if (node.explicit_id() != node.id()) {
     ctx.report(
@@ -1078,6 +1087,28 @@ void validate_custom_cpp_type_annotations(
       "Definition `{}` cannot have both cpp.type/cpp.template and @cpp.StrongType annotations",
       node.name());
 }
+
+template <typename Node>
+void validate_cpp_type_annotation(diagnostic_context& ctx, const Node& node) {
+  if (const t_const* annot =
+          node.find_structured_annotation_or_null(kCppTypeUri)) {
+    auto type = annot->get_value_from_structured_annotation_or_null("name");
+    auto tmplate =
+        annot->get_value_from_structured_annotation_or_null("template");
+    if (!type == !tmplate) {
+      ctx.error(
+          "Exactly one of `name` and `template` must be specified for `@cpp.Type` on `{}`.",
+          node.name());
+    }
+    if (tmplate) {
+      if (!node.type()->get_true_type()->is_container()) {
+        ctx.error(
+            "`@cpp.Type{{template=...}}` can only be used on containers, not on `{}`.",
+            node.name());
+      }
+    }
+  }
+}
 } // namespace
 
 ast_validator standard_validator() {
@@ -1113,6 +1144,9 @@ ast_validator standard_validator() {
   validator.add_field_visitor(&validate_java_field_adapter_annotation);
   validator.add_field_visitor(&validate_cpp_field_interceptor_annotation);
   validator.add_field_visitor(&validate_required_field);
+  validator.add_field_visitor([](auto& ctx, const auto& node) {
+    validate_cpp_type_annotation(ctx, node);
+  });
 
   validator.add_enum_visitor(&validate_enum_value_name_uniqueness);
   validator.add_enum_visitor(&validate_enum_value_uniqueness);
@@ -1130,9 +1164,13 @@ ast_validator standard_validator() {
   validator.add_definition_visitor(&validate_java_wrapper_annotation);
   validator.add_definition_visitor(
       &validate_java_wrapper_and_adapter_annotation);
+  validator.add_definition_visitor(&limit_terse_write_on_experimental_mode);
   validator.add_definition_visitor(&validate_custom_cpp_type_annotations);
-  validator.add_enum_visitor(&validate_cpp_enum_type);
 
+  validator.add_typedef_visitor([](auto& ctx, const auto& node) {
+    validate_cpp_type_annotation(ctx, node);
+  });
+  validator.add_enum_visitor(&validate_cpp_enum_type);
   validator.add_const_visitor(&validate_const_type_and_value);
   validator.add_program_visitor(&validate_uri_uniqueness);
   return validator;

@@ -9,11 +9,13 @@
 
 open Hh_prelude
 
-(** This is the result type from attempting to load saved-state.
+(** This is the result type from attempting to prepare the naming table.
 In the error case, [stopped_reason] is a human-facing response,
 and [Lsp.Error.t] contains structured telemetry data. *)
-type load_saved_state_result =
-  ( Naming_table.t * Saved_state_loader.changed_files,
+type prepare_naming_table_result =
+  ( Naming_table.t
+    * Saved_state_loader.changed_files
+    * (Relative_path.t * SearchUtils.si_addendum list) list,
     ClientIdeMessage.stopped_reason * Lsp.Error.t )
   result
 
@@ -22,8 +24,8 @@ type message =
   | ClientRequest : 'a ClientIdeMessage.tracked_t -> message
       (** ClientRequest came from ClientIdeService over stdin;
       it expects a response. *)
-  | LoadedState : load_saved_state_result -> message
-      (** LoadedState is posted from within ClientIdeDaemon itself once
+  | GotNamingTable : prepare_naming_table_result -> message
+      (** GotNamingTable is posted from within ClientIdeDaemon itself once
       our attempt at loading saved-state has finished; it's picked
       up by handle_messages. *)
 
@@ -48,12 +50,19 @@ type common_state = {
   tcopt: TypecheckerOptions.t;  (** typechecker options *)
   local_memory: Provider_backend.local_memory; [@opaque]
       (** Local_memory backend; includes decl caches *)
+  fall_back_to_full_index: bool;
+      (** fall back to a full index naming table build if loading the saved state fails. *)
+  batch_process_changes: bool;
+      (** See [ServerConfig.ide_batch_process_changes] for details. *)
 }
 [@@deriving show]
 
 type open_files_state = {
-  open_files: Provider_context.entries;
-      (** all open files, along with caches of their ASTs and TASTs and errors *)
+  open_files:
+    (Provider_context.entry * Errors.t option ref) Relative_path.Map.t;
+      (** The [entry] caches the TAST+errors; the [Errors.t option] stores what was
+      the most recent version of the errors to have been returned to clientLsp
+      by didOpen/didChange/didClose/codeAction. *)
   changed_files_to_process: Relative_path.Set.t;
       (** changed_files_to_process is grown during File_changed events, and steadily
   whittled down one by one in `serve` as we get around to processing them
@@ -173,8 +182,10 @@ type dstate = {
 
 type state =
   | Pending_init  (** We haven't yet received init request *)
-  | During_init of dstate  (** We're working on the init request *)
-  | Initialized of istate  (** Finished work on init request *)
+  | During_init of dstate
+      (** We're working on the init request. We're still in
+  the process of loading the saved state. *)
+  | Initialized of istate  (** Finished work on init request. *)
   | Failed_init of Lsp.Error.t  (** Failed request, with root cause *)
 
 type t = {
@@ -222,16 +233,20 @@ let write_message
   | Unix.Unix_error (Unix.EPIPE, fn, param) ->
     raise @@ Outfd_write_error (fn, param)
 
-let load_saved_state
+(** Load the naming table specified by [naming_table_load_info], or download one based on [root].
+
+Note: no symbol index addenda are generated from this load. *)
+let load_naming_table
     (ctx : Provider_context.t)
     ~(root : Path.t)
     ~(naming_table_load_info :
        ClientIdeMessage.Initialize_from_saved_state.naming_table_load_info
        option)
-    ~(ignore_hh_version : bool) : load_saved_state_result Lwt.t =
+    ~(ignore_hh_version : bool) : prepare_naming_table_result Lwt.t =
   log "[saved-state] Starting load in root %s" (Path.to_string root);
   let%lwt result =
     try%lwt
+      let start_time = Unix.gettimeofday () in
       let%lwt result =
         match naming_table_load_info with
         | Some naming_table_load_info ->
@@ -282,8 +297,7 @@ let load_saved_state
                       { root; sockname = None }
                   ~ignore_hh_version
                   ~saved_state_type:
-                    (Saved_state_loader.Naming_and_dep_table_distc
-                       { naming_sqlite = true })
+                    Saved_state_loader.Naming_and_dep_table_distc
               in
               match result with
               | Ok
@@ -340,8 +354,9 @@ let load_saved_state
         (* Track how many files we have to change locally *)
         HackEventLogger.serverless_ide_local_files
           ~local_file_count:(List.length changed_files);
+        HackEventLogger.serverless_ide_load_naming_table ~start_time;
 
-        Lwt.return_ok (naming_table, changed_files)
+        Lwt.return_ok (naming_table, changed_files, [])
       | Error load_error ->
         (* We'll turn that load_error into a user-facing [reason], and a
            programmatic error [e] for future telemetry *)
@@ -388,6 +403,177 @@ let load_saved_state
   in
   Lwt.return result
 
+(** Performs a full index of [root], building a naming table in hh_server's
+temporary directory, and then loading that naming table.
+
+This is an alternative to [load_naming_table] to produce a naming table. *)
+let build_naming_table
+    (ctx : Provider_context.t)
+    ~(root : Path.t)
+    ~(hhi_root : Path.t)
+    ~(output : Path.t) : prepare_naming_table_result Lwt.t =
+  log
+    "[full-index] Beginning full index naming table build with destination %s"
+    (Path.to_string output);
+  let progress =
+    Naming_table_builder_ffi_externs.build
+      ~www:root
+      ~custom_hhi_path:hhi_root
+      ~output
+  in
+  let rec poll_build_until_complete_exn () :
+      Naming_table_builder_ffi_externs.build_result Lwt.t =
+    match Naming_table_builder_ffi_externs.poll_exn progress with
+    | Some build_result -> Lwt.return build_result
+    | None ->
+      let%lwt () = Lwt_unix.sleep 0.1 in
+      poll_build_until_complete_exn ()
+  in
+  try%lwt
+    let%lwt Naming_table_builder_ffi_externs.
+              { exit_status; time_taken_secs; si_addenda } =
+      poll_build_until_complete_exn ()
+    in
+    if exit_status = 0 then begin
+      log
+        "[full-index] Successfully built naming table from full index in %f seconds."
+        time_taken_secs;
+      log "[full-index] Loading naming-table... %s" (Path.to_string output);
+      let naming_table =
+        Naming_table.load_from_sqlite ctx (Path.to_string output)
+      in
+      log "[full-index] Loaded naming-table. %s" (Path.to_string output);
+      Lwt.return_ok (naming_table, [], si_addenda)
+    end else begin
+      log
+        "[full-index] Naming table build failed with nonzero exit status: %d in %f seconds"
+        exit_status
+        time_taken_secs;
+      let data =
+        Some
+          (Hh_json.JSON_Object
+             [("naming_table_builder_exit_status", Hh_json.int_ exit_status)])
+      in
+      let reason =
+        ClientIdeUtils.make_bug_reason "full_index_non_zero_exit" ~data
+      in
+      let error =
+        ClientIdeUtils.make_bug_error "full_index_non_zero_exit" ~data
+      in
+      Lwt.return_error (reason, error)
+    end
+  with
+  | exn ->
+    let exn = Exception.wrap exn in
+    let reason = ClientIdeUtils.make_bug_reason "full_index_exn" ~exn in
+    let e = ClientIdeUtils.make_bug_error "full_index_exn" ~exn in
+    Lwt.return_error (reason, e)
+
+(** Prepare the naming table as part of the daemon's initialization.
+  First, attempt to find a naming table on disk from a previously downloaded saved state. If there is one, load it.
+  If no naming table on disk, attempt to load the naming table via Watchman and Manifold.
+  If loading the naming table fails, fall back to building one if [dstate.dcommon.fall_back_to_full_index] is [true].
+*)
+let prepare_naming_table
+    (param : ClientIdeMessage.Initialize_from_saved_state.t)
+    (dstate : dstate)
+    ~(out_fd : Lwt_unix.file_descr) : prepare_naming_table_result Lwt.t =
+  let ctx =
+    Provider_context.empty_for_tool
+      ~popt:dstate.dcommon.popt
+      ~tcopt:dstate.dcommon.tcopt
+      ~backend:(Provider_backend.Local_memory dstate.dcommon.local_memory)
+      ~deps_mode:(Typing_deps_mode.InMemoryMode None)
+      ~package_info:Package.Info.empty
+  in
+  let open ClientIdeMessage.Initialize_from_saved_state in
+  (* First, attempt to see if ANY naming table is on disk - avoid the Watchman
+     query to find the closest saved state and instead prefer a naive grep.
+
+     If fails, fall back to Watchman for a precise download.
+  *)
+  let ide_should_use_hack_64_distc =
+    TypecheckerOptions.ide_should_use_hack_64_distc dstate.dcommon.tcopt
+  in
+  let ide_load_naming_table_on_disk =
+    TypecheckerOptions.ide_load_naming_table_on_disk dstate.dcommon.tcopt
+  in
+  let saved_state_type =
+    if ide_should_use_hack_64_distc then
+      Saved_state_loader.Naming_and_dep_table_distc
+    else
+      Saved_state_loader.Naming_and_dep_table
+  in
+  let ssopt = TypecheckerOptions.saved_state dstate.dcommon.tcopt in
+  let%lwt naming_table_load_from_disk_result =
+    if ide_load_naming_table_on_disk then
+      let () = log "Attempting to load a naming table from disk..." in
+      let%lwt result =
+        State_loader_lwt.get_project_metadata
+          ~opts:ssopt
+          ~progress_callback:(fun _ -> ())
+          ~repo:param.root
+          ~ignore_hh_version:param.ignore_hh_version
+          ~saved_state_type
+      in
+      match result with
+      | Ok (project_metadata, _telemetry) ->
+        State_loader_lwt.load_naming_table_from_disk
+          ~saved_state_type
+          ~project_metadata
+          ~root:param.root
+      | Error (load_err, _telemetry) ->
+        let err =
+          Saved_state_loader.LoadError.medium_user_message_of_error load_err
+        in
+        let str = Printf.sprintf "Failed to get project_metadata: %s" err in
+        Lwt.return_error str
+    else
+      Lwt.return_error
+        "Skipping attempt to naively load naming table from disk..."
+  in
+  match naming_table_load_from_disk_result with
+  | Ok (naming_table_path, changed_files) ->
+    let naming_table =
+      Naming_table.load_from_sqlite ctx (Path.to_string naming_table_path)
+    in
+    Lwt.return @@ Ok (naming_table, changed_files, [])
+  | Error err ->
+    log "%s" err;
+    let%lwt load_result =
+      load_naming_table
+        ctx
+        ~root:param.root
+        ~naming_table_load_info:param.naming_table_load_info
+        ~ignore_hh_version:param.ignore_hh_version
+    in
+    (match load_result with
+    | Error (_reason, e) when dstate.dcommon.fall_back_to_full_index ->
+      let message =
+        Printf.sprintf
+          "Falling back to full index naming table build because naming table load failed: %s"
+          e.Lsp.Error.message
+      in
+      ClientIdeUtils.log_bug message ~data:e.Lsp.Error.data ~telemetry:true;
+      let%lwt () =
+        write_message
+          ~out_fd
+          ~message:
+            (ClientIdeMessage.Notification ClientIdeMessage.Full_index_fallback)
+      in
+      let%lwt full_index_result =
+        build_naming_table
+          ctx
+          ~root:param.root
+          ~hhi_root:dstate.dcommon.hhi_root
+          ~output:(Path.make @@ ServerFiles.client_ide_naming_table param.root)
+      in
+      log "Completed index";
+      Lwt.return full_index_result
+    | Error _
+    | Ok _ ->
+      Lwt.return load_result)
+
 let log_startup_time (component : string) (start_time : float) : float =
   let now = Unix.gettimeofday () in
   HackEventLogger.serverless_ide_startup ~component ~start_time;
@@ -423,11 +609,54 @@ let remove_hhi (state : state) : unit =
       let exn = Exception.wrap exn in
       ClientIdeUtils.log_bug "remove_hhi" ~exn ~telemetry:true)
 
+(** Helper called to process a batch of file changes. Updates the naming table, and invalidates the decl and tast caches for the changes. *)
+let batch_update_naming_table_and_invalidate_caches
+    ~(ctx : Provider_context.t)
+    ~(naming_table : Naming_table.t)
+    ~(sienv : SearchUtils.si_env)
+    ~(local_memory : Provider_backend.local_memory)
+    ~(open_files :
+       (Provider_context.entry * Errors.t option ref) Relative_path.Map.t)
+    (changes : Relative_path.Set.t) : ClientIdeIncremental.Batch.update_result =
+  let ({ ClientIdeIncremental.Batch.changes = changes_results; _ } as
+      update_naming_table_result) =
+    ClientIdeIncremental.Batch.update_naming_tables_and_si
+      ~ctx
+      ~naming_table
+      ~sienv
+      ~changes
+  in
+  List.iter
+    changes_results
+    ~f:(fun { ClientIdeIncremental.Batch.old_file_info; _ } ->
+      Option.iter
+        old_file_info
+        ~f:(Provider_utils.invalidate_local_decl_caches_for_file local_memory));
+  Relative_path.Map.iter open_files ~f:(fun _path (entry, _) ->
+      Provider_utils.invalidate_tast_cache_of_entry entry);
+  update_naming_table_result
+
+(** An empty ctx with no entries *)
+let make_empty_ctx (common : common_state) : Provider_context.t =
+  Provider_context.empty_for_tool
+    ~popt:common.popt
+    ~tcopt:common.tcopt
+    ~backend:(Provider_backend.Local_memory common.local_memory)
+    ~deps_mode:(Typing_deps_mode.InMemoryMode None)
+    ~package_info:Package.Info.empty
+
+(** Constructs a temporary ctx with just one entry. *)
+let make_singleton_ctx (common : common_state) (entry : Provider_context.entry)
+    : Provider_context.t =
+  let ctx = make_empty_ctx common in
+  let ctx = Provider_context.add_or_overwrite_entry ~ctx entry in
+  ctx
+
 (** initialize1 is called by handle_request upon receipt of an "init"
 message from the client. It is synchronous. It sets up global variables and
 glean. The remainder of init work will happen after we return... our caller
 handle_request will kick off async work to load saved-state, and once done
-it will stick a LoadedState message into the queue, and handle_one_message
+it will stick a GotNamingTable message into the queue, and handle_one_message
 will subsequently pick up that message and call [initialize2]. *)
 let initialize1 (param : ClientIdeMessage.Initialize_from_saved_state.t) :
     dstate =
@@ -487,6 +716,10 @@ let initialize1 (param : ClientIdeMessage.Initialize_from_saved_state.t) :
       ~workers:None
   in
   let sienv = { sienv with SearchUtils.sie_log_timings = true } in
+  let fall_back_to_full_index =
+    ServerConfig.ide_fall_back_to_full_index config
+  in
+  let batch_process_changes = ServerConfig.ide_batch_process_changes config in
   let start_time = log_startup_time "symbol_index" start_time in
   (* We only ever serve requests on files that are open. That's why our caller
      passes an initial list of open files, the ones already open in the editor
@@ -500,15 +733,25 @@ let initialize1 (param : ClientIdeMessage.Initialize_from_saved_state.t) :
            path |> Path.to_string |> Relative_path.create_detect_prefix)
     |> List.map ~f:(fun path ->
            ( path,
-             Provider_context.make_entry
-               ~path
-               ~contents:Provider_context.Raise_exn_on_attempt_to_read ))
+             ( Provider_context.make_entry
+                 ~path
+                 ~contents:Provider_context.Raise_exn_on_attempt_to_read,
+               ref None ) ))
     |> Relative_path.Map.of_list
   in
   log_debug "initialize1.done";
   {
     start_time;
-    dcommon = { hhi_root; sienv; popt; tcopt; local_memory };
+    dcommon =
+      {
+        hhi_root;
+        sienv;
+        popt;
+        tcopt;
+        local_memory;
+        fall_back_to_full_index;
+        batch_process_changes;
+      };
     dfiles =
       {
         open_files;
@@ -518,17 +761,17 @@ let initialize1 (param : ClientIdeMessage.Initialize_from_saved_state.t) :
   }
 
 (** initialize2 is called by handle_one_message upon receipt of a
-[LoadedState] message. It sends the appropriate message on to the
+[GotNamingTable] message. It sends the appropriate message on to the
 client, and transitions into either [Initialized] or [Failed_init]
 state. *)
 let initialize2
     (out_fd : Lwt_unix.file_descr)
     (dstate : dstate)
-    (load_state_result : load_saved_state_result) : state Lwt.t =
+    (prepare_table_result : prepare_naming_table_result) : state Lwt.t =
   let (_ : float) = log_startup_time "saved_state" dstate.start_time in
   log_debug "initialize2";
-  match load_state_result with
-  | Ok (naming_table, changed_files) ->
+  match prepare_table_result with
+  | Ok (naming_table, changed_files, si_addenda) ->
     let changed_files_to_process =
       Relative_path.Set.union
         dstate.dfiles.changed_files_to_process
@@ -537,24 +780,62 @@ let initialize2
     let changed_files_denominator =
       Relative_path.Set.cardinal changed_files_to_process
     in
+    let sienv =
+      SymbolIndexCore.update_from_addenda
+        ~sienv:dstate.dcommon.sienv
+        ~paths:
+          (List.map si_addenda ~f:(fun (path, addenda) ->
+               (path, addenda, SearchUtils.TypeChecker)))
+    in
+    let istate =
+      if dstate.dcommon.batch_process_changes then
+        let benchmark_start = Unix.gettimeofday () in
+        let () =
+          log
+            "Running batch update on %d changes synchronously..."
+            changed_files_denominator
+        in
+        let ClientIdeIncremental.Batch.
+              { naming_table; sienv; changes = _changes } =
+          batch_update_naming_table_and_invalidate_caches
+            ~ctx:(make_empty_ctx dstate.dcommon)
+            ~naming_table
+            ~sienv
+            ~local_memory:dstate.dcommon.local_memory
+            ~open_files:dstate.dfiles.open_files
+            changed_files_to_process
+        in
+        let benchmark_s = Unix.gettimeofday () -. benchmark_start in
+        let () = log "Completed batch update in %f seconds." benchmark_s in
+        {
+          naming_table;
+          icommon = { dstate.dcommon with sienv };
+          ifiles =
+            {
+              open_files = dstate.dfiles.open_files;
+              changed_files_to_process = Relative_path.Set.empty;
+              changed_files_denominator = 0;
+            };
+        }
+      else
+        {
+          naming_table;
+          icommon = { dstate.dcommon with sienv };
+          ifiles =
+            {
+              open_files = dstate.dfiles.open_files;
+              changed_files_to_process;
+              changed_files_denominator;
+            };
+        }
+    in
+    (* TODO: Done_init always shows "Done_init(0/0)". We should remove the progress here. *)
     let p = { ClientIdeMessage.Processing_files.total = 0; processed = 0 } in
     let%lwt () =
       write_message
         ~out_fd
         ~message:
           (ClientIdeMessage.Notification (ClientIdeMessage.Done_init (Ok p)))
-    in
-    let istate =
-      {
-        naming_table;
-        icommon = dstate.dcommon;
-        ifiles =
-          {
-            open_files = dstate.dfiles.open_files;
-            changed_files_to_process;
-            changed_files_denominator;
-          };
-      }
     in
     log_debug "initialize2.done";
     Lwt.return (Initialized istate)
@@ -569,21 +850,6 @@ let initialize2
     in
     remove_hhi (During_init dstate);
     Lwt.return (Failed_init e)
-
-(** An empty ctx with no entries *)
-let make_empty_ctx (istate : istate) : Provider_context.t =
-  Provider_context.empty_for_tool
-    ~popt:istate.icommon.popt
-    ~tcopt:istate.icommon.tcopt
-    ~backend:(Provider_backend.Local_memory istate.icommon.local_memory)
-    ~deps_mode:(Typing_deps_mode.InMemoryMode None)
-
-(** Constructs a temporary ctx with just one entry. *)
-let make_singleton_ctx (istate : istate) (entry : Provider_context.entry) :
-    Provider_context.t =
-  let ctx = make_empty_ctx istate in
-  let ctx = Provider_context.add_or_overwrite_entry ~ctx entry in
-  ctx
 
 (** This funtion is about papering over a bug. Sometimes, rarely, we're
 failing to receive DidOpen messages from clientLsp. Our model is to
@@ -605,16 +871,19 @@ entry in open_files, with empty AST and TAST. If the LSP client
 happened to send us two DidOpens for a file, or DidChange before DidOpen,
 well, we won't complain. *)
 let open_or_change_file_during_init
-    (dstate : dstate) (path : Relative_path.t) (contents : string) : state =
+    (dstate : dstate) (path : Relative_path.t) (contents : string) : dstate =
   let entry =
     Provider_context.make_entry
       ~path
       ~contents:(Provider_context.Provided_contents contents)
   in
   let open_files =
-    Relative_path.Map.add dstate.dfiles.open_files ~key:path ~data:entry
+    Relative_path.Map.add
+      dstate.dfiles.open_files
+      ~key:path
+      ~data:(entry, ref None)
   in
-  During_init { dstate with dfiles = { dstate.dfiles with open_files } }
+  { dstate with dfiles = { dstate.dfiles with open_files } }
 
 (** Closes a file, in response to DidClose event, by removing the
 entry in open_files. If the LSP client sents us multile DidCloses,
@@ -628,60 +897,55 @@ let close_file (files : open_files_state) (path : Relative_path.t) :
 
 (** Updates an existing opened file, with new contents; if the
 contents haven't changed then the existing open file's AST and TAST
-will be left intact; if the file wasn't already open then we
-throw an exception. *)
+will be left intact. *)
 let update_file
-    (files : open_files_state)
-    (document_location : ClientIdeMessage.document_location) :
-    open_files_state * Provider_context.entry =
+    (files : open_files_state) (document : ClientIdeMessage.document) :
+    open_files_state * Provider_context.entry * Errors.t option ref =
   let path =
-    document_location.ClientIdeMessage.file_path
+    document.ClientIdeMessage.file_path
     |> Path.to_string
     |> Relative_path.create_detect_prefix
   in
-  let entry =
-    match
-      ( document_location.ClientIdeMessage.file_contents,
-        Relative_path.Map.find_opt files.open_files path )
-    with
-    | (Some contents, None) ->
-      log_missing_open_file_BUG "update-without-entry" path;
-      (* TODO(ljw): failwith "Attempted LSP operation on a non-open file" *)
-      Provider_context.make_entry
-        ~path
-        ~contents:(Provider_context.Provided_contents contents)
-    | (None, None) ->
-      log_missing_open_file_BUG "update-without-content-or-entry" path;
-      failwith "Attempted LSP operation on a non-open file"
-    | (Some contents, Some entry)
+  let contents = document.ClientIdeMessage.file_contents in
+  let (entry, published_errors) =
+    match Relative_path.Map.find_opt files.open_files path with
+    | None ->
+      (* This is a common scenario although I'm not quite sure why *)
+      ( Provider_context.make_entry
+          ~path
+          ~contents:(Provider_context.Provided_contents contents),
+        ref None )
+    | Some (entry, published_errors)
       when Option.equal
              String.equal
              (Some contents)
              (Provider_context.get_file_contents_if_present entry) ->
-      entry
-    | (None, Some entry) ->
-      log_missing_open_file_BUG "update-without-content" path;
-      entry
-    | (Some contents, _) ->
-      Provider_context.make_entry
-        ~path
-        ~contents:(Provider_context.Provided_contents contents)
+      (* we can just re-use the existing entry; contents haven't changed *)
+      (entry, published_errors)
+    | Some _ ->
+      (* we'll create a new entry; existing entry caches, if present, will be dropped. *)
+      ( Provider_context.make_entry
+          ~path
+          ~contents:(Provider_context.Provided_contents contents),
+        ref None )
   in
   let open_files =
-    Relative_path.Map.add files.open_files ~key:path ~data:entry
+    Relative_path.Map.add
+      files.open_files
+      ~key:path
+      ~data:(entry, published_errors)
   in
-  ({ files with open_files }, entry)
+  ({ files with open_files }, entry, published_errors)
 
 (** like [update_file], but for convenience also produces a ctx for
 use in typechecking. Also ensures that hhi files haven't been deleted
 by tmp_cleaner, so that type-checking will succeed. *)
-let update_file_ctx
-    (istate : istate) (document_location : ClientIdeMessage.document_location) :
-    state * Provider_context.t * Provider_context.entry =
+let update_file_ctx (istate : istate) (document : ClientIdeMessage.document) :
+    istate * Provider_context.t * Provider_context.entry * Errors.t option ref =
   let istate = restore_hhi_root_if_necessary istate in
-  let (ifiles, entry) = update_file istate.ifiles document_location in
-  let ctx = make_singleton_ctx istate entry in
-  (Initialized { istate with ifiles }, ctx, entry)
+  let (ifiles, entry, published_errors) = update_file istate.ifiles document in
+  let ctx = make_singleton_ctx istate.icommon entry in
+  ({ istate with ifiles }, ctx, entry, published_errors)
 
 (** Simple helper. It updates the [ifiles] or [dfiles] member of Initialized
 or During_init states, respectively. Will throw if you call it on any other
@@ -692,23 +956,87 @@ let update_state_files (state : state) (files : open_files_state) : state =
   | Initialized istate -> Initialized { istate with ifiles = files }
   | _ -> failwith ("Update_state_files: unexpected " ^ state_to_log_string state)
 
+(** We avoid showing typing errors if there are parsing errors. *)
+let get_user_facing_errors
+    ~(ctx : Provider_context.t) ~(entry : Provider_context.entry) : Errors.t =
+  let (_, ast_errors) =
+    Ast_provider.compute_parser_return_and_ast_errors
+      ~popt:(Provider_context.get_popt ctx)
+      ~entry
+  in
+  if Errors.is_empty ast_errors then
+    let { Tast_provider.Compute_tast_and_errors.errors = all_errors; _ } =
+      Tast_provider.compute_tast_and_errors_quarantined ~ctx ~entry
+    in
+    all_errors
+  else
+    ast_errors
+
+(** Computes the Errors.t for what's on disk at a given path.
+We provide [istate] just in case we can benefit from a cached answer. *)
+let get_errors_for_path (istate : istate) (path : Relative_path.t) : Errors.t =
+  let disk_content_opt =
+    Sys_utils.cat_or_failed (Relative_path.to_absolute path)
+  in
+  let cached_entry_opt =
+    Relative_path.Map.find_opt istate.ifiles.open_files path
+  in
+  let entry_opt =
+    match (disk_content_opt, cached_entry_opt) with
+    | (None, _) ->
+      (* if the disk file is absent (e.g. it was deleted prior to the user closing it),
+         then we naturally can't compute errors for it. *)
+      None
+    | ( Some disk_content,
+        Some
+          ( ({
+               Provider_context.contents =
+                 Provider_context.(
+                   Contents_from_disk str | Provided_contents str);
+               _;
+             } as entry),
+            _ ) )
+      when String.equal disk_content str ->
+      (* file on disk was the same as what we currently have in the entry, and
+         the entry very likely already has errors computed for it, so as an optimization
+         we'll re-use errors from that entry. *)
+      Some entry
+    | (Some disk_content, _) ->
+      (* file on disk is different from what we have in the entry, e.g. because the
+         user closed a modified file, so compute errors from the disk content. *)
+      Some
+        (Provider_context.make_entry
+           ~path
+           ~contents:(Provider_context.Provided_contents disk_content))
+  in
+  match entry_opt with
+  | None ->
+    (* file couldn't be read off disk (maybe absent); therefore, by definition, no errors *)
+    Errors.empty
+  | Some entry ->
+    (* Here we'll get either cached errors from the cached entry, or will recompute errors
+       from the partially cached entry, or will compute errors from the file on disk. *)
+    let ctx = make_singleton_ctx istate.icommon entry in
+    get_user_facing_errors ~ctx ~entry
+
 (** handle_request invariants: Messages are only ever handled serially; we never
 handle one message while another is being handled. It is a bug if the client sends
 anything other than [Initialize_from_saved_state] as its first message. Upon
 receipt+processing of this we transition from [Pre_init] to [During_init]
-and kick off some async work to load saved state. During this async work, i.e.
+and kick off some async work to prepare the naming table. During this async work, i.e.
 during [During_init], we are able to handle a few requests but will reject
-others. Our caller [handle_one_message] is actually the one that transitions
+others. Important: files may change during [During_init], and it's important that we keep track of and eventually index these changed files.
+
+Our caller [handle_one_message] is actually the one that transitions
 us from [During_init] to either [Failed_init] or [Initialized]. Once in one
 of those states, we never thereafter transition state. *)
-let handle_request :
-    type a.
-    message_queue ->
-    state ->
-    string ->
-    a ClientIdeMessage.t ->
-    (state * (a, Lsp.Error.t) result) Lwt.t =
- fun message_queue state _tracking_id message ->
+let handle_request
+    (type a)
+    (message_queue : message_queue)
+    (state : state)
+    (_tracking_id : string)
+    ~(out_fd : Lwt_unix.file_descr)
+    (message : a ClientIdeMessage.t) : (state * (a, Lsp.Error.t) result) Lwt.t =
   let open ClientIdeMessage in
   match (state, message) with
   (***********************************************************)
@@ -726,48 +1054,36 @@ let handle_request :
   (***********************************************************)
   (************************* INITIALIZATION ******************)
   (***********************************************************)
-  | (Pending_init, Initialize_from_saved_state param) ->
+  | (Pending_init, Initialize_from_saved_state param) -> begin
     (* Invariant: no message will be sent to us prior to this request,
        and we must send no message until we've sent this response. *)
-    let open Initialize_from_saved_state in
-    begin
-      try
-        let dstate = initialize1 param in
-        (* We're going to kick off the asynchronous part of initializing now.
-           Once it's done, it will appear as a LoadedState message on the queue. *)
-        Lwt.async (fun () ->
-            (* following method never throws *)
-            let%lwt result =
-              load_saved_state
-                (Provider_context.empty_for_tool
-                   ~popt:dstate.dcommon.popt
-                   ~tcopt:dstate.dcommon.tcopt
-                   ~backend:
-                     (Provider_backend.Local_memory dstate.dcommon.local_memory)
-                   ~deps_mode:(Typing_deps_mode.InMemoryMode None))
-                ~root:param.root
-                ~naming_table_load_info:param.naming_table_load_info
-                ~ignore_hh_version:param.ignore_hh_version
-            in
-            (* if the following push fails, that must be because the queues
-               have been shut down, in which case there's nothing to do. *)
-            let (_succeeded : bool) =
-              Lwt_message_queue.push message_queue (LoadedState result)
-            in
-            Lwt.return_unit);
-        log
-          "Finished saved state initialization. State: %s"
-          (show_dstate dstate);
-        Lwt.return (During_init dstate, Ok ())
-      with
-      | exn ->
-        let exn = Exception.wrap exn in
-        let e = ClientIdeUtils.make_bug_error "initialize1" ~exn in
-        (* Our caller has an exception handler. But we must handle this ourselves
-           to change state to Failed_init; our caller's handler doesn't change state. *)
-        (* TODO: remove_hhi *)
-        Lwt.return (Failed_init e, Error e)
-    end
+    try
+      let dstate = initialize1 param in
+      (* We're going to kick off the asynchronous part of initializing now.
+         Once it's done, it will appear as a GotNamingTable message on the queue. *)
+      Lwt.async (fun () ->
+          let%lwt naming_table_result =
+            prepare_naming_table param dstate ~out_fd
+          in
+          (* if the following push fails, that must be because the queues
+             have been shut down, in which case there's nothing to do. *)
+          let (_succeeded : bool) =
+            Lwt_message_queue.push
+              message_queue
+              (GotNamingTable naming_table_result)
+          in
+          Lwt.return_unit);
+      log "Finished saved state initialization. State: %s" (show_dstate dstate);
+      Lwt.return (During_init dstate, Ok ())
+    with
+    | exn ->
+      let exn = Exception.wrap exn in
+      let e = ClientIdeUtils.make_bug_error "initialize1" ~exn in
+      (* Our caller has an exception handler. But we must handle this ourselves
+         to change state to Failed_init; our caller's handler doesn't change state. *)
+      (* TODO: remove_hhi *)
+      Lwt.return (Failed_init e, Error e)
+  end
   | (_, Initialize_from_saved_state _) ->
     failwith ("Unexpected init in " ^ state_to_log_string state)
   (***********************************************************)
@@ -797,50 +1113,52 @@ let handle_request :
     in
     Lwt.return (update_state_files state files, Ok ())
     (* IDE File Closed *)
-  | ( (During_init { dfiles = files; _ } | Initialized { ifiles = files; _ }),
-      Ide_file_closed file_path ) ->
+  | (During_init { dfiles = files; _ }, Ide_file_closed file_path) ->
     let path =
       file_path |> Path.to_string |> Relative_path.create_detect_prefix
     in
     let files = close_file files path in
-    Lwt.return (update_state_files state files, Ok ())
+    Lwt.return (update_state_files state files, Ok [])
+  | (Initialized istate, Ide_file_closed file_path) ->
+    let path =
+      file_path |> Path.to_string |> Relative_path.create_detect_prefix
+    in
+    let errors = get_errors_for_path istate path |> Errors.sort_and_finalize in
+    let files = close_file istate.ifiles path in
+    Lwt.return (update_state_files state files, Ok errors)
   (* IDE File Opened *)
   | (During_init dstate, Ide_file_opened { file_path; file_contents }) ->
     let path =
       file_path |> Path.to_string |> Relative_path.create_detect_prefix
     in
-    let state = open_or_change_file_during_init dstate path file_contents in
-    Lwt.return (state, Ok Errors.empty)
-  | (Initialized istate, Ide_file_opened { file_path; file_contents }) ->
-    let document_location =
-      { file_path; file_contents = Some file_contents; line = 0; column = 0 }
+    let dstate = open_or_change_file_during_init dstate path file_contents in
+    Lwt.return (During_init dstate, Ok [])
+  | (Initialized istate, Ide_file_opened document) ->
+    let (istate, ctx, entry, published_errors_ref) =
+      update_file_ctx istate document
     in
-    let (state, ctx, entry) = update_file_ctx istate document_location in
-    let { Tast_provider.Compute_tast_and_errors.errors; _ } =
-      Tast_provider.compute_tast_and_errors_quarantined ~ctx ~entry
-    in
-    Lwt.return (state, Ok errors)
+    let errors = get_user_facing_errors ~ctx ~entry in
+    published_errors_ref := Some errors;
+    Lwt.return (Initialized istate, Ok (Errors.sort_and_finalize errors))
   (* IDE File Changed *)
   | (During_init dstate, Ide_file_changed { file_path; file_contents }) ->
     let path =
       file_path |> Path.to_string |> Relative_path.create_detect_prefix
     in
-    let state = open_or_change_file_during_init dstate path file_contents in
-    Lwt.return (state, Ok Errors.empty)
-  | (Initialized istate, Ide_file_changed { file_path; file_contents }) ->
-    let document_location =
-      { file_path; file_contents = Some file_contents; line = 0; column = 0 }
+    let dstate = open_or_change_file_during_init dstate path file_contents in
+    Lwt.return (During_init dstate, Ok [])
+  | (Initialized istate, Ide_file_changed document) ->
+    let (istate, ctx, entry, published_errors_ref) =
+      update_file_ctx istate document
     in
-    let (state, ctx, entry) = update_file_ctx istate document_location in
-    let { Tast_provider.Compute_tast_and_errors.errors; _ } =
-      Tast_provider.compute_tast_and_errors_quarantined ~ctx ~entry
-    in
-    Lwt.return (state, Ok errors)
+    let errors = get_user_facing_errors ~ctx ~entry in
+    published_errors_ref := Some errors;
+    Lwt.return (Initialized istate, Ok (Errors.sort_and_finalize errors))
   (* Document Symbol *)
   | ( ( During_init { dfiles = files; dcommon = common; _ }
       | Initialized { ifiles = files; icommon = common; _ } ),
-      Document_symbol document_location ) ->
-    let (files, entry) = update_file files document_location in
+      Document_symbol document ) ->
+    let (files, entry, _) = update_file files document in
     let result =
       FileOutline.outline_entry_no_comments ~popt:common.popt ~entry
     in
@@ -848,7 +1166,7 @@ let handle_request :
   (***********************************************************)
   (************************* UNABLE TO HANDLE ****************)
   (***********************************************************)
-  | (During_init _, _) ->
+  | (During_init dstate, _) ->
     let e =
       {
         Lsp.Error.code = Lsp.Error.RequestCancelled;
@@ -856,8 +1174,8 @@ let handle_request :
         data = None;
       }
     in
-    Lwt.return (state, Error e)
-  | (Failed_init e, _) -> Lwt.return (state, Error e)
+    Lwt.return (During_init dstate, Error e)
+  | (Failed_init e, _) -> Lwt.return (Failed_init e, Error e)
   | (Pending_init, _) ->
     failwith
       (Printf.sprintf
@@ -867,149 +1185,325 @@ let handle_request :
   (***********************************************************)
   (************************* NORMAL HANDLING AFTER INIT ******)
   (***********************************************************)
-  | (Initialized istate, Hover document_location) ->
-    let (state, ctx, entry) = update_file_ctx istate document_location in
+  | (Initialized istate, Hover (document, { line; column })) ->
+    let (istate, ctx, entry, _) = update_file_ctx istate document in
     let result =
       Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
-          ServerHover.go_quarantined
-            ~ctx
-            ~entry
-            ~line:document_location.ClientIdeMessage.line
-            ~column:document_location.ClientIdeMessage.column)
+          ServerHover.go_quarantined ~ctx ~entry ~line ~column)
     in
-    Lwt.return (state, Ok result)
+    Lwt.return (Initialized istate, Ok result)
+    (* textDocument/rename - localvar only *)
+  | ( Initialized istate,
+      Rename (document, { line; column }, new_name, document_list) ) ->
+    let (istate, ctx, entry, _errors) = update_file_ctx istate document in
+    let (istate, result) =
+      Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
+          match
+            ServerFindRefs.go_from_file_ctx_with_symbol_definition
+              ~ctx
+              ~entry
+              ~line
+              ~column
+          with
+          | None -> (istate, ClientIdeMessage.Not_renameable_position)
+          | Some (_definition, action) when ServerFindRefs.is_local action ->
+            let res =
+              match ServerRename.go_for_localvar ctx action new_name with
+              | Ok (Some patch_list) ->
+                ClientIdeMessage.Rename_success
+                  { shellout = None; local = patch_list }
+              | Ok None ->
+                ClientIdeMessage.Rename_success { shellout = None; local = [] }
+              | Error action ->
+                let str =
+                  Printf.sprintf
+                    "ClientIDEDaemon failed to rename for localvar %s"
+                    (ServerCommandTypes.Find_refs.show_action action)
+                in
+                log "%s" str;
+                failwith "ClientIDEDaemon failed to rename for a localvar"
+            in
+            (istate, res)
+          | Some (symbol_definition, action) ->
+            let (istate, single_file_patches) =
+              List.fold
+                ~f:(fun (istate, accum) document ->
+                  let (istate, ctx, _entry, _errors) =
+                    update_file_ctx istate document
+                  in
+                  let filename =
+                    Path.to_string document.ClientIdeMessage.file_path
+                    |> Relative_path.create_detect_prefix
+                  in
+                  let single_file_patches =
+                    ServerRename.go_for_single_file
+                      ctx
+                      ~find_refs_action:action
+                      ~filename
+                      ~symbol_definition
+                      ~new_name
+                      ~naming_table:istate.naming_table
+                  in
+                  let patches =
+                    match single_file_patches with
+                    | Ok patches -> patches
+                    | Error _ -> []
+                  in
+                  let patch_list = List.rev_append patches accum in
+                  (istate, patch_list))
+                ~init:(istate, [])
+                document_list
+            in
+            ( istate,
+              ClientIdeMessage.Rename_success
+                {
+                  shellout = Some (symbol_definition, action);
+                  local = single_file_patches;
+                } )
+          (* not a localvar, must defer to hh_server *))
+    in
+    Lwt.return (Initialized istate, Ok result)
+    (* textDocument/references - localvar only *)
+  | ( Initialized istate,
+      Find_references (document, { line; column }, document_list) ) ->
+    let open Result.Monad_infix in
+    (* Update the state of the world with the document as it exists in the IDE *)
+    let (istate, ctx, entry, _) = update_file_ctx istate document in
+    let (istate, result) =
+      Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
+          match ServerFindRefs.go_from_file_ctx ~ctx ~entry ~line ~column with
+          | Some (name, action) when ServerFindRefs.is_local action ->
+            let result =
+              ServerFindRefs.go_for_localvar ctx action
+              >>| ServerFindRefs.to_ide name
+            in
+            let result =
+              match result with
+              | Ok ide_result ->
+                let lsp_uri_map =
+                  begin
+                    match ide_result with
+                    | None -> Lsp.UriMap.empty
+                    | Some (_str, []) ->
+                      (* If we find-refs on a localvar via right-click, is it possible that it doesn't return references?
+                         It's possible some nondeterminism changed the cached TAST,
+                         but assert that it's a failure for now
+                      *)
+                      let err =
+                        Printf.sprintf
+                          "FindRefs returned an empty list of positions for localvar %s"
+                          name
+                      in
+                      log "%s" err;
+                      HackEventLogger.invariant_violation_bug err;
+                      failwith err
+                    | Some (_str, positions) ->
+                      let filename = Pos.filename @@ List.hd_exn positions in
+                      let uri =
+                        Lsp_helpers.path_to_lsp_uri
+                          ~default_path:filename
+                          filename
+                      in
+                      Lsp.UriMap.add uri positions Lsp.UriMap.empty
+                  end
+                in
+                let () =
+                  if lsp_uri_map |> Lsp.UriMap.values |> List.length = 1 then
+                    ()
+                  else
+                    (* Can a localvar cross file boundaries? I sure hope not. *)
+                    let err =
+                      Printf.sprintf
+                        "Found more than one file when executing find refs for localvar %s"
+                        name
+                    in
+                    log "%s" err;
+                    HackEventLogger.invariant_violation_bug err;
+                    failwith err
+                in
+                ClientIdeMessage.Find_refs_success (name, None, lsp_uri_map)
+              | Error _action ->
+                let err =
+                  Printf.sprintf "Failed to find refs for localvar %s" name
+                in
+                log "%s" err;
+                HackEventLogger.invariant_violation_bug err;
+                failwith err
+            in
+            (istate, result)
+            (* clientLsp should raise if we return a LocalVar action *)
+          | None ->
+            (* Clicking a line+col that isn't a symbol *)
+            (istate, ClientIdeMessage.Invalid_symbol)
+          | Some (name, action) ->
+            (* Not a localvar, so we do the following:
+               1) For all open files that we know about in ClientIDEDaemon, uesd the
+               cached TASTs to return positions of references
+               2) Return this list, alongside the name and action
+               3) ClientLSP, upon receiving, will shellout to hh_server
+               and reject all server-provided positions for files that ClientIDEDaemon
+               knew about, under the assumption that our cached TAST provides edited
+               file info, if applicable.
+
+               We use the result Error constructor to tell clientLsp that not all
+               references are guaranteed to be returned.
+            *)
+            let (istate, single_file_refs) =
+              List.fold
+                ~f:(fun (istate, accum) document ->
+                  let (istate, ctx, _entry, _errors) =
+                    update_file_ctx istate document
+                  in
+                  let stringified_path =
+                    Path.to_string document.ClientIdeMessage.file_path
+                  in
+                  let filename =
+                    Relative_path.create_detect_prefix stringified_path
+                  in
+                  let single_file_ref =
+                    ServerFindRefs.go_for_single_file
+                      ~ctx
+                      ~action
+                      ~filename
+                      ~name
+                      ~naming_table:istate.naming_table
+                    |> ServerFindRefs.to_absolute
+                    |> List.map ~f:snd
+                  in
+                  let urikey =
+                    Lsp_helpers.path_to_lsp_uri
+                      stringified_path
+                      ~default_path:stringified_path
+                  in
+                  let updated_map =
+                    Lsp.UriMap.add urikey single_file_ref accum
+                  in
+                  (istate, updated_map))
+                document_list
+                ~init:(istate, Lsp.UriMap.empty)
+            in
+            ( istate,
+              ClientIdeMessage.Find_refs_success
+                (name, Some action, single_file_refs) ))
+    in
+    Lwt.return (Initialized istate, Ok result)
   (* Autocomplete *)
   | ( Initialized istate,
       Completion
-        { ClientIdeMessage.Completion.document_location; is_manually_invoked }
+        (document, { line; column }, { ClientIdeMessage.is_manually_invoked })
     ) ->
     (* Update the state of the world with the document as it exists in the IDE *)
-    let (state, ctx, entry) = update_file_ctx istate document_location in
+    let (istate, ctx, entry, _) = update_file_ctx istate document in
     let result =
       ServerAutoComplete.go_ctx
         ~ctx
         ~entry
         ~sienv:istate.icommon.sienv
         ~is_manually_invoked
-        ~line:document_location.line
-        ~column:document_location.column
+        ~line
+        ~column
+        ~naming_table:istate.naming_table
     in
-    Lwt.return (state, Ok result)
+    Lwt.return (Initialized istate, Ok result)
   (* Autocomplete docblock resolve *)
-  | (Initialized istate, Completion_resolve param) ->
-    let ctx = make_empty_ctx istate in
-    ClientIdeMessage.Completion_resolve.(
-      let result =
-        ServerDocblockAt.go_docblock_for_symbol
-          ~ctx
-          ~symbol:param.symbol
-          ~kind:param.kind
-      in
-      Lwt.return (state, Ok result))
+  | (Initialized istate, Completion_resolve (symbol, kind)) ->
+    let ctx = make_empty_ctx istate.icommon in
+    let result = ServerDocblockAt.go_docblock_for_symbol ~ctx ~symbol ~kind in
+    Lwt.return (Initialized istate, Ok result)
   (* Autocomplete docblock resolve *)
-  | (Initialized istate, Completion_resolve_location param) ->
+  | ( Initialized istate,
+      Completion_resolve_location (file_path, { line; column }, kind) ) ->
     (* We're given a location but it often won't be an opened file.
        We will only serve autocomplete docblocks as of truth on disk.
        Hence, we construct temporary entry to reflect the file which
        contained the target of the resolve. *)
-    let open ClientIdeMessage.Completion_resolve_location in
     let path =
-      param.document_location.ClientIdeMessage.file_path
-      |> Path.to_string
-      |> Relative_path.create_detect_prefix
+      file_path |> Path.to_string |> Relative_path.create_detect_prefix
     in
-    let ctx = make_empty_ctx istate in
+    let ctx = make_empty_ctx istate.icommon in
     let (ctx, entry) = Provider_context.add_entry_if_missing ~ctx ~path in
     let result =
       Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
-          ServerDocblockAt.go_docblock_ctx
-            ~ctx
-            ~entry
-            ~line:param.document_location.line
-            ~column:param.document_location.column
-            ~kind:param.kind)
+          ServerDocblockAt.go_docblock_ctx ~ctx ~entry ~line ~column ~kind)
     in
-    Lwt.return (state, Ok result)
+    Lwt.return (Initialized istate, Ok result)
   (* Document highlighting *)
-  | (Initialized istate, Document_highlight document_location) ->
-    let (state, ctx, entry) = update_file_ctx istate document_location in
+  | (Initialized istate, Document_highlight (document, { line; column })) ->
+    let (istate, ctx, entry, _) = update_file_ctx istate document in
     let results =
       Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
-          ServerHighlightRefs.go_quarantined
-            ~ctx
-            ~entry
-            ~line:document_location.line
-            ~column:document_location.column)
+          ServerHighlightRefs.go_quarantined ~ctx ~entry ~line ~column)
     in
-    Lwt.return (state, Ok results)
+    Lwt.return (Initialized istate, Ok results)
   (* Signature help *)
-  | (Initialized istate, Signature_help document_location) ->
-    let (state, ctx, entry) = update_file_ctx istate document_location in
+  | (Initialized istate, Signature_help (document, { line; column })) ->
+    let (istate, ctx, entry, _) = update_file_ctx istate document in
     let results =
       Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
-          ServerSignatureHelp.go_quarantined
-            ~ctx
-            ~entry
-            ~line:document_location.line
-            ~column:document_location.column)
+          ServerSignatureHelp.go_quarantined ~ctx ~entry ~line ~column)
     in
-    Lwt.return (state, Ok results)
+    Lwt.return (Initialized istate, Ok results)
   (* Code actions (refactorings, quickfixes) *)
-  | (Initialized istate, Code_action param) ->
-    let file_path = param.Code_action.file_path in
-    let file_contents = param.Code_action.file_contents in
-    let document_location : ClientIdeMessage.document_location =
-      { file_path; file_contents; line = 0; column = 0 }
+  | (Initialized istate, Code_action (document, range)) ->
+    let (istate, ctx, entry, published_errors_ref) =
+      update_file_ctx istate document
     in
-    let (state, ctx, entry) = update_file_ctx istate document_location in
 
-    let path = Path.to_string file_path in
-    let range = param.Code_action.range in
+    let path = Path.to_string document.file_path in
+    (* TODO: should be using RelativePath.t, not string *)
     let results =
       Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
           CodeActionsService.go ~ctx ~entry ~path ~range)
     in
-    Lwt.return (state, Ok results)
+
+    (* We'll take this opportunity to make sure we've returned the latest errors.
+       Why only return errors from didOpen,didChange,didClose,codeAction, and not also all
+       the other methods like "hover" which might have recomputed TAST+errors? -- simplicity,
+       mainly -- it's simpler to perform+handle this logic in just a few places rather than
+       everywhere, and also because codeAction is called so frequently (e.g. upon changing
+       tabs) that it's the best opportunity we have. *)
+    let errors = get_user_facing_errors ~ctx ~entry in
+    let errors_opt =
+      match !published_errors_ref with
+      | Some published_errors when phys_equal published_errors errors ->
+        (* If the previous errors we returned are physically equal, that's an indication
+           that the entry's TAST+errors hasn't been recomputed since last we returned errors
+           back to clientLsp, so no need to do anything.
+           And we actively WANT to do nothing in this case, since codeAction is called so frequently --
+           e.g. every time the caret moves -- and we wouldn't want errors to be republished that
+           frequently. *)
+        None
+      | Some _
+      | None ->
+        (* [Some _] -> This case indicates either that we'd previously returned errors back to clientLsp
+           but the TAST+errors has changed since then, e.g. maybe the TAST+errors were invalidated
+           due to a decl change, and some other action like hover recomputed the TAST+errors but
+           didn't return them to clientLsp (because hover doesn't return errors), and so it's
+           fallen to us to send them back. Note: only didOpen,didChange,didClose,codeAction
+           ever return errors back to clientLsp. *)
+        (* [None] -> This case indicates that we don't have a record of previous errors returned back to clientLsp.
+           Might happen because a decl change invalidated TAST+errors and we are the first action since
+           the decl change. Or because for some reason didOpen didn't arrive prior to codeAction. *)
+        published_errors_ref := Some errors;
+        Some (Errors.sort_and_finalize errors)
+    in
+    Lwt.return (Initialized istate, Ok (results, errors_opt))
   (* Go to definition *)
-  | (Initialized istate, Definition document_location) ->
-    let (state, ctx, entry) = update_file_ctx istate document_location in
+  | (Initialized istate, Definition (document, { line; column })) ->
+    let (istate, ctx, entry, _) = update_file_ctx istate document in
     let result =
       Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
-          ServerGoToDefinition.go_quarantined
-            ~ctx
-            ~entry
-            ~line:document_location.ClientIdeMessage.line
-            ~column:document_location.ClientIdeMessage.column)
+          ServerGoToDefinition.go_quarantined ~ctx ~entry ~line ~column)
     in
-    Lwt.return (state, Ok result)
+    Lwt.return (Initialized istate, Ok result)
   (* Type Definition *)
-  | (Initialized istate, Type_definition document_location) ->
-    let (state, ctx, entry) = update_file_ctx istate document_location in
+  | (Initialized istate, Type_definition (document, { line; column })) ->
+    let (istate, ctx, entry, _) = update_file_ctx istate document in
     let result =
       Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
-          ServerTypeDefinition.go_quarantined
-            ~ctx
-            ~entry
-            ~line:document_location.ClientIdeMessage.line
-            ~column:document_location.ClientIdeMessage.column)
+          ServerTypeDefinition.go_quarantined ~ctx ~entry ~line ~column)
     in
-    Lwt.return (state, Ok result)
-  (* Type Coverage *)
-  | (Initialized istate, Type_coverage document_identifier) ->
-    let document_location =
-      {
-        file_path = document_identifier.file_path;
-        file_contents = Some document_identifier.file_contents;
-        line = 0;
-        column = 0;
-      }
-    in
-    let (state, ctx, entry) = update_file_ctx istate document_location in
-    let result =
-      Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
-          ServerColorFile.go_quarantined ~ctx ~entry)
-    in
-    Lwt.return (state, Ok result)
+    Lwt.return (Initialized istate, Ok result)
   (* Workspace Symbol *)
   | (Initialized istate, Workspace_symbol query) ->
     (* Note: needs reverse-naming-table, hence only works in initialized
@@ -1017,11 +1511,11 @@ let handle_request :
        up positions; for member queries "Foo::bar" it needs it to fetch the
        decl for Foo. *)
     (* Note: we intentionally don't give results from unsaved files *)
-    let ctx = make_empty_ctx istate in
+    let ctx = make_empty_ctx istate.icommon in
     let result =
       ServerSearch.go ctx query ~kind_filter:"" istate.icommon.sienv
     in
-    Lwt.return (state, Ok result)
+    Lwt.return (Initialized istate, Ok result)
 
 let write_status ~(out_fd : Lwt_unix.file_descr) (state : state) : unit Lwt.t =
   match state with
@@ -1067,6 +1561,48 @@ let should_process_file_change
   && (not (Lwt_unix.readable in_fd))
   && not (Relative_path.Set.is_empty istate.ifiles.changed_files_to_process)
 
+let batch_process_file_changes ~(out_fd : Lwt_unix.file_descr) (istate : istate)
+    : istate Lwt.t =
+  (* TODO: with batch processing, the "processed" field isn't meaningful (it'll always be 0 in this notification). *)
+  let%lwt () =
+    write_message
+      ~out_fd
+      ~message:
+        (ClientIdeMessage.Notification
+           (ClientIdeMessage.Processing_files
+              {
+                ClientIdeMessage.Processing_files.processed = 0;
+                total = istate.ifiles.changed_files_denominator;
+              }))
+  in
+  let ClientIdeIncremental.Batch.{ naming_table; sienv; changes = _changes } =
+    batch_update_naming_table_and_invalidate_caches
+      ~ctx:(make_empty_ctx istate.icommon)
+      ~naming_table:istate.naming_table
+      ~sienv:istate.icommon.sienv
+      ~local_memory:istate.icommon.local_memory
+      ~open_files:istate.ifiles.open_files
+      istate.ifiles.changed_files_to_process
+  in
+  let istate =
+    {
+      naming_table;
+      icommon = { istate.icommon with sienv };
+      ifiles =
+        {
+          istate.ifiles with
+          changed_files_to_process = Relative_path.Set.empty;
+          changed_files_denominator = 0;
+        };
+    }
+  in
+  let%lwt () =
+    write_message
+      ~out_fd
+      ~message:(ClientIdeMessage.Notification ClientIdeMessage.Done_processing)
+  in
+  Lwt.return istate
+
 let process_one_file_change (out_fd : Lwt_unix.file_descr) (istate : istate) :
     istate Lwt.t =
   let next_file =
@@ -1075,9 +1611,9 @@ let process_one_file_change (out_fd : Lwt_unix.file_descr) (istate : istate) :
   let changed_files_to_process =
     Relative_path.Set.remove istate.ifiles.changed_files_to_process next_file
   in
-  let { ClientIdeIncremental.naming_table; sienv; old_file_info; _ } =
+  let ClientIdeIncremental.{ naming_table; sienv; old_file_info; _ } =
     ClientIdeIncremental.update_naming_tables_for_changed_file
-      ~ctx:(make_empty_ctx istate)
+      ~ctx:(make_empty_ctx istate.icommon)
       ~naming_table:istate.naming_table
       ~sienv:istate.icommon.sienv
       ~path:next_file
@@ -1087,7 +1623,8 @@ let process_one_file_change (out_fd : Lwt_unix.file_descr) (istate : istate) :
     ~f:
       (Provider_utils.invalidate_local_decl_caches_for_file
          istate.icommon.local_memory);
-  Provider_utils.invalidate_tast_cache_of_entries istate.ifiles.open_files;
+  Relative_path.Map.iter istate.ifiles.open_files ~f:(fun _path (entry, _) ->
+      Provider_utils.invalidate_tast_cache_of_entry entry);
   let changed_files_denominator =
     if Relative_path.Set.is_empty changed_files_to_process then
       0
@@ -1128,24 +1665,29 @@ let handle_one_message_exn
   match state with
   | Initialized istate
     when should_process_file_change in_fd message_queue istate ->
-    let%lwt istate = process_one_file_change out_fd istate in
+    let%lwt istate =
+      if istate.icommon.batch_process_changes then
+        batch_process_file_changes ~out_fd istate
+      else
+        process_one_file_change out_fd istate
+    in
     Lwt.return_some (Initialized istate)
   | _ ->
     let%lwt message = Lwt_message_queue.pop message_queue in
     (match (state, message) with
     | (_, None) ->
       Lwt.return_none (* exit loop if message_queue has been closed *)
-    | (During_init dstate, Some (LoadedState load_state_result)) ->
-      let%lwt state = initialize2 out_fd dstate load_state_result in
+    | (During_init dstate, Some (GotNamingTable naming_table_result)) ->
+      let%lwt state = initialize2 out_fd dstate naming_table_result in
       Lwt.return_some state
-    | (_, Some (LoadedState _)) ->
-      failwith ("Unexpected LoadedState in " ^ state_to_log_string state)
+    | (_, Some (GotNamingTable _)) ->
+      failwith ("Unexpected GotNamingTable in " ^ state_to_log_string state)
     | (_, Some (ClientRequest { ClientIdeMessage.tracking_id; message })) ->
       let unblocked_time = Unix.gettimeofday () in
       let%lwt (state, response) =
         try%lwt
           let%lwt (s, r) =
-            handle_request message_queue state tracking_id message
+            handle_request message_queue state tracking_id ~out_fd message
           in
           Lwt.return (s, r)
         with

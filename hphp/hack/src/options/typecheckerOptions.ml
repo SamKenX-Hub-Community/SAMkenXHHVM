@@ -13,9 +13,6 @@ type t = GlobalOptions.t [@@deriving eq, show]
 
 let num_local_workers t = t.GlobalOptions.tco_num_local_workers
 
-let parallel_type_checking_threshold t =
-  t.GlobalOptions.tco_parallel_type_checking_threshold
-
 let max_typechecker_worker_memory_mb t =
   t.GlobalOptions.tco_max_typechecker_worker_memory_mb
 
@@ -195,6 +192,8 @@ let report_pos_from_reason t = t.GlobalOptions.tco_report_pos_from_reason
 
 let enable_sound_dynamic t = t.GlobalOptions.tco_enable_sound_dynamic
 
+let enable_no_auto_dynamic t = t.GlobalOptions.tco_enable_no_auto_dynamic
+
 let skip_check_under_dynamic t = t.GlobalOptions.tco_skip_check_under_dynamic
 
 let interpret_soft_types_as_like_types t =
@@ -243,11 +242,7 @@ let strict_value_equality t = t.GlobalOptions.tco_strict_value_equality
 
 let enforce_sealed_subclasses t = t.GlobalOptions.tco_enforce_sealed_subclasses
 
-let enable_enum_supertyping t = t.GlobalOptions.po_enable_enum_supertyping
-
 let everything_sdt t = t.GlobalOptions.tco_everything_sdt
-
-let pessimise_builtins t = t.GlobalOptions.tco_pessimise_builtins
 
 let explicit_consistent_constructors t =
   t.GlobalOptions.tco_explicit_consistent_constructors
@@ -265,6 +260,11 @@ let specify_manifold_api_key t = t.GlobalOptions.tco_specify_manifold_api_key
 let saved_state t = t.GlobalOptions.tco_saved_state
 
 let saved_state_loading t = GlobalOptions.(t.tco_saved_state.loading)
+
+let saved_state_rollouts t = GlobalOptions.(t.tco_saved_state.rollouts)
+
+let dummy_one t =
+  GlobalOptions.(t.tco_saved_state.rollouts).Saved_state_rollouts.dummy_one
 
 let profile_top_level_definitions t =
   t.GlobalOptions.tco_profile_top_level_definitions
@@ -308,3 +308,10 @@ let ide_should_use_hack_64_distc t =
 let tast_under_dynamic t = t.GlobalOptions.tco_tast_under_dynamic
 
 let rust_elab t = t.GlobalOptions.tco_rust_elab
+
+let locl_cache_capacity t = t.GlobalOptions.tco_locl_cache_capacity
+
+let locl_cache_node_threshold t = t.GlobalOptions.tco_locl_cache_node_threshold
+
+let ide_load_naming_table_on_disk t =
+  t.GlobalOptions.tco_ide_load_naming_table_on_disk

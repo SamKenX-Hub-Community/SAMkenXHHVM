@@ -150,11 +150,23 @@ TypeOrReduced builtin_is_numeric(ISS& env, const php::Func* func,
 TypeOrReduced builtin_function_exists(ISS& env, const php::Func* func,
                                       const FCallArgs& fca) {
   assertx(fca.numArgs() >= 1 && fca.numArgs() <= 2);
-  if (!handle_function_exists(env, getArg(env, func, fca, 0))) {
-    return NoReduced{};
+
+  auto const name = getArg(env, func, fca, 0);
+  if (!name.strictSubtypeOf(BStr)) return NoReduced{};
+  auto const v = tv(name);
+  if (!v) return NoReduced{};
+  auto const rfunc = env.index.resolve_func(v->m_data.pstr);
+  switch (rfunc.exists()) {
+    case TriBool::Yes:
+      constprop(env);
+      return TTrue;
+    case TriBool::No:
+      constprop(env);
+      return TFalse;
+    case TriBool::Maybe:
+      return NoReduced{};
   }
-  constprop(env);
-  return TTrue;
+  not_reached();
 }
 
 TypeOrReduced handle_oodecl_exists(ISS& env,
@@ -196,6 +208,21 @@ TypeOrReduced builtin_interface_exists(ISS& env, const php::Func* func,
 TypeOrReduced builtin_trait_exists(ISS& env, const php::Func* func,
                                    const FCallArgs& fca) {
   return handle_oodecl_exists(env, func, fca, OODeclExistsOp::Trait);
+}
+
+TypeOrReduced builtin_package_exists(ISS& env, const php::Func* func,
+                                     const FCallArgs& fca) {
+  assertx(fca.numArgs() == 1);
+  auto name = getArg(env, func, fca, 0);
+  if (!name.strictSubtypeOf(BStr)) return NoReduced{};
+  auto const v = tv(name);
+  if (!v) return NoReduced{};
+  auto const packageName = v->m_data.pstr;
+  auto const unit = env.index.lookup_func_unit(*env.ctx.func);
+  if (!unit) return NoReduced{};
+  constprop(env);
+  return unit->packageInfo.isPackageInActiveDeployment(packageName)
+    ? TTrue : TFalse;
 }
 
 TypeOrReduced builtin_array_key_cast(ISS& env, const php::Func* func,
@@ -355,7 +382,7 @@ impl_builtin_type_structure(ISS& env, const php::Func* func,
     }
 
     // Found a type-alias, resolve it's type-structure.
-    auto const r = resolve_type_structure(env.index, *typeAlias);
+    auto const r = resolve_type_structure(env.index, &env.collect, *typeAlias);
     if (r.type.is(BBottom)) {
       // Resolution will always fail
       unreachable(env);
@@ -516,6 +543,23 @@ TypeOrReduced builtin_type_structure_classname(ISS& env, const php::Func* func,
   return intersection_of(classname, TSStr);
 }
 
+TypeOrReduced builtin_create_special_implicit_context(ISS& env,
+                                                      const php::Func* func,
+                                                      const FCallArgs& fca) {
+  assertx(fca.numArgs() >= 1 && fca.numArgs() <= 2);
+
+  auto const type = getArg(env, func, fca, 0);
+  if (!type.subtypeOf(BInt)) return NoReduced{};
+
+  if (fca.numArgs() == 1) {
+    reduce(env, bc::Null {}, bc::CreateSpecialImplicitContext {});
+  } else {
+    if (!getArg(env, func, fca, 1).subtypeOf(BOptStr)) return NoReduced{};
+    reduce(env, bc::CreateSpecialImplicitContext {});
+  }
+  return Reduced{};
+}
+
 #define SPECIAL_BUILTINS                                                \
   X(abs, abs)                                                           \
   X(ceil, ceil)                                                         \
@@ -529,12 +573,14 @@ TypeOrReduced builtin_type_structure_classname(ISS& env, const php::Func* func,
   X(class_exists, class_exists)                                         \
   X(interface_exists, interface_exists)                                 \
   X(trait_exists, trait_exists)                                         \
+  X(package_exists, HH\\package_exists)                                 \
   X(array_key_cast, HH\\array_key_cast)                                 \
   X(is_callable, is_callable)                                           \
   X(is_list_like, HH\\is_list_like)                                     \
   X(type_structure, HH\\type_structure)                                 \
   X(type_structure_no_throw, HH\\type_structure_no_throw)               \
   X(type_structure_classname, HH\\type_structure_classname)             \
+  X(create_special_implicit_context, HH\\ImplicitContext\\_Private\\create_special_implicit_context)   \
 
 #define X(x, y)    const StaticString s_##x(#y);
   SPECIAL_BUILTINS
@@ -600,14 +646,6 @@ bool optimize_builtin(ISS& env, const php::Func* func, const FCallArgs& fca) {
   }
 
   return handle_builtin(env, func, fca);
-}
-
-bool handle_function_exists(ISS& env, const Type& name) {
-  if (!name.strictSubtypeOf(BStr)) return false;
-  auto const v = tv(name);
-  if (!v) return false;
-  auto const rfunc = env.index.resolve_func(env.ctx, v->m_data.pstr);
-  return rfunc.exactFunc();
 }
 
 Optional<Type> const_fold(ISS& env,

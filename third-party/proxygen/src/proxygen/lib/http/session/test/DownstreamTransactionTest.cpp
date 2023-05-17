@@ -400,34 +400,30 @@ TEST_F(DownstreamTransactionTest, DeferredEgress) {
         txn.sendHeaders(*response.get());
         txn.sendBody(makeBuf(10));
         txn.sendBody(makeBuf(20));
+        txn.sendBody(makeBuf(30));
       }));
   EXPECT_CALL(transport_, sendHeaders(&txn, _, _, _))
       .WillOnce(Invoke([&](Unused, const HTTPMessage& headers, Unused, Unused) {
         EXPECT_EQ(headers.getStatusCode(), 200);
       }));
 
-  // when enqueued
+  // sendBody
   EXPECT_CALL(transport_, notifyEgressBodyBuffered(10));
   EXPECT_CALL(handler_, _onEgressPaused());
-  // sendBody
   EXPECT_CALL(transport_, notifyEgressBodyBuffered(20));
+  EXPECT_CALL(transport_, notifyEgressBodyBuffered(30));
 
   txn.setHandler(&handler_);
   txn.onIngressHeadersComplete(makeGetRequest());
 
   // onWriteReady, send, then dequeue (window now full)
-  EXPECT_CALL(transport_, notifyEgressBodyBuffered(-10));
-  EXPECT_CALL(transport_, notifyEgressBodyBuffered(-20));
-
-  EXPECT_EQ(txn.onWriteReady(20, 1), false);
-
-  // enqueued after window update
-  EXPECT_CALL(transport_, notifyEgressBodyBuffered(20));
+  EXPECT_CALL(transport_, notifyEgressBodyBuffered(-30));
 
   txn.onIngressWindowUpdate(20);
+  EXPECT_EQ(txn.onWriteReady(30, 1), false);
 
   // Buffer released on error
-  EXPECT_CALL(transport_, notifyEgressBodyBuffered(-20));
+  EXPECT_CALL(transport_, notifyEgressBodyBuffered(-30));
   EXPECT_CALL(handler_, _onError(_));
   EXPECT_CALL(handler_, _detachTransaction());
   EXPECT_CALL(transport_, detach(&txn));
@@ -601,4 +597,18 @@ TEST_F(DownstreamTransactionTest, IngressStateViolationWithByteEvents) {
   EXPECT_CALL(transport_, detach(&txn));
   txn.decrementPendingByteEvents();
   eventBase_.loop();
+}
+
+TEST_F(DownstreamTransactionTest, SetHandlerWhenPaused) {
+  auto& txn = makeTxn(true, 10, 10);
+
+  EXPECT_CALL(handler_, _setTransaction(&txn));
+  txn.setHandler(&handler_);
+  txn.sendHeaders(getResponse(200));
+  EXPECT_CALL(handler_, _onEgressPaused());
+  txn.sendBody(makeBuf(20));
+  StrictMock<MockHTTPHandler> handler2;
+  EXPECT_CALL(handler2, _setTransaction(&txn));
+  EXPECT_CALL(handler2, _onEgressPaused());
+  txn.setHandler(&handler2);
 }

@@ -227,9 +227,7 @@ void ThriftRocketServerHandler::handleSetupFrame(
       sampleRate_ = observer->getSampleRate();
     }
 
-    if (meta.dscpToReflect_ref() || meta.markToReflect_ref()) {
-      connection.applyDscpAndMarkToSocket(meta);
-    }
+    connection.applyQosMarking(meta);
 
     ServerPushMetadata serverMeta;
     serverMeta.set_setupResponse();
@@ -649,6 +647,9 @@ void ThriftRocketServerHandler::handleRequestOverloadedServer(
       folly::make_exception_wrapper<TApplicationException>(
           TApplicationException::LOADSHEDDING, errorMessage),
       errorCode);
+  if (request->includeInRecentRequests()) {
+    requestsRegistry_->getRequestCounter().incrementOverloadCount();
+  }
 }
 
 void ThriftRocketServerHandler::handleAppError(

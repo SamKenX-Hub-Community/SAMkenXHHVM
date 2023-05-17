@@ -7,11 +7,13 @@ use anyhow::Error;
 use ir::instr::BaseOp;
 use ir::instr::FinalOp;
 use ir::instr::MemberKey;
+use ir::instr::MemberOp;
 use ir::InstrId;
 use ir::LocalId;
 use ir::QueryMOp;
 use ir::StringInterner;
 use ir::ValueId;
+use naming_special_names_rust::special_idents;
 
 use crate::func::FuncState;
 use crate::hack;
@@ -74,7 +76,7 @@ fn write_base(
         BaseOp::BaseC { .. } => {
             // Get base from value.
             let base = base_from_vid(state, operands.next().unwrap())?;
-            state.fb.copy(base)
+            state.fb.write_expr_stmt(base)
         }
         BaseOp::BaseGC { .. } => {
             // Get base from global name.
@@ -84,9 +86,9 @@ fn write_base(
         BaseOp::BaseH { loc: _ } => {
             // Get base from $this.
             // Just pretend to be a BaseL w/ $this.
-            let lid = LocalId::Named(state.strings.intern_str("$this"));
+            let lid = LocalId::Named(state.strings.intern_str(special_idents::THIS));
             let base = base_from_lid(lid);
-            state.fb.copy(base)
+            state.fb.write_expr_stmt(base)
         }
         BaseOp::BaseL {
             mode: _,
@@ -95,7 +97,7 @@ fn write_base(
         } => {
             // Get base from local.
             let base = base_from_lid(locals.next().unwrap());
-            state.fb.copy(base)
+            state.fb.write_expr_stmt(base)
         }
         BaseOp::BaseSC {
             mode: _,
@@ -265,14 +267,15 @@ pub(crate) fn base_var(strings: &StringInterner) -> LocalId {
 }
 
 pub(crate) fn func_needs_base_var(func: &ir::Func<'_>) -> bool {
-    use ir::instr::MemberOp;
+    use ir::instr::Hhbc;
     use ir::Instr;
     for instr in func.instrs.iter() {
         match instr {
             Instr::MemberOp(MemberOp {
                 base_op: BaseOp::BaseC { .. } | BaseOp::BaseSC { .. },
                 ..
-            }) => {
+            })
+            | Instr::Hhbc(Hhbc::SetS(..)) => {
                 return true;
             }
             _ => {}
@@ -282,14 +285,24 @@ pub(crate) fn func_needs_base_var(func: &ir::Func<'_>) -> bool {
     false
 }
 
-fn base_from_vid(state: &mut FuncState<'_, '_, '_>, src: ValueId) -> Result<textual::Expr> {
+pub(crate) fn base_from_expr(
+    state: &mut FuncState<'_, '_, '_>,
+    src: impl Into<textual::Expr>,
+) -> Result<textual::Expr> {
     // Unfortunately we need base to be a pointer to a value, not a
     // value itself - so store it in `base` so we can return a pointer
     // to `base`.
-    let src = state.lookup_vid(src);
     let base_lid = base_var(&state.strings);
-    state.store_mixed(textual::Expr::deref(base_lid), src)?;
+    state.store_mixed(textual::Expr::deref(base_lid), src.into())?;
     Ok(base_from_lid(base_lid))
+}
+
+pub(crate) fn base_from_vid(
+    state: &mut FuncState<'_, '_, '_>,
+    src: ValueId,
+) -> Result<textual::Expr> {
+    let src = state.lookup_vid(src);
+    base_from_expr(state, src)
 }
 
 fn base_from_lid(lid: LocalId) -> textual::Expr {

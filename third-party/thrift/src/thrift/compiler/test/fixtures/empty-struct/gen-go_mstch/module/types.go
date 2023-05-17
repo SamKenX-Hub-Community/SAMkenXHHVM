@@ -4,9 +4,9 @@
 package module // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 
@@ -44,6 +44,7 @@ func (x *EmptyBuilder) Emit() *Empty {
     var objCopy Empty = *x.obj
     return &objCopy
 }
+
 func (x *Empty) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Empty"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -93,6 +94,7 @@ func (x *Empty) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Nada struct {
 }
 // Compile time interface enforcer
@@ -104,6 +106,15 @@ func NewNada() *Nada {
 
 func (x *Nada) String() string {
     return fmt.Sprintf("%+v", x)
+}
+
+func (x *Nada) countSetFields() int {
+    count := int(0)
+    return count
+}
+
+func (x *Nada) CountSetFieldsNada() int {
+    return x.countSetFields()
 }
 
 
@@ -122,7 +133,11 @@ func (x *NadaBuilder) Emit() *Nada {
     var objCopy Nada = *x.obj
     return &objCopy
 }
+
 func (x *Nada) Write(p thrift.Protocol) error {
+    if countSet := x.countSetFields(); countSet > 1 {
+        return fmt.Errorf("%T write union: no more than one field must be set (%d set).", x, countSet)
+    }
     if err := p.WriteStructBegin("Nada"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
     }
@@ -170,3 +185,4 @@ func (x *Nada) Read(p thrift.Protocol) error {
 
     return nil
 }
+

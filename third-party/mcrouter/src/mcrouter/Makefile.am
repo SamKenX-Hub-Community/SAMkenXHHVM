@@ -67,7 +67,12 @@ libmcroutercore_a_SOURCES = \
   McrouterLogger.h \
   McrouterManager.cpp\
   McrouterManager.h\
-  lib/network/McCallbackUtils.h \
+  McInvalidationUtils.h \
+  McInvalidationUtils.cpp \
+  lib/invalidation/McInvalidationKvPairs.h \
+  lib/invalidation/McInvalidationKvPairs.cpp \
+  lib/invalidation/McInvalidationDefs.h \
+  lib/network/McThriftContext.h \
   Observable-inl.h \
   Observable.h \
   options-template.h \
@@ -131,15 +136,15 @@ libmcroutercore_a_SOURCES = \
   routes/FailoverRoute.h \
   routes/FailoverWithExptimeRouteFactory.h \
   routes/HostIdRouteFactory.h \
-  routes/KeySplitRoute.cpp \
+  routes/KeySplitRoute-inl.h \
   routes/KeySplitRoute.h \
   routes/L1L2CacheRouteFactory.h \
-  routes/L1L2SizeSplitRoute.cpp \
+  routes/L1L2SizeSplitRoute-inl.h \
   routes/L1L2SizeSplitRoute.h \
   routes/LatencyInjectionRoute.h \
   routes/LatencyInjectionRoute.cpp \
   routes/LatestRoute.h \
-  routes/McBucketRoute.cpp \
+  routes/McBucketRoute-inl.h \
   routes/McBucketRoute.h \
   routes/McExtraRouteHandleProvider-inl.h \
   routes/McExtraRouteHandleProvider.h \

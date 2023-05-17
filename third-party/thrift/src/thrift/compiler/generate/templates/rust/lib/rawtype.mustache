@@ -19,9 +19,7 @@
   unsafe impls in structimpl.mustache need to be revisited.
   ====
 }}{{#type:void?}}(){{/type:void?}}{{!
-}}{{#type:string?}}{{!
-    }}{{#type:rust}}::{{type:rust}}{{/type:rust}}{{!
-    }}{{^type:rust}}::std::string::String{{/type:rust}}{{/type:string?}}{{!
+}}{{#type:string?}}::std::string::String{{/type:string?}}{{!
 }}{{#type:binary?}}{{!
     }}{{#type:rust}}::{{type:rust}}{{/type:rust}}{{!
     }}{{^type:rust}}::std::vec::Vec<::std::primitive::u8>{{/type:rust}}{{!
@@ -34,7 +32,12 @@
 }}{{#type:double?}}::std::primitive::f64{{/type:double?}}{{!
 }}{{#type:float?}}::std::primitive::f32{{/type:float?}}{{!
 }}{{#type:struct}}{{!
-    }}{{struct:package}}::types::{{struct:rust_name}}{{!
+    }}{{#struct:has_adapter?}}{{!
+        }}{{struct:package}}::types::unadapted::{{struct:rust_name}}{{!
+    }}{{/struct:has_adapter?}}{{!
+    }}{{^struct:has_adapter?}}{{!
+        }}{{struct:package}}::types::{{struct:rust_name}}{{!
+    }}{{/struct:has_adapter?}}{{!
 }}{{/type:struct}}{{!
 }}{{#type:enum}}{{!
     }}{{enum:package}}::types::{{enum:rust_name}}{{!

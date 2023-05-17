@@ -86,6 +86,14 @@ class parser {
     return true;
   }
 
+  std::string lex_string_literal(token literal) {
+    auto str = lexer_.lex_string_literal(literal);
+    if (!str) {
+      actions_.on_error();
+    }
+    return *str;
+  }
+
   [[noreturn]] void report_expected(fmt::string_view expected) {
     diags_.error(token_.range.begin, "expected {}", expected);
     throw parse_error();
@@ -102,12 +110,35 @@ class parser {
 
   // The parse methods are ordered top down from the most general to concrete.
 
-  // program: statement*
+  // program: [[program_doctext] (include | package | namespace)+] definition*
   bool parse_program() {
     consume_token();
     try {
       while (token_.kind != tok::eof) {
-        parse_statement();
+        auto begin = token_.range.begin;
+        auto attrs = parse_attributes();
+        switch (token_.kind) {
+          case tok::kw_include:
+          case tok::kw_cpp_include:
+          case tok::kw_hs_include:
+            actions_.on_program_doctext();
+            parse_include();
+            actions_.on_standard_header(begin, std::move(attrs));
+            break;
+          case tok::kw_package: {
+            actions_.on_program_doctext();
+            parse_package(begin, std::move(attrs));
+            break;
+          }
+          case tok::kw_namespace:
+            actions_.on_program_doctext();
+            parse_namespace();
+            actions_.on_standard_header(begin, std::move(attrs));
+            break;
+          default:
+            parse_definition(begin, std::move(attrs));
+            break;
+        }
       }
       actions_.on_program();
     } catch (const parse_error&) {
@@ -116,110 +147,17 @@ class parser {
     return true;
   }
 
-  // statement:
-  //   statement_attrs (header | definition) annotations comma_or_semicolon?
-  void parse_statement() {
-    auto range = track_range();
-    auto attrs = parse_statement_attrs();
-    auto stmt = parse_header_or_definition();
-    auto annotations = parse_annotations();
-    try_parse_comma_or_semicolon();
-    switch (stmt.type) {
-      case t_statement_type::standard_header:
-        actions_.on_standard_header(
-            range, std::move(attrs), std::move(annotations));
-        break;
-      case t_statement_type::program_header:
-        actions_.on_program_header(
-            range, std::move(attrs), std::move(annotations));
-        break;
-      case t_statement_type::definition:
-        actions_.on_definition(
-            range,
-            std::move(stmt.defn),
-            std::move(attrs),
-            std::move(annotations));
-        break;
-    }
-  }
-
-  struct statement {
-    t_statement_type type = t_statement_type::definition;
-    std::unique_ptr<t_named> defn;
-
-    statement(t_statement_type t = t_statement_type::definition) : type(t) {}
-
-    template <typename Named>
-    /* implicit */ statement(std::unique_ptr<Named> n) : defn(std::move(n)) {}
-  };
-
-  // header: program_doctext? (include_or_package | namespace)
-  //
-  // definition:
-  //     service
-  //   | interaction
-  //   | typedef
-  //   | struct
-  //   | union
-  //   | exception
-  //   | enum
-  //   | const
-  statement parse_header_or_definition() {
-    switch (token_.kind) {
-      case tok::kw_include:
-      case tok::kw_cpp_include:
-      case tok::kw_hs_include:
-      case tok::kw_package:
-        return parse_include_or_package();
-      case tok::kw_namespace:
-        parse_namespace();
-        return t_statement_type::standard_header;
-      case tok::kw_typedef:
-        return parse_typedef();
-      case tok::kw_enum:
-        return parse_enum();
-      case tok::kw_const:
-        return parse_const();
-      case tok::kw_struct:
-        return parse_struct();
-      case tok::kw_union:
-        return parse_union();
-      case tok::kw_safe:
-      case tok::kw_transient:
-      case tok::kw_stateful:
-      case tok::kw_permanent:
-      case tok::kw_client:
-      case tok::kw_server:
-      case tok::kw_exception:
-        return parse_exception();
-      case tok::kw_service:
-        return parse_service();
-      case tok::kw_interaction:
-        return parse_interaction();
-      default:
-        report_expected("header or definition");
-    }
-  }
-
-  // include_or_package:
-  //     "include" string_literal
-  //   | "cpp_include" string_literal
-  //   | "hs_include" string_literal
-  //   | "package" string_literal
-  t_statement_type parse_include_or_package() {
+  // include: ("include" | "cpp_include" | "hs_include") string_literal [";"]
+  void parse_include() {
     auto range = track_range();
     auto kind = token_.kind;
-    actions_.on_program_doctext();
     consume_token();
     if (token_.kind != tok::string_literal) {
       report_expected("string literal");
     }
-    auto str = token_.string_value();
+    auto str = lex_string_literal(token_);
     consume_token();
     switch (kind) {
-      case tok::kw_package:
-        actions_.on_package(range, str);
-        return t_statement_type::program_header;
       case tok::kw_include:
         actions_.on_include(range, str);
         break;
@@ -232,32 +170,94 @@ class parser {
       default:
         assert(false);
     }
-    return t_statement_type::standard_header;
+    try_consume_token(';');
   }
 
-  // namespace: "namespace" identifier (identifier | string_literal)
+  // package: attributes "package" string_literal [";"]
+  void parse_package(source_location loc, std::unique_ptr<attributes> attrs) {
+    assert(token_.kind == tok::kw_package);
+    auto range = range_tracker(loc, end_);
+    consume_token();
+    if (token_.kind != tok::string_literal) {
+      report_expected("string literal");
+    }
+    auto name = lex_string_literal(token_);
+    consume_token();
+    try_consume_token(';');
+    actions_.on_package(range, std::move(attrs), name);
+  }
+
+  // namespace: "namespace" identifier (identifier | string_literal) [";"]
   void parse_namespace() {
     assert(token_.kind == tok::kw_namespace);
-    actions_.on_program_doctext();
     consume_token();
     auto language = parse_identifier();
     auto ns = token_.kind == tok::string_literal
-        ? consume_token().string_value()
-        : parse_identifier().str;
+        ? lex_string_literal(consume_token())
+        : fmt::to_string(parse_identifier().str);
+    try_consume_token(';');
     return actions_.on_namespace(language, ns);
   }
 
-  // statement_attrs: doctext? structured_annotation*
-  std::unique_ptr<stmt_attrs> parse_statement_attrs() {
-    auto doc = actions_.on_doctext();
-    auto annotations = std::unique_ptr<node_list<t_const>>();
-    while (auto annotation = parse_structured_annotation()) {
-      if (!annotations) {
-        annotations = std::make_unique<node_list<t_const>>();
-      }
-      annotations->emplace_back(std::move(annotation));
+  // definition:
+  //     service
+  //   | interaction
+  //   | typedef
+  //   | struct
+  //   | union
+  //   | exception
+  //   | enum
+  //   | const
+  void parse_definition(
+      source_location loc, std::unique_ptr<attributes> attrs) {
+    switch (token_.kind) {
+      case tok::kw_service:
+        parse_service(loc, std::move(attrs));
+        break;
+      case tok::kw_interaction:
+        parse_interaction(loc, std::move(attrs));
+        break;
+      case tok::kw_typedef:
+        parse_typedef(loc, std::move(attrs));
+        break;
+      case tok::kw_struct:
+        parse_struct(loc, std::move(attrs));
+        break;
+      case tok::kw_union:
+        parse_union(loc, std::move(attrs));
+        break;
+      case tok::kw_safe:
+      case tok::kw_transient:
+      case tok::kw_stateful:
+      case tok::kw_permanent:
+      case tok::kw_client:
+      case tok::kw_server:
+      case tok::kw_exception:
+        parse_exception(loc, std::move(attrs));
+        break;
+      case tok::kw_enum:
+        parse_enum(loc, std::move(attrs));
+        break;
+      case tok::kw_const:
+        parse_const(loc, std::move(attrs));
+        break;
+      default:
+        report_expected("definition");
+        break;
     }
-    return actions_.on_statement_attrs(std::move(doc), std::move(annotations));
+  }
+
+  // attributes: [doctext] structured_annotation*
+  std::unique_ptr<attributes> parse_attributes() {
+    auto doc = actions_.on_doctext();
+    auto annotations = node_list<t_const>();
+    while (token_.kind == '@') {
+      annotations.emplace_back(parse_structured_annotation());
+    }
+    return doc || !annotations.empty()
+        ? std::make_unique<attributes>(
+              attributes{std::move(doc), std::move(annotations), {}})
+        : nullptr;
   }
 
   boost::optional<comment> try_parse_inline_doc() {
@@ -269,10 +269,9 @@ class parser {
 
   // structured_annotation: "@" (struct_literal | struct_literal_type)
   std::unique_ptr<t_const> parse_structured_annotation() {
+    assert(token_.kind == '@');
     auto range = track_range();
-    if (!try_consume_token('@')) {
-      return {};
-    }
+    consume_token();
     auto name = parse_identifier();
     if (token_.kind != '{') {
       return actions_.on_structured_annotation(range, name.str);
@@ -281,22 +280,23 @@ class parser {
     return actions_.on_structured_annotation(range, std::move(value));
   }
 
-  // annotations: "(" annotation_list? ")"
+  // deprecated_annotations: "(" deprecated_annotation_list? ")"
   //
-  // annotation_list:
-  //   (annotation comma_or_semicolon)* annotation comma_or_semicolon?
+  // deprecated_annotation_list:
+  //   (deprecated_annotation comma_or_semicolon)*
+  //    deprecated_annotation comma_or_semicolon?
   //
-  // annotation: identifier ["=" annotation_value]
-  // annotation_value: bool_literal | integer | string_literal
-  std::unique_ptr<t_annotations> parse_annotations() {
+  // deprecated_annotation:
+  //   identifier ["=" (bool_literal | integer | string_literal)]
+  std::unique_ptr<deprecated_annotations> try_parse_deprecated_annotations() {
     auto loc = token_.range.begin;
     if (!try_consume_token('(')) {
       return {};
     }
-    auto annotations = std::unique_ptr<t_annotations>();
+    auto annotations = std::unique_ptr<deprecated_annotations>();
     while (token_.kind != ')') {
       if (!annotations) {
-        annotations = std::make_unique<t_annotations>();
+        annotations = std::make_unique<deprecated_annotations>();
         annotations->loc = loc;
       }
       auto range = track_range();
@@ -304,7 +304,7 @@ class parser {
       auto value = std::string("1");
       if (try_consume_token('=')) {
         if (token_.kind == tok::string_literal) {
-          value = fmt::to_string(consume_token().string_value());
+          value = lex_string_literal(consume_token());
         } else if (token_.kind == tok::bool_literal) {
           value = fmt::to_string(consume_token().bool_value() ? 1 : 0);
         } else if (auto integer = try_parse_integer()) {
@@ -322,10 +322,23 @@ class parser {
     return annotations;
   }
 
-  // service: "service" identifier extends? "{" function_or_performs* "}"
+  void try_parse_deprecated_annotations(std::unique_ptr<attributes>& attrs) {
+    if (auto deprecated_annotations = try_parse_deprecated_annotations()) {
+      if (!attrs) {
+        attrs = std::make_unique<attributes>();
+      }
+      attrs->deprecated_annotations = std::move(deprecated_annotations);
+    }
+  }
+
+  // service:
+  //   attributes
+  //   "service" identifier extends? "{" function_or_performs* "}"
+  //   [deprecated_annotations]
+  //
   // extends: "extends" identifier
-  std::unique_ptr<t_service> parse_service() {
-    auto range = track_range();
+  void parse_service(source_location loc, std::unique_ptr<attributes> attrs) {
+    auto range = range_tracker(loc, end_);
     expect_and_consume(tok::kw_service);
     auto name = parse_identifier();
     auto base = identifier();
@@ -333,51 +346,59 @@ class parser {
       base = parse_identifier();
     }
     auto functions = parse_braced_function_list();
-    return actions_.on_service(range, name, base, std::move(functions));
+    try_parse_deprecated_annotations(attrs);
+    actions_.on_service(
+        range, std::move(attrs), name, base, std::move(functions));
   }
 
-  // interaction: "interaction" identifier "{" function_or_performs* "}"
-  std::unique_ptr<t_interaction> parse_interaction() {
-    auto range = track_range();
+  // interaction:
+  //   attributes
+  //   "interaction" identifier "{" function_or_performs* "}"
+  //   [deprecated_annotations]
+  void parse_interaction(
+      source_location loc, std::unique_ptr<attributes> attrs) {
+    auto range = range_tracker(loc, end_);
     expect_and_consume(tok::kw_interaction);
     auto name = parse_identifier();
     auto functions = parse_braced_function_list();
-    return actions_.on_interaction(range, name, std::move(functions));
+    try_parse_deprecated_annotations(attrs);
+    actions_.on_interaction(
+        range, std::move(attrs), name, std::move(functions));
   }
 
   // function_or_performs:
   //     function comma_or_semicolon?
-  //   | "performs" field_type comma_or_semicolon
-  std::unique_ptr<t_function_list> parse_braced_function_list() {
+  //   | "performs" type comma_or_semicolon
+  t_function_list parse_braced_function_list() {
     expect_and_consume('{');
-    auto functions = std::make_unique<t_function_list>();
+    auto functions = t_function_list();
     while (token_.kind != '}') {
       if (token_.kind != tok::kw_performs) {
-        functions->emplace_back(parse_function());
+        functions.emplace_back(parse_function());
         try_parse_comma_or_semicolon();
         continue;
       }
       // Parse performs.
       auto range = track_range();
       consume_token();
-      auto type = parse_field_type();
+      auto type = parse_type();
       if (!try_parse_comma_or_semicolon()) {
         report_expected("`,` or `;`");
       }
-      functions->emplace_back(actions_.on_performs(range, type));
+      functions.emplace_back(actions_.on_performs(range, type));
     }
     expect_and_consume('}');
     return functions;
   }
 
   // function:
-  //   statement_attrs function_qualifier?
-  //     return_type identifier? "(" field* ")" throws? annotations
+  //   attributes function_qualifier?
+  //     return_type identifier "(" field* ")" throws? annotations
   //
   // function_qualifier: "oneway" | "idempotent" | "readonly"
   std::unique_ptr<t_function> parse_function() {
     auto range = track_range();
-    auto attrs = parse_statement_attrs();
+    auto attrs = parse_attributes();
 
     // Parse a function qualifier.
     auto qual = t_function_qualifier();
@@ -407,7 +428,7 @@ class parser {
     expect_and_consume(')');
 
     auto throws = try_parse_throws();
-    auto annotations = parse_annotations();
+    try_parse_deprecated_annotations(attrs);
     return actions_.on_function(
         range,
         std::move(attrs),
@@ -415,22 +436,20 @@ class parser {
         std::move(return_type),
         name,
         std::move(params),
-        std::move(throws),
-        std::move(annotations));
+        std::move(throws));
   }
 
   // return_type: (return_type_element ",")* return_type_element
   //
-  // return_type_element:
-  //     field_type | stream_return_type | sink_return_type | "void"
+  // return_type_element: type | stream_return_type | sink_return_type | "void"
   //
   // stream_return_type: "stream" "<" type_throws_spec ">"
   // sink_return_type: "sink" "<" type_throws_spec "," type_throws_spec ">"
-  // type_throws_spec: field_type throws?
+  // type_throws_spec: type throws?
   std::vector<t_type_ref> parse_return_type() {
     auto return_type = std::vector<t_type_ref>();
     auto parse_type_throws = [this]() -> type_throws_spec {
-      auto type = parse_field_type();
+      auto type = parse_type();
       auto throws = try_parse_throws();
       return {std::move(type), std::move(throws)};
     };
@@ -462,7 +481,7 @@ class parser {
           break;
         }
         default:
-          type = parse_field_type();
+          type = parse_type();
           break;
       }
       return_type.push_back(std::move(type));
@@ -481,42 +500,49 @@ class parser {
     return actions_.on_throws(std::move(exceptions));
   }
 
-  // typedef: "typedef" field_type identifier
-  std::unique_ptr<t_typedef> parse_typedef() {
-    auto range = track_range();
+  // typedef:
+  //   attributes "typedef" type identifier [deprecated_annotations] [";"]
+  void parse_typedef(source_location loc, std::unique_ptr<attributes> attrs) {
+    auto range = range_tracker(loc, end_);
     expect_and_consume(tok::kw_typedef);
-    auto type = parse_field_type();
+    auto type = parse_type();
     auto name = parse_identifier();
-    return actions_.on_typedef(range, std::move(type), name);
+    try_parse_deprecated_annotations(attrs);
+    try_consume_token(';');
+    actions_.on_typedef(range, std::move(attrs), std::move(type), name);
   }
 
-  // struct: "struct" identifier "{" field* "}"
-  std::unique_ptr<t_struct> parse_struct() {
-    auto range = track_range();
+  // struct:
+  //   attributes "struct" identifier "{" field* "}" [deprecated_annotations]
+  void parse_struct(source_location loc, std::unique_ptr<attributes> attrs) {
+    auto range = range_tracker(loc, end_);
     expect_and_consume(tok::kw_struct);
     auto name = parse_identifier();
     auto fields = parse_braced_field_list();
-    return actions_.on_struct(range, name, std::move(fields));
+    try_parse_deprecated_annotations(attrs);
+    actions_.on_struct(range, std::move(attrs), name, std::move(fields));
   }
 
-  // union: "union" identifier "{" field* "}"
-  std::unique_ptr<t_union> parse_union() {
-    auto range = track_range();
+  // union:
+  //   attributes "union" identifier "{" field* "}" [deprecated_annotations]
+  void parse_union(source_location loc, std::unique_ptr<attributes> attrs) {
+    auto range = range_tracker(loc, end_);
     expect_and_consume(tok::kw_union);
     auto name = parse_identifier();
     auto fields = parse_braced_field_list();
-    return actions_.on_union(range, name, std::move(fields));
+    try_parse_deprecated_annotations(attrs);
+    actions_.on_union(range, std::move(attrs), name, std::move(fields));
   }
 
   // exception:
-  //   error_safety? error_kind? error_blame?
-  //     "exception" identifier "{" field* "}"
+  //   attributes error_safety? error_kind? error_blame?
+  //   "exception" identifier "{" field* "}" [deprecated_annotations]
   //
   // error_safety: "safe"
   // error_kind: "transient" | "stateful" | "permanent"
   // error_blame: "client" | "server"
-  std::unique_ptr<t_exception> parse_exception() {
-    auto range = track_range();
+  void parse_exception(source_location loc, std::unique_ptr<attributes> attrs) {
+    auto range = range_tracker(loc, end_);
     auto safety = try_consume_token(tok::kw_safe) ? t_error_safety::safe
                                                   : t_error_safety::unspecified;
     auto kind = t_error_kind::unspecified;
@@ -545,8 +571,9 @@ class parser {
     expect_and_consume(tok::kw_exception);
     auto name = parse_identifier();
     auto fields = parse_braced_field_list();
-    return actions_.on_exception(
-        range, safety, kind, blame, name, std::move(fields));
+    try_parse_deprecated_annotations(attrs);
+    actions_.on_exception(
+        range, std::move(attrs), safety, kind, blame, name, std::move(fields));
   }
 
   t_field_list parse_braced_field_list() {
@@ -565,7 +592,7 @@ class parser {
   }
 
   // field:
-  //   statement_attrs field_id? field_qualifier? field_type identifier
+  //   attributes field_id? field_qualifier? type identifier
   //     field_value? annotations comma_or_semicolon? inline_doc?
   //
   // field_id: integer ":"
@@ -573,7 +600,7 @@ class parser {
   // field_value: "=" const_value
   std::unique_ptr<t_field> parse_field() {
     auto range = track_range();
-    auto attrs = parse_statement_attrs();
+    auto attrs = parse_attributes();
 
     // Parse the field id.
     auto field_id = boost::optional<int64_t>();
@@ -590,7 +617,7 @@ class parser {
       qual = t_field_qualifier::required;
     }
 
-    auto type = parse_field_type();
+    auto type = parse_type();
     auto name = parse_identifier();
 
     // Parse the default value.
@@ -599,7 +626,7 @@ class parser {
       value = parse_const_value();
     }
 
-    auto annotations = parse_annotations();
+    try_parse_deprecated_annotations(attrs);
     try_parse_comma_or_semicolon();
     auto doc = try_parse_inline_doc();
     return actions_.on_field(
@@ -610,63 +637,62 @@ class parser {
         std::move(type),
         name,
         std::move(value),
-        std::move(annotations),
         std::move(doc));
   }
 
-  // field_type: (tok::identifier | base_type | container_type) annotations
+  // type: (tok::identifier | base_type | container_type) annotations
   //
   // container_type: list_type | set_type | map_type
   //
-  // list_type: "list" "<" field_type ">"
-  // set_type: "set" "<" field_type ">"
-  // map_type: "map" "<" field_type "," field_type ">"
+  // list_type: "list" "<" type ">"
+  // set_type: "set" "<" type ">"
+  // map_type: "map" "<" type "," type ">"
   //
   // We disallow context-sensitive keywords as field type identifiers.
-  // This avoids an ambuguity in the resolution of the function_qualifier
+  // This avoids an ambiguity in the resolution of the function_qualifier
   // return_type part of the function rule, when one of the "oneway",
   // "idempotent" or "readonly" is encountered. It could either resolve
   // the token as function_qualifier or resolve "" as function_qualifier and
   // the token as return_type.
-  t_type_ref parse_field_type() {
+  t_type_ref parse_type() {
     auto range = track_range();
     if (const t_base_type* type = try_parse_base_type()) {
-      return actions_.on_field_type(*type, parse_annotations());
+      return actions_.on_type(*type, try_parse_deprecated_annotations());
     }
     switch (token_.kind) {
       case tok::identifier: {
         auto name = consume_token().string_value();
-        auto annotations = parse_annotations();
-        return actions_.on_field_type(range, name, std::move(annotations));
+        auto annotations = try_parse_deprecated_annotations();
+        return actions_.on_type(range, name, std::move(annotations));
       }
       case tok::kw_list: {
         consume_token();
         expect_and_consume('<');
-        auto element_type = parse_field_type();
+        auto element_type = parse_type();
         expect_and_consume('>');
         return actions_.on_list_type(
-            range, std::move(element_type), parse_annotations());
+            range, std::move(element_type), try_parse_deprecated_annotations());
       }
       case tok::kw_set: {
         consume_token();
         expect_and_consume('<');
-        auto key_type = parse_field_type();
+        auto key_type = parse_type();
         expect_and_consume('>');
         return actions_.on_set_type(
-            range, std::move(key_type), parse_annotations());
+            range, std::move(key_type), try_parse_deprecated_annotations());
       }
       case tok::kw_map: {
         consume_token();
         expect_and_consume('<');
-        auto key_type = parse_field_type();
+        auto key_type = parse_type();
         expect_and_consume(',');
-        auto value_type = parse_field_type();
+        auto value_type = parse_type();
         expect_and_consume('>');
         return actions_.on_map_type(
             range,
             std::move(key_type),
             std::move(value_type),
-            parse_annotations());
+            try_parse_deprecated_annotations());
       }
       default:
         report_expected("type");
@@ -707,9 +733,10 @@ class parser {
     return base_type;
   }
 
-  // enum: "enum" identifier "{" enum_value* "}"
-  std::unique_ptr<t_enum> parse_enum() {
-    auto range = track_range();
+  // enum:
+  //   attributes "enum" identifier "{" enum_value* "}" [deprecated_annotations]
+  void parse_enum(source_location loc, std::unique_ptr<attributes> attrs) {
+    auto range = range_tracker(loc, end_);
     expect_and_consume(tok::kw_enum);
     auto name = parse_identifier();
     expect_and_consume('{');
@@ -718,46 +745,46 @@ class parser {
       values.emplace_back(parse_enum_value());
     }
     expect_and_consume('}');
-    return actions_.on_enum(range, name, std::move(values));
+    try_parse_deprecated_annotations(attrs);
+    actions_.on_enum(range, std::move(attrs), name, std::move(values));
   }
 
   // enum_value:
-  //   statement_attrs identifier ["=" integer] annotations
-  //     comma_or_semicolon? inline_doc?
+  //   attributes
+  //   identifier ["=" integer] [deprecated_annotations] [comma_or_semicolon]
+  //   [inline_doc]
   std::unique_ptr<t_enum_value> parse_enum_value() {
     auto range = track_range();
-    auto attrs = parse_statement_attrs();
+    auto attrs = parse_attributes();
     auto name = parse_identifier();
     auto value = try_consume_token('=')
         ? boost::optional<int64_t>(parse_integer())
         : boost::none;
-    auto annotations = parse_annotations();
+    try_parse_deprecated_annotations(attrs);
     try_parse_comma_or_semicolon();
     auto doc = try_parse_inline_doc();
     return actions_.on_enum_value(
-        range,
-        std::move(attrs),
-        name,
-        value,
-        std::move(annotations),
-        std::move(doc));
+        range, std::move(attrs), name, value, std::move(doc));
   }
 
-  // const: "const" field_type identifier "=" const_value
-  std::unique_ptr<t_const> parse_const() {
-    auto range = track_range();
+  // const:
+  //   attributes "const" type identifier "=" const_value
+  //   [deprecated_annotations] [";"]
+  void parse_const(source_location loc, std::unique_ptr<attributes> attrs) {
+    auto range = range_tracker(loc, end_);
     expect_and_consume(tok::kw_const);
-    auto type = parse_field_type();
+    auto type = parse_type();
     auto name = parse_identifier();
     expect_and_consume('=');
     auto value = parse_const_value();
-    return actions_.on_const(range, type, name, std::move(value));
+    try_parse_deprecated_annotations(attrs);
+    try_consume_token(';');
+    actions_.on_const(range, std::move(attrs), type, name, std::move(value));
   }
 
   // const_value:
-  //     bool_literal | integer | float | string_literal
-  //   | list_literal | map_literal | struct_literal
-  //   | identifier
+  //   bool_literal | integer | float | string_literal |
+  //   list_literal | map_literal | struct_literal | identifier
   std::unique_ptr<t_const_value> parse_const_value() {
     auto range = track_range();
     auto s = sign::plus;
@@ -781,7 +808,7 @@ class parser {
       case tok::float_literal:
         return actions_.on_float(parse_float());
       case tok::string_literal:
-        return actions_.on_string_literal(consume_token().string_value());
+        return actions_.on_string_literal(lex_string_literal(consume_token()));
       case to_tok('['):
         return parse_list_literal();
       case to_tok('{'):
@@ -844,7 +871,8 @@ class parser {
     expect_and_consume('{');
     auto map = actions_.on_struct_literal({id.loc, id_end}, id.str);
     while (token_.kind != '}') {
-      auto key = actions_.on_string_literal(parse_identifier().str);
+      auto key =
+          actions_.on_string_literal(fmt::to_string(parse_identifier().str));
       expect_and_consume('=');
       auto value = parse_const_value();
       map->add_map(std::move(key), std::move(value));

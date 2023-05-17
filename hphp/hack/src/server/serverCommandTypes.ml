@@ -181,16 +181,121 @@ module Find_refs = struct
     | Property s -> "Property " ^ s
     | Class_const s -> "Class_consts " ^ s
     | Typeconst s -> "Typeconst " ^ s
+
+  (**
+   * Output strings in the form of
+   * SYMBOL_NAME|COMMA_SEPARATED_ACTION_STRING
+   * For example,
+   * HackTypecheckerQueryBase::getWWWDir|Member,\HackTypecheckerQueryBase,Method,getWWWDir
+   * Must be manually kept in sync with string_to_symbol_and_action_exn.
+  *)
+  let symbol_and_action_to_string_exn symbol_name action =
+    let action_serialized =
+      match action with
+      | Class str -> Printf.sprintf "Class,%s" str
+      | ExplicitClass str -> Printf.sprintf "ExplicitClass,%s" str
+      | Function str -> Printf.sprintf "Function,%s" str
+      | GConst str -> Printf.sprintf "GConst,%s" str
+      | Member (str, Method s) ->
+        Printf.sprintf "Member,%s,%s,%s" str "Method" s
+      | Member (str, Property s) ->
+        Printf.sprintf "Member,%s,%s,%s" str "Property" s
+      | Member (str, Class_const s) ->
+        Printf.sprintf "Member,%s,%s,%s" str "Class_const" s
+      | Member (str, Typeconst s) ->
+        Printf.sprintf "Member,%s,%s,%s" str "Typeconst" s
+      | LocalVar _ ->
+        Printf.eprintf "Invalid action\n";
+        raise Exit_status.(Exit_with Input_error)
+    in
+    Printf.sprintf "%s|%s" symbol_name action_serialized
+
+  (**
+   * Expects input strings in the form of
+   * SYMBOL_NAME|COMMA_SEPARATED_ACTION_STRING
+   * For example,
+   * HackTypecheckerQueryBase::getWWWDir|Member,\HackTypecheckerQueryBase,Method,getWWWDir
+   * The implementation explicitly is tied to whatever is generated from symbol_and_action_to_string_exn
+   * and should be kept in sync manually by anybody editing.
+  *)
+  let string_to_symbol_and_action_exn arg =
+    let pair = Str.split (Str.regexp "|") arg in
+    let (symbol_name, action_arg) =
+      match pair with
+      | [symbol_name; action_arg] -> (symbol_name, action_arg)
+      | _ ->
+        Printf.eprintf "Invalid input\n";
+        raise Exit_status.(Exit_with Input_error)
+    in
+    let action =
+      (* Explicitly ignoring localvar support *)
+      match Str.split (Str.regexp ",") action_arg with
+      | ["Class"; str] -> Class str
+      | ["ExplicitClass"; str] -> ExplicitClass str
+      | ["Function"; str] -> Function str
+      | ["GConst"; str] -> GConst str
+      | ["Member"; str; "Method"; member_name] ->
+        Member (str, Method member_name)
+      | ["Member"; str; "Property"; member_name] ->
+        Member (str, Property member_name)
+      | ["Member"; str; "Class_const"; member_name] ->
+        Member (str, Class_const member_name)
+      | ["Member"; str; "Typeconst"; member_name] ->
+        Member (str, Typeconst member_name)
+      | _ ->
+        Printf.eprintf "Invalid input for action, got %s\n" action_arg;
+        raise Exit_status.(Exit_with Input_error)
+    in
+    (symbol_name, action)
 end
 
-module Refactor = struct
-  type ide_result = (ServerRefactorTypes.patch list, string) result
+module Rename = struct
+  type ide_result = (ServerRenameTypes.patch list, string) result
 
-  type result = ServerRefactorTypes.patch list
+  type result = ServerRenameTypes.patch list
 
   type ide_result_or_retry = ide_result Done_or_retry.t
 
   type result_or_retry = result Done_or_retry.t
+
+  (** Returns a string in the form of
+   * NEW_NAME|COMMA_SEPARATED_FIND_REFS_ACTION|FILENAME|OCaml_marshalled_SymbolDefinition.T
+  *)
+  let arguments_to_string_exn
+      (new_name : string)
+      (action : Find_refs.action)
+      (filename : string)
+      (symbol_def : string SymbolDefinition.t) : string =
+    let symbol_and_action =
+      Find_refs.symbol_and_action_to_string_exn new_name action
+    in
+    let marshalled_def = Marshal.to_string symbol_def [] in
+    let encoded = Base64.encode_exn marshalled_def in
+    Printf.sprintf "%s|%s|%s" symbol_and_action filename encoded
+
+  (** Expects a string in the form of
+   * NEW_NAME|COMMA_SEPARATED_FIND_REFS_ACTION|filename|OCaml_marshalled_SymbolDefinition.T
+   * For example, a valid entry is
+   * HackTypecheckerQueryBase::WWWDir|Member,\HackTypecheckerQueryBase,Method,getWWWDir|foo.php|<byte_string>
+  *)
+  let string_to_args arg :
+      string * Find_refs.action * string * string SymbolDefinition.t =
+    let split_arg = Str.split (Str.regexp "|") arg in
+    let (symbol_name, action_arg, filename, marshalled_def) =
+      match split_arg with
+      | [symbol_name; action_arg; filename; marshalled_def] ->
+        (symbol_name, action_arg, filename, marshalled_def)
+      | _ ->
+        Printf.eprintf "Invalid input\n";
+        raise Exit_status.(Exit_with Input_error)
+    in
+    let str = Printf.sprintf "%s|%s" symbol_name action_arg in
+    let (new_name, action) = Find_refs.string_to_symbol_and_action_exn str in
+    let decoded_str = Base64.decode_exn marshalled_def in
+    let symbol_definition : string SymbolDefinition.t =
+      Marshal.from_string decoded_str 0
+    in
+    (new_name, action, filename, symbol_definition)
 end
 
 module Symbol_type = struct
@@ -273,7 +378,7 @@ module Infer_return_type = struct
   type result = (string, string) Stdlib.result
 end
 
-module Ide_refactor_type = struct
+module Ide_rename_type = struct
   type t = {
     filename: string;
     line: int;
@@ -362,7 +467,6 @@ type _ t =
       (string * SearchUtils.si_kind)
       -> DocblockService.result t
   | IDE_SIGNATURE_HELP : (string * int * int) -> Lsp.SignatureHelp.result t
-  | COVERAGE_LEVELS : string * file_input -> Coverage_level_defs.result t
   | COMMANDLINE_AUTOCOMPLETE : string -> AutocompleteTypes.result t
   | IDENTIFY_SYMBOL : string -> string SymbolDefinition.t list t
   | IDENTIFY_FUNCTION :
@@ -379,23 +483,35 @@ type _ t =
   | IDE_FIND_REFS :
       labelled_file * int * int * bool
       -> Find_refs.ide_result_or_retry t
+  | IDE_FIND_REFS_BY_SYMBOL :
+      Find_refs.action * string
+      -> Find_refs.ide_result_or_retry t
   | IDE_GO_TO_IMPL :
       labelled_file * int * int
       -> Find_refs.ide_result_or_retry t
   | IDE_HIGHLIGHT_REFS :
       string * file_input * int * int
       -> ServerHighlightRefsTypes.result t
-  | REFACTOR : ServerRefactorTypes.action -> Refactor.result_or_retry t
-  | REFACTOR_CHECK_SD : ServerRefactorTypes.action -> string Done_or_retry.t t
-  | IDE_REFACTOR : Ide_refactor_type.t -> Refactor.ide_result_or_retry t
+  | RENAME : ServerRenameTypes.action -> Rename.result_or_retry t
+  | RENAME_CHECK_SD : ServerRenameTypes.action -> string Done_or_retry.t t
+  | IDE_RENAME : Ide_rename_type.t -> Rename.ide_result_or_retry t
+  | IDE_RENAME_BY_SYMBOL :
+      Find_refs.action * string * string * string SymbolDefinition.t
+      -> Rename.ide_result_or_retry t
+  | CODEMOD_SDT :
+      string
+      -> (ServerRenameTypes.patch list
+         * string list
+         * [ `ClassLike | `Function ])
+         t
   | DUMP_SYMBOL_INFO : string list -> Symbol_info_service.result t
   | REMOVE_DEAD_FIXMES :
       int list
-      -> [ `Ok of ServerRefactorTypes.patch list | `Error of string ] t
+      -> [ `Ok of ServerRenameTypes.patch list | `Error of string ] t
   | REMOVE_DEAD_UNSAFE_CASTS
-      : [ `Ok of ServerRefactorTypes.patch list | `Error of string ] t
-  | REWRITE_LAMBDA_PARAMETERS : string list -> ServerRefactorTypes.patch list t
-  | REWRITE_TYPE_PARAMS_TYPE : string list -> ServerRefactorTypes.patch list t
+      : [ `Ok of ServerRenameTypes.patch list | `Error of string ] t
+  | REWRITE_LAMBDA_PARAMETERS : string list -> ServerRenameTypes.patch list t
+  | REWRITE_TYPE_PARAMS_TYPE : string list -> ServerRenameTypes.patch list t
   | IN_MEMORY_DEP_TABLE_SIZE : (int, string) Stdlib.result t
   | SAVE_NAMING :
       string
@@ -404,7 +520,6 @@ type _ t =
       (string * bool)
       -> (SaveStateServiceTypes.save_state_result, string) Stdlib.result t
   | SEARCH : string * string -> SearchUtils.result t
-  | COVERAGE_COUNTS : string -> ServerCoverageMetricTypes.result t
   | LINT : string list -> ServerLintTypes.result t
   | LINT_STDIN : lint_stdin_input -> ServerLintTypes.result t
   | LINT_ALL : int -> ServerLintTypes.result t
@@ -428,9 +543,6 @@ type _ t =
   | CST_SEARCH : cst_search_input -> (Hh_json.json, string) result t
   | NO_PRECHECKED_FILES : unit t
   | GEN_PREFETCH_DIR : string -> unit t
-  | GEN_REMOTE_DECLS_FULL : unit t
-  | GEN_REMOTE_DECLS_INCREMENTAL : unit t
-  | GEN_SHALLOW_DECLS_DIR : string -> unit t
   | FUN_DEPS_BATCH : (string * int * int) list -> string list t
   | LIST_FILES_WITH_ERRORS : string list t
   | FILE_DEPENDENTS : string list -> string list t

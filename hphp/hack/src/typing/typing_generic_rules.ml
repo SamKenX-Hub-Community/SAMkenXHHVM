@@ -103,7 +103,7 @@ let union_errs env errs =
    and results indicating type errors for both and index expression and
    the rhs expression of an assignment *)
 let apply_rules_with_array_index_value_ty_mismatches
-    ?(ignore_type_structure = false) env ty f =
+    ?(ignore_type_structure = false) ?(preserve_supportdyn = true) env ty f =
   let rec iter ~is_nonnull env ty =
     let (env, ety) = Env.expand_type env ty in
     (* This is the base case: not a union or intersection or bounded abstract type *)
@@ -117,7 +117,7 @@ let apply_rules_with_array_index_value_ty_mismatches
       let (is_nonnull, ty_err_opt) =
         Typing_solver.is_sub_type env ty (Typing_make_type.nonnull Reason.none)
       in
-      Option.iter ~f:Errors.add_typing_error ty_err_opt;
+      Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
       let (env, res) =
         Typing_utils.run_on_intersection env ~f:(iter ~is_nonnull) tyl
       in
@@ -139,7 +139,12 @@ let apply_rules_with_array_index_value_ty_mismatches
       let (env, (ty, arr_errs, key_errs, val_errs)) =
         iter ~is_nonnull env bound
       in
-      let (env, ty) = Typing_utils.make_supportdyn r env ty in
+      let (env, ty) =
+        if preserve_supportdyn then
+          Typing_utils.make_supportdyn r env ty
+        else
+          (env, ty)
+      in
       (env, (ty, arr_errs, key_errs, val_errs))
     (* For unions, just apply rule of components and compute union of result *)
     | (r, Tunion tyl) ->

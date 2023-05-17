@@ -38,6 +38,7 @@
 #include "hphp/util/process.h"
 #include "hphp/util/stack-trace.h"
 
+#include <fcntl.h>
 #include <signal.h>
 #ifdef __x86_64__
 #include <ucontext.h>
@@ -84,10 +85,10 @@ static uintptr_t s_jitprof_end;
 static uintptr_t s_stacktrace_start;
 static uintptr_t s_stacktrace_end;
 
-static const char* s_newBlacklist[] = {
+static const char* s_newIgnorelist[] = {
   "_ZN4HPHP16StackTraceNoHeap",
   "_ZN5folly10symbolizer17getStackTraceSafe",
-  "_ZN4HPHPL10bt_handlerEi",
+  "_ZN4HPHP10bt_handlerEi",
   "_ZN5folly6fibers12_GLOBAL__N_120sigsegvSignalHandlerEiP9siginfo_tPv",
   "killpg"
 };
@@ -129,6 +130,9 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
   static int sig = sigin;
   static Optional<StackTraceNoHeap> st;
   static void* sig_addr = info ? info->si_addr : nullptr;
+
+  static FILE* stacktraceFile = nullptr;
+
 #ifdef __x86_64__
   static uintptr_t sig_rip = ((ucontext_t*) args)->uc_mcontext.gregs[REG_RIP];
 #endif
@@ -166,8 +170,8 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
 
       // Turn on stack traces for coredumps
       StackTrace::Enabled = true;
-      StackTrace::FunctionBlacklist = s_newBlacklist;
-      StackTrace::FunctionBlacklistCount = 5;
+      StackTrace::FunctionIgnorelist = s_newIgnorelist;
+      StackTrace::FunctionIgnorelistCount = 5;
       st.emplace();
       // fall through
     case CrashReportStage::ReportHeader:
@@ -339,6 +343,19 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
 
       Logger::FError("Core dumped: {}", strsignal(sig));
       Logger::FError("Stack trace in {}", RuntimeOption::StackTraceFilename);
+
+      if (RO::EvalDumpStacktraceToErrorLogOnCrash) {
+        stacktraceFile = fopen(RuntimeOption::StackTraceFilename.c_str(), "r");
+        if (stacktraceFile) {
+          char line[256];
+          while (fgets(line, sizeof(line), stacktraceFile)) {
+            // Strip the newline, or just truncate the line if it's larger than
+            // 256 characters.
+            line[MIN(strcspn(line, "\n"), 255)] = 0;
+            Logger::FError("{}", line);
+          }
+        }
+      }
 
       // Flush whatever access logs are still pending
       Logger::FlushAll();

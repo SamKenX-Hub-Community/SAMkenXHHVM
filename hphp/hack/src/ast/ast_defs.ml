@@ -7,6 +7,10 @@
  *
  *)
 
+(* We could open Hh_prelude here, but then we get errors about using ==,
+   which some visitor below uses. *)
+open Base.Export
+
 (*****************************************************************************)
 (* The Abstract Syntax Tree *)
 (*****************************************************************************)
@@ -40,8 +44,6 @@ and constraint_kind =
   | Constraint_eq
   | Constraint_super
 [@@transform.opaque]
-
-and reified = bool
 
 and abstraction =
   | Concrete
@@ -169,6 +171,7 @@ and typedef_visibility =
   | Transparent
   | Opaque
   | OpaqueModule
+  | CaseType
 [@@transform.opaque]
 
 and reify_kind =
@@ -179,6 +182,7 @@ and reify_kind =
 [@@deriving
   show { with_path = false },
     eq,
+    hash,
     ord,
     transform ~restart:(`Disallow `Encode_as_result),
     visitors
@@ -366,4 +370,4 @@ module ShapeMap = struct
     make_pp pp_shape_field_name pp_val fmt map
 end
 
-module ShapeSet = Set.Make (ShapeField)
+module ShapeSet = Caml.Set.Make (ShapeField)

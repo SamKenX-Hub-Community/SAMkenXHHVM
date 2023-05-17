@@ -42,7 +42,8 @@ module Common_argspecs = struct
     ( "--from",
       Arg.Set_string value_ref,
       " so we know who's calling hh_client - e.g. nuclide, vim, emacs, vscode"
-    )
+      (* This setting also controls whether spinner is displayed, and whether
+         clientCheckStatus.ml uses error-formatting. *) )
 
   let no_prechecked value_ref =
     ( "--no-prechecked",
@@ -115,7 +116,7 @@ let parse_without_command options usage command =
  * if you are making significant changes you need to update the manpage as
  * well. Experimental or otherwise volatile options need not be documented
  * there, but keep what's there up to date please. *)
-let parse_check_args cmd =
+let parse_check_args cmd ~from_default =
   (* arg parse output refs *)
   let autostart = ref true in
   let config = ref [] in
@@ -123,7 +124,7 @@ let parse_check_args cmd =
   let custom_hhi_path = ref None in
   let error_format = ref Errors.Highlighted in
   let force_dormant_start = ref false in
-  let from = ref "" in
+  let from = ref from_default in
   let show_spinner = ref None in
   let gen_saved_ignore_type_errors = ref false in
   let ignore_hh_version = ref false in
@@ -144,7 +145,7 @@ let parse_check_args cmd =
   let prefer_stdout = ref false in
   let prechecked = ref None in
   let mini_state : string option ref = ref None in
-  let refactor_before = ref "" in
+  let rename_before = ref "" in
   let remote = ref false in
   let sort_results = ref false in
   let stdin_name = ref None in
@@ -213,16 +214,38 @@ let parse_check_args cmd =
       ( "--autostart-server",
         Arg.Bool (( := ) autostart),
         " automatically start hh_server if it's not running (default: true)" );
-      ( "--color",
-        Arg.String (fun x -> set_mode (MODE_COLORING x)),
-        " (mode) pretty prints the file content showing what is checked (give '-' for stdin)"
-      );
-      ("--colour", Arg.String (fun x -> set_mode (MODE_COLORING x)), " ");
+      ( "--codemod-sdt",
+        (let path_to_jsonl = ref "" in
+         let log_remotely = ref false in
+         let tag = ref "" in
+         Arg.Tuple
+           [
+             Arg.String (( := ) path_to_jsonl);
+             Arg.Bool (( := ) log_remotely);
+             (* arbitrary description used to distinguish this run *)
+             Arg.String (( := ) tag);
+             Arg.String
+               (fun raw_strategy ->
+                 let strategy =
+                   match raw_strategy with
+                   | "cumulative-groups" -> `CodemodSdtCumulative
+                   | "independent-groups" -> `CodemodSdtIndependent
+                   | s ->
+                     raise
+                     @@ Arg.Bad
+                          (Format.sprintf "invalid --codemod-sdt mode: %s" s)
+                 in
+                 set_mode
+                 @@ MODE_CODEMOD_SDT
+                      {
+                        csdt_path_to_jsonl = !path_to_jsonl;
+                        csdt_strategy = strategy;
+                        csdt_log_remotely = !log_remotely;
+                        csdt_tag = !tag;
+                      });
+           ]),
+        "apply codemod for adding <<__NoAutoDynamic>>" );
       Common_argspecs.config config;
-      ( "--coverage",
-        Arg.String (fun x -> set_mode (MODE_COVERAGE x)),
-        " (mode) calculates the extent of typing of a given file or directory"
-      );
       ( "--create-checkpoint",
         Arg.String (fun x -> set_mode (MODE_CREATE_CHECKPOINT x)),
         (* Create a checkpoint which can be used to retrieve changed files later *)
@@ -375,18 +398,6 @@ let parse_check_args cmd =
         Arg.String (fun x -> set_mode (MODE_GEN_PREFETCH_DIR x)),
         " generate a directory of decls and typecheck dependencies to use for prefetching"
         ^ " Usage: --gen-prefetch-dir ~/prefetched-dir" );
-      ( "--gen-remote-decls-full",
-        Arg.Unit (fun () -> set_mode MODE_GEN_REMOTE_DECLS_FULL),
-        " generate a directory of decls and typecheck dependencies to use for prefetching"
-        ^ " Usage: --gen-remote-decls-full" );
-      ( "--gen-remote-decls-incremental",
-        Arg.Unit (fun () -> set_mode MODE_GEN_REMOTE_DECLS_INCREMENTAL),
-        " generate a directory of decls and typecheck dependencies to use for prefetching"
-        ^ " Usage: --gen-remote-decls-incremental" );
-      ( "--gen-shallow-decls-dir",
-        Arg.String (fun x -> set_mode (MODE_GEN_SHALLOW_DECLS_DIR x)),
-        " generate a directory of decls and typecheck dependencies to use for prefetching"
-        ^ " Usage: --gen-shallow-decls-dir <target_dir>" );
       ( "--gen-saved-ignore-type-errors",
         Arg.Set gen_saved_ignore_type_errors,
         " generate a saved state even if there are type errors (default: false)."
@@ -408,6 +419,10 @@ let parse_check_args cmd =
       ( "--ide-find-refs",
         Arg.String (fun x -> set_mode (MODE_IDE_FIND_REFS x)),
         "" );
+      ( "--ide-find-refs-by-symbol",
+        Arg.String (fun x -> set_mode (MODE_IDE_FIND_REFS_BY_SYMBOL x)),
+        "(mode) similar to IDE_FIND_REFS, but takes a symbol name rather than position"
+      );
       ( "--ide-go-to-impl",
         Arg.String (fun x -> set_mode (MODE_IDE_GO_TO_IMPL x)),
         "" );
@@ -456,9 +471,13 @@ let parse_check_args cmd =
         ^ "[\"merge\", \"solve\", \"export-json\", \"rewrite\"] files..." );
       ("--ide-outline", Arg.Unit (fun () -> set_mode MODE_OUTLINE2), "");
       ( "--ide-refactor",
-        Arg.String (fun x -> set_mode (MODE_IDE_REFACTOR x)),
+        Arg.String (fun x -> set_mode (MODE_IDE_RENAME x)),
         " (mode) rename a symbol, Usage: --ide-refactor "
         ^ " <filename>:<line number>:<col number>:<new name>" );
+      ( "--ide-rename-by-symbol",
+        Arg.String (fun x -> set_mode (MODE_IDE_RENAME_BY_SYMBOL x)),
+        " (mode) like --ide-refactor, but takes a Find_refs.action. Usage: "
+        ^ " <new name>|<comma_separated_action>" );
       ( "--identify-function",
         Arg.String (fun x -> set_mode (MODE_IDENTIFY_SYMBOL1 x)),
         " (mode) print the full function name at the position "
@@ -586,28 +605,28 @@ let parse_check_args cmd =
         Arg.Unit (fun () -> config := ("profile_log", "true") :: !config),
         " enable profile logging" );
       ( "--refactor-sound-dynamic",
-        (let refactor_mode = ref Unspecified in
+        (let rename_mode = ref Unspecified in
          Arg.Tuple
            [
              Arg.Symbol
                ( ["Class"; "Function"],
-                 (fun x -> refactor_mode := string_to_refactor_mode x) );
+                 (fun x -> rename_mode := string_to_rename_mode x) );
              Arg.String
                (fun x ->
-                 set_mode @@ MODE_REFACTOR_SOUND_DYNAMIC (!refactor_mode, x));
+                 set_mode @@ MODE_RENAME_SOUND_DYNAMIC (!rename_mode, x));
            ]),
         "" );
       ( "--refactor",
-        (let refactor_mode = ref Unspecified in
+        (let rename_mode = ref Unspecified in
          Arg.Tuple
            [
              Arg.Symbol
                ( ["Class"; "Function"; "Method"],
-                 (fun x -> refactor_mode := string_to_refactor_mode x) );
-             Arg.String (fun x -> refactor_before := x);
+                 (fun x -> rename_mode := string_to_rename_mode x) );
+             Arg.String (fun x -> rename_before := x);
              Arg.String
                (fun x ->
-                 set_mode (MODE_REFACTOR (!refactor_mode, !refactor_before, x)));
+                 set_mode (MODE_RENAME (!rename_mode, !rename_before, x)));
            ]),
         " (mode) rename a symbol, Usage: --refactor "
         ^ "[\"Class\", \"Function\", \"Method\"] <Current Name> <New Name>" );
@@ -819,14 +838,8 @@ let parse_check_args cmd =
     | (MODE_LINT, _)
     | (MODE_CONCATENATE_ALL, _)
     | (MODE_FILE_LEVEL_DEPENDENCIES, _) ->
-      (Wwwroot.get None, args)
-    | (_, []) -> (Wwwroot.get None, [])
-    | (_, [x]) -> (Wwwroot.get (Some x), [])
-    | (_, _) ->
-      Printf.fprintf
-        stderr
-        "Error: please provide at most one www directory\n%!";
-      exit 1
+      (Wwwroot.interpret_command_line_root_parameter [], args)
+    | (_, _) -> (Wwwroot.interpret_command_line_root_parameter args, [])
   in
 
   if !lock_file then (
@@ -865,10 +878,8 @@ let parse_check_args cmd =
     exit 0
   );
 
-  let () =
-    if String.equal !from "emacs" then
-      Printf.fprintf stdout "-*- mode: compilation -*-\n%!"
-  in
+  if String.equal !from "emacs" then
+    Printf.fprintf stdout "-*- mode: compilation -*-\n%!";
   {
     autostart = !autostart;
     config = !config;
@@ -877,7 +888,10 @@ let parse_check_args cmd =
     error_format = !error_format;
     force_dormant_start = !force_dormant_start;
     from = !from;
-    show_spinner = Option.value ~default:(String.equal !from "") !show_spinner;
+    show_spinner =
+      Option.value
+        ~default:(String.is_empty !from || String.equal !from "[sh]")
+        !show_spinner;
     gen_saved_ignore_type_errors = !gen_saved_ignore_type_errors;
     ignore_hh_version = !ignore_hh_version;
     saved_state_ignore_hhconfig = !saved_state_ignore_hhconfig;
@@ -907,7 +921,7 @@ let parse_check_args cmd =
     desc = !desc;
   }
 
-let parse_start_env command =
+let parse_start_env command ~from_default =
   let usage =
     Printf.sprintf
       "Usage: %s %s [OPTION]... [WWW-ROOT]\n%s a Hack server\n\nWWW-ROOT is assumed to be current directory if unspecified\n"
@@ -922,7 +936,7 @@ let parse_start_env command =
   let saved_state_ignore_hhconfig = ref false in
   let prechecked = ref None in
   let mini_state = ref None in
-  let from = ref "" in
+  let from = ref from_default in
   let config = ref [] in
   let custom_hhi_path = ref None in
   let custom_telemetry_data = ref [] in
@@ -960,16 +974,7 @@ let parse_start_env command =
     ]
   in
   let args = parse_without_command options usage command in
-  let root =
-    match args with
-    | [] -> Wwwroot.get None
-    | [x] -> Wwwroot.get (Some x)
-    | _ ->
-      Printf.fprintf
-        stderr
-        "Error: please provide at most one www directory\n%!";
-      exit 1
-  in
+  let root = Wwwroot.interpret_command_line_root_parameter args in
   {
     ClientStart.config = !config;
     custom_hhi_path = !custom_hhi_path;
@@ -990,32 +995,26 @@ let parse_start_env command =
     allow_non_opt_build = !allow_non_opt_build;
   }
 
-let parse_saved_state_project_metadata_args () : command =
-  CSavedStateProjectMetadata (parse_check_args CKSavedStateProjectMetadata)
+let parse_saved_state_project_metadata_args ~from_default : command =
+  CSavedStateProjectMetadata
+    (parse_check_args CKSavedStateProjectMetadata ~from_default)
 
-let parse_start_args () = CStart (parse_start_env "start")
+let parse_start_args ~from_default =
+  CStart (parse_start_env "start" ~from_default)
 
-let parse_restart_args () = CRestart (parse_start_env "restart")
+let parse_restart_args ~from_default =
+  CRestart (parse_start_env "restart" ~from_default)
 
-let parse_stop_args () =
+let parse_stop_args ~from_default =
   let usage =
     Printf.sprintf
       "Usage: %s stop [OPTION]... [WWW-ROOT]\nStop a hack server\n\nWWW-ROOT is assumed to be current directory if unspecified\n"
       Sys.argv.(0)
   in
-  let from = ref "" in
+  let from = ref from_default in
   let options = [Common_argspecs.from from] in
   let args = parse_without_command options usage "stop" in
-  let root =
-    match args with
-    | [] -> Wwwroot.get None
-    | [x] -> Wwwroot.get (Some x)
-    | _ ->
-      Printf.fprintf
-        stderr
-        "Error: please provide at most one www directory\n%!";
-      exit 1
-  in
+  let root = Wwwroot.interpret_command_line_root_parameter args in
   CStop { ClientStop.root; from = !from }
 
 let parse_lsp_args () =
@@ -1082,14 +1081,7 @@ let parse_rage_args () =
     ]
   in
   let args = parse_without_command options usage "rage" in
-  let root =
-    match args with
-    | [] -> Wwwroot.get None
-    | [x] -> Wwwroot.get (Some x)
-    | _ ->
-      Printf.printf "%s\n" usage;
-      exit 2
-  in
+  let root = Wwwroot.interpret_command_line_root_parameter args in
   (* hh_client normally handles Ctrl+C by printing an exception-stack.
      But for us, in an interactive prompt, Ctrl+C is an unexceptional way to quit. *)
   Sys_utils.set_signal Sys.sigint Sys.Signal_default;
@@ -1227,10 +1219,10 @@ invocations of `hh` faster.|}
   let args = parse_without_command options usage "download-saved-state" in
   let root =
     match args with
-    | [x] -> Wwwroot.get (Some x)
-    | _ ->
+    | [] ->
       print_endline usage;
       exit 2
+    | _ -> Wwwroot.interpret_command_line_root_parameter args
   in
   let from =
     match !from with
@@ -1245,7 +1237,7 @@ invocations of `hh` faster.|}
       Printf.printf "The '--type' option is required. %s\n" valid_types_message;
       exit 2
     | Some "naming-and-dep-table" ->
-      ClientDownloadSavedState.Naming_and_dep_table { naming_sqlite = false }
+      ClientDownloadSavedState.Naming_and_dep_table
     | Some "naming-table" -> ClientDownloadSavedState.Naming_table
     | Some saved_state_type ->
       Printf.printf
@@ -1264,17 +1256,18 @@ invocations of `hh` faster.|}
       replay_token = !replay_token;
     }
 
-let parse_args () : command =
+let parse_args ~(from_default : string) : command =
   match parse_command () with
   | CKNone
   | CKCheck ->
-    CCheck (parse_check_args CKCheck)
-  | CKStart -> parse_start_args ()
-  | CKStop -> parse_stop_args ()
-  | CKRestart -> parse_restart_args ()
+    CCheck (parse_check_args CKCheck ~from_default)
+  | CKStart -> parse_start_args ~from_default
+  | CKStop -> parse_stop_args ~from_default
+  | CKRestart -> parse_restart_args ~from_default
   | CKLsp -> parse_lsp_args ()
   | CKRage -> parse_rage_args ()
-  | CKSavedStateProjectMetadata -> parse_saved_state_project_metadata_args ()
+  | CKSavedStateProjectMetadata ->
+    parse_saved_state_project_metadata_args ~from_default
   | CKDownloadSavedState -> parse_download_saved_state_args ()
 
 let root = function
@@ -1299,3 +1292,14 @@ let config = function
   | CDownloadSavedState _
   | CRage _ ->
     None
+
+let from = function
+  | CCheck { ClientEnv.from; _ }
+  | CStart { ClientStart.from; _ }
+  | CRestart { ClientStart.from; _ }
+  | CLsp { ClientLsp.from; _ }
+  | CSavedStateProjectMetadata { ClientEnv.from; _ }
+  | CStop { ClientStop.from; _ }
+  | CDownloadSavedState { ClientDownloadSavedState.from; _ }
+  | CRage { ClientRage.from; _ } ->
+    from

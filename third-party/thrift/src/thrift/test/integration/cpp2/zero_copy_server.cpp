@@ -34,6 +34,9 @@ DEFINE_int32(read_mode, -1, "readMode - ReadBuffer = 0, ReadVec = 1");
 DEFINE_int32(read_vec_block_size, 64 * 1024, "readVecBlockSize");
 DEFINE_int32(read_vec_read_size, 32 * 1024, "readVecReadSize");
 
+DEFINE_int32(zc_rx_num_entries, -1024, "ZC RX num entries");
+DEFINE_int32(zc_rx_entry_size, 128 * 1024, "ZC RX entry size");
+
 using namespace thrift::zerocopy::cpp2;
 
 namespace {
@@ -115,6 +118,17 @@ int main(int argc, char* argv[]) {
 
   LOG(INFO) << "Running on port " << FLAGS_port;
 
+  std::unique_ptr<folly::AsyncReader::ReadCallback::ZeroCopyMemStore>
+      zeroCopyMemStore;
+
+  if ((FLAGS_zc_rx_num_entries) > 0 && (FLAGS_zc_rx_entry_size > 0)) {
+    zeroCopyMemStore = folly::AsyncSocket::createDefaultZeroCopyMemStore(
+        FLAGS_zc_rx_num_entries, FLAGS_zc_rx_entry_size);
+  }
+
+  LOG(INFO) << "zeroCopyMemStore(" << FLAGS_zc_rx_num_entries << ","
+            << FLAGS_zc_rx_entry_size << ") = " << zeroCopyMemStore.get();
+
   auto handler = std::make_shared<ZeroCopyServiceImpl>();
 
   auto server = std::make_shared<apache::thrift::ThriftServer>();
@@ -142,10 +156,7 @@ int main(int argc, char* argv[]) {
         folly::AsyncReader::ReadCallback::ReadMode::ReadVec;
   }
 
-  auto config = server->getFizzConfig();
-  config.transportOptions = transportOptions;
-
-  server->setFizzConfig(config);
+  transportOptions.zeroCopyMemStore = zeroCopyMemStore.get();
 
   if (FLAGS_threshold > 0) {
     LOG(INFO) << "Adding zerocopy enable func with threshold = "
@@ -163,8 +174,11 @@ int main(int argc, char* argv[]) {
 
   facebook::services::ServiceFramework instance("ZeroCopyServer");
 
+  facebook::services::ServiceFramework::ServerOptions options;
+  options.transportOptions = transportOptions;
+
   // TODO(T123377436) CodeFrameworks Migration - Binary Contract
-  instance.addPrimaryThriftService(server, handler.get());
+  instance.addPrimaryThriftService(server, handler.get(), options);
   instance.go();
 
   return 0;

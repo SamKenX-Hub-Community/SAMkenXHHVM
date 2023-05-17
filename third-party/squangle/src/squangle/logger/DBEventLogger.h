@@ -107,11 +107,13 @@ struct CommonLoggingData {
       OperationType op,
       Duration duration,
       std::optional<Duration> timeout,
-      Duration max_thread_block_time = Duration(0))
+      Duration max_thread_block_time = Duration(0),
+      Duration total_thread_block_time = Duration(0))
       : operation_type(op),
         operation_duration(duration),
         operation_timeout(timeout),
-        max_thread_block_time(max_thread_block_time) {}
+        max_thread_block_time(max_thread_block_time),
+        total_thread_block_time(total_thread_block_time) {}
   OperationType operation_type;
   // How long the single operation took
   Duration operation_duration;
@@ -120,6 +122,7 @@ struct CommonLoggingData {
   // The most time spent executing code in a single iteration
   // of socketActionable
   Duration max_thread_block_time;
+  Duration total_thread_block_time;
 };
 
 struct QueryLoggingData : CommonLoggingData {
@@ -137,8 +140,15 @@ struct QueryLoggingData : CommonLoggingData {
           std::unordered_map<std::string, std::string>(),
       std::unordered_map<std::string, std::string> responseAttributes =
           std::unordered_map<std::string, std::string>(),
-      Duration maxThreadBlockTime = Duration(0))
-      : CommonLoggingData(op, duration, timeout, maxThreadBlockTime),
+      Duration maxThreadBlockTime = Duration(0),
+      Duration totalThreadBlockTime = Duration(0),
+      bool wasSlow = false)
+      : CommonLoggingData(
+            op,
+            duration,
+            timeout,
+            maxThreadBlockTime,
+            totalThreadBlockTime),
         queries_executed(queries),
         query(queryString),
         rows_received(rows),
@@ -146,7 +156,8 @@ struct QueryLoggingData : CommonLoggingData {
         no_index_used(noIndexUsed),
         use_checksum(useChecksum),
         query_attributes(queryAttributes),
-        response_attributes(std::move(responseAttributes)) {}
+        response_attributes(std::move(responseAttributes)),
+        was_slow(wasSlow) {}
   int queries_executed;
   std::string query;
   int rows_received;
@@ -155,6 +166,7 @@ struct QueryLoggingData : CommonLoggingData {
   bool use_checksum;
   std::unordered_map<std::string, std::string> query_attributes;
   std::unordered_map<std::string, std::string> response_attributes;
+  bool was_slow;
 };
 
 // Base class for logging events of db client apis. This should be used as an

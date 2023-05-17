@@ -4,10 +4,10 @@
 package java // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  scope "thrift/annotation/scope"
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    scope "thrift/annotation/scope"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = scope.GoUnusedProtection__
@@ -15,6 +15,305 @@ var _ = scope.GoUnusedProtection__
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
 var _ = thrift.ZERO
+
+
+type Mutable struct {
+}
+// Compile time interface enforcer
+var _ thrift.Struct = &Mutable{}
+
+func NewMutable() *Mutable {
+    return (&Mutable{})
+}
+
+func (x *Mutable) String() string {
+    return fmt.Sprintf("%+v", x)
+}
+
+
+// Deprecated: Use Mutable.Set* methods instead or set the fields directly.
+type MutableBuilder struct {
+    obj *Mutable
+}
+
+func NewMutableBuilder() *MutableBuilder {
+    return &MutableBuilder{
+        obj: NewMutable(),
+    }
+}
+
+func (x *MutableBuilder) Emit() *Mutable {
+    var objCopy Mutable = *x.obj
+    return &objCopy
+}
+
+func (x *Mutable) Write(p thrift.Protocol) error {
+    if err := p.WriteStructBegin("Mutable"); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
+    }
+
+    if err := p.WriteFieldStop(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field stop error: ", x), err)
+    }
+
+    if err := p.WriteStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *Mutable) Read(p thrift.Protocol) error {
+    if _, err := p.ReadStructBegin(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
+    }
+
+    for {
+        _, typ, id, err := p.ReadFieldBegin()
+        if err != nil {
+            return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", x, id), err)
+        }
+
+        if typ == thrift.STOP {
+            break;
+        }
+
+        switch id {
+        default:
+            if err := p.Skip(typ); err != nil {
+                return err
+            }
+        }
+
+        if err := p.ReadFieldEnd(); err != nil {
+            return err
+        }
+    }
+
+    if err := p.ReadStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", x), err)
+    }
+
+    return nil
+}
+
+
+type Annotation struct {
+    JavaAnnotation string `thrift:"java_annotation,1" json:"java_annotation" db:"java_annotation"`
+}
+// Compile time interface enforcer
+var _ thrift.Struct = &Annotation{}
+
+func NewAnnotation() *Annotation {
+    return (&Annotation{}).
+        SetJavaAnnotationNonCompat("")
+}
+
+func (x *Annotation) GetJavaAnnotationNonCompat() string {
+    return x.JavaAnnotation
+}
+
+func (x *Annotation) GetJavaAnnotation() string {
+    return x.JavaAnnotation
+}
+
+func (x *Annotation) SetJavaAnnotationNonCompat(value string) *Annotation {
+    x.JavaAnnotation = value
+    return x
+}
+
+func (x *Annotation) SetJavaAnnotation(value string) *Annotation {
+    x.JavaAnnotation = value
+    return x
+}
+
+func (x *Annotation) writeField1(p thrift.Protocol) error {  // JavaAnnotation
+    if err := p.WriteFieldBegin("java_annotation", thrift.STRING, 1); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetJavaAnnotationNonCompat()
+    if err := p.WriteString(item); err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *Annotation) readField1(p thrift.Protocol) error {  // JavaAnnotation
+    result, err := p.ReadString()
+if err != nil {
+    return err
+}
+
+    x.SetJavaAnnotationNonCompat(result)
+    return nil
+}
+
+func (x *Annotation) String() string {
+    return fmt.Sprintf("%+v", x)
+}
+
+
+// Deprecated: Use Annotation.Set* methods instead or set the fields directly.
+type AnnotationBuilder struct {
+    obj *Annotation
+}
+
+func NewAnnotationBuilder() *AnnotationBuilder {
+    return &AnnotationBuilder{
+        obj: NewAnnotation(),
+    }
+}
+
+func (x *AnnotationBuilder) JavaAnnotation(value string) *AnnotationBuilder {
+    x.obj.JavaAnnotation = value
+    return x
+}
+
+func (x *AnnotationBuilder) Emit() *Annotation {
+    var objCopy Annotation = *x.obj
+    return &objCopy
+}
+
+func (x *Annotation) Write(p thrift.Protocol) error {
+    if err := p.WriteStructBegin("Annotation"); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
+    }
+
+    if err := x.writeField1(p); err != nil {
+        return err
+    }
+
+    if err := p.WriteFieldStop(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field stop error: ", x), err)
+    }
+
+    if err := p.WriteStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *Annotation) Read(p thrift.Protocol) error {
+    if _, err := p.ReadStructBegin(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
+    }
+
+    for {
+        _, typ, id, err := p.ReadFieldBegin()
+        if err != nil {
+            return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", x, id), err)
+        }
+
+        if typ == thrift.STOP {
+            break;
+        }
+
+        switch id {
+        case 1:  // java_annotation
+            if err := x.readField1(p); err != nil {
+                return err
+            }
+        default:
+            if err := p.Skip(typ); err != nil {
+                return err
+            }
+        }
+
+        if err := p.ReadFieldEnd(); err != nil {
+            return err
+        }
+    }
+
+    if err := p.ReadStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", x), err)
+    }
+
+    return nil
+}
+
+
+type BinaryString struct {
+}
+// Compile time interface enforcer
+var _ thrift.Struct = &BinaryString{}
+
+func NewBinaryString() *BinaryString {
+    return (&BinaryString{})
+}
+
+func (x *BinaryString) String() string {
+    return fmt.Sprintf("%+v", x)
+}
+
+
+// Deprecated: Use BinaryString.Set* methods instead or set the fields directly.
+type BinaryStringBuilder struct {
+    obj *BinaryString
+}
+
+func NewBinaryStringBuilder() *BinaryStringBuilder {
+    return &BinaryStringBuilder{
+        obj: NewBinaryString(),
+    }
+}
+
+func (x *BinaryStringBuilder) Emit() *BinaryString {
+    var objCopy BinaryString = *x.obj
+    return &objCopy
+}
+
+func (x *BinaryString) Write(p thrift.Protocol) error {
+    if err := p.WriteStructBegin("BinaryString"); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
+    }
+
+    if err := p.WriteFieldStop(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field stop error: ", x), err)
+    }
+
+    if err := p.WriteStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *BinaryString) Read(p thrift.Protocol) error {
+    if _, err := p.ReadStructBegin(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
+    }
+
+    for {
+        _, typ, id, err := p.ReadFieldBegin()
+        if err != nil {
+            return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", x, id), err)
+        }
+
+        if typ == thrift.STOP {
+            break;
+        }
+
+        switch id {
+        default:
+            if err := p.Skip(typ); err != nil {
+                return err
+            }
+        }
+
+        if err := p.ReadFieldEnd(); err != nil {
+            return err
+        }
+    }
+
+    if err := p.ReadStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", x), err)
+    }
+
+    return nil
+}
 
 
 type Adapter struct {
@@ -25,7 +324,9 @@ type Adapter struct {
 var _ thrift.Struct = &Adapter{}
 
 func NewAdapter() *Adapter {
-    return (&Adapter{})
+    return (&Adapter{}).
+        SetAdapterClassNameNonCompat("").
+        SetTypeClassNameNonCompat("")
 }
 
 func (x *Adapter) GetAdapterClassNameNonCompat() string {
@@ -44,8 +345,18 @@ func (x *Adapter) GetTypeClassName() string {
     return x.TypeClassName
 }
 
+func (x *Adapter) SetAdapterClassNameNonCompat(value string) *Adapter {
+    x.AdapterClassName = value
+    return x
+}
+
 func (x *Adapter) SetAdapterClassName(value string) *Adapter {
     x.AdapterClassName = value
+    return x
+}
+
+func (x *Adapter) SetTypeClassNameNonCompat(value string) *Adapter {
+    x.TypeClassName = value
     return x
 }
 
@@ -53,8 +364,6 @@ func (x *Adapter) SetTypeClassName(value string) *Adapter {
     x.TypeClassName = value
     return x
 }
-
-
 
 func (x *Adapter) writeField1(p thrift.Protocol) error {  // AdapterClassName
     if err := p.WriteFieldBegin("adapterClassName", thrift.STRING, 1); err != nil {
@@ -94,7 +403,7 @@ if err != nil {
     return err
 }
 
-    x.SetAdapterClassName(result)
+    x.SetAdapterClassNameNonCompat(result)
     return nil
 }
 
@@ -104,7 +413,7 @@ if err != nil {
     return err
 }
 
-    x.SetTypeClassName(result)
+    x.SetTypeClassNameNonCompat(result)
     return nil
 }
 
@@ -138,6 +447,7 @@ func (x *AdapterBuilder) Emit() *Adapter {
     var objCopy Adapter = *x.obj
     return &objCopy
 }
+
 func (x *Adapter) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Adapter"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -203,6 +513,7 @@ func (x *Adapter) Read(p thrift.Protocol) error {
     return nil
 }
 
+
 type Wrapper struct {
     WrapperClassName string `thrift:"wrapperClassName,1" json:"wrapperClassName" db:"wrapperClassName"`
     TypeClassName string `thrift:"typeClassName,2" json:"typeClassName" db:"typeClassName"`
@@ -211,7 +522,9 @@ type Wrapper struct {
 var _ thrift.Struct = &Wrapper{}
 
 func NewWrapper() *Wrapper {
-    return (&Wrapper{})
+    return (&Wrapper{}).
+        SetWrapperClassNameNonCompat("").
+        SetTypeClassNameNonCompat("")
 }
 
 func (x *Wrapper) GetWrapperClassNameNonCompat() string {
@@ -230,8 +543,18 @@ func (x *Wrapper) GetTypeClassName() string {
     return x.TypeClassName
 }
 
+func (x *Wrapper) SetWrapperClassNameNonCompat(value string) *Wrapper {
+    x.WrapperClassName = value
+    return x
+}
+
 func (x *Wrapper) SetWrapperClassName(value string) *Wrapper {
     x.WrapperClassName = value
+    return x
+}
+
+func (x *Wrapper) SetTypeClassNameNonCompat(value string) *Wrapper {
+    x.TypeClassName = value
     return x
 }
 
@@ -239,8 +562,6 @@ func (x *Wrapper) SetTypeClassName(value string) *Wrapper {
     x.TypeClassName = value
     return x
 }
-
-
 
 func (x *Wrapper) writeField1(p thrift.Protocol) error {  // WrapperClassName
     if err := p.WriteFieldBegin("wrapperClassName", thrift.STRING, 1); err != nil {
@@ -280,7 +601,7 @@ if err != nil {
     return err
 }
 
-    x.SetWrapperClassName(result)
+    x.SetWrapperClassNameNonCompat(result)
     return nil
 }
 
@@ -290,7 +611,7 @@ if err != nil {
     return err
 }
 
-    x.SetTypeClassName(result)
+    x.SetTypeClassNameNonCompat(result)
     return nil
 }
 
@@ -324,6 +645,7 @@ func (x *WrapperBuilder) Emit() *Wrapper {
     var objCopy Wrapper = *x.obj
     return &objCopy
 }
+
 func (x *Wrapper) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("Wrapper"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -388,3 +710,4 @@ func (x *Wrapper) Read(p thrift.Protocol) error {
 
     return nil
 }
+

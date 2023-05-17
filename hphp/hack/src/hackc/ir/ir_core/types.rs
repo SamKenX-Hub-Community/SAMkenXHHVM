@@ -100,7 +100,7 @@ impl BaseType {
             BaseType::Arraykey => f.write_str("Arraykey"),
             BaseType::Bool => f.write_str("Bool"),
             BaseType::Class(cid) => {
-                write!(f, "Class(\"{}\")", strings.lookup_bstr(cid.id))
+                write!(f, "Class(\"{}\")", cid.id.display(strings))
             }
             BaseType::Classname => f.write_str("Classname"),
             BaseType::Darray => f.write_str("Darray"),
@@ -173,6 +173,7 @@ impl EnforceableType {
             };
 
             check(TypeConstraintFlags::Nullable, "nullable")?;
+            check(TypeConstraintFlags::Nullable, "case_type")?;
             check(TypeConstraintFlags::ExtendedHint, "extended_hint")?;
             check(TypeConstraintFlags::TypeVar, "type_var")?;
             check(TypeConstraintFlags::Soft, "soft")?;
@@ -189,6 +190,15 @@ impl Default for EnforceableType {
     fn default() -> Self {
         Self {
             ty: BaseType::None,
+            modifiers: TypeConstraintFlags::NoFlags,
+        }
+    }
+}
+
+impl From<BaseType> for EnforceableType {
+    fn from(ty: BaseType) -> Self {
+        EnforceableType {
+            ty,
             modifiers: TypeConstraintFlags::NoFlags,
         }
     }
@@ -230,7 +240,7 @@ impl TypeInfo {
     pub fn write(&self, f: &mut fmt::Formatter<'_>, strings: &StringInterner) -> fmt::Result {
         f.write_str("TypeInfo { user_type: ")?;
         if let Some(ut) = self.user_type {
-            write!(f, "\"{}\"", strings.lookup_bstr(ut))?;
+            write!(f, "\"{}\"", ut.display(strings))?;
         } else {
             f.write_str("none")?;
         }
@@ -254,6 +264,24 @@ impl TypeInfo {
         D {
             strings,
             self_: self,
+        }
+    }
+}
+
+impl From<EnforceableType> for TypeInfo {
+    fn from(enforced: EnforceableType) -> TypeInfo {
+        TypeInfo {
+            user_type: None,
+            enforced,
+        }
+    }
+}
+
+impl From<BaseType> for TypeInfo {
+    fn from(ty: BaseType) -> TypeInfo {
+        TypeInfo {
+            user_type: None,
+            enforced: ty.into(),
         }
     }
 }

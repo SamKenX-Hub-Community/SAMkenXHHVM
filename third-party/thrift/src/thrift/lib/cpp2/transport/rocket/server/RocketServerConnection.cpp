@@ -44,6 +44,7 @@
 #include <thrift/lib/cpp2/transport/rocket/RocketException.h>
 #include <thrift/lib/cpp2/transport/rocket/framing/Frames.h>
 #include <thrift/lib/cpp2/transport/rocket/framing/Util.h>
+#include <thrift/lib/cpp2/transport/rocket/server/RocketServerConnectionPlugins.h>
 #include <thrift/lib/cpp2/transport/rocket/server/RocketServerFrameContext.h>
 #include <thrift/lib/cpp2/transport/rocket/server/RocketServerHandler.h>
 #include <thrift/lib/cpp2/transport/rocket/server/RocketSinkClientCallback.h>
@@ -86,6 +87,9 @@ RocketServerConnection::RocketServerConnection(
       observerContainer_(this) {
   CHECK(socket_);
   CHECK(frameHandler_);
+
+  peerAddress_ = socket_->getPeerAddress();
+
   socket_->setReadCB(&parser_);
   if (rawSocket_) {
     rawSocket_->setBufferCallback(this);
@@ -150,16 +154,6 @@ void RocketServerConnection::flushWrites(
     std::unique_ptr<folly::IOBuf> writes, WriteBatchContext&& context) {
   DestructorGuard dg(this);
   DVLOG(10) << fmt::format("write: {} B", writes->computeChainDataLength());
-
-  if (auto observerContainer = getObserverContainer();
-      observerContainer && observerContainer->numObservers()) {
-    for (const auto& writeEvent : context.writeEvents) {
-      observerContainer->invokeInterfaceMethodAllObservers(
-          [&](auto observer, auto observed) {
-            observer->writeReady(observed, writeEvent);
-          });
-    }
-  }
 
   inflightWritesQueue_.push_back(std::move(context));
   socket_->writeChain(this, std::move(writes));
@@ -742,6 +736,24 @@ void RocketServerConnection::closeWhenIdle() {
       "Closing due to imminent shutdown"));
 }
 
+void RocketServerConnection::writeStarting() noexcept {
+  DestructorGuard dg(this);
+  DCHECK(!inflightWritesQueue_.empty());
+  auto& context = inflightWritesQueue_.front();
+  DCHECK(!context.writeEventsContext.startRawByteOffset.has_value());
+  context.writeEventsContext.startRawByteOffset = socket_->getRawBytesWritten();
+
+  if (auto observerContainer = getObserverContainer();
+      observerContainer && observerContainer->numObservers()) {
+    for (const auto& writeEvent : context.writeEvents) {
+      observerContainer->invokeInterfaceMethodAllObservers(
+          [&](auto observer, auto observed) {
+            observer->writeStarting(observed, writeEvent);
+          });
+    }
+  }
+}
+
 void RocketServerConnection::writeSuccess() noexcept {
   DestructorGuard dg(this);
   DCHECK(!inflightWritesQueue_.empty());
@@ -751,13 +763,16 @@ void RocketServerConnection::writeSuccess() noexcept {
        --processingCompleteCount) {
     frameHandler_->requestComplete();
   }
+  DCHECK(!context.writeEventsContext.endRawByteOffset.has_value());
+  context.writeEventsContext.endRawByteOffset = socket_->getRawBytesWritten();
 
   if (auto observerContainer = getObserverContainer();
       observerContainer && observerContainer->numObservers()) {
     for (const auto& writeEvent : context.writeEvents) {
       observerContainer->invokeInterfaceMethodAllObservers(
           [&](auto observer, auto observed) {
-            observer->writeSuccess(observed, writeEvent);
+            observer->writeSuccess(
+                observed, writeEvent, context.writeEventsContext);
           });
     }
   }
@@ -931,48 +946,44 @@ void RocketServerConnection::freeStream(
   }
 }
 
-void RocketServerConnection::applyDscpAndMarkToSocket(
+void RocketServerConnection::applyQosMarking(
     const RequestSetupMetadata& setupMetadata) {
   constexpr int32_t kMaxDscpValue = (1 << 6) - 1;
 
-  if (!socket_) {
+  if (!rawSocket_) {
     return;
   }
 
   try {
     folly::SocketAddress addr;
-    socket_->getAddress(&addr);
-
+    rawSocket_->getAddress(&addr);
     if (addr.getFamily() != AF_INET6 && addr.getFamily() != AF_INET) {
       return;
     }
 
-    if (auto* sock = socket_->getUnderlyingTransport<folly::AsyncSocket>()) {
-      const auto fd = sock->getNetworkSocket();
+    const auto fd = rawSocket_->getNetworkSocket();
 
-      if (auto dscp = setupMetadata.dscpToReflect_ref()) {
-        if (auto context = frameHandler_->getCpp2ConnContext()) {
-          THRIFT_CONNECTION_EVENT(rocket.dscp).log(*context, [&] {
-            return folly::dynamic::object("rocket_dscp", *dscp);
-          });
-        }
-        if (*dscp >= 0 && *dscp <= kMaxDscpValue) {
-          const folly::SocketOptionKey kIpv4TosKey = {IPPROTO_IP, IP_TOS};
-          const folly::SocketOptionKey kIpv6TosKey = {
-              IPPROTO_IPV6, IPV6_TCLASS};
-          auto& dscpKey =
-              addr.getIPAddress().isV4() ? kIpv4TosKey : kIpv6TosKey;
-          dscpKey.apply(fd, *dscp << 2);
-        }
+    if (auto dscp = setupMetadata.dscpToReflect()) {
+      if (auto context = frameHandler_->getCpp2ConnContext()) {
+        THRIFT_CONNECTION_EVENT(rocket.dscp).log(*context, [&] {
+          return folly::dynamic::object("rocket_dscp", *dscp);
+        });
       }
-
-#if defined(SO_MARK)
-      if (auto mark = setupMetadata.markToReflect_ref()) {
-        const folly::SocketOptionKey kSoMarkKey = {SOL_SOCKET, SO_MARK};
-        kSoMarkKey.apply(fd, *mark);
+      if (*dscp >= 0 && *dscp <= kMaxDscpValue) {
+        const folly::SocketOptionKey kIpv4TosKey = {IPPROTO_IP, IP_TOS};
+        const folly::SocketOptionKey kIpv6TosKey = {IPPROTO_IPV6, IPV6_TCLASS};
+        auto& dscpKey = addr.getIPAddress().isV4() ? kIpv4TosKey : kIpv6TosKey;
+        dscpKey.apply(fd, *dscp << 2);
       }
-#endif
     }
+#if defined(SO_MARK)
+    if (auto mark = setupMetadata.markToReflect()) {
+      const folly::SocketOptionKey kSoMarkKey = {SOL_SOCKET, SO_MARK};
+      kSoMarkKey.apply(fd, *mark);
+    }
+#endif
+
+    plugin::applyCustomQosMarkingToSocket(fd, setupMetadata);
   } catch (const std::exception& ex) {
     FB_LOG_EVERY_MS(WARNING, 60 * 1000)
         << "Failed to apply DSCP to socket: " << folly::exceptionStr(ex);

@@ -18,6 +18,7 @@ use anyhow::Result;
 use datastore::ChangesStore;
 use datastore::Store;
 use decl_parser::DeclParser;
+use decl_parser::DeclParserOptions;
 use file_provider::DiskProvider;
 use file_provider::FileProvider;
 use folded_decl_provider::FoldedDeclProvider;
@@ -27,6 +28,7 @@ use naming_table::NamingTable;
 use ocamlrep::ptr::UnsafeOcamlPtr;
 use ocamlrep::FromOcamlRep;
 use ocamlrep::ToOcamlRep;
+use ocamlrep_caml_builtins::Int64;
 use oxidized::global_options::GlobalOptions;
 use oxidized::naming_types;
 use oxidized_by_ref::direct_decl_parser::ParsedFileWithHashes;
@@ -88,7 +90,11 @@ impl HhServerProviderBackend {
                 disk: DiskProvider::new(Arc::clone(&path_ctx), None),
             },
         });
-        let decl_parser = DeclParser::with_options(Arc::clone(&file_provider) as _, opts.clone());
+        let decl_parser = DeclParser::new(
+            Arc::clone(&file_provider) as _,
+            DeclParserOptions::from_parser_options(&opts),
+            opts.po_deregister_php_stdlib,
+        );
         let naming_table = Arc::new(NamingTableWithContext {
             ctx_is_empty: Arc::clone(&ctx_is_empty),
             fallback: NamingTable::new(db_path)?,
@@ -717,5 +723,62 @@ impl NamingProvider for NamingTableWithContext {
             }
         }
         self.fallback.get_canon_fun_name(name)
+    }
+}
+
+/// An id contains a pos, name and a optional decl hash. The decl hash is None
+/// only in the case when we didn't compute it for performance reasons
+pub type Id = (naming_table::Pos, String, Option<Int64>);
+
+pub type HashType = Option<Int64>;
+
+/// A port of `FileInfo.ml`. The record produced by the parsing phase.
+#[derive(Clone, Debug, FromOcamlRep, ToOcamlRep)]
+#[repr(C)]
+pub struct FileInfo {
+    pub hash: HashType,
+    pub file_mode: Option<oxidized::file_info::Mode>,
+    pub funs: Vec<Id>,
+    pub classes: Vec<Id>,
+    pub typedefs: Vec<Id>,
+    pub consts: Vec<Id>,
+    pub modules: Vec<Id>,
+    /// None if loaded from saved state
+    pub comments: Option<()>,
+}
+
+impl<'a> From<ParsedFileWithHashes<'a>> for FileInfo {
+    /// c.f. OCaml Direct_decl_parser.decls_to_fileinfo
+
+    fn from(file: ParsedFileWithHashes<'a>) -> FileInfo {
+        let mut info = FileInfo {
+            hash: Some(Int64::from(file.file_decls_hash.as_u64() as i64)),
+            file_mode: file.mode,
+            funs: vec![],
+            classes: vec![],
+            typedefs: vec![],
+            consts: vec![],
+            modules: vec![],
+            comments: None,
+        };
+        let pos = |p: &oxidized_by_ref::pos::Pos<'_>| naming_table::Pos::Full(p.into());
+        use oxidized_by_ref::shallow_decl_defs::Decl;
+        for &(name, decl, hash) in file.iter() {
+            let hash = Int64::from(hash.as_u64() as i64);
+            match decl {
+                Decl::Class(x) => info.classes.push((pos(x.name.0), name.into(), Some(hash))),
+                Decl::Fun(x) => info.funs.push((pos(x.pos), name.into(), Some(hash))),
+                Decl::Typedef(x) => info.typedefs.push((pos(x.pos), name.into(), Some(hash))),
+                Decl::Const(x) => info.consts.push((pos(x.pos), name.into(), Some(hash))),
+                Decl::Module(x) => info.modules.push((pos(x.pos), name.into(), Some(hash))),
+            }
+        }
+        // Match OCaml ordering
+        info.classes.reverse();
+        info.funs.reverse();
+        info.typedefs.reverse();
+        info.consts.reverse();
+        info.modules.reverse();
+        info
     }
 }

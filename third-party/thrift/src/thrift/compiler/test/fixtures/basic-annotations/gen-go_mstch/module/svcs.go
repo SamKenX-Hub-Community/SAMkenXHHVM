@@ -23,25 +23,25 @@ var _ = thrift.ZERO
 
 
 type MyService interface {
-    Ping(ctx context.Context) error
+    Ping(ctx context.Context) (error)
     GetRandomData(ctx context.Context) (string, error)
     HasDataById(ctx context.Context, id int64) (bool, error)
     GetDataById(ctx context.Context, id int64) (string, error)
-    PutDataById(ctx context.Context, id int64, data string) error
-    LobDataById(ctx context.Context, id int64, data string) error
-    GoDoNothing(ctx context.Context) error
+    PutDataById(ctx context.Context, id int64, data string) (error)
+    LobDataById(ctx context.Context, id int64, data string) (error)
+    GoDoNothing(ctx context.Context) (error)
 }
 
 // Deprecated: Use MyService instead.
 type MyServiceClientInterface interface {
     thrift.ClientInterface
-    Ping() error
+    Ping() (error)
     GetRandomData() (string, error)
     HasDataById(id int64) (bool, error)
     GetDataById(id int64) (string, error)
-    PutDataById(id int64, data string) error
-    LobDataById(id int64, data string) error
-    GoDoNothing() error
+    PutDataById(id int64, data string) (error)
+    LobDataById(id int64, data string) (error)
+    GoDoNothing() (error)
 }
 
 type MyServiceChannelClient struct {
@@ -127,15 +127,20 @@ func NewMyServiceThreadsafeClientFactory(t thrift.Transport, pf thrift.ProtocolF
 }
 
 
-func (c *MyServiceChannelClient) Ping(ctx context.Context) error {
+func (c *MyServiceChannelClient) Ping(ctx context.Context) (error) {
     in := &reqMyServicePing{
     }
     out := newRespMyServicePing()
     err := c.ch.Call(ctx, "ping", in, out)
-    return err
+    if err != nil {
+        return err
+    } else if out.MyExcept != nil {
+        return out.MyExcept
+    }
+    return nil
 }
 
-func (c *MyServiceClient) Ping() error {
+func (c *MyServiceClient) Ping() (error) {
     return c.chClient.Ping(nil)
 }
 
@@ -145,7 +150,10 @@ func (c *MyServiceChannelClient) GetRandomData(ctx context.Context) (string, err
     }
     out := newRespMyServiceGetRandomData()
     err := c.ch.Call(ctx, "getRandomData", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *MyServiceClient) GetRandomData() (string, error) {
@@ -159,7 +167,10 @@ func (c *MyServiceChannelClient) HasDataById(ctx context.Context, id int64) (boo
     }
     out := newRespMyServiceHasDataById()
     err := c.ch.Call(ctx, "hasDataById", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *MyServiceClient) HasDataById(id int64) (bool, error) {
@@ -173,7 +184,10 @@ func (c *MyServiceChannelClient) GetDataById(ctx context.Context, id int64) (str
     }
     out := newRespMyServiceGetDataById()
     err := c.ch.Call(ctx, "getDataById", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *MyServiceClient) GetDataById(id int64) (string, error) {
@@ -181,45 +195,49 @@ func (c *MyServiceClient) GetDataById(id int64) (string, error) {
 }
 
 
-func (c *MyServiceChannelClient) PutDataById(ctx context.Context, id int64, data string) error {
+func (c *MyServiceChannelClient) PutDataById(ctx context.Context, id int64, data string) (error) {
     in := &reqMyServicePutDataById{
         Id: id,
         Data: data,
     }
     out := newRespMyServicePutDataById()
     err := c.ch.Call(ctx, "putDataById", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyServiceClient) PutDataById(id int64, data string) error {
+func (c *MyServiceClient) PutDataById(id int64, data string) (error) {
     return c.chClient.PutDataById(nil, id, data)
 }
 
 
-func (c *MyServiceChannelClient) LobDataById(ctx context.Context, id int64, data string) error {
+func (c *MyServiceChannelClient) LobDataById(ctx context.Context, id int64, data string) (error) {
     in := &reqMyServiceLobDataById{
         Id: id,
         Data: data,
     }
-    out := newRespMyServiceLobDataById()
-    err := c.ch.Call(ctx, "lobDataById", in, out)
-    return err
+    return c.ch.Oneway(ctx, "lobDataById", in)
 }
 
-func (c *MyServiceClient) LobDataById(id int64, data string) error {
+func (c *MyServiceClient) LobDataById(id int64, data string) (error) {
     return c.chClient.LobDataById(nil, id, data)
 }
 
 
-func (c *MyServiceChannelClient) GoDoNothing(ctx context.Context) error {
+func (c *MyServiceChannelClient) GoDoNothing(ctx context.Context) (error) {
     in := &reqMyServiceGoDoNothing{
     }
     out := newRespMyServiceGoDoNothing()
     err := c.ch.Call(ctx, "doNothing", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyServiceClient) GoDoNothing() error {
+func (c *MyServiceClient) GoDoNothing() (error) {
     return c.chClient.GoDoNothing(nil)
 }
 
@@ -228,6 +246,8 @@ type reqMyServicePing struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServicePing{}
+
+type MyServicePingArgs = reqMyServicePing
 
 func newReqMyServicePing() *reqMyServicePing {
     return (&reqMyServicePing{})
@@ -253,6 +273,7 @@ func (x *reqMyServicePingBuilder) Emit() *reqMyServicePing {
     var objCopy reqMyServicePing = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServicePing) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServicePing"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -301,13 +322,84 @@ func (x *reqMyServicePing) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServicePing struct {
+    MyExcept *MyException `thrift:"myExcept,1,optional" json:"myExcept,omitempty" db:"myExcept"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServicePing{}
+var _ thrift.WritableResult = &respMyServicePing{}
 
 func newRespMyServicePing() *respMyServicePing {
     return (&respMyServicePing{})
+}
+
+func (x *respMyServicePing) GetMyExceptNonCompat() *MyException {
+    return x.MyExcept
+}
+
+func (x *respMyServicePing) GetMyExcept() *MyException {
+    if !x.IsSetMyExcept() {
+        return NewMyException()
+    }
+
+    return x.MyExcept
+}
+
+func (x *respMyServicePing) SetMyExceptNonCompat(value MyException) *respMyServicePing {
+    x.MyExcept = &value
+    return x
+}
+
+func (x *respMyServicePing) SetMyExcept(value *MyException) *respMyServicePing {
+    x.MyExcept = value
+    return x
+}
+
+func (x *respMyServicePing) IsSetMyExcept() bool {
+    return x.MyExcept != nil
+}
+
+func (x *respMyServicePing) writeField1(p thrift.Protocol) error {  // MyExcept
+    if !x.IsSetMyExcept() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("myExcept", thrift.STRUCT, 1); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetMyExceptNonCompat()
+    if err := item.Write(p); err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *respMyServicePing) readField1(p thrift.Protocol) error {  // MyExcept
+    result := *NewMyException()
+err := result.Read(p)
+if err != nil {
+    return err
+}
+
+    x.SetMyExceptNonCompat(result)
+    return nil
+}
+
+// Deprecated: Use newRespMyServicePing().GetMyExcept() instead.
+var respMyServicePing_MyExcept_DEFAULT = newRespMyServicePing().GetMyExcept()
+
+// Deprecated: Use newRespMyServicePing().GetMyExcept() instead.
+func (x *respMyServicePing) DefaultGetMyExcept() *MyException {
+    if !x.IsSetMyExcept() {
+        return NewMyException()
+    }
+    return x.MyExcept
 }
 
 func (x *respMyServicePing) String() string {
@@ -326,13 +418,30 @@ func newRespMyServicePingBuilder() *respMyServicePingBuilder {
     }
 }
 
+func (x *respMyServicePingBuilder) MyExcept(value *MyException) *respMyServicePingBuilder {
+    x.obj.MyExcept = value
+    return x
+}
+
 func (x *respMyServicePingBuilder) Emit() *respMyServicePing {
     var objCopy respMyServicePing = *x.obj
     return &objCopy
 }
+
+func (x *respMyServicePing) Exception() thrift.WritableException {
+    if x.MyExcept != nil {
+        return x.MyExcept
+    }
+    return nil
+}
+
 func (x *respMyServicePing) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServicePing"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
+    }
+
+    if err := x.writeField1(p); err != nil {
+        return err
     }
 
     if err := p.WriteFieldStop(); err != nil {
@@ -361,6 +470,10 @@ func (x *respMyServicePing) Read(p thrift.Protocol) error {
         }
 
         switch id {
+        case 1:  // myExcept
+            if err := x.readField1(p); err != nil {
+                return err
+            }
         default:
             if err := p.Skip(typ); err != nil {
                 return err
@@ -378,10 +491,13 @@ func (x *respMyServicePing) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServiceGetRandomData struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceGetRandomData{}
+
+type MyServiceGetRandomDataArgs = reqMyServiceGetRandomData
 
 func newReqMyServiceGetRandomData() *reqMyServiceGetRandomData {
     return (&reqMyServiceGetRandomData{})
@@ -407,6 +523,7 @@ func (x *reqMyServiceGetRandomDataBuilder) Emit() *reqMyServiceGetRandomData {
     var objCopy reqMyServiceGetRandomData = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceGetRandomData) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceGetRandomData"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -455,14 +572,17 @@ func (x *reqMyServiceGetRandomData) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceGetRandomData struct {
-    Value string `thrift:"value,0,required" json:"value" db:"value"`
+    Value string `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceGetRandomData{}
+var _ thrift.WritableResult = &respMyServiceGetRandomData{}
 
 func newRespMyServiceGetRandomData() *respMyServiceGetRandomData {
-    return (&respMyServiceGetRandomData{})
+    return (&respMyServiceGetRandomData{}).
+        SetValueNonCompat("")
 }
 
 func (x *respMyServiceGetRandomData) GetValueNonCompat() string {
@@ -473,11 +593,15 @@ func (x *respMyServiceGetRandomData) GetValue() string {
     return x.Value
 }
 
-func (x *respMyServiceGetRandomData) SetValue(value string) *respMyServiceGetRandomData {
+func (x *respMyServiceGetRandomData) SetValueNonCompat(value string) *respMyServiceGetRandomData {
     x.Value = value
     return x
 }
 
+func (x *respMyServiceGetRandomData) SetValue(value string) *respMyServiceGetRandomData {
+    x.Value = value
+    return x
+}
 
 func (x *respMyServiceGetRandomData) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.STRING, 0); err != nil {
@@ -501,7 +625,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -530,6 +654,11 @@ func (x *respMyServiceGetRandomDataBuilder) Emit() *respMyServiceGetRandomData {
     var objCopy respMyServiceGetRandomData = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceGetRandomData) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceGetRandomData) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceGetRandomData"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -586,14 +715,18 @@ func (x *respMyServiceGetRandomData) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServiceHasDataById struct {
     Id int64 `thrift:"id,1" json:"id" db:"id"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceHasDataById{}
 
+type MyServiceHasDataByIdArgs = reqMyServiceHasDataById
+
 func newReqMyServiceHasDataById() *reqMyServiceHasDataById {
-    return (&reqMyServiceHasDataById{})
+    return (&reqMyServiceHasDataById{}).
+        SetIdNonCompat(0)
 }
 
 func (x *reqMyServiceHasDataById) GetIdNonCompat() int64 {
@@ -604,11 +737,15 @@ func (x *reqMyServiceHasDataById) GetId() int64 {
     return x.Id
 }
 
-func (x *reqMyServiceHasDataById) SetId(value int64) *reqMyServiceHasDataById {
+func (x *reqMyServiceHasDataById) SetIdNonCompat(value int64) *reqMyServiceHasDataById {
     x.Id = value
     return x
 }
 
+func (x *reqMyServiceHasDataById) SetId(value int64) *reqMyServiceHasDataById {
+    x.Id = value
+    return x
+}
 
 func (x *reqMyServiceHasDataById) writeField1(p thrift.Protocol) error {  // Id
     if err := p.WriteFieldBegin("id", thrift.I64, 1); err != nil {
@@ -632,7 +769,7 @@ if err != nil {
     return err
 }
 
-    x.SetId(result)
+    x.SetIdNonCompat(result)
     return nil
 }
 
@@ -661,6 +798,7 @@ func (x *reqMyServiceHasDataByIdBuilder) Emit() *reqMyServiceHasDataById {
     var objCopy reqMyServiceHasDataById = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceHasDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceHasDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -717,14 +855,17 @@ func (x *reqMyServiceHasDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceHasDataById struct {
-    Value bool `thrift:"value,0,required" json:"value" db:"value"`
+    Value bool `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceHasDataById{}
+var _ thrift.WritableResult = &respMyServiceHasDataById{}
 
 func newRespMyServiceHasDataById() *respMyServiceHasDataById {
-    return (&respMyServiceHasDataById{})
+    return (&respMyServiceHasDataById{}).
+        SetValueNonCompat(false)
 }
 
 func (x *respMyServiceHasDataById) GetValueNonCompat() bool {
@@ -735,11 +876,15 @@ func (x *respMyServiceHasDataById) GetValue() bool {
     return x.Value
 }
 
-func (x *respMyServiceHasDataById) SetValue(value bool) *respMyServiceHasDataById {
+func (x *respMyServiceHasDataById) SetValueNonCompat(value bool) *respMyServiceHasDataById {
     x.Value = value
     return x
 }
 
+func (x *respMyServiceHasDataById) SetValue(value bool) *respMyServiceHasDataById {
+    x.Value = value
+    return x
+}
 
 func (x *respMyServiceHasDataById) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.BOOL, 0); err != nil {
@@ -763,7 +908,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -792,6 +937,11 @@ func (x *respMyServiceHasDataByIdBuilder) Emit() *respMyServiceHasDataById {
     var objCopy respMyServiceHasDataById = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceHasDataById) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceHasDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceHasDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -848,14 +998,18 @@ func (x *respMyServiceHasDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServiceGetDataById struct {
     Id int64 `thrift:"id,1" json:"id" db:"id"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceGetDataById{}
 
+type MyServiceGetDataByIdArgs = reqMyServiceGetDataById
+
 func newReqMyServiceGetDataById() *reqMyServiceGetDataById {
-    return (&reqMyServiceGetDataById{})
+    return (&reqMyServiceGetDataById{}).
+        SetIdNonCompat(0)
 }
 
 func (x *reqMyServiceGetDataById) GetIdNonCompat() int64 {
@@ -866,11 +1020,15 @@ func (x *reqMyServiceGetDataById) GetId() int64 {
     return x.Id
 }
 
-func (x *reqMyServiceGetDataById) SetId(value int64) *reqMyServiceGetDataById {
+func (x *reqMyServiceGetDataById) SetIdNonCompat(value int64) *reqMyServiceGetDataById {
     x.Id = value
     return x
 }
 
+func (x *reqMyServiceGetDataById) SetId(value int64) *reqMyServiceGetDataById {
+    x.Id = value
+    return x
+}
 
 func (x *reqMyServiceGetDataById) writeField1(p thrift.Protocol) error {  // Id
     if err := p.WriteFieldBegin("id", thrift.I64, 1); err != nil {
@@ -894,7 +1052,7 @@ if err != nil {
     return err
 }
 
-    x.SetId(result)
+    x.SetIdNonCompat(result)
     return nil
 }
 
@@ -923,6 +1081,7 @@ func (x *reqMyServiceGetDataByIdBuilder) Emit() *reqMyServiceGetDataById {
     var objCopy reqMyServiceGetDataById = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceGetDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceGetDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -979,14 +1138,17 @@ func (x *reqMyServiceGetDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceGetDataById struct {
-    Value string `thrift:"value,0,required" json:"value" db:"value"`
+    Value string `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceGetDataById{}
+var _ thrift.WritableResult = &respMyServiceGetDataById{}
 
 func newRespMyServiceGetDataById() *respMyServiceGetDataById {
-    return (&respMyServiceGetDataById{})
+    return (&respMyServiceGetDataById{}).
+        SetValueNonCompat("")
 }
 
 func (x *respMyServiceGetDataById) GetValueNonCompat() string {
@@ -997,11 +1159,15 @@ func (x *respMyServiceGetDataById) GetValue() string {
     return x.Value
 }
 
-func (x *respMyServiceGetDataById) SetValue(value string) *respMyServiceGetDataById {
+func (x *respMyServiceGetDataById) SetValueNonCompat(value string) *respMyServiceGetDataById {
     x.Value = value
     return x
 }
 
+func (x *respMyServiceGetDataById) SetValue(value string) *respMyServiceGetDataById {
+    x.Value = value
+    return x
+}
 
 func (x *respMyServiceGetDataById) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.STRING, 0); err != nil {
@@ -1025,7 +1191,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -1054,6 +1220,11 @@ func (x *respMyServiceGetDataByIdBuilder) Emit() *respMyServiceGetDataById {
     var objCopy respMyServiceGetDataById = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceGetDataById) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceGetDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceGetDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1110,6 +1281,7 @@ func (x *respMyServiceGetDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServicePutDataById struct {
     Id int64 `thrift:"id,1" json:"id" db:"id"`
     Data string `thrift:"data,2" json:"data" db:"data"`
@@ -1117,8 +1289,12 @@ type reqMyServicePutDataById struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServicePutDataById{}
 
+type MyServicePutDataByIdArgs = reqMyServicePutDataById
+
 func newReqMyServicePutDataById() *reqMyServicePutDataById {
-    return (&reqMyServicePutDataById{})
+    return (&reqMyServicePutDataById{}).
+        SetIdNonCompat(0).
+        SetDataNonCompat("")
 }
 
 func (x *reqMyServicePutDataById) GetIdNonCompat() int64 {
@@ -1137,8 +1313,18 @@ func (x *reqMyServicePutDataById) GetData() string {
     return x.Data
 }
 
+func (x *reqMyServicePutDataById) SetIdNonCompat(value int64) *reqMyServicePutDataById {
+    x.Id = value
+    return x
+}
+
 func (x *reqMyServicePutDataById) SetId(value int64) *reqMyServicePutDataById {
     x.Id = value
+    return x
+}
+
+func (x *reqMyServicePutDataById) SetDataNonCompat(value string) *reqMyServicePutDataById {
+    x.Data = value
     return x
 }
 
@@ -1146,8 +1332,6 @@ func (x *reqMyServicePutDataById) SetData(value string) *reqMyServicePutDataById
     x.Data = value
     return x
 }
-
-
 
 func (x *reqMyServicePutDataById) writeField1(p thrift.Protocol) error {  // Id
     if err := p.WriteFieldBegin("id", thrift.I64, 1); err != nil {
@@ -1187,7 +1371,7 @@ if err != nil {
     return err
 }
 
-    x.SetId(result)
+    x.SetIdNonCompat(result)
     return nil
 }
 
@@ -1197,7 +1381,7 @@ if err != nil {
     return err
 }
 
-    x.SetData(result)
+    x.SetDataNonCompat(result)
     return nil
 }
 
@@ -1231,6 +1415,7 @@ func (x *reqMyServicePutDataByIdBuilder) Emit() *reqMyServicePutDataById {
     var objCopy reqMyServicePutDataById = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServicePutDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServicePutDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1295,10 +1480,12 @@ func (x *reqMyServicePutDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServicePutDataById struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServicePutDataById{}
+var _ thrift.WritableResult = &respMyServicePutDataById{}
 
 func newRespMyServicePutDataById() *respMyServicePutDataById {
     return (&respMyServicePutDataById{})
@@ -1324,6 +1511,11 @@ func (x *respMyServicePutDataByIdBuilder) Emit() *respMyServicePutDataById {
     var objCopy respMyServicePutDataById = *x.obj
     return &objCopy
 }
+
+func (x *respMyServicePutDataById) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServicePutDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServicePutDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1372,6 +1564,7 @@ func (x *respMyServicePutDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServiceLobDataById struct {
     Id int64 `thrift:"id,1" json:"id" db:"id"`
     Data string `thrift:"data,2" json:"data" db:"data"`
@@ -1379,8 +1572,12 @@ type reqMyServiceLobDataById struct {
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceLobDataById{}
 
+type MyServiceLobDataByIdArgs = reqMyServiceLobDataById
+
 func newReqMyServiceLobDataById() *reqMyServiceLobDataById {
-    return (&reqMyServiceLobDataById{})
+    return (&reqMyServiceLobDataById{}).
+        SetIdNonCompat(0).
+        SetDataNonCompat("")
 }
 
 func (x *reqMyServiceLobDataById) GetIdNonCompat() int64 {
@@ -1399,8 +1596,18 @@ func (x *reqMyServiceLobDataById) GetData() string {
     return x.Data
 }
 
+func (x *reqMyServiceLobDataById) SetIdNonCompat(value int64) *reqMyServiceLobDataById {
+    x.Id = value
+    return x
+}
+
 func (x *reqMyServiceLobDataById) SetId(value int64) *reqMyServiceLobDataById {
     x.Id = value
+    return x
+}
+
+func (x *reqMyServiceLobDataById) SetDataNonCompat(value string) *reqMyServiceLobDataById {
+    x.Data = value
     return x
 }
 
@@ -1408,8 +1615,6 @@ func (x *reqMyServiceLobDataById) SetData(value string) *reqMyServiceLobDataById
     x.Data = value
     return x
 }
-
-
 
 func (x *reqMyServiceLobDataById) writeField1(p thrift.Protocol) error {  // Id
     if err := p.WriteFieldBegin("id", thrift.I64, 1); err != nil {
@@ -1449,7 +1654,7 @@ if err != nil {
     return err
 }
 
-    x.SetId(result)
+    x.SetIdNonCompat(result)
     return nil
 }
 
@@ -1459,7 +1664,7 @@ if err != nil {
     return err
 }
 
-    x.SetData(result)
+    x.SetDataNonCompat(result)
     return nil
 }
 
@@ -1493,6 +1698,7 @@ func (x *reqMyServiceLobDataByIdBuilder) Emit() *reqMyServiceLobDataById {
     var objCopy reqMyServiceLobDataById = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceLobDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceLobDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1557,10 +1763,12 @@ func (x *reqMyServiceLobDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceLobDataById struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceLobDataById{}
+var _ thrift.WritableResult = &respMyServiceLobDataById{}
 
 func newRespMyServiceLobDataById() *respMyServiceLobDataById {
     return (&respMyServiceLobDataById{})
@@ -1586,6 +1794,11 @@ func (x *respMyServiceLobDataByIdBuilder) Emit() *respMyServiceLobDataById {
     var objCopy respMyServiceLobDataById = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceLobDataById) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceLobDataById) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceLobDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1634,10 +1847,13 @@ func (x *respMyServiceLobDataById) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServiceGoDoNothing struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServiceGoDoNothing{}
+
+type MyServiceGoDoNothingArgs = reqMyServiceGoDoNothing
 
 func newReqMyServiceGoDoNothing() *reqMyServiceGoDoNothing {
     return (&reqMyServiceGoDoNothing{})
@@ -1663,6 +1879,7 @@ func (x *reqMyServiceGoDoNothingBuilder) Emit() *reqMyServiceGoDoNothing {
     var objCopy reqMyServiceGoDoNothing = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServiceGoDoNothing) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServiceGoDoNothing"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1711,10 +1928,12 @@ func (x *reqMyServiceGoDoNothing) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServiceGoDoNothing struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServiceGoDoNothing{}
+var _ thrift.WritableResult = &respMyServiceGoDoNothing{}
 
 func newRespMyServiceGoDoNothing() *respMyServiceGoDoNothing {
     return (&respMyServiceGoDoNothing{})
@@ -1740,6 +1959,11 @@ func (x *respMyServiceGoDoNothingBuilder) Emit() *respMyServiceGoDoNothing {
     var objCopy respMyServiceGoDoNothing = *x.obj
     return &objCopy
 }
+
+func (x *respMyServiceGoDoNothing) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServiceGoDoNothing) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServiceGoDoNothing"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -1788,6 +2012,7 @@ func (x *respMyServiceGoDoNothing) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type MyServiceProcessor struct {
@@ -1864,9 +2089,15 @@ func (p *procFuncMyServicePing) Read(iprot thrift.Protocol) (thrift.Struct, thri
 func (p *procFuncMyServicePing) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch v := result.(type) {
+    case *MyException:
+        result = &respMyServicePing{
+            MyExcept: v,
+        }
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Ping", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -1884,10 +2115,17 @@ func (p *procFuncMyServicePing) Write(seqId int32, result thrift.WritableStruct,
 
 func (p *procFuncMyServicePing) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespMyServicePing()
-    if err := p.handler.Ping(); err != nil {
-        x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Ping: " + err.Error(), err)
-        return x, x
+    err := p.handler.Ping()
+    if err != nil {
+        switch v := err.(type) {
+        case *MyException:
+            result.MyExcept = v
+        default:
+            x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing doRaise: " + err.Error(), err)
+            return x, x
+        }
     }
+
     return result, nil
 }
 
@@ -1910,9 +2148,11 @@ func (p *procFuncMyServiceGetRandomData) Read(iprot thrift.Protocol) (thrift.Str
 func (p *procFuncMyServiceGetRandomData) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetRandomData", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -1930,13 +2170,13 @@ func (p *procFuncMyServiceGetRandomData) Write(seqId int32, result thrift.Writab
 
 func (p *procFuncMyServiceGetRandomData) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespMyServiceGetRandomData()
-    if retval, err := p.handler.GetRandomData(); err != nil {
+    retval, err := p.handler.GetRandomData()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetRandomData: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -1959,9 +2199,11 @@ func (p *procFuncMyServiceHasDataById) Read(iprot thrift.Protocol) (thrift.Struc
 func (p *procFuncMyServiceHasDataById) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("HasDataById", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -1980,13 +2222,13 @@ func (p *procFuncMyServiceHasDataById) Write(seqId int32, result thrift.Writable
 func (p *procFuncMyServiceHasDataById) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqMyServiceHasDataById)
     result := newRespMyServiceHasDataById()
-    if retval, err := p.handler.HasDataById(args.Id); err != nil {
+    retval, err := p.handler.HasDataById(args.Id)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing HasDataById: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -2009,9 +2251,11 @@ func (p *procFuncMyServiceGetDataById) Read(iprot thrift.Protocol) (thrift.Struc
 func (p *procFuncMyServiceGetDataById) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GetDataById", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -2030,13 +2274,13 @@ func (p *procFuncMyServiceGetDataById) Write(seqId int32, result thrift.Writable
 func (p *procFuncMyServiceGetDataById) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqMyServiceGetDataById)
     result := newRespMyServiceGetDataById()
-    if retval, err := p.handler.GetDataById(args.Id); err != nil {
+    retval, err := p.handler.GetDataById(args.Id)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetDataById: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 
@@ -2059,9 +2303,11 @@ func (p *procFuncMyServicePutDataById) Read(iprot thrift.Protocol) (thrift.Struc
 func (p *procFuncMyServicePutDataById) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("PutDataById", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -2080,10 +2326,12 @@ func (p *procFuncMyServicePutDataById) Write(seqId int32, result thrift.Writable
 func (p *procFuncMyServicePutDataById) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqMyServicePutDataById)
     result := newRespMyServicePutDataById()
-    if err := p.handler.PutDataById(args.Id, args.Data); err != nil {
+    err := p.handler.PutDataById(args.Id, args.Data)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing PutDataById: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -2106,9 +2354,11 @@ func (p *procFuncMyServiceLobDataById) Read(iprot thrift.Protocol) (thrift.Struc
 func (p *procFuncMyServiceLobDataById) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("LobDataById", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -2126,12 +2376,13 @@ func (p *procFuncMyServiceLobDataById) Write(seqId int32, result thrift.Writable
 
 func (p *procFuncMyServiceLobDataById) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     args := reqStruct.(*reqMyServiceLobDataById)
-    result := newRespMyServiceLobDataById()
-    if err := p.handler.LobDataById(args.Id, args.Data); err != nil {
+    err := p.handler.LobDataById(args.Id, args.Data)
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing LobDataById: " + err.Error(), err)
         return x, x
     }
-    return result, nil
+
+    return nil, nil
 }
 
 
@@ -2153,9 +2404,11 @@ func (p *procFuncMyServiceGoDoNothing) Read(iprot thrift.Protocol) (thrift.Struc
 func (p *procFuncMyServiceGoDoNothing) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("GoDoNothing", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -2173,10 +2426,12 @@ func (p *procFuncMyServiceGoDoNothing) Write(seqId int32, result thrift.Writable
 
 func (p *procFuncMyServiceGoDoNothing) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespMyServiceGoDoNothing()
-    if err := p.handler.GoDoNothing(); err != nil {
+    err := p.handler.GoDoNothing()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GoDoNothing: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -2184,15 +2439,15 @@ func (p *procFuncMyServiceGoDoNothing) Run(reqStruct thrift.Struct) (thrift.Writ
 
 
 type MyServicePrioParent interface {
-    Ping(ctx context.Context) error
-    Pong(ctx context.Context) error
+    Ping(ctx context.Context) (error)
+    Pong(ctx context.Context) (error)
 }
 
 // Deprecated: Use MyServicePrioParent instead.
 type MyServicePrioParentClientInterface interface {
     thrift.ClientInterface
-    Ping() error
-    Pong() error
+    Ping() (error)
+    Pong() (error)
 }
 
 type MyServicePrioParentChannelClient struct {
@@ -2278,28 +2533,34 @@ func NewMyServicePrioParentThreadsafeClientFactory(t thrift.Transport, pf thrift
 }
 
 
-func (c *MyServicePrioParentChannelClient) Ping(ctx context.Context) error {
+func (c *MyServicePrioParentChannelClient) Ping(ctx context.Context) (error) {
     in := &reqMyServicePrioParentPing{
     }
     out := newRespMyServicePrioParentPing()
     err := c.ch.Call(ctx, "ping", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyServicePrioParentClient) Ping() error {
+func (c *MyServicePrioParentClient) Ping() (error) {
     return c.chClient.Ping(nil)
 }
 
 
-func (c *MyServicePrioParentChannelClient) Pong(ctx context.Context) error {
+func (c *MyServicePrioParentChannelClient) Pong(ctx context.Context) (error) {
     in := &reqMyServicePrioParentPong{
     }
     out := newRespMyServicePrioParentPong()
     err := c.ch.Call(ctx, "pong", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyServicePrioParentClient) Pong() error {
+func (c *MyServicePrioParentClient) Pong() (error) {
     return c.chClient.Pong(nil)
 }
 
@@ -2308,6 +2569,8 @@ type reqMyServicePrioParentPing struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServicePrioParentPing{}
+
+type MyServicePrioParentPingArgs = reqMyServicePrioParentPing
 
 func newReqMyServicePrioParentPing() *reqMyServicePrioParentPing {
     return (&reqMyServicePrioParentPing{})
@@ -2333,6 +2596,7 @@ func (x *reqMyServicePrioParentPingBuilder) Emit() *reqMyServicePrioParentPing {
     var objCopy reqMyServicePrioParentPing = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServicePrioParentPing) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServicePrioParentPing"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2381,10 +2645,12 @@ func (x *reqMyServicePrioParentPing) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServicePrioParentPing struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServicePrioParentPing{}
+var _ thrift.WritableResult = &respMyServicePrioParentPing{}
 
 func newRespMyServicePrioParentPing() *respMyServicePrioParentPing {
     return (&respMyServicePrioParentPing{})
@@ -2410,6 +2676,11 @@ func (x *respMyServicePrioParentPingBuilder) Emit() *respMyServicePrioParentPing
     var objCopy respMyServicePrioParentPing = *x.obj
     return &objCopy
 }
+
+func (x *respMyServicePrioParentPing) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServicePrioParentPing) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServicePrioParentPing"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2458,10 +2729,13 @@ func (x *respMyServicePrioParentPing) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type reqMyServicePrioParentPong struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServicePrioParentPong{}
+
+type MyServicePrioParentPongArgs = reqMyServicePrioParentPong
 
 func newReqMyServicePrioParentPong() *reqMyServicePrioParentPong {
     return (&reqMyServicePrioParentPong{})
@@ -2487,6 +2761,7 @@ func (x *reqMyServicePrioParentPongBuilder) Emit() *reqMyServicePrioParentPong {
     var objCopy reqMyServicePrioParentPong = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServicePrioParentPong) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServicePrioParentPong"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2535,10 +2810,12 @@ func (x *reqMyServicePrioParentPong) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServicePrioParentPong struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServicePrioParentPong{}
+var _ thrift.WritableResult = &respMyServicePrioParentPong{}
 
 func newRespMyServicePrioParentPong() *respMyServicePrioParentPong {
     return (&respMyServicePrioParentPong{})
@@ -2564,6 +2841,11 @@ func (x *respMyServicePrioParentPongBuilder) Emit() *respMyServicePrioParentPong
     var objCopy respMyServicePrioParentPong = *x.obj
     return &objCopy
 }
+
+func (x *respMyServicePrioParentPong) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServicePrioParentPong) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServicePrioParentPong"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2612,6 +2894,7 @@ func (x *respMyServicePrioParentPong) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type MyServicePrioParentProcessor struct {
@@ -2678,9 +2961,11 @@ func (p *procFuncMyServicePrioParentPing) Read(iprot thrift.Protocol) (thrift.St
 func (p *procFuncMyServicePrioParentPing) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Ping", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -2698,10 +2983,12 @@ func (p *procFuncMyServicePrioParentPing) Write(seqId int32, result thrift.Writa
 
 func (p *procFuncMyServicePrioParentPing) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespMyServicePrioParentPing()
-    if err := p.handler.Ping(); err != nil {
+    err := p.handler.Ping()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Ping: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -2724,9 +3011,11 @@ func (p *procFuncMyServicePrioParentPong) Read(iprot thrift.Protocol) (thrift.St
 func (p *procFuncMyServicePrioParentPong) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Pong", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -2744,10 +3033,12 @@ func (p *procFuncMyServicePrioParentPong) Write(seqId int32, result thrift.Writa
 
 func (p *procFuncMyServicePrioParentPong) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespMyServicePrioParentPong()
-    if err := p.handler.Pong(); err != nil {
+    err := p.handler.Pong()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Pong: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -2758,13 +3049,13 @@ type MyServicePrioChild interface {
     // Inherited/extended service
     MyServicePrioParent
 
-    Pang(ctx context.Context) error
+    Pang(ctx context.Context) (error)
 }
 
 // Deprecated: Use MyServicePrioChild instead.
 type MyServicePrioChildClientInterface interface {
     thrift.ClientInterface
-    Pang() error
+    Pang() (error)
 }
 
 type MyServicePrioChildChannelClient struct {
@@ -2856,15 +3147,18 @@ func NewMyServicePrioChildThreadsafeClientFactory(t thrift.Transport, pf thrift.
 }
 
 
-func (c *MyServicePrioChildChannelClient) Pang(ctx context.Context) error {
+func (c *MyServicePrioChildChannelClient) Pang(ctx context.Context) (error) {
     in := &reqMyServicePrioChildPang{
     }
     out := newRespMyServicePrioChildPang()
     err := c.ch.Call(ctx, "pang", in, out)
-    return err
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
-func (c *MyServicePrioChildClient) Pang() error {
+func (c *MyServicePrioChildClient) Pang() (error) {
     return c.chClient.Pang(nil)
 }
 
@@ -2873,6 +3167,8 @@ type reqMyServicePrioChildPang struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqMyServicePrioChildPang{}
+
+type MyServicePrioChildPangArgs = reqMyServicePrioChildPang
 
 func newReqMyServicePrioChildPang() *reqMyServicePrioChildPang {
     return (&reqMyServicePrioChildPang{})
@@ -2898,6 +3194,7 @@ func (x *reqMyServicePrioChildPangBuilder) Emit() *reqMyServicePrioChildPang {
     var objCopy reqMyServicePrioChildPang = *x.obj
     return &objCopy
 }
+
 func (x *reqMyServicePrioChildPang) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqMyServicePrioChildPang"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -2946,10 +3243,12 @@ func (x *reqMyServicePrioChildPang) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respMyServicePrioChildPang struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respMyServicePrioChildPang{}
+var _ thrift.WritableResult = &respMyServicePrioChildPang{}
 
 func newRespMyServicePrioChildPang() *respMyServicePrioChildPang {
     return (&respMyServicePrioChildPang{})
@@ -2975,6 +3274,11 @@ func (x *respMyServicePrioChildPangBuilder) Emit() *respMyServicePrioChildPang {
     var objCopy respMyServicePrioChildPang = *x.obj
     return &objCopy
 }
+
+func (x *respMyServicePrioChildPang) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respMyServicePrioChildPang) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respMyServicePrioChildPang"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -3025,6 +3329,7 @@ func (x *respMyServicePrioChildPang) Read(p thrift.Protocol) error {
 }
 
 
+
 type MyServicePrioChildProcessor struct {
     // Inherited/extended processor
     *MyServicePrioParentProcessor
@@ -3062,9 +3367,11 @@ func (p *procFuncMyServicePrioChildPang) Read(iprot thrift.Protocol) (thrift.Str
 func (p *procFuncMyServicePrioChildPang) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Pang", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3082,10 +3389,12 @@ func (p *procFuncMyServicePrioChildPang) Write(seqId int32, result thrift.Writab
 
 func (p *procFuncMyServicePrioChildPang) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespMyServicePrioChildPang()
-    if err := p.handler.Pang(); err != nil {
+    err := p.handler.Pang()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Pang: " + err.Error(), err)
         return x, x
     }
+
     return result, nil
 }
 
@@ -3190,7 +3499,10 @@ func (c *BadServiceChannelClient) Bar(ctx context.Context) (int32, error) {
     }
     out := newRespBadServiceBar()
     err := c.ch.Call(ctx, "bar", in, out)
-    return out.Value, err
+    if err != nil {
+        return out.Value, err
+    }
+    return out.Value, nil
 }
 
 func (c *BadServiceClient) Bar() (int32, error) {
@@ -3202,6 +3514,8 @@ type reqBadServiceBar struct {
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &reqBadServiceBar{}
+
+type BadServiceBarArgs = reqBadServiceBar
 
 func newReqBadServiceBar() *reqBadServiceBar {
     return (&reqBadServiceBar{})
@@ -3227,6 +3541,7 @@ func (x *reqBadServiceBarBuilder) Emit() *reqBadServiceBar {
     var objCopy reqBadServiceBar = *x.obj
     return &objCopy
 }
+
 func (x *reqBadServiceBar) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("reqBadServiceBar"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -3275,14 +3590,17 @@ func (x *reqBadServiceBar) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 type respBadServiceBar struct {
-    Value int32 `thrift:"value,0,required" json:"value" db:"value"`
+    Value int32 `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respBadServiceBar{}
+var _ thrift.WritableResult = &respBadServiceBar{}
 
 func newRespBadServiceBar() *respBadServiceBar {
-    return (&respBadServiceBar{})
+    return (&respBadServiceBar{}).
+        SetValueNonCompat(0)
 }
 
 func (x *respBadServiceBar) GetValueNonCompat() int32 {
@@ -3293,11 +3611,15 @@ func (x *respBadServiceBar) GetValue() int32 {
     return x.Value
 }
 
-func (x *respBadServiceBar) SetValue(value int32) *respBadServiceBar {
+func (x *respBadServiceBar) SetValueNonCompat(value int32) *respBadServiceBar {
     x.Value = value
     return x
 }
 
+func (x *respBadServiceBar) SetValue(value int32) *respBadServiceBar {
+    x.Value = value
+    return x
+}
 
 func (x *respBadServiceBar) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.I32, 0); err != nil {
@@ -3321,7 +3643,7 @@ if err != nil {
     return err
 }
 
-    x.SetValue(result)
+    x.SetValueNonCompat(result)
     return nil
 }
 
@@ -3350,6 +3672,11 @@ func (x *respBadServiceBarBuilder) Emit() *respBadServiceBar {
     var objCopy respBadServiceBar = *x.obj
     return &objCopy
 }
+
+func (x *respBadServiceBar) Exception() thrift.WritableException {
+    return nil
+}
+
 func (x *respBadServiceBar) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("respBadServiceBar"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -3406,6 +3733,7 @@ func (x *respBadServiceBar) Read(p thrift.Protocol) error {
 
     return nil
 }
+
 
 
 type BadServiceProcessor struct {
@@ -3470,9 +3798,11 @@ func (p *procFuncBadServiceBar) Read(iprot thrift.Protocol) (thrift.Struct, thri
 func (p *procFuncBadServiceBar) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
-    if _, ok := result.(thrift.ApplicationException); ok {
+    switch result.(type) {
+    case thrift.ApplicationException:
         messageType = thrift.EXCEPTION
     }
+
     if err2 = oprot.WriteMessageBegin("Bar", messageType, seqId); err2 != nil {
         err = err2
     }
@@ -3490,13 +3820,13 @@ func (p *procFuncBadServiceBar) Write(seqId int32, result thrift.WritableStruct,
 
 func (p *procFuncBadServiceBar) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
     result := newRespBadServiceBar()
-    if retval, err := p.handler.Bar(); err != nil {
+    retval, err := p.handler.Bar()
+    if err != nil {
         x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Bar: " + err.Error(), err)
         return x, x
-    } else {
-        result.Value = retval
     }
 
+    result.Value = retval
     return result, nil
 }
 

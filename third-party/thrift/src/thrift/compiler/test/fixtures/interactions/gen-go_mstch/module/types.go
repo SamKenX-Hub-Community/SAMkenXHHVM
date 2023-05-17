@@ -4,9 +4,9 @@
 package module // [[[ program thrift source path ]]]
 
 import (
-  "fmt"
+    "fmt"
 
-  "github.com/facebook/fbthrift/thrift/lib/go/thrift"
+    thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 
@@ -22,7 +22,8 @@ type CustomException struct {
 var _ thrift.Struct = &CustomException{}
 
 func NewCustomException() *CustomException {
-    return (&CustomException{})
+    return (&CustomException{}).
+        SetMessageNonCompat("")
 }
 
 func (x *CustomException) GetMessageNonCompat() string {
@@ -33,11 +34,15 @@ func (x *CustomException) GetMessage() string {
     return x.Message
 }
 
-func (x *CustomException) SetMessage(value string) *CustomException {
+func (x *CustomException) SetMessageNonCompat(value string) *CustomException {
     x.Message = value
     return x
 }
 
+func (x *CustomException) SetMessage(value string) *CustomException {
+    x.Message = value
+    return x
+}
 
 func (x *CustomException) writeField1(p thrift.Protocol) error {  // Message
     if err := p.WriteFieldBegin("message", thrift.STRING, 1); err != nil {
@@ -61,7 +66,7 @@ if err != nil {
     return err
 }
 
-    x.SetMessage(result)
+    x.SetMessageNonCompat(result)
     return nil
 }
 
@@ -94,6 +99,7 @@ func (x *CustomExceptionBuilder) Emit() *CustomException {
     var objCopy CustomException = *x.obj
     return &objCopy
 }
+
 func (x *CustomException) Write(p thrift.Protocol) error {
     if err := p.WriteStructBegin("CustomException"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
@@ -150,3 +156,4 @@ func (x *CustomException) Read(p thrift.Protocol) error {
 
     return nil
 }
+

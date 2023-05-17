@@ -320,7 +320,8 @@ and simplify_union_ ~approx_cancel_neg env ty1 ty2 r =
         (env, Some (mk (r, Ttuple tyl)))
       else
         (env, None)
-    | ((r1, Tshape (shape_kind1, fdm1)), (r2, Tshape (shape_kind2, fdm2))) ->
+    | ((r1, Tshape (_, shape_kind1, fdm1)), (r2, Tshape (_, shape_kind2, fdm2)))
+      ->
       let (env, ty) =
         union_shapes
           ~approx_cancel_neg
@@ -602,7 +603,9 @@ and union_tylists_w_variances ~approx_cancel_neg env tparams tyl1 tyl2 =
 
 and union_shapes
     ~approx_cancel_neg env (shape_kind1, fdm1, r1) (shape_kind2, fdm2, r2) =
-  let shape_kind = union_shape_kind shape_kind1 shape_kind2 in
+  let (env, shape_kind) =
+    union_shape_kind ~approx_cancel_neg env shape_kind1 shape_kind2
+  in
   let ((env, shape_kind), fdm) =
     TShapeMap.merge_env
       (env, shape_kind)
@@ -615,14 +618,14 @@ and union_shapes
         | ((_, Some { sft_ty; _ }, _), (shape_kind_other, None, r))
         | ((shape_kind_other, None, r), (_, Some { sft_ty; _ }, _)) ->
           let sft_ty =
-            match shape_kind_other with
-            | Closed_shape -> sft_ty
-            | Open_shape ->
+            if is_nothing shape_kind_other then
+              sft_ty
+            else
               let r =
                 Reason.Rmissing_optional_field
                   (Reason.to_pos r, Utils.get_printable_shape_field_name k)
               in
-              MakeType.mixed r
+              with_reason shape_kind_other r
           in
           ((env, shape_kind), Some { sft_optional = true; sft_ty })
         (* key is present on both sides *)
@@ -632,12 +635,10 @@ and union_shapes
           let (env, sft_ty) = union ~approx_cancel_neg env ty1 ty2 in
           ((env, shape_kind), Some { sft_optional; sft_ty }))
   in
-  (env, Tshape (shape_kind, fdm))
+  (env, Tshape (Missing_origin, shape_kind, fdm))
 
-and union_shape_kind shape_kind1 shape_kind2 =
-  match (shape_kind1, shape_kind2) with
-  | (Closed_shape, Closed_shape) -> Closed_shape
-  | _ -> Open_shape
+and union_shape_kind ~approx_cancel_neg env shape_kind1 shape_kind2 =
+  union ~approx_cancel_neg env shape_kind1 shape_kind2
 
 (* TODO: add a new reason with positions of merge point and possibly merged
  * envs.*)

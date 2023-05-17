@@ -28,13 +28,13 @@
 #include <folly/Conv.h>
 #include <folly/Hash.h>
 #include <folly/concurrency/ConcurrentHashMap.h>
-#include <folly/executors/GlobalExecutor.h>
 #include <folly/io/async/EventBaseThread.h>
 #include <folly/json.h>
 #include <folly/logging/xlog.h>
 
 #include <watchman/cppclient/WatchmanClient.h>
 
+#include "hphp/runtime/base/array-init.h"
 #include "hphp/runtime/base/array-iterator.h"
 #include "hphp/runtime/base/autoload-handler.h"
 #include "hphp/runtime/base/autoload-map.h"
@@ -99,13 +99,15 @@ struct RepoOptionsParseExc : public std::runtime_error {
  * be the root of the repository we're autoloading.
  */
 fs::path getRepoRoot(const RepoOptions& options) {
-  return fs::canonical(fs::path{options.path()}.parent_path());
+  return options.dir();
 }
 
 std::string getCacheBreakerSchemaHash(
     std::string_view root,
     const RepoOptions& opts) {
-  std::string optsHash = opts.flags().cacheKeySha1().toString();
+  std::string optsHash = RO::EvalIncludeReopOptionsInFactsCacheBreaker
+      ? opts.flags().cacheKeySha1().toString()
+      : opts.flags().getFactsCacheBreaker();
   XLOG(INFO) << "Native Facts DB cache breaker:"
              << "\n Version: " << kSchemaVersion << "\n Root: " << root
              << "\n RepoOpts hash: " << optsHash;
@@ -488,7 +490,7 @@ struct WatchmanAutoloadMapFactory final : public FactsFactory {
 };
 
 struct Facts final : Extension {
-  Facts() : Extension("facts", "1.0") {}
+  Facts() : Extension("facts", "1.0", NO_ONCALL_YET) {}
 
   void moduleLoad(const IniSetting::Map& ini, Hdf config) override {
     if (!RuntimeOption::AutoloadEnabled) {
@@ -527,17 +529,6 @@ struct Facts final : Extension {
     m_data->m_watchmanWatcherOpts = WatchmanWatcherOpts{
         .m_retries = Config::GetInt32(
             ini, config, "Autoload.WatchmanRetries", kDefaultWatchmanRetries)};
-
-    for (auto const& repo : RuntimeOption::AutoloadExcludedRepos) {
-      try {
-        m_data->m_excludedRepos.insert(fs::canonical(repo).native());
-      } catch (const fs::filesystem_error& e) {
-        Logger::Info(
-            "Could not disable native autoloader for %s: %s\n",
-            repo.c_str(),
-            e.what());
-      }
-    }
   }
 
   void moduleInit() override;
@@ -561,7 +552,6 @@ struct Facts final : Extension {
   // your new member is destroyed at the right time.
   struct FactsData {
     std::chrono::seconds m_expirationTime{30 * 60};
-    hphp_hash_set<std::string> m_excludedRepos;
     std::unique_ptr<WatchmanAutoloadMapFactory> m_mapFactory;
     WatchmanWatcherOpts m_watchmanWatcherOpts;
   };
@@ -698,6 +688,11 @@ void WatchmanAutoloadMapFactory::garbageCollectUnusedAutoloadMaps(
     return maps;
   }();
 
+  for (auto& map : mapsToRemove) {
+    // Join each map's update threads
+    map->close();
+  }
+
   // Final references to shared_ptr<Facts> fall out of scope on the Treadmill
   Treadmill::enqueue([_destroyed = std::move(mapsToRemove)]() {});
 }
@@ -737,7 +732,7 @@ Variant HHVM_FUNCTION(facts_db_path, const String& rootStr) {
     if (!requestOptions || requestOptions->path().empty()) {
       return std::nullopt;
     }
-    return fs::path{requestOptions->path()}.parent_path() / maybeRoot;
+    return requestOptions->dir() / maybeRoot;
   }();
   if (!root) {
     XLOG(ERR) << "Error resolving " << rootStr.slice();

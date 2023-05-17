@@ -3,7 +3,8 @@
 // TEST-CHECK-BAL: type C$static
 // CHECK: type C$static = .kind="class" .static {
 // CHECK:   prop3: .public *HackFloat;
-// CHECK:   prop4: .public .SomeAttribute *HackMixed
+// CHECK:   prop4: .public .SomeAttribute *HackMixed;
+// CHECK:   MY_CONSTANT: .public .__Infer_Constant__ *HackInt
 // CHECK: }
 
 // TEST-CHECK-BAL: "type C "
@@ -12,15 +13,6 @@
 // CHECK:   prop2: .public *HackString;
 // CHECK:   prop5: .public *HackInt;
 // CHECK:   type_: .public *HackInt
-// CHECK: }
-
-// TEST-CHECK-BAL: define C$static.$init_static
-// CHECK: define C$static.$init_static() : void {
-// CHECK: #b0:
-// CHECK:   n0 = $builtins.alloc_words(0)
-// CHECK:   store &const::C$static::static_singleton <- n0: *C$static
-// CHECK:   store &const::C$static::MY_CONSTANT <- $builtins.hack_int(7): *HackMixed
-// CHECK:   ret 0
 // CHECK: }
 
 <<__ConsistentConstruct>>
@@ -168,9 +160,9 @@ class C {
   // CHECK: #b0:
   // CHECK:   jmp b1
   // CHECK: #b1:
-  // CHECK:   n0: *C$static = load &const::C$static::static_singleton
-  // CHECK:   n1 = $builtins.lazy_initialize(n0)
-  // CHECK:   store &$0 <- n0: *HackMixed
+  // CHECK:   n0: *C = load &$this
+  // CHECK:   n1 = $builtins.hack_get_static_class(n0)
+  // CHECK:   store &$0 <- n1: *HackMixed
   // CHECK:   n2 = __sil_allocate(<C>)
   // CHECK:   n3 = C._86pinit(n2)
   // CHECK:   store &$2 <- n2: *HackMixed
@@ -229,9 +221,9 @@ class C {
   // CHECK: #b0:
   // CHECK:   jmp b1
   // CHECK: #b1:
-  // CHECK:   n0: *C$static = load &const::C$static::static_singleton
-  // CHECK:   n1 = $builtins.lazy_initialize(n0)
-  // CHECK:   store &$0 <- n0: *HackMixed
+  // CHECK:   n0: *C = load &$this
+  // CHECK:   n1 = $builtins.hack_get_static_class(n0)
+  // CHECK:   store &$0 <- n1: *HackMixed
   // CHECK:   n2 = __sil_allocate(<C>)
   // CHECK:   n3 = C._86pinit(n2)
   // CHECK:   store &$2 <- n2: *HackMixed
@@ -326,8 +318,10 @@ class C {
   // CHECK: define C.test_const($this: *C) : *void {
   // CHECK: local $x: *void
   // CHECK: #b0:
-  // CHECK:   n0: *HackMixed = load &const::C$static::MY_CONSTANT
-  // CHECK:   store &$x <- n0: *HackMixed
+  // CHECK:   n0: *C = load &$this
+  // CHECK:   n1 = $builtins.hack_get_static_class(n0)
+  // CHECK:   n2 = $builtins.hack_field_get(n1, "MY_CONSTANT")
+  // CHECK:   store &$x <- n2: *HackMixed
   // CHECK:   ret null
   // CHECK: }
   public function test_const(): void {
@@ -335,23 +329,64 @@ class C {
   }
 
   // TEST-CHECK-BAL: define C._86pinit
-  // CHECK: define C._86pinit($this: *C$static) : *HackMixed {
+  // CHECK: define C._86pinit($this: *C) : *HackMixed {
   // CHECK: #b0:
+  // CHECK:   n0 = &$this
+  // CHECK:   n1 = $builtins.hack_string("prop1")
+  // CHECK:   n2 = $builtins.hack_dim_field_get(n0, n1)
+  // CHECK:   n3 = $builtins.hack_int(42)
+  // CHECK:   store n2 <- n3: *HackMixed
+  // CHECK:   n4 = &$this
+  // CHECK:   n5 = $builtins.hack_string("prop2")
+  // CHECK:   n6 = $builtins.hack_dim_field_get(n4, n5)
+  // CHECK:   n7 = $builtins.hack_string("hello")
+  // CHECK:   store n6 <- n7: *HackMixed
+  // CHECK:   n8 = &$this
+  // CHECK:   n9 = $builtins.hack_string("prop5")
+  // CHECK:   n10 = $builtins.hack_dim_field_get(n8, n9)
+  // CHECK:   n11 = null
+  // CHECK:   store n10 <- n11: *HackMixed
+  // CHECK:   n12 = &$this
+  // CHECK:   n13 = $builtins.hack_string("type")
+  // CHECK:   n14 = $builtins.hack_dim_field_get(n12, n13)
+  // CHECK:   n15 = $builtins.hack_int(2)
+  // CHECK:   store n14 <- n15: *HackMixed
   // CHECK:   jmp b1, b2
   // CHECK: #b1:
   // CHECK:   prune $builtins.hack_is_true($builtins.hack_bool(false))
   // CHECK:   jmp b3
   // CHECK: #b2:
   // CHECK:   prune ! $builtins.hack_is_true($builtins.hack_bool(false))
-  // CHECK:   n0: *HackMixed = load &const::D$static::C
-  // CHECK:   n1 = &$this
-  // CHECK:   n2 = $builtins.hack_string("prop5")
-  // CHECK:   n3 = $builtins.hack_dim_field_get(n1, n2)
-  // CHECK:   store n3 <- n0: *HackMixed
+  // CHECK:   n16 = __sil_lazy_class_initialize(<D>)
+  // CHECK:   n17 = $builtins.hack_field_get(n16, "C")
+  // CHECK:   n18 = &$this
+  // CHECK:   n19 = $builtins.hack_string("prop5")
+  // CHECK:   n20 = $builtins.hack_dim_field_get(n18, n19)
+  // CHECK:   store n20 <- n17: *HackMixed
   // CHECK:   jmp b3
   // CHECK: #b3:
   // CHECK:   ret null
   // CHECK: }
+}
+
+// TEST-CHECK-BAL: define C$static._86sinit
+// CHECK: define C$static._86sinit($this: *C$static) : *HackMixed {
+// CHECK: #b0:
+// CHECK:   n0 = $builtins.hhbc_class_get_c($builtins.hack_string("C"))
+// CHECK:   n1 = $builtins.hack_set_static_prop($builtins.hack_string("C"), $builtins.hack_string("prop3"), $builtins.hack_float(3.14))
+// CHECK:   n2 = $builtins.hack_set_static_prop($builtins.hack_string("C"), $builtins.hack_string("prop4"), null)
+// CHECK:   n3 = $builtins.hack_set_static_prop($builtins.hack_string("C"), $builtins.hack_string("MY_CONSTANT"), $builtins.hack_int(7))
+// CHECK:   ret null
+// CHECK: }
+
+abstract class AbstractClass {
+  // TEST-CHECK-BAL: declare AbstractClass$static.abs_static_func
+  // CHECK: declare AbstractClass$static.abs_static_func(*AbstractClass$static, *HackInt, *HackFloat): *HackString
+  public static abstract function abs_static_func(int $a, float $b): string;
+
+  // TEST-CHECK-BAL: declare AbstractClass.abs_func
+  // CHECK: declare AbstractClass.abs_func(*AbstractClass, *HackInt, *HackFloat): *HackString
+  public abstract function abs_func(int $a, float $b): string;
 }
 
 trait T0 {
@@ -396,8 +431,42 @@ function dynamic_const(C $c): void {
   echo $c::MY_CONSTANT;
 }
 
-// TEST-CHECK-BAL: global const::C$static::MY_CONSTANT
-// CHECK: global const::C$static::MY_CONSTANT : *HackMixed
+// TEST-CHECK-BAL: define $root.cgets
+// CHECK: define $root.cgets($this: *void) : *void {
+// CHECK: #b0:
+// CHECK:   n0 = $builtins.hhbc_class_get_c($builtins.hack_string("C"))
+// CHECK:   n1 = $builtins.hack_field_get(n0, "prop3")
+// CHECK:   n2 = $root.sink(null, n1)
+// CHECK:   ret null
+// CHECK: }
+function cgets(): void {
+  sink(C::$prop3);
+}
 
-// TEST-CHECK-BAL: global const::C$static::static_singleton
-// CHECK: global const::C$static::static_singleton : *C$static
+// TEST-CHECK-BAL: define $root.sets
+// CHECK: define $root.sets($this: *void) : *void {
+// CHECK: local $0: *void, $1: *void
+// CHECK: #b0:
+// CHECK:   n0 = $builtins.hack_new_dict($builtins.hack_string("kind"), $builtins.hack_int(3))
+// CHECK:   n1 = $builtins.hhbc_class_get_c($builtins.hack_string("C"))
+// CHECK:   n2 = $root.source(null)
+// CHECK:   store &$0 <- n2: *HackMixed
+// CHECK:   store &$1 <- n0: *HackMixed
+// CHECK:   n3 = $builtins.hhbc_is_type_struct_c(n2, n0, $builtins.hack_int(1))
+// CHECK:   jmp b1, b2
+// CHECK: #b1:
+// CHECK:   prune $builtins.hack_is_true(n3)
+// CHECK:   n4: *HackMixed = load &$0
+// CHECK:   store &$1 <- null: *HackMixed
+// CHECK:   n5 = $builtins.hack_set_static_prop($builtins.hack_string("C"), $builtins.hack_string("prop3"), n4)
+// CHECK:   ret null
+// CHECK: #b2:
+// CHECK:   prune ! $builtins.hack_is_true(n3)
+// CHECK:   n6: *HackMixed = load &$0
+// CHECK:   n7: *HackMixed = load &$1
+// CHECK:   n8 = $builtins.hhbc_throw_as_type_struct_exception(n6, n7)
+// CHECK:   unreachable
+// CHECK: }
+function sets(): void {
+  C::$prop3 = source() as float;
+}

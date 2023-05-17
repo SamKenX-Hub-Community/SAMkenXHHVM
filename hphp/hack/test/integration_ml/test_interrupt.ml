@@ -94,9 +94,12 @@ let test () =
       Typing_service_delegate.default
       (Telemetry.create ())
       fnl
+      ~root:None
       ~interrupt
       ~memory_cap:None
       ~longlived_workers:false
+      ~use_hh_distc_instead_of_hulk:false
+      ~hh_distc_fanout_threshold:None
       ~check_info
   in
   assert (Option.is_none diag_pusher);
@@ -105,6 +108,6 @@ let test () =
 
   (* ...while bar1 is among cancelled jobs*)
   (match cancelled with
-  | [x] when x = bar1_path -> ()
+  | Some ([x], _) when x = bar1_path -> ()
   | _ -> assert false);
   ()

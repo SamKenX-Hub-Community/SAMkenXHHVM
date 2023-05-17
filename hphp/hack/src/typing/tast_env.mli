@@ -70,7 +70,9 @@ val get_class_or_typedef :
 
 val is_in_expr_tree : env -> bool
 
-val set_in_expr_tree : env -> bool -> env
+val inside_expr_tree : env -> Tast.hint -> env
+
+val outside_expr_tree : env -> env
 
 (** Return {true} when in the definition of a static property or method. *)
 val is_static : env -> bool
@@ -153,11 +155,6 @@ val is_visible :
 val assert_nontrivial :
   Pos.t -> Ast_defs.bop -> env -> Tast.ty -> Tast.ty -> unit
 
-(** Assert that the type of a value involved in a strict (non-)equality
-    comparsion to null is nullable (otherwise it is known to always
-    return true or false). *)
-val assert_nullable : Pos.t -> Ast_defs.bop -> env -> Tast.ty -> unit
-
 (** Return the declaration-phase type the given hint represents. *)
 val hint_to_ty : env -> Aast.hint -> Typing_defs.decl_ty
 
@@ -196,6 +193,8 @@ val get_enforceable : env -> string -> bool
 
 (** Indicates whether the type parameter with the given name is <<__Newable>>. *)
 val get_newable : env -> string -> bool
+
+val fresh_type : env -> Pos.t -> env * Typing_defs.locl_ty
 
 (** Return whether the type parameter with the given name was implicity created
     as part of an `instanceof`, `is`, or `as` expression (instead of being

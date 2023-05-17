@@ -14,8 +14,6 @@
   camlp-streams
   ifc
   ifc_lib
-  client_color_file
-  client_coverage_metric
   client_find_refs_print
   client_get_definition
   client_highlight_refs
@@ -37,10 +35,9 @@
   refactor_sd
   remove_dead_unsafe_casts
   sdt_analysis
-  server_coverage_metric_utils
-  server_color_file
   server_env
   server_env_build
+  server_code_actions_services
   server_file_outline
   server_find_refs
   server_global_inference
@@ -170,6 +167,7 @@
   direct_decl_parser
   file_provider
   ocamlrep_marshal_ffi
+  package
   ppxlib.print_diff
   provider_context
   provider_utils

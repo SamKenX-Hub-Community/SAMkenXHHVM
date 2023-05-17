@@ -39,7 +39,8 @@ struct ApplyPatch {
   void operator()(const Object& patch, folly::IOBuf& value) const;
   void operator()(const Object& patch, std::vector<Value>& value) const;
   void operator()(const Object& patch, std::set<Value>& value) const;
-  void operator()(const Object& patch, std::map<Value, Value>& value) const;
+  void operator()(
+      const Object& patch, folly::F14FastMap<Value, Value>& value) const;
   void operator()(const Object& patch, Object& value) const;
 };
 
@@ -59,15 +60,21 @@ struct ExtractedMasks {
   Mask write; // write mask from patch
 };
 
-/// Constructs a Mask that only contains fields that are modified by the Patch.
-/// It will construct nested Mask for map and object patches.
-/// For map, it uses the address of Value key as the key for the mask.
-/// Note that Mask contains pointer to `protocol::Value` in patch, so
-/// caller needs to make sure Patch has longer lifetime than the mask.
-ExtractedMasks extractMaskFromPatch(const protocol::Object& patch);
+/// Constructs read and write Thrift Mask that only contain fields that are
+/// modified by the Patch. It will construct nested Mask for map and object
+/// patches. For map, it uses the address of Value key as the key for the
+/// integer map mask. Note that Mask contains pointer to `protocol::Value` in
+/// patch, so caller needs to make sure Patch has longer lifetime than the mask.
+ExtractedMasks extractMaskViewFromPatch(const protocol::Object& patch);
 
 // Extracting mask from a temporary patch is dangerous and should be disallowed.
-ExtractedMasks extractMaskFromPatch(Object&& patch) = delete;
+ExtractedMasks extractMaskViewFromPatch(Object&& patch) = delete;
+
+/// Constructs read and write Thrift Mask that only contain fields that are
+/// modified by the Patch. It will construct nested Mask for map and object
+/// patches. For map, it only supports integer or string key. If the type of key
+/// map is not integer or string, it throws.
+ExtractedMasks extractMaskFromPatch(const protocol::Object& patch);
 
 template <type::StandardProtocol Protocol>
 std::unique_ptr<folly::IOBuf> applyPatchToSerializedData(

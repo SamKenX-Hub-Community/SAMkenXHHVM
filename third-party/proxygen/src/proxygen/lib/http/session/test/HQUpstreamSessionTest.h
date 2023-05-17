@@ -21,6 +21,7 @@
 #include <proxygen/lib/http/session/test/HTTPSessionMocks.h>
 #include <proxygen/lib/http/session/test/HTTPTransactionMocks.h>
 #include <proxygen/lib/http/session/test/MockQuicSocketDriver.h>
+#include <proxygen/lib/http/session/test/MockSessionObserver.h>
 #include <proxygen/lib/http/session/test/TestUtils.h>
 #include <quic/api/test/MockQuicSocket.h>
 #include <wangle/acceptor/ConnectionManager.h>
@@ -81,6 +82,9 @@ class HQUpstreamSessionTest : public HQSessionTest {
       std::function<void()> extraEventsFn = std::function<void()>());
 
   testing::StrictMock<proxygen::MockController>& getMockController();
+
+  std::unique_ptr<proxygen::MockSessionObserver> addMockSessionObserver(
+      proxygen::MockSessionObserver::EventSet eventSet);
 
   // Representation of stream data
   // If create with a push id, can be used

@@ -47,7 +47,7 @@ let print_ty_with_identity env phase_ty sym_occurrence sym_definition =
     let ((env, ty_err_opt), ty) =
       Typing_phase.localize_no_subst env ~ignore_errors:true ty
     in
-    Option.iter ty_err_opt ~f:Errors.add_typing_error;
+    Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
     Typing_print.full_with_identity env ty sym_occurrence sym_definition
   | Typing_defs.LoclTy ty ->
     Typing_print.full_with_identity env ty sym_occurrence sym_definition
@@ -77,7 +77,9 @@ let get_class_or_typedef env x =
 
 let is_in_expr_tree = Typing_env.is_in_expr_tree
 
-let set_in_expr_tree = Typing_env.set_in_expr_tree
+let inside_expr_tree = Typing_env.inside_expr_tree
+
+let outside_expr_tree = Typing_env.outside_expr_tree
 
 let is_static = Typing_env.is_static
 
@@ -162,23 +164,23 @@ let is_visible = Typing_visibility.is_visible
 
 let assert_nontrivial = Typing_equality_check.assert_nontrivial
 
-let assert_nullable = Typing_equality_check.assert_nullable
-
 let hint_to_ty env = Decl_hint.hint env.Typing_env_types.decl_env
 
 let localize env ety_env dty =
   let ((env, ty_err_opt), lty) = Typing_phase.localize ~ety_env env dty in
-  Option.iter ~f:Errors.add_typing_error ty_err_opt;
+  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
   (env, lty)
 
 let localize_no_subst env ~ignore_errors dty =
   let ((env, ty_err_opt), lty) =
     Typing_phase.localize_no_subst env ~ignore_errors dty
   in
-  Option.iter ~f:Errors.add_typing_error ty_err_opt;
+  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
   (env, lty)
 
 let get_upper_bounds = Typing_env.get_upper_bounds
+
+let fresh_type = Typing_env.fresh_type
 
 let is_fresh_generic_parameter = Typing_env.is_fresh_generic_parameter
 
@@ -196,7 +198,7 @@ let assert_subtype p reason env ty_have ty_expect on_error =
   let (env, ty_err_opt) =
     Typing_ops.sub_type p reason env ty_have ty_expect on_error
   in
-  Option.iter ~f:Errors.add_typing_error ty_err_opt;
+  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
   env
 
 let is_sub_type env ty_sub ty_super =
@@ -214,7 +216,7 @@ let referenced_typeconsts env root ids =
   let (env, ty_err_opt) =
     Typing_taccess.referenced_typeconsts env ety_env (root, ids)
   in
-  Option.iter ~f:Errors.add_typing_error ty_err_opt;
+  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
   env
 
 let empty ctx = Typing_env_types.empty ctx Relative_path.default ~droot:None

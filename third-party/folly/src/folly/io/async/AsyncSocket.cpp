@@ -243,7 +243,7 @@ class AsyncSocket::BytesWriteRequest : public AsyncSocket::WriteRequest {
  public:
   static BytesWriteRequest* newRequest(
       AsyncSocket* socket,
-      WriteCallback* callback,
+      WriteCallbackWithState callbackWithState,
       const iovec* ops,
       uint32_t opCount,
       uint32_t partialWritten,
@@ -268,7 +268,7 @@ class AsyncSocket::BytesWriteRequest : public AsyncSocket::WriteRequest {
 
     return new (buf) BytesWriteRequest(
         socket,
-        callback,
+        callbackWithState,
         ops,
         opCount,
         partialWritten,
@@ -292,7 +292,12 @@ class AsyncSocket::BytesWriteRequest : public AsyncSocket::WriteRequest {
     socket_->adjustZeroCopyFlags(writeFlags);
 
     auto writeResult = socket_->performWrite(
-        getOps(), getOpCount(), writeFlags, &opsWritten_, &partialBytes_);
+        getOps(),
+        getOpCount(),
+        writeFlags,
+        &opsWritten_,
+        &partialBytes_,
+        WriteRequestTag{ioBuf_.get()});
     bytesWritten_ = writeResult.writeReturn > 0 ? writeResult.writeReturn : 0;
     if (bytesWritten_) {
       if (socket_->isZeroCopyRequest(writeFlags)) {
@@ -353,14 +358,14 @@ class AsyncSocket::BytesWriteRequest : public AsyncSocket::WriteRequest {
  private:
   BytesWriteRequest(
       AsyncSocket* socket,
-      WriteCallback* callback,
+      WriteCallbackWithState callbackWithState,
       const struct iovec* ops,
       uint32_t opCount,
       uint32_t partialBytes,
       uint32_t bytesWritten,
       unique_ptr<IOBuf>&& ioBuf,
       WriteFlags flags)
-      : AsyncSocket::WriteRequest(socket, callback),
+      : AsyncSocket::WriteRequest(socket, callbackWithState),
         opCount_(opCount),
         opIndex_(0),
         flags_(flags),
@@ -430,8 +435,10 @@ int AsyncSocket::SendMsgParamsCallback::getDefaultFlags(
 void AsyncSocket::SendMsgParamsCallback::getAncillaryData(
     folly::WriteFlags flags,
     void* data,
+    const WriteRequestTag& writeTag,
     const bool byteEventsEnabled) noexcept {
-  auto ancillaryDataSize = getAncillaryDataSize(flags, byteEventsEnabled);
+  auto ancillaryDataSize =
+      getAncillaryDataSize(flags, writeTag, byteEventsEnabled);
   if (!ancillaryDataSize) {
     return;
   }
@@ -471,7 +478,9 @@ void AsyncSocket::SendMsgParamsCallback::getAncillaryData(
 }
 
 uint32_t AsyncSocket::SendMsgParamsCallback::getAncillaryDataSize(
-    folly::WriteFlags flags, const bool byteEventsEnabled) noexcept {
+    folly::WriteFlags flags,
+    const WriteRequestTag&,
+    const bool byteEventsEnabled) noexcept {
 #ifdef FOLLY_HAVE_MSG_ERRQUEUE
   if (WriteFlags::NONE != (flags & kWriteFlagsForTimestamping) &&
       byteEventsEnabled) {
@@ -1633,6 +1642,7 @@ void AsyncSocket::writeImpl(
   DestructorGuard dg(this);
   unique_ptr<IOBuf> ioBuf(std::move(buf));
   eventBase_->dcheckIsInEventBaseThread();
+  WriteCallbackWithState callbackWithState(callback);
 
   auto* releaseIOBufCallback =
       callback ? callback->getReleaseIOBufCallback() : nullptr;
@@ -1668,8 +1678,15 @@ void AsyncSocket::writeImpl(
       assert(writeReqTail_ == nullptr);
       assert((eventFlags_ & EventHandler::WRITE) == 0);
 
+      callbackWithState.notifyOnWrite();
+
       auto writeResult = performWrite(
-          vec, uint32_t(count), flags, &countWritten, &partialWritten);
+          vec,
+          uint32_t(count),
+          flags,
+          &countWritten,
+          &partialWritten,
+          WriteRequestTag{ioBuf.get()});
       bytesWritten = writeResult.writeReturn;
       if (bytesWritten < 0) {
         auto errnoCopy = errno;
@@ -1719,7 +1736,7 @@ void AsyncSocket::writeImpl(
   try {
     req = BytesWriteRequest::newRequest(
         this,
-        callback,
+        callbackWithState,
         vec + countWritten,
         uint32_t(count - countWritten),
         partialWritten,
@@ -2454,39 +2471,31 @@ void AsyncSocket::ioReady(uint16_t events) noexcept {
   }
 }
 
-AsyncSocket::ReadResult AsyncSocket::performRead(
-    void** buf, size_t* buflen, size_t* /* offset */) {
-  struct iovec iov;
+AsyncSocket::ReadResult AsyncSocket::performReadMsg(
+    struct ::msghdr& msg,
+    // This is here only to preserve AsyncSSLSocket's legacy semi-broken
+    // behavior (D43648653 for context).
+    AsyncReader::ReadCallback::ReadMode) {
+  VLOG(5) << "AsyncSocket::performReadMsg() this=" << this
+          << ", iovs=" << msg.msg_iov << ", num=" << msg.msg_iovlen;
 
-  // Data buffer pointer and length
-  iov.iov_base = *buf;
-  iov.iov_len = *buflen;
-
-  return performReadInternal(&iov, 1);
-}
-
-AsyncSocket::ReadResult AsyncSocket::performReadv(
-    struct iovec* iovs, size_t num) {
-  return performReadInternal(iovs, num);
-}
-
-AsyncSocket::ReadResult AsyncSocket::performReadInternal(
-    struct iovec* iovs, size_t num) {
-  VLOG(5) << "AsyncSocket::performReadInternal() this=" << this
-          << ", iovs=" << iovs << ", num=" << num;
-
-  if (!num) {
+  if (!msg.msg_iovlen) {
     return ReadResult(READ_ERROR);
   }
 
   if (preReceivedData_ && !preReceivedData_->empty()) {
-    VLOG(5) << "AsyncSocket::performReadInternal() this=" << this
+    VLOG(5) << "AsyncSocket::performReadMsg() this=" << this
             << ", reading pre-received data";
 
     ssize_t len = 0;
-    for (size_t i = 0; (i < num) && (!preReceivedData_->empty()); ++i) {
+    for (size_t i = 0;
+         // MacOS `msg_iovlen` is an `int` :(
+         (i < static_cast<size_t>(msg.msg_iovlen)) &&
+         (!preReceivedData_->empty());
+         ++i) {
       io::Cursor cursor(preReceivedData_.get());
-      auto ret = cursor.pullAtMost(iovs[i].iov_base, iovs[i].iov_len);
+      auto ret =
+          cursor.pullAtMost(msg.msg_iov[i].iov_base, msg.msg_iov[i].iov_len);
       len += ret;
 
       IOBufQueue queue;
@@ -2500,36 +2509,37 @@ AsyncSocket::ReadResult AsyncSocket::performReadInternal(
   }
 
   ssize_t bytes = 0;
-
-  struct msghdr msg;
-
-  if (readAncillaryDataCallback_ == nullptr && num == 1) {
-    bytes = netops_->recv(fd_, iovs[0].iov_base, iovs[0].iov_len, MSG_DONTWAIT);
+  if (readAncillaryDataCallback_ == nullptr && msg.msg_iovlen == 1) {
+    bytes = netops_->recv(
+        fd_, msg.msg_iov[0].iov_base, msg.msg_iov[0].iov_len, MSG_DONTWAIT);
   } else {
+    int recvFlags = 0;
     if (readAncillaryDataCallback_) {
-      // Ancillary data buffer and length
-      msg.msg_control =
-          readAncillaryDataCallback_->getAncillaryDataCtrlBuffer().data();
-      msg.msg_controllen =
-          readAncillaryDataCallback_->getAncillaryDataCtrlBuffer().size();
+      auto buf = readAncillaryDataCallback_->getAncillaryDataCtrlBuffer();
+      msg.msg_control = buf.data();
+      msg.msg_controllen = buf.size();
+#if defined(__linux__)
+      // On BSD / MacOS, `AsyncFdSocket` has to do 2 extra `fcntl`s per FD.
+      recvFlags |= MSG_CMSG_CLOEXEC;
+#endif
     } else {
       msg.msg_control = nullptr;
       msg.msg_controllen = 0;
     }
 
-    // Dest address info
-    msg.msg_name = nullptr;
-    msg.msg_namelen = 0;
+    // `msg.msg_iov*` were set by the caller, we're ready.
+    bytes = netops::recvmsg(fd_, &msg, recvFlags);
 
-    // Array of data buffers (scatter/gather)
-    msg.msg_iov = iovs;
-    msg.msg_iovlen = num;
-
-    bytes = netops::recvmsg(fd_, &msg, 0);
-  }
-
-  if (readAncillaryDataCallback_ && (bytes > 0)) {
-    readAncillaryDataCallback_->ancillaryData(msg);
+    // KEY INVARIANT: If `bytes > 0`, we must proceed to `ancillaryData` --
+    // no error branches must interrupt this flow.  The reason is that
+    // otherwise, received FDs could be irretrievably leaked, causing
+    // eventual process failure due to `EMFILE`.
+    //
+    // NB: We do not check for MSG_CTRUNC here for the reason above.  We do
+    // not check for it _after_ the callbacks have fired because our
+    // `ReadCallback` could move the socket to a different thread, which
+    // would make a subsequent `failRead` unsafe.  Instead we require
+    // `ReadAncillaryDataCallback` implementations to check this.
   }
 
   if (bytes < 0) {
@@ -2831,7 +2841,7 @@ AsyncSocket::ReadCode AsyncSocket::processZeroCopyRead() {
   }
 
   if (preReceivedData_ && !preReceivedData_->empty()) {
-    VLOG(5) << "AsyncSocket::performReadInternal() this=" << this
+    VLOG(5) << "AsyncSocket::processZeroCopyRead() this=" << this
             << ", reading pre-received data";
 
     readCallback_->readZeroCopyDataAvailable(
@@ -2889,6 +2899,12 @@ AsyncSocket::ReadCode AsyncSocket::processZeroCopyRead() {
       ptr->len = zc.length;
       auto tmp = getRXZeroCopyIOBuf(std::move(ptr));
       buf = std::move(tmp);
+      // ZC buffers must be marked externally shared
+      // since they are "shared" with the kernel networking stack
+      // and must not be written to
+      // so that Fizz does not attempt to perform
+      // in place decryption and write to these buffers.
+      buf->markExternallyShared();
     }
 
     if (len) {
@@ -2937,15 +2953,14 @@ AsyncSocket::ReadCode AsyncSocket::processNormalRead() {
   auto readMode = readCallback_->getReadMode();
   // Get the buffer(s) to read into.
   void* buf = nullptr;
-  size_t offset = 0, num = 0;
   size_t buflen = 0;
   IOBufIovecBuilder::IoVecVec iovs; // this can be an AsyncSocket member too
 
   try {
     if (readMode == AsyncReader::ReadCallback::ReadMode::ReadVec) {
       prepareReadBuffers(iovs);
-      num = iovs.size();
-      VLOG(5) << "prepareReadBuffers() bufs=" << iovs.data() << ", num=" << num;
+      VLOG(5) << "prepareReadBuffers() bufs=" << iovs.data()
+              << ", num=" << iovs.size();
     } else {
       prepareReadBuffer(&buf, &buflen);
       VLOG(5) << "prepareReadBuffer() buf=" << buf << ", buflen=" << buflen;
@@ -2966,7 +2981,7 @@ AsyncSocket::ReadCode AsyncSocket::processNormalRead() {
         "non-exception type");
     return failRead(__func__, ex);
   }
-  if ((num == 0) && (buf == nullptr || buflen == 0)) {
+  if (iovs.empty() && (buf == nullptr || buflen == 0)) {
     AsyncSocketException ex(
         AsyncSocketException::BAD_ARGS,
         "ReadCallback::getReadBuffer() returned "
@@ -2974,15 +2989,64 @@ AsyncSocket::ReadCode AsyncSocket::processNormalRead() {
     return failRead(__func__, ex);
   }
 
-  // Perform the read
-  auto readResult = (readMode == AsyncReader::ReadCallback::ReadMode::ReadVec)
-      ? performReadv(iovs.data(), num)
-      : performRead(&buf, &buflen, &offset);
+  // Perform the read; we want `msg` for the `ancillaryData` callback.
+  //
+  // Zero-initialization is crucial here because not all code paths in
+  // `performReadMsg` go through `recvmsg` (e.g., "pre-received data" and
+  // "recv" are possibilities).  For those that do not, we want at a minimum
+  // `msg_controllen` and `msg_flags` to be zero.
+  struct ::msghdr msg {};
+  // Dest address info
+  msg.msg_name = nullptr;
+  msg.msg_namelen = 0;
+  struct ::iovec iov; // unused in `ReadMode::ReadVec`
+  if (readMode == AsyncReader::ReadCallback::ReadMode::ReadVec) {
+    msg.msg_iov = iovs.data();
+    msg.msg_iovlen = iovs.size();
+  } else {
+    iov.iov_base = buf;
+    iov.iov_len = buflen;
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+  }
+  auto readResult = performReadMsg(msg, readMode);
 
   auto bytesRead = readResult.readReturn;
   VLOG(4) << "this=" << this << ", AsyncSocket::handleRead() got " << bytesRead
           << " bytes";
   if (bytesRead > 0) {
+    DCHECK(readCallback_);
+    if (readAncillaryDataCallback_) {
+      auto prevReadCallback = readCallback_;
+      readAncillaryDataCallback_->ancillaryData(msg);
+      if (UNLIKELY(readCallback_ != prevReadCallback)) {
+        // The `ancillaryData` callback is allowed to close the socket,
+        // but otherwise is not allowed to change/replace the read callback.
+        CHECK_EQ((shutdownFlags_ & SHUT_READ), SHUT_READ);
+        CHECK(readCallback_ == nullptr);
+        // Return now since the socket has been closed, and discard
+        // the (real, non-ancillary) data that was read.
+        return ReadCode::READ_DONE;
+      }
+      // `ancillaryData()` is expected to check and error on this, since
+      // it's probably incorrect to process truncated ancillary data.  If
+      // some bizarro callback wants to treat this as recoverable, it can
+      // clear `MSG_CTRUNC` on `msg_flags` before returning.
+      //
+      // Don't move this: `performReadMsg` doesn't guarantee that `msg_flags`
+      // is valid without `readAncillaryDataCallback_`.  Also, the
+      // `readCallback_ != prevReadCallback` test means that we can safely
+      // call `failRead()` since a prior error would clear the read CB.
+      if (msg.msg_flags & MSG_CTRUNC) {
+        VLOG(5) << "AsyncSocket::performReadInternal() this=" << this
+                << ", ancillary data was truncated: " << msg.msg_flags;
+        readErr_ = READ_ERROR;
+        AsyncSocketException ex(
+            AsyncSocketException::INTERNAL_ERROR,
+            withAddr("recvmsg() got MSG_CTRUNC"));
+        return failRead(__func__, ex);
+      }
+    }
     readCallback_->readDataAvailable(size_t(bytesRead));
 
     // Continue reading if we filled the available buffer
@@ -3106,6 +3170,8 @@ void AsyncSocket::handleWrite() noexcept {
   // (See the comment in handleRead() explaining how this can happen.)
   EventBase* originalEventBase = eventBase_;
   while (writeReqHead_ != nullptr && eventBase_ == originalEventBase) {
+    writeReqHead_->getCallbackWithState().notifyOnWrite();
+
     auto writeResult = writeReqHead_->performWrite();
     if (writeResult.writeReturn < 0) {
       if (writeResult.exception) {
@@ -3405,7 +3471,10 @@ ssize_t AsyncSocket::tfoSendMsg(
 }
 
 AsyncSocket::WriteResult AsyncSocket::sendSocketMessage(
-    const iovec* vec, size_t count, WriteFlags flags) {
+    const iovec* vec,
+    size_t count,
+    WriteFlags flags,
+    WriteRequestTag writeTag) {
   // lambda to gather and merge PrewriteRequests from observers
   auto mergePrewriteRequests = [this,
                                 vec,
@@ -3481,7 +3550,7 @@ AsyncSocket::WriteResult AsyncSocket::sendSocketMessage(
 
   // lambda to prepare and send a message, and handle byte events
   // parameters have L at the end to prevent shadowing warning from gcc
-  auto prepSendMsg = [this](
+  auto prepSendMsg = [this, writeTag = std::move(writeTag)](
                          const iovec* vecL,
                          const size_t countL,
                          const WriteFlags flagsL) {
@@ -3496,8 +3565,8 @@ AsyncSocket::WriteResult AsyncSocket::sendSocketMessage(
     msg.msg_iovlen = std::min<size_t>(countL, kIovMax);
     msg.msg_flags = 0; // passed to sendSocketMessage below, it sets them
     msg.msg_control = nullptr;
-    msg.msg_controllen =
-        sendMsgParamCallback_->getAncillaryDataSize(flagsL, byteEventsEnabled);
+    msg.msg_controllen = sendMsgParamCallback_->getAncillaryDataSize(
+        flagsL, writeTag, byteEventsEnabled);
     CHECK_GE(
         AsyncSocket::SendMsgParamsCallback::maxAncillaryDataSize,
         msg.msg_controllen);
@@ -3505,7 +3574,7 @@ AsyncSocket::WriteResult AsyncSocket::sendSocketMessage(
     if (msg.msg_controllen != 0) {
       msg.msg_control = reinterpret_cast<char*>(alloca(msg.msg_controllen));
       sendMsgParamCallback_->getAncillaryData(
-          flagsL, msg.msg_control, byteEventsEnabled);
+          flagsL, msg.msg_control, writeTag, byteEventsEnabled);
     }
 
     const auto prewriteRawBytesWritten = getRawBytesWritten();
@@ -3521,21 +3590,25 @@ AsyncSocket::WriteResult AsyncSocket::sendSocketMessage(
       writeResult = sendSocketMessage(fd_, &msg, msg_flags);
     }
 
-    if (writeResult.writeReturn > 0 && byteEventsEnabled &&
-        isSet(flagsL, WriteFlags::TIMESTAMP_WRITE)) {
-      CHECK_GT(getRawBytesWritten(), prewriteRawBytesWritten); // sanity check
-      ByteEvent byteEvent = {};
-      byteEvent.type = ByteEvent::Type::WRITE;
-      byteEvent.offset = getRawBytesWritten() - 1;
-      byteEvent.maybeRawBytesWritten = writeResult.writeReturn;
-      byteEvent.maybeRawBytesTriedToWrite = 0;
-      for (size_t i = 0; i < countL; ++i) {
-        byteEvent.maybeRawBytesTriedToWrite.value() += vecL[i].iov_len;
+    if (writeResult.writeReturn > 0) {
+      if (msg.msg_controllen != 0) {
+        sendMsgParamCallback_->wroteBytes(writeTag);
       }
-      byteEvent.maybeWriteFlags = flagsL;
-      for (const auto& observer : lifecycleObservers_) {
-        if (observer->getConfig().byteEvents) {
-          observer->byteEvent(this, byteEvent);
+      if (byteEventsEnabled && isSet(flagsL, WriteFlags::TIMESTAMP_WRITE)) {
+        CHECK_GT(getRawBytesWritten(), prewriteRawBytesWritten); // sanity check
+        ByteEvent byteEvent = {};
+        byteEvent.type = ByteEvent::Type::WRITE;
+        byteEvent.offset = getRawBytesWritten() - 1;
+        byteEvent.maybeRawBytesWritten = writeResult.writeReturn;
+        byteEvent.maybeRawBytesTriedToWrite = 0;
+        for (size_t i = 0; i < countL; ++i) {
+          byteEvent.maybeRawBytesTriedToWrite.value() += vecL[i].iov_len;
+        }
+        byteEvent.maybeWriteFlags = flagsL;
+        for (const auto& observer : lifecycleObservers_) {
+          if (observer->getConfig().byteEvents) {
+            observer->byteEvent(this, byteEvent);
+          }
         }
       }
     }
@@ -3668,8 +3741,9 @@ AsyncSocket::WriteResult AsyncSocket::performWrite(
     uint32_t count,
     WriteFlags flags,
     uint32_t* countWritten,
-    uint32_t* partialWritten) {
-  auto writeResult = sendSocketMessage(vec, count, flags);
+    uint32_t* partialWritten,
+    WriteRequestTag writeTag) {
+  auto writeResult = sendSocketMessage(vec, count, flags, std::move(writeTag));
   auto totalWritten = writeResult.writeReturn;
   if (totalWritten < 0) {
     bool tryAgain = (errno == EAGAIN);
@@ -4147,6 +4221,12 @@ std::string AsyncSocket::withAddr(folly::StringPiece s) {
 
 void AsyncSocket::setBufferCallback(BufferCallback* cb) {
   bufferCallback_ = cb;
+}
+
+std::ostream& operator<<(
+    std::ostream& os, const folly::AsyncSocket::WriteRequestTag& tag) {
+  os << tag.buf_;
+  return os;
 }
 
 } // namespace folly

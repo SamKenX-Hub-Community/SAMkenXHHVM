@@ -1,4 +1,6 @@
 __construct
-  (function(): void)
+  INSERT __construct()
+  function(): void
 class
+  INSERT class
   classname<this>

@@ -47,6 +47,7 @@
 #include <thrift/lib/cpp2/server/ControlServerInterface.h>
 #include <thrift/lib/cpp2/server/MonitoringServerInterface.h>
 #include <thrift/lib/cpp2/server/ResourcePool.h>
+#include <thrift/lib/cpp2/server/ResourcePoolSet.h>
 #include <thrift/lib/cpp2/server/ServerAttribute.h>
 #include <thrift/lib/cpp2/server/ServerConfigs.h>
 #include <thrift/lib/cpp2/server/ServerFlags.h>
@@ -175,6 +176,7 @@ class BaseThriftServer : public apache::thrift::concurrency::Runnable,
 
   struct RuntimeServerActions {
     bool userSuppliedThreadManager{false};
+    bool userSuppliedResourcePools{false};
     bool interactionInService{false};
     bool wildcardMethods{false};
     bool noServiceRequestInfo{false};
@@ -604,7 +606,9 @@ class BaseThriftServer : public apache::thrift::concurrency::Runnable,
       std::shared_ptr<apache::thrift::concurrency::ThreadManager>
           threadManager) {
     setThreadManagerInternal(threadManager);
-    runtimeDisableResourcePoolsDeprecated();
+    if (!THRIFT_FLAG(allow_set_thread_manager_resource_pools)) {
+      runtimeDisableResourcePoolsDeprecated();
+    }
     runtimeServerActions_.userSuppliedThreadManager = true;
   }
 
@@ -667,7 +671,8 @@ class BaseThriftServer : public apache::thrift::concurrency::Runnable,
    */
   std::shared_ptr<folly::Executor> getHandlerExecutor_deprecated()
       const override {
-    if (!resourcePoolSet().empty()) {
+    if (!runtimeServerActions_.userSuppliedThreadManager &&
+        !resourcePoolSet().empty()) {
       return resourcePoolSet()
           .resourcePool(ResourcePoolHandle::defaultAsync())
           .sharedPtrExecutor()
@@ -678,7 +683,8 @@ class BaseThriftServer : public apache::thrift::concurrency::Runnable,
   }
 
   folly::Executor::KeepAlive<> getHandlerExecutorKeepAlive() const override {
-    if (!resourcePoolSet().empty()) {
+    if (!runtimeServerActions_.userSuppliedThreadManager &&
+        !resourcePoolSet().empty()) {
       return resourcePoolSet()
           .resourcePool(ResourcePoolHandle::defaultAsync())
           .sharedPtrExecutor()

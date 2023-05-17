@@ -35,6 +35,7 @@ use ir::MemberOpBuilder;
 use ir::MethodId;
 use ir::ObjMethodOp;
 use ir::PropId;
+use ir::ReadonlyOp;
 use ir::SpecialClsRef;
 use ir::TypeStructResolveOp;
 use ir::UnitBytesId;
@@ -43,6 +44,7 @@ use itertools::Itertools;
 
 use super::func_builder::FuncBuilderEx as _;
 use crate::class::IsStatic;
+use crate::func::lookup_constant_string;
 use crate::func::FuncInfo;
 use crate::hack;
 
@@ -81,7 +83,10 @@ impl LowerInstrs<'_> {
             .and_then(|cid| match builder.func.constant(cid) {
                 Constant::String(s) => {
                     let id = ir::GlobalId::new(*s);
-                    Some(Instr::Special(Special::Textual(Textual::LoadGlobal(id))))
+                    Some(Instr::Special(Special::Textual(Textual::LoadGlobal {
+                        id,
+                        is_const: false,
+                    })))
                 }
                 _ => None,
             })
@@ -92,6 +97,8 @@ impl LowerInstrs<'_> {
             Hhbc::Add(..) => hack::Hhbc::Add,
             Hhbc::AddElemC(..) => hack::Hhbc::AddElemC,
             Hhbc::AddNewElemC(..) => hack::Hhbc::AddNewElemC,
+            Hhbc::AwaitAll(..) => hack::Hhbc::AwaitAll,
+            Hhbc::CastKeyset(..) => hack::Hhbc::CastKeyset,
             Hhbc::CastVec(..) => hack::Hhbc::CastVec,
             Hhbc::ClassGetC(..) => hack::Hhbc::ClassGetC,
             Hhbc::ClassHasReifiedGenerics(..) => hack::Hhbc::ClassHasReifiedGenerics,
@@ -138,6 +145,7 @@ impl LowerInstrs<'_> {
             Hhbc::RecordReifiedGeneric(..) => hack::Hhbc::RecordReifiedGeneric,
             Hhbc::Sub(..) => hack::Hhbc::Sub,
             Hhbc::ThrowNonExhaustiveSwitch(..) => hack::Hhbc::ThrowNonExhaustiveSwitch,
+            Hhbc::WHResult(..) => hack::Hhbc::WHResult,
             _ => return None,
         };
         Some(builtin)
@@ -420,6 +428,47 @@ impl LowerInstrs<'_> {
             _ => unreachable!(),
         }
     }
+
+    fn set_s(
+        &mut self,
+        builder: &mut FuncBuilder<'_>,
+        field: ValueId,
+        class: ValueId,
+        vid: ValueId,
+        _readonly: ReadonlyOp,
+        loc: LocId,
+    ) -> Option<Instr> {
+        // Some magic - if the class points to a ClassGetC with a
+        // constant parameter and the field is a constant then replace
+        // this with a Textual::SetPropD.
+        if let Some(propname) = lookup_constant_string(&builder.func, field) {
+            if let Some(class) = class.instr() {
+                let class_instr = builder.func.instr(class);
+                // The ClassGetC will have already been converted to a
+                // textual builtin.
+                if let Instr::Special(Special::Textual(Textual::HackBuiltin {
+                    target,
+                    values: box [cid],
+                    loc: _,
+                })) = class_instr
+                {
+                    if target == hack::Hhbc::ClassGetC.as_str() {
+                        if let Some(classname) = lookup_constant_string(&builder.func, *cid) {
+                            let cid = builder.emit_constant(Constant::String(classname));
+                            let pid = builder.emit_constant(Constant::String(propname));
+                            return Some(builder.hack_builtin(
+                                hack::Builtin::SetStaticProp,
+                                &[cid, pid, vid],
+                                loc,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
 }
 
 impl TransformInstr for LowerInstrs<'_> {
@@ -471,6 +520,13 @@ impl TransformInstr for LowerInstrs<'_> {
                 let lid = LocalId::Named(this);
                 Instr::Hhbc(Hhbc::CGetL(lid, loc))
             }
+            Instr::Hhbc(Hhbc::SetS([field, class, vid], readonly, loc)) => {
+                if let Some(replace) = self.set_s(builder, field, class, vid, readonly, loc) {
+                    replace
+                } else {
+                    return instr;
+                }
+            }
             Instr::Hhbc(Hhbc::CheckProp(pid, loc)) => self.check_prop(builder, pid, loc),
             Instr::Hhbc(Hhbc::CheckThis(loc)) => {
                 let builtin = hack::Hhbc::CheckThis;
@@ -489,6 +545,12 @@ impl TransformInstr for LowerInstrs<'_> {
                 let builtin = hack::Hhbc::ClsCns;
                 let const_id = builder.emit_constant(Constant::String(const_id.id));
                 builder.hhbc_builtin(builtin, &[cls, const_id], loc)
+            }
+            Instr::Hhbc(Hhbc::ClsCnsD(const_id, cid, loc)) => {
+                // ClsCnsD(id, cid) -> CGetS(id, cid)
+                let cid = builder.emit_constant(Constant::String(cid.id));
+                let const_id = builder.emit_constant(Constant::String(const_id.id));
+                Instr::Hhbc(Hhbc::CGetS([const_id, cid], ReadonlyOp::Readonly, loc))
             }
             Instr::Hhbc(Hhbc::ColFromArray(vid, col_type, loc)) => {
                 use ir::CollectionType;
@@ -581,6 +643,14 @@ impl TransformInstr for LowerInstrs<'_> {
             }
             Instr::Hhbc(Hhbc::VerifyOutType(vid, lid, loc)) => {
                 self.verify_out_type(builder, vid, lid, loc)
+            }
+            Instr::Hhbc(Hhbc::VerifyParamType(vid, _lid, _loc)) => {
+                // This is used to check the param type of default
+                // parameters. We'll hold off on actually checking for now since
+                // it's hard to turn the param type into a checkable TypeStruct
+                // (and right now the param type has been erased in this version
+                // of the function).
+                Instr::Special(Special::Copy(vid))
             }
             Instr::Hhbc(Hhbc::VerifyParamTypeTS(ts, lid, loc)) => {
                 self.verify_param_type_ts(builder, lid, ts, loc)

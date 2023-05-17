@@ -922,17 +922,13 @@ end = struct
       Typing_deps.Dep.(
         match target with
         | Cmd.Function func ->
-          let (_
-                : (Tast.def list * Typing_inference_env.t_global_with_pos)
-                  option) =
+          let (_ : Tast.def list option) =
             Typing_check_job.type_fun ctx filename func
           in
           add_implementation_dependencies ctx env;
           HashSet.remove env.dependencies (Fun func)
         | Cmd.Method (cls, m) ->
-          let (_
-                : (Tast.def * Typing_inference_env.t_global_with_pos list)
-                  option) =
+          let (_ : Tast.def option) =
             Typing_check_job.type_class ctx filename cls
           in
           HashSet.add env.dependencies (Method (cls, m));
@@ -1339,6 +1335,7 @@ end = struct
 
     let pp_typedef_visiblity ppf = function
       | Aast_defs.Transparent -> Fmt.string ppf "type"
+      | Aast_defs.CaseType -> Fmt.string ppf "case type"
       | Aast_defs.Opaque
       | Aast_defs.OpaqueModule ->
         Fmt.string ppf "newtype"

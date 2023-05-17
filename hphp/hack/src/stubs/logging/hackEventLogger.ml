@@ -43,12 +43,9 @@ let serialize_globals () = Serialized_globals
 
 type rollout_flags = {
   log_saved_state_age_and_distance: bool;
-  naming_sqlite_in_hack_64: bool;
-  use_hack_64_naming_table: bool;
   fetch_remote_old_decls: bool;
   ide_max_num_decls: int;
   ide_max_num_shallow_decls: int;
-  max_bucket_size: int;
   max_typechecker_worker_memory_mb: int;
   max_workers: int;
   use_max_typechecker_worker_memory_for_decl_deferral: bool;
@@ -57,7 +54,6 @@ type rollout_flags = {
   shm_use_sharded_hashtbl: bool;
   shm_cache_size: int;
   remote_old_decls_no_limit: bool;
-  no_marshalled_naming_table_in_saved_state: bool;
   use_manifold_cython_client: bool;
   disable_naming_table_fallback_loading: bool;
   use_type_alias_heap: bool;
@@ -66,6 +62,11 @@ type rollout_flags = {
   rust_provider_backend: bool;
   load_hack_64_distc_saved_state: bool;
   ide_should_use_hack_64_distc: bool;
+  use_hh_distc_instead_of_hulk: bool;
+  consume_streaming_errors: bool;
+  hh_distc_fanout_threshold: int;
+  rust_elab: bool;
+  ide_load_naming_table_on_disk: bool;
 }
 
 let flush () = ()
@@ -182,7 +183,13 @@ let client_restart ~data:_ = ()
 
 let client_check_start () = ()
 
-let client_check _ _ = ()
+let client_check _ _ ~init_proc_stack:_ ~spinner:_ = ()
+
+let client_check_partial _ _ ~init_proc_stack:_ ~spinner:_ = ()
+
+let client_check_bad_exit _ _ ~init_proc_stack:_ ~spinner:_ = ()
+
+let client_check_errors_file_restarted _ = ()
 
 let client_lsp_shellout
     ~root:_ ~command_line:_ ~result_count:_ ~result_extra_telemetry:_ =
@@ -225,15 +232,17 @@ let serverless_ide_startup ~component:_ ~start_time:_ = ()
 
 let serverless_ide_local_files ~local_file_count:_ = ()
 
+let serverless_ide_load_naming_table ~start_time:_ = ()
+
 let serverless_ide_destroy_ok _ = ()
 
 let serverless_ide_destroy_error _ _ _ = ()
 
 let server_hung_up
     ~external_exit_status:_
-    ~underlying_exit_status:_
     ~client_exn:_
     ~client_stack:_
+    ~server_exit_status:_
     ~server_stack:_
     ~server_msg:_ =
   ()
@@ -260,11 +269,15 @@ let ranked_autocomplete_request_duration ~start_time:_ = ()
 
 let monitor_dead_but_typechecker_alive () = ()
 
+let spinner_heartbeat _ ~spinner:_ = ()
+
+let spinner_change ~spinner:_ ~next:_ = ()
+
 let client_established_connection _ = ()
 
 let client_connect_once ~t_start:_ = ()
 
-let client_connect_once_failure ~t_start:_ _ = ()
+let client_connect_once_failure ~t_start:_ _ _ = ()
 
 let client_connect_to_monitor_slow_log () = ()
 
@@ -352,7 +365,10 @@ let type_check_primary_position_bug ~current_file:_ ~message:_ ~stack:_ = ()
 
 let type_check_exn_bug ~path:_ ~pos:_ ~e:_ = ()
 
-let invariant_violation_bug ~path:_ ~pos:_ ~desc:_ _ = ()
+let invariant_violation_bug ?path:_ ?pos:_ ?data:_ ?data_int:_ ?telemetry:_ _ =
+  ()
+
+let live_squiggle_diff ~uri:_ ~reason:_ ~expected_error_count:_ _ = ()
 
 let type_check_end
     _
@@ -407,7 +423,7 @@ let saved_state_dirty_files_ok ~start_time:_ = ()
 
 let saved_state_dirty_files_failure _ ~start_time:_ = ()
 
-let informant_induced_restart _ = ()
+let monitor_update_status _ _ = ()
 
 let find_svn_rev_failed _ _ = ()
 
