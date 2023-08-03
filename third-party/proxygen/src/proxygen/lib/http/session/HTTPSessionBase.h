@@ -175,6 +175,9 @@ class HTTPSessionBase : public wangle::ManagedConnection {
     return infoCallback_;
   }
 
+  virtual void setHeaderIndexingStrategy(
+      const HeaderIndexingStrategy* strat) = 0;
+
   virtual void setSessionStats(HTTPSessionStats* stats);
 
   virtual HTTPTransaction::Transport::Type getType() const noexcept = 0;
@@ -541,6 +544,23 @@ class HTTPSessionBase : public wangle::ManagedConnection {
   }
 
   /**
+   * Adds an observer.
+   *
+   * If the observer is already added, this is a no-op.
+   *
+   * @param observer     <shared_ptr> Observer to add
+   * @return             Whether the observer was added (fails if no list).
+   */
+  bool addObserver(
+      std::shared_ptr<HTTPSessionObserverContainer::Observer> observer) {
+    if (auto list = getHTTPSessionObserverContainer()) {
+      list->addObserver(std::move(observer));
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Removes an observer.
    *
    * @param observer     Observer to remove.
@@ -556,23 +576,17 @@ class HTTPSessionBase : public wangle::ManagedConnection {
   }
 
   /**
-   * Returns the HTTPSessionObserverContainer or nullptr if not available.
+   * Removes an observer.
    *
-   * HTTPSession implementations that support observers should override this
-   * function and return the session observer container that they hold in
-   * memory.
-
-   *
-   * We have a default implementation to ensure that there is no risk of a
-   * pure-virtual function being called during constructon or destruction of
-   * the session. If this was to occur the derived class which implements this
-   * function may be unavailable leading to undefined behavior. While this is
-   * true for any pure-virtual function, the potential for this issue is
-   * greater for observers.
+   * @param observer     Observer to remove.
+   * @return             Whether the observer was found and removed.
    */
-  [[nodiscard]] virtual HTTPSessionObserverContainer*
-  getHTTPSessionObserverContainer() const {
-    return nullptr;
+  bool removeObserver(
+      std::shared_ptr<HTTPSessionObserverContainer::Observer> observer) {
+    if (auto list = getHTTPSessionObserverContainer()) {
+      return list->removeObserver(std::move(observer));
+    }
+    return false;
   }
 
  protected:
@@ -664,6 +678,25 @@ class HTTPSessionBase : public wangle::ManagedConnection {
    * Informs HTTPSessionController that transport is ready.
    */
   void informSessionControllerTransportReady();
+
+  /**
+   * Returns the HTTPSessionObserverContainer or nullptr if not available.
+   *
+   * HTTPSession implementations that support observers should override this
+   * function and return the session observer container that they hold in
+   * memory.
+   *
+   * We have a default implementation to ensure that there is no risk of a
+   * pure-virtual function being called during constructon or destruction of
+   * the session. If this was to occur the derived class which implements this
+   * function may be unavailable leading to undefined behavior. While this is
+   * true for any pure-virtual function, the potential for this issue is
+   * greater for observers.
+   */
+  [[nodiscard]] virtual HTTPSessionObserverContainer*
+  getHTTPSessionObserverContainer() const {
+    return nullptr;
+  }
 
   HTTPSessionStats* sessionStats_{nullptr};
 

@@ -26,6 +26,7 @@
 #include <folly/Optional.h>
 #include <folly/String.h>
 #include <folly/Utility.h>
+#include <folly/io/async/fdsock/SocketFds.h>
 #include <folly/portability/Unistd.h>
 #include <thrift/lib/cpp/concurrency/Thread.h>
 #include <thrift/lib/cpp/protocol/TProtocolTypes.h>
@@ -139,6 +140,31 @@ using apache::thrift::protocol::T_COMPACT_PROTOCOL;
  */
 class THeader final {
  public:
+  // Non-copiable, but movable. Reasons to avoid copies:
+  //   - Normal request flows should never copy THeader, since they're
+  //     highly performance-sensitive.
+  //   - Additionally, any copy must take special care with thread-safety on
+  //     the objects pointed to by all the copies (e.g.  `httpClientParser_`
+  //     and `routingData_`.
+  //   - When `fds` are **received** into THeader, we require unique ownership
+  //     semantics -- otherwise, any confusion about which copy is allowed
+  //     to close the FD can result in operations on invalid FDs, which
+  //     can trivially cause data loss and worse due to FD reuse.
+  // If your application requires you to copy THeaders that are being sent,
+  // use `copyOrDfatalIfReceived` with due care.  That said, I've only seen
+  // one legitimate use for copying THeader -- creating shadow requests.
+  THeader(const THeader&) = delete;
+  THeader operator=(const THeader&) = delete;
+  THeader(THeader&&) = default;
+  THeader& operator=(THeader&&) = default;
+
+  // The docblock on constructors explains why copying "received" `THeaders`
+  // is not allowed.  Since the same type is used for "send" and "receive",
+  // we need a runtime check for when FDs are being received.  While it
+  // would be more usable to disallow all "received" copies, there is no way
+  // to distinguish sent/received THeaders unless they bear FDs.
+  THeader copyOrDfatalIfReceived() const;
+
   enum {
     ALLOW_BIG_FRAMES = 1 << 0,
   };
@@ -278,9 +304,7 @@ class THeader final {
    * @return IOBuf chain with header _and_ data.  Data is not copied
    */
   std::unique_ptr<folly::IOBuf> addHeader(
-      std::unique_ptr<folly::IOBuf>,
-      StringToStringMap& persistentWriteHeaders,
-      bool transform = true);
+      std::unique_ptr<folly::IOBuf>, bool transform = true);
   /**
    * Given an IOBuf Chain, remove the header.  Supports unframed (sync
    * only), framed, header, and http (sync case only).  This doesn't
@@ -371,6 +395,8 @@ class THeader final {
     return std::move(c_.routingData_);
   }
 
+  folly::SocketFds fds; // No accessor, since this type **is** the API.
+
   // 0 and 16th bits must be 0 to differentiate from framed & unframed
   static const uint32_t HEADER_MAGIC = 0x0FFF0000;
   static const uint32_t HEADER_MASK = 0xFFFF0000;
@@ -420,8 +446,7 @@ class THeader final {
   /**
    * Returns the maximum number of bytes that write k/v headers can take
    */
-  size_t getMaxWriteHeadersSize(
-      const StringToStringMap& persistentWriteHeaders) const;
+  size_t getMaxWriteHeadersSize() const;
 
   /**
    * Returns whether the 1st byte of the protocol payload should be hadled
@@ -437,7 +462,8 @@ class THeader final {
   static constexpr std::string_view ID_VERSION_HEADER = "id_version";
   static constexpr std::string_view ID_VERSION = "1";
 
-  // Anything not in this sub-struct must be copied explicitly in XXX
+  // IMPORTANT: Anything not in this sub-struct must be copied explicitly by
+  // `copyOrDfatalIfReceived` to support sending shadow requests.
   struct TriviallyCopiable {
     explicit TriviallyCopiable(int options);
 
@@ -483,6 +509,10 @@ class THeader final {
 
     std::optional<ProxiedPayloadMetadata> proxiedPayloadMetadata_;
   };
+
+  // Supports `copyOrDfatalIfReceived`.
+  explicit THeader(TriviallyCopiable c, folly::SocketFds f)
+      : fds(std::move(f)), c_(c) {}
 
   TriviallyCopiable c_;
 };

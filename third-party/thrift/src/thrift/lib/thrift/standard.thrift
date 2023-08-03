@@ -52,7 +52,7 @@ typedef binary (cpp.type = "folly::fbstring") ByteString
 /**
  * Typedef for binary data.
  *
- * Each language can map this type into a customized memory efficient object
+ * Each language can map this type into a customized memory efficient object.
  * May be used for zero-copy slice of data.
  */
 @java.Adapter{
@@ -78,6 +78,13 @@ union TypeUri {
   1: Uri uri;
   /** A prefix of the SHA2-256 hash of the URI. */
   2: ByteString typeHashPrefixSha2_256;
+  /**
+   * The (potentially not unique) scoped name of this type.
+   * Format is `filename.typename`, e.g. `standard.TypeUri`.
+   * This is a fallback for types that do not have URIs yet.
+   * Must be prepared for the active field to switch to `uri` as package statements are rolled out!
+   */
+  3: string scopedName;
 }
 
 /** Uniquely identifies a Thrift type. */

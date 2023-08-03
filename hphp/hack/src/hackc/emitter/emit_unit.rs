@@ -2,6 +2,9 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
+
+#![feature(box_patterns)]
+
 mod emit_adata;
 mod emit_attribute;
 mod emit_body;
@@ -31,6 +34,7 @@ mod xhp_attribute;
 use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 use decl_provider::DeclProvider;
 use decl_provider::TypeDecl;
@@ -52,7 +56,6 @@ use ffi::Str;
 use hhbc::Fatal;
 use hhbc::FatalOp;
 use hhbc::Unit;
-use ocamlrep::rc::RcOc;
 use oxidized::ast;
 use oxidized::namespace_env;
 use oxidized::pos::Pos;
@@ -81,7 +84,7 @@ pub fn emit_fatal_unit<'arena>(
 /// This is the entry point from hh_single_compile
 pub fn emit_unit<'a, 'arena, 'decl>(
     emitter: &mut Emitter<'arena, 'decl>,
-    namespace: RcOc<namespace_env::Env>,
+    namespace: Arc<namespace_env::Env>,
     tast: &'a ast::Program,
 ) -> Result<Unit<'arena>> {
     let result = emit_unit_(emitter, namespace, tast);
@@ -150,7 +153,7 @@ where
 
 fn emit_unit_<'a, 'arena, 'decl>(
     emitter: &mut Emitter<'arena, 'decl>,
-    namespace: RcOc<namespace_env::Env>,
+    namespace: Arc<namespace_env::Env>,
     prog: &'a ast::Program,
 ) -> Result<Unit<'arena>> {
     let prog = prog.as_slice();

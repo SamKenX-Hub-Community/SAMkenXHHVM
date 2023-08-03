@@ -27,6 +27,7 @@ use oxidized_by_ref::ast_defs::ClassishKind;
 use oxidized_by_ref::ast_defs::ConstraintKind;
 use oxidized_by_ref::ast_defs::FunKind;
 use oxidized_by_ref::ast_defs::Id;
+use oxidized_by_ref::ast_defs::Id_;
 use oxidized_by_ref::ast_defs::ShapeFieldName;
 use oxidized_by_ref::ast_defs::Uop;
 use oxidized_by_ref::ast_defs::Variance;
@@ -72,6 +73,7 @@ use oxidized_by_ref::typing_defs::RefinedConst;
 use oxidized_by_ref::typing_defs::RefinedConstBound;
 use oxidized_by_ref::typing_defs::RefinedConstBounds;
 use oxidized_by_ref::typing_defs::ShapeFieldType;
+use oxidized_by_ref::typing_defs::ShapeType;
 use oxidized_by_ref::typing_defs::TaccessType;
 use oxidized_by_ref::typing_defs::Tparam;
 use oxidized_by_ref::typing_defs::TshapeFieldName;
@@ -127,10 +129,10 @@ pub struct Impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> {
     filename: &'a RelativePath<'a>,
     file_mode: Mode,
     namespace_builder: Rc<NamespaceBuilder<'a>>,
-    classish_name_builder: ClassishNameBuilder<'a>,
+    classish_name_builder: Option<ClassishNameBuilder<'a>>,
     type_parameters: Rc<Vec<SSet<'a>>>,
-    retain_or_omit_user_attributes_for_facts: bool,
     under_no_auto_dynamic: bool,
+    under_no_auto_likes: bool,
     inside_no_auto_dynamic_class: bool,
     source_text_allocator: S,
     module: Option<Id<'a>>,
@@ -143,7 +145,6 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
         file_mode: Mode,
         arena: &'a Bump,
         source_text_allocator: S,
-        retain_or_omit_user_attributes_for_facts: bool,
         elaborate_xhp_namespaces_for_facts: bool,
     ) -> Self {
         let source_text = IndexedSourceText::new(src.clone());
@@ -167,11 +168,11 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                     arena,
                 )),
                 opts,
-                classish_name_builder: ClassishNameBuilder::new(),
+                classish_name_builder: None,
                 type_parameters: Rc::new(Vec::new()),
                 source_text_allocator,
-                retain_or_omit_user_attributes_for_facts,
                 under_no_auto_dynamic: false,
+                under_no_auto_likes: false,
                 inside_no_auto_dynamic_class: false,
                 module: None,
             }),
@@ -479,6 +480,10 @@ fn strip_dollar_prefix<'a>(name: &'a str) -> &'a str {
     name.trim_start_matches('$')
 }
 
+fn is_no_auto_attribute(name: &str) -> bool {
+    name == "__NoAutoDynamic" || name == "__NoAutoLikes"
+}
+
 const TANY_: Ty_<'_> = Ty_::Tany(oxidized_by_ref::tany_sentinel::TanySentinel);
 const TANY: &Ty<'_> = &Ty(Reason::none(), TANY_);
 
@@ -562,7 +567,6 @@ impl<'a> NamespaceBuilder<'a> {
                 fun_uses: SMap::empty(),
                 const_uses: SMap::empty(),
                 name: None,
-                auto_ns_map,
                 is_codegen: false,
                 disable_xhp_element_mangling,
             }],
@@ -687,61 +691,13 @@ impl<'a> NamespaceBuilder<'a> {
     }
 }
 
+/// We saw a classish keyword token followed by a Name, so we make it
+/// available as the name of the containing class declaration.
 #[derive(Clone, Debug)]
-enum ClassishNameBuilder<'a> {
-    /// We are not in a classish declaration.
-    NotInClassish,
-
-    /// We saw a classish keyword token followed by a Name, so we make it
-    /// available as the name of the containing class declaration.
-    InClassish(&'a (&'a str, &'a Pos<'a>, TokenKind)),
-}
-
-impl<'a> ClassishNameBuilder<'a> {
-    fn new() -> Self {
-        ClassishNameBuilder::NotInClassish
-    }
-
-    fn lexed_name_after_classish_keyword(
-        &mut self,
-        arena: &'a Bump,
-        name: &'a str,
-        pos: &'a Pos<'a>,
-        token_kind: TokenKind,
-    ) {
-        use ClassishNameBuilder::*;
-        match self {
-            NotInClassish => {
-                let name = if name.starts_with(':') {
-                    prefix_slash(arena, name)
-                } else {
-                    name
-                };
-                *self = InClassish(arena.alloc((name, pos, token_kind)))
-            }
-            InClassish(_) => {}
-        }
-    }
-
-    fn parsed_classish_declaration(&mut self) {
-        *self = ClassishNameBuilder::NotInClassish;
-    }
-
-    fn get_current_classish_name(&self) -> Option<(&'a str, &'a Pos<'a>)> {
-        use ClassishNameBuilder::*;
-        match self {
-            NotInClassish => None,
-            InClassish((name, pos, _)) => Some((name, pos)),
-        }
-    }
-
-    fn in_interface(&self) -> bool {
-        use ClassishNameBuilder::*;
-        match self {
-            InClassish((_, _, TokenKind::Interface)) => true,
-            InClassish((_, _, _)) | NotInClassish => false,
-        }
-    }
+struct ClassishNameBuilder<'a> {
+    name: &'a str,
+    pos: &'a Pos<'a>,
+    token_kind: TokenKind,
 }
 
 #[derive(Debug)]
@@ -848,18 +804,19 @@ pub struct ShapeFieldNode<'a> {
 }
 
 #[derive(Copy, Clone, Debug)]
-struct ClassNameParam<'a> {
-    name: Id<'a>,
-    #[allow(dead_code)]
-    full_pos: &'a Pos<'a>, // Position of the full expression `Foo::class`
+enum AttributeParam<'a> {
+    Classname(Id<'a>),
+    EnumClassLabel(&'a Id_<'a>),
+    String(&'a Pos<'a>, &'a BStr),
+    Int(&'a Id_<'a>),
 }
 
 #[derive(Debug)]
 pub struct UserAttributeNode<'a> {
     name: Id<'a>,
-    classname_params: &'a [ClassNameParam<'a>],
+    params: &'a [AttributeParam<'a>],
     /// This is only used for __Deprecated attribute message and CIPP parameters
-    string_literal_params: &'a [(&'a Pos<'a>, &'a BStr)],
+    string_literal_param: Option<(&'a Pos<'a>, &'a BStr)>,
 }
 
 mod fixed_width_token {
@@ -985,6 +942,7 @@ pub enum Node<'a> {
     TypeParameters(&'a &'a [&'a Tparam<'a>]),
     WhereConstraint(&'a WhereConstraint<'a>),
     RefinedConst(&'a (&'a str, RefinedConst<'a>)),
+    EnumClassLabel(&'a str),
 
     // Non-ignored, fixed-width tokens (e.g., keywords, operators, braces, etc.).
     Token(FixedWidthToken),
@@ -1132,8 +1090,8 @@ impl<'a> Node<'a> {
         self.iter().any(|node| match node {
             Node::Attribute(&UserAttributeNode {
                 name: Id(_pos, attr_name),
-                classname_params: [],
-                string_literal_params: [],
+                params: [],
+                string_literal_param: None,
             }) => attr_name == name,
             _ => false,
         })
@@ -1160,6 +1118,7 @@ struct Attributes<'a> {
     can_call: bool,
     soft: bool,
     support_dynamic_type: bool,
+    no_auto_likes: bool,
     safe_global_variable: bool,
     cross_package: Option<&'a str>,
 }
@@ -1167,23 +1126,28 @@ struct Attributes<'a> {
 impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> Impl<'a, 'o, 't, S> {
     fn add_class(&mut self, name: &'a str, decl: &'a shallow_decl_defs::ShallowClass<'a>) {
         self.under_no_auto_dynamic = false;
+        self.under_no_auto_likes = false;
         self.inside_no_auto_dynamic_class = false;
         self.decls.add(name, Decl::Class(decl), self.arena);
     }
     fn add_fun(&mut self, name: &'a str, decl: &'a typing_defs::FunElt<'a>) {
         self.under_no_auto_dynamic = false;
+        self.under_no_auto_likes = false;
         self.decls.add(name, Decl::Fun(decl), self.arena);
     }
     fn add_typedef(&mut self, name: &'a str, decl: &'a typing_defs::TypedefType<'a>) {
         self.under_no_auto_dynamic = false;
+        self.under_no_auto_likes = false;
         self.decls.add(name, Decl::Typedef(decl), self.arena);
     }
     fn add_const(&mut self, name: &'a str, decl: &'a typing_defs::ConstDecl<'a>) {
         self.under_no_auto_dynamic = false;
+        self.under_no_auto_likes = false;
         self.decls.add(name, Decl::Const(decl), self.arena);
     }
     fn add_module(&mut self, name: &'a str, decl: &'a typing_defs::ModuleDefType<'a>) {
         self.under_no_auto_dynamic = false;
+        self.under_no_auto_likes = false;
         self.decls.add(name, Decl::Module(decl), self.arena)
     }
 
@@ -1207,10 +1171,52 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> Impl<'a, 'o, 't, S> {
         &self,
         attr: &UserAttributeNode<'a>,
     ) -> &'a shallow_decl_defs::UserAttribute<'a> {
+        use shallow_decl_defs::UserAttributeParam as UAP;
         self.alloc(shallow_decl_defs::UserAttribute {
             name: attr.name.into(),
-            classname_params: self.slice(attr.classname_params.iter().map(|p| p.name.1)),
+            params: self.slice(attr.params.iter().map(|p| match p {
+                AttributeParam::Classname(cls) => UAP::Classname(cls.1),
+                AttributeParam::EnumClassLabel(lbl) => UAP::EnumClassLabel(lbl),
+                AttributeParam::String(_, s) => UAP::String(s),
+                AttributeParam::Int(i) => UAP::Int(i),
+            })),
         })
+    }
+
+    fn get_current_classish_name(&self) -> Option<(&'a str, &'a Pos<'a>)> {
+        let builder = self.classish_name_builder.as_ref()?;
+        Some((builder.name, builder.pos))
+    }
+
+    fn in_interface(&self) -> bool {
+        matches!(
+            self.classish_name_builder.as_ref(),
+            Some(ClassishNameBuilder {
+                token_kind: TokenKind::Interface,
+                ..
+            })
+        )
+    }
+
+    fn lexed_name_after_classish_keyword(
+        &mut self,
+        arena: &'a Bump,
+        name: &'a str,
+        pos: &'a Pos<'a>,
+        token_kind: TokenKind,
+    ) {
+        if self.classish_name_builder.is_none() {
+            let name = if name.starts_with(':') {
+                prefix_slash(arena, name)
+            } else {
+                name
+            };
+            self.classish_name_builder = Some(ClassishNameBuilder {
+                name,
+                pos,
+                token_kind,
+            });
+        }
     }
 }
 
@@ -1353,6 +1359,10 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
         self.opts.everything_sdt && !self.under_no_auto_dynamic
     }
 
+    fn no_auto_likes(&self) -> bool {
+        self.under_no_auto_likes
+    }
+
     fn node_to_ty_(&self, node: Node<'a>, allow_non_ret_ty: bool) -> Option<&'a Ty<'a>> {
         match node {
             Node::Ty(Ty(reason, Ty_::Tprim(aast::Tprim::Tvoid))) if !allow_non_ret_ty => {
@@ -1465,6 +1475,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                             let value_type = self.alloc(Ty(self.alloc(Reason::hint(pos)), TANY_));
                             Ty_::TvecOrDict(self.alloc((key_type, value_type)))
                         }
+                        "_" => Ty_::Twildcard,
                         _ => {
                             let name = self.elaborate_raw_id(name);
                             Ty_::Tapply(self.alloc(((pos, name), &[][..])))
@@ -1474,93 +1485,6 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                 Some(self.alloc(Ty(reason, ty_)))
             }
         }
-    }
-
-    fn rewrite_ty_for_global_inference(
-        &self,
-        ty: Option<&'a Ty<'a>>,
-        reason: Reason<'a>,
-    ) -> Option<&'a Ty<'a>> {
-        if !self.opts.global_inference {
-            return ty;
-        }
-        let tvar = self.alloc(Ty(self.alloc(reason), Ty_::Tvar(0)));
-        let ty = match ty {
-            None => tvar,
-            Some(ty) => {
-                fn cut_namespace<'a>(id: &'a str) -> &'a str {
-                    id.rsplit_terminator('\\').next().unwrap()
-                }
-                fn reinfer_type_to_string_opt<'a>(arena: &'a Bump, ty: Ty_<'a>) -> Option<&'a str> {
-                    match ty {
-                        Ty_::Tmixed => Some("mixed"),
-                        Ty_::Tnonnull => Some("nonnull"),
-                        Ty_::Tdynamic => Some("dynamic"),
-                        Ty_::Tunion([]) => Some("nothing"),
-                        Ty_::Tthis => Some("this"),
-                        Ty_::Tprim(prim) => Some(match prim {
-                            aast::Tprim::Tnull => "null",
-                            aast::Tprim::Tvoid => "void",
-                            aast::Tprim::Tint => "int",
-                            aast::Tprim::Tnum => "num",
-                            aast::Tprim::Tfloat => "float",
-                            aast::Tprim::Tstring => "string",
-                            aast::Tprim::Tarraykey => "arraykey",
-                            aast::Tprim::Tresource => "resource",
-                            aast::Tprim::Tnoreturn => "noreturn",
-                            aast::Tprim::Tbool => "bool",
-                        }),
-                        Ty_::Tapply(((_p, id), _tyl)) => Some(cut_namespace(id)),
-                        Ty_::Taccess(TaccessType(ty, id)) => {
-                            reinfer_type_to_string_opt(arena, ty.1).map(|s| {
-                                bumpalo::format!(in arena, "{}::{}", s, id.1).into_bump_str()
-                            })
-                        }
-                        _ => None,
-                    }
-                }
-                fn create_vars_for_reinfer_types<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>>(
-                    this: &DirectDeclSmartConstructors<'a, 'o, 't, S>,
-                    ty: &'a Ty<'a>,
-                    tvar: &'a Ty<'a>,
-                ) -> &'a Ty<'a> {
-                    let mk = |r, ty_| this.alloc(Ty(r, ty_));
-                    let must_reinfer_type = |ty| match reinfer_type_to_string_opt(this.arena, ty) {
-                        None => false,
-                        Some(ty_str) => this.opts.gi_reinfer_types.iter().any(|t| t == ty_str),
-                    };
-                    match *ty {
-                        Ty(r, Ty_::Tapply(&(id, [ty1]))) if id.1 == "\\HH\\Awaitable" => {
-                            let ty1 = this.alloc(create_vars_for_reinfer_types(this, ty1, tvar));
-                            mk(r, Ty_::Tapply(this.alloc((id, std::slice::from_ref(ty1)))))
-                        }
-                        Ty(r, Ty_::Toption(ty1)) => {
-                            let ty1 = create_vars_for_reinfer_types(this, ty1, tvar);
-                            mk(r, Ty_::Toption(ty1))
-                        }
-                        Ty(r, Ty_::Tapply(((_p, id), [])))
-                            if cut_namespace(id) == "PHPism_FIXME_Array" =>
-                        {
-                            if must_reinfer_type(ty.1) {
-                                let tvar = mk(r, Ty_::Tvar(0));
-                                mk(r, Ty_::TvecOrDict(this.alloc((tvar, tvar))))
-                            } else {
-                                ty
-                            }
-                        }
-                        Ty(_r, ty_) => {
-                            if must_reinfer_type(ty_) {
-                                tvar
-                            } else {
-                                ty
-                            }
-                        }
-                    }
-                }
-                create_vars_for_reinfer_types(self, ty, tvar)
-            }
-        };
-        Some(ty)
     }
 
     fn partition_bounds_into_lower_and_upper(
@@ -1635,6 +1559,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
             can_call: false,
             soft: false,
             support_dynamic_type: false,
+            no_auto_likes: false,
             safe_global_variable: false,
             cross_package: None,
         };
@@ -1652,9 +1577,8 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                 match attribute.name.1 {
                     "__Deprecated" => {
                         attributes.deprecated = attribute
-                            .string_literal_params
-                            .first()
-                            .map(|&(_, x)| self.str_from_utf8_for_bytes_in_arena(x));
+                            .string_literal_param
+                            .map(|(_, x)| self.str_from_utf8_for_bytes_in_arena(x));
                     }
                     "__Reifiable" => attributes.reifiable = Some(attribute.name.0),
                     "__LateInit" => {
@@ -1691,18 +1615,15 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                         attributes.php_std_lib = true;
                     }
                     "__Policied" => {
-                        let string_literal_params = || {
-                            attribute
-                                .string_literal_params
-                                .first()
-                                .map(|&(_, x)| self.str_from_utf8_for_bytes_in_arena(x))
-                        };
-                        // Take the classname param by default
-                        attributes.ifc_attribute =
-                            IfcFunDecl::FDPolicied(attribute.classname_params.first().map_or_else(
-                                string_literal_params, // default
-                                |&x| Some(x.name.1),   // f
-                            ));
+                        attributes.ifc_attribute = IfcFunDecl::FDPolicied(
+                            attribute.params.first().and_then(|a| match a {
+                                AttributeParam::Classname(cn) => Some(cn.1),
+                                AttributeParam::String(_, s) => {
+                                    Some(self.str_from_utf8_for_bytes_in_arena(s))
+                                }
+                                _ => None,
+                            }),
+                        );
                         ifc_already_policied = true;
                     }
 
@@ -1723,14 +1644,16 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                     "__SupportDynamicType" => {
                         attributes.support_dynamic_type = true;
                     }
+                    "__NoAutoLikes" => {
+                        attributes.no_auto_likes = true;
+                    }
                     "__SafeForGlobalAccessCheck" => {
                         attributes.safe_global_variable = true;
                     }
                     "__CrossPackage" => {
                         attributes.cross_package = attribute
-                            .string_literal_params
-                            .first()
-                            .map(|&(_, x)| self.str_from_utf8_for_bytes_in_arena(x));
+                            .string_literal_param
+                            .map(|(_, x)| self.str_from_utf8_for_bytes_in_arena(x));
                     }
                     _ => {}
                 }
@@ -1841,7 +1764,9 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
             (false, _) => self.elaborate_defined_id(header.name),
         };
         let id = id_opt.unwrap_or_else(|| Id(self.get_pos(header.name), ""));
-        let (params, properties, variadic) = self.as_fun_params(header.param_list)?;
+        let attributes = self.to_attributes(attributes);
+        let (params, properties, variadic) =
+            self.as_fun_params(attributes.no_auto_likes, header.param_list)?;
         let f_pos = self.get_pos(header.name);
         let implicit_params = self.as_fun_implicit_params(header.capability, f_pos);
 
@@ -1854,10 +1779,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                 ))
             }
             _ => self
-                .rewrite_ty_for_global_inference(
-                    self.node_to_ty(header.ret_hint),
-                    Reason::RglobalFunRet(f_pos),
-                )
+                .node_to_ty(header.ret_hint)
                 .unwrap_or_else(|| self.tany_with_pos(f_pos)),
         };
         let async_ = header
@@ -1885,7 +1807,6 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
         } else {
             type_
         };
-        let attributes = self.to_attributes(attributes);
         // TODO(hrust) Put this in a helper. Possibly do this for all flags.
         let mut flags = match fun_kind {
             FunKind::FSync => FunTypeFlags::empty(),
@@ -1952,6 +1873,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
 
     fn as_fun_params(
         &self,
+        no_auto_likes: bool,
         list: Node<'a>,
     ) -> Option<(&'a FunParams<'a>, &'a [ShallowProp<'a>], bool)> {
         match list {
@@ -1975,10 +1897,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                             let attributes = self.to_attributes(attributes);
 
                             let type_ = self
-                                .rewrite_ty_for_global_inference(
-                                    self.node_to_ty(hint),
-                                    Reason::RglobalFunParam(pos),
-                                )
+                                .node_to_ty(hint)
                                 .unwrap_or_else(|| self.tany_with_pos(pos));
                             if let Some(visibility) = visibility.as_visibility() {
                                 let name = name.unwrap_or("");
@@ -1988,6 +1907,11 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                                 flags.set(PropFlags::NEEDS_INIT, self.file_mode != Mode::Mhhi);
                                 flags.set(PropFlags::PHP_STD_LIB, attributes.php_std_lib);
                                 flags.set(PropFlags::READONLY, readonly);
+                                // Promoted property either marked <<__NoAutoLikes>> on the parameter or on the constructor
+                                flags.set(
+                                    PropFlags::NO_AUTO_LIKES,
+                                    attributes.no_auto_likes || no_auto_likes,
+                                );
                                 properties.push(ShallowProp {
                                     xhp_attr: None,
                                     name: (pos, name),
@@ -2093,13 +2017,10 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                     aast::ClassId(_, pos, aast::ClassId_::CIself),
                     const_name,
                 )),
-            )) => ShapeFieldName::SFclassConst(self.alloc((
-                Id(
-                    pos,
-                    self.classish_name_builder.get_current_classish_name()?.0,
-                ),
-                const_name,
-            ))),
+            )) => {
+                let (classish_name, _) = self.get_current_classish_name()?;
+                ShapeFieldName::SFclassConst(self.alloc((Id(pos, classish_name), const_name)))
+            }
             _ => return None,
         })
     }
@@ -2231,7 +2152,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                     ..*fun_type
                 }))
             }
-            Ty_::Tshape(&(_, kind, fields)) => {
+            Ty_::Tshape(&ShapeType(_, kind, fields)) => {
                 let mut converted_fields = AssocListMut::with_capacity_in(fields.len(), self.arena);
                 for (&name, ty) in fields.iter() {
                     converted_fields.insert(
@@ -2243,7 +2164,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
                     );
                 }
                 let origin = TypeOrigin::MissingOrigin;
-                Ty_::Tshape(self.alloc((origin, kind, converted_fields.into())))
+                Ty_::Tshape(self.alloc(ShapeType(origin, kind, converted_fields.into())))
             }
             Ty_::TvecOrDict(&(tk, tv)) => Ty_::TvecOrDict(self.alloc((
                 self.convert_tapply_to_tgeneric(tk),
@@ -2306,6 +2227,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> DirectDeclSmartConstructors<'a,
             | Ty_::Tdynamic
             | Ty_::Tgeneric(_)
             | Ty_::Tmixed
+            | Ty_::Twildcard
             | Ty_::Tnonnull
             | Ty_::Tprim(_)
             | Ty_::Tthis => return ty,
@@ -2812,13 +2734,12 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
                     if let Some(current_class_name) = self.elaborate_defined_id(name) {
                         let previous_token_kind = self.previous_token_kind;
                         let this = Rc::make_mut(&mut self.state);
-                        this.classish_name_builder
-                            .lexed_name_after_classish_keyword(
-                                this.arena,
-                                current_class_name.1,
-                                pos,
-                                previous_token_kind,
-                            );
+                        this.lexed_name_after_classish_keyword(
+                            this.arena,
+                            current_class_name.1,
+                            pos,
+                            previous_token_kind,
+                        );
                     }
                 }
                 name
@@ -2853,7 +2774,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
                 self.str_from_utf8(escaper::unquote_slice(self.token_bytes(&token))),
                 self.arena,
             ) {
-                Ok(text) if !self.retain_or_omit_user_attributes_for_facts => {
+                Ok(text) if !self.opts.keep_user_attributes => {
                     Node::StringLiteral(self.alloc((text, token_pos(self))))
                 }
                 _ => Node::Ignored(SK::Token(kind)),
@@ -2862,7 +2783,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
                 self.str_from_utf8(escaper::unquote_slice(self.token_bytes(&token))),
                 self.arena,
             ) {
-                Ok(text) if !self.retain_or_omit_user_attributes_for_facts => {
+                Ok(text) if !self.opts.keep_user_attributes => {
                     Node::StringLiteral(self.alloc((text.into(), token_pos(self))))
                 }
                 _ => Node::Ignored(SK::Token(kind)),
@@ -3222,10 +3143,24 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         expr: Self::Output,
         _rparen: Self::Output,
     ) -> Self::Output {
-        if self.retain_or_omit_user_attributes_for_facts {
+        if self.opts.keep_user_attributes {
             Node::Ignored(SK::ParenthesizedExpression)
         } else {
             expr
+        }
+    }
+
+    fn make_enum_class_label_expression(
+        &mut self,
+        _class: Self::Output,
+        _hash: Self::Output,
+        label: Self::Output,
+    ) -> Self::Output {
+        // In case we want it later on, _class is either Ignored(Missing)
+        // or a Name node, like label
+        match label {
+            Node::Name((lbl, _)) => Node::EnumClassLabel(lbl),
+            _ => Node::Ignored(SK::EnumClassLabelExpression),
         }
     }
 
@@ -3352,11 +3287,10 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         let tparams = self.pop_type_params(generic_params);
 
         // Parse the user attributes
-        // in facts-mode all attributes are saved, otherwise only __NoAutoDynamic is
+        // in facts-mode all attributes are saved, otherwise only __NoAutoDynamic/__NoAutoLikes is
         let user_attributes = self.slice(attributes.iter().rev().filter_map(|attribute| {
             if let Node::Attribute(attr) = attribute {
-                if self.retain_or_omit_user_attributes_for_facts || attr.name.1 == "__NoAutoDynamic"
-                {
+                if self.opts.keep_user_attributes || is_no_auto_attribute(attr.name.1) {
                     Some(self.user_attribute_to_decl(attr))
                 } else {
                     None
@@ -3371,7 +3305,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             match attribute {
                 Node::Attribute(attr) => {
                     if attr.name.1 == "__Docs" {
-                        if let Some((_, bstr)) = attr.string_literal_params.first() {
+                        if let Some((_, bstr)) = attr.string_literal_param {
                             docs_url = Some(self.str_from_utf8_for_bytes_in_arena(bstr));
                         }
                     }
@@ -3452,7 +3386,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         }
         // Pop the type params stack only after creating all inner types.
         let tparams = self.pop_type_params(generic_params);
-        let user_attributes = if self.retain_or_omit_user_attributes_for_facts {
+        let user_attributes = if self.opts.keep_user_attributes {
             self.slice(attributes.iter().rev().filter_map(|attribute| {
                 if let Node::Attribute(attr) = attribute {
                     Some(self.user_attribute_to_decl(attr))
@@ -3537,11 +3471,10 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         let tparams = self.pop_type_params(generic_parameter);
 
         // Parse the user attributes
-        // in facts-mode all attributes are saved, otherwise only __NoAutoDynamic is
+        // in facts-mode all attributes are saved, otherwise only __NoAutoDynamic/__NoAutoLikes is
         let user_attributes = self.slice(attribute_spec.iter().rev().filter_map(|attribute| {
             if let Node::Attribute(attr) = attribute {
-                if self.retain_or_omit_user_attributes_for_facts || attr.name.1 == "__NoAutoDynamic"
-                {
+                if self.opts.keep_user_attributes || is_no_auto_attribute(attr.name.1) {
                     Some(self.user_attribute_to_decl(attr))
                 } else {
                     None
@@ -3556,7 +3489,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             match attribute {
                 Node::Attribute(attr) => {
                     if attr.name.1 == "__Docs" {
-                        if let Some((_, bstr)) = attr.string_literal_params.first() {
+                        if let Some((_, bstr)) = attr.string_literal_param {
                             docs_url = Some(self.str_from_utf8_for_bytes_in_arena(bstr));
                         }
                     }
@@ -3852,6 +3785,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
                     support_dynamic_type: self.implicit_sdt()
                         || parsed_attributes.support_dynamic_type,
                     no_auto_dynamic: self.under_no_auto_dynamic,
+                    no_auto_likes: parsed_attributes.no_auto_likes,
                 });
                 let this = Rc::make_mut(&mut self.state);
                 this.add_fun(name, fun_elt);
@@ -3989,12 +3923,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
     ) -> Self::Output {
         match decls {
             // Class consts.
-            Node::List(consts)
-                if self
-                    .classish_name_builder
-                    .get_current_classish_name()
-                    .is_some() =>
-            {
+            Node::List(consts) if self.classish_name_builder.is_some() => {
                 let ty = self.node_to_ty(hint);
                 Node::List(
                     self.alloc(self.slice(consts.iter().filter_map(|cst| match cst {
@@ -4365,7 +4294,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             match attribute {
                 Node::Attribute(attr) => {
                     if attr.name.1 == "__Docs" {
-                        if let Some((_, bstr)) = attr.string_literal_params.first() {
+                        if let Some((_, bstr)) = attr.string_literal_param {
                             docs_url = Some(self.str_from_utf8_for_bytes_in_arena(bstr));
                         }
                     }
@@ -4539,7 +4468,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         let this = Rc::make_mut(&mut self.state);
         this.add_class(name, cls);
 
-        this.classish_name_builder.parsed_classish_declaration();
+        this.classish_name_builder = None;
 
         Node::Ignored(SK::ClassishDeclaration)
     }
@@ -4564,10 +4493,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
                     } else {
                         strip_dollar_prefix(name)
                     };
-                    let ty = self.rewrite_ty_for_global_inference(
-                        self.node_to_non_ret_ty(hint),
-                        Reason::RglobalClassProp(pos),
-                    );
+                    let ty = self.node_to_non_ret_ty(hint);
                     let ty = ty.unwrap_or_else(|| self.tany_with_pos(pos));
                     let ty = if self.opts.interpret_soft_types_as_like_types {
                         if attributes.soft {
@@ -4598,6 +4524,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
                         PropFlags::SAFE_GLOBAL_VARIABLE,
                         attributes.safe_global_variable,
                     );
+                    flags.set(PropFlags::NO_AUTO_LIKES, attributes.no_auto_likes);
                     Some(ShallowProp {
                         xhp_attr: None,
                         name: (pos, name),
@@ -4821,7 +4748,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         let mut flags = MethodFlags::empty();
         flags.set(
             MethodFlags::ABSTRACT,
-            self.classish_name_builder.in_interface() || modifiers.is_abstract,
+            self.in_interface() || modifiers.is_abstract,
         );
         flags.set(MethodFlags::FINAL, modifiers.is_final);
         flags.set(MethodFlags::OVERRIDE, attributes.override_);
@@ -4836,11 +4763,10 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         );
 
         // Parse the user attributes
-        // in facts-mode all attributes are saved, otherwise only __NoAutoDynamic is
+        // in facts-mode all attributes are saved, otherwise only __NoAutoDynamic/__NoAutoLikes is
         let user_attributes = self.slice(attrs.iter().rev().filter_map(|attribute| {
             if let Node::Attribute(attr) = attribute {
-                if self.retain_or_omit_user_attributes_for_facts || attr.name.1 == "__NoAutoDynamic"
-                {
+                if self.opts.keep_user_attributes || is_no_auto_attribute(attr.name.1) {
                     Some(self.user_attribute_to_decl(attr))
                 } else {
                     None
@@ -4925,7 +4851,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             match attribute {
                 Node::Attribute(attr) => {
                     if attr.name.1 == "__Docs" {
-                        if let Some((_, bstr)) = attr.string_literal_params.first() {
+                        if let Some((_, bstr)) = attr.string_literal_param {
                             docs_url = Some(self.str_from_utf8_for_bytes_in_arena(bstr));
                         }
                     }
@@ -5005,7 +4931,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         let this = Rc::make_mut(&mut self.state);
         this.add_class(key, cls);
 
-        this.classish_name_builder.parsed_classish_declaration();
+        this.classish_name_builder = None;
 
         Node::Ignored(SK::EnumDeclaration)
     }
@@ -5137,7 +5063,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             match attribute {
                 Node::Attribute(attr) => {
                     if attr.name.1 == "__Docs" {
-                        if let Some((_, bstr)) = attr.string_literal_params.first() {
+                        if let Some((_, bstr)) = attr.string_literal_param {
                             docs_url = Some(self.str_from_utf8_for_bytes_in_arena(bstr));
                         }
                     }
@@ -5152,7 +5078,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             .any(|m| m.as_visibility() == Some(aast::Visibility::Internal));
         user_attributes.push(self.alloc(shallow_decl_defs::UserAttribute {
             name: (name.0, "__EnumClass"),
-            classname_params: &[],
+            params: &[],
         }));
         // Match ordering of attributes produced by the OCaml decl parser (even
         // though it's the reverse of the syntactic ordering).
@@ -5202,7 +5128,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         let this = Rc::make_mut(&mut self.state);
         this.add_class(name.1, cls);
 
-        this.classish_name_builder.parsed_classish_declaration();
+        this.classish_name_builder = None;
 
         Node::Ignored(SyntaxKind::EnumClassDeclaration)
     }
@@ -5243,11 +5169,11 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         } else {
             type_
         };
-        let class_name = match self.classish_name_builder.get_current_classish_name() {
-            Some(name) => name,
+        let class_name = match self.get_current_classish_name() {
+            Some((name, _)) => name,
             None => return Node::Ignored(SyntaxKind::EnumClassEnumerator),
         };
-        let enum_class_ty_ = Ty_::Tapply(self.alloc(((pos, class_name.0), &[])));
+        let enum_class_ty_ = Ty_::Tapply(self.alloc(((pos, class_name), &[])));
         let enum_class_ty = self.alloc(Ty(self.alloc(Reason::hint(pos)), enum_class_ty_));
         let type_ = Ty_::Tapply(self.alloc((
             (pos, "\\HH\\MemberOf"),
@@ -5349,7 +5275,10 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         };
         let pos = self.merge_positions(shape, rparen);
         let origin = TypeOrigin::MissingOrigin;
-        self.hint_ty(pos, Ty_::Tshape(self.alloc((origin, kind, fields.into()))))
+        self.hint_ty(
+            pos,
+            Ty_::Tshape(self.alloc(ShapeType(origin, kind, fields.into()))),
+        )
     }
 
     fn make_classname_type_specifier(
@@ -5386,7 +5315,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             Some(id) => {
                 if matches!(class_name, Node::XhpName(..))
                     && self.opts.disable_xhp_element_mangling
-                    && self.retain_or_omit_user_attributes_for_facts
+                    && self.opts.keep_user_attributes
                 {
                     // for facts, allow xhp class consts to be mangled later
                     // on even when xhp_element_mangling is disabled
@@ -5510,6 +5439,10 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             let this = Rc::make_mut(&mut self.state);
             this.under_no_auto_dynamic = true;
         }
+        if attrs.contains_marker_attribute("__NoAutoLikes") {
+            let this = Rc::make_mut(&mut self.state);
+            this.under_no_auto_likes = true;
+        }
         match attrs {
             Node::List(nodes) => {
                 Node::BracketedList(self.alloc((self.get_pos(ltlt), nodes, self.get_pos(gtgt))))
@@ -5537,18 +5470,16 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
                 None => return Node::Ignored(SK::ConstructorCall),
             }
         };
-        let classname_params = self.slice(args.iter().filter_map(|node| match node {
+        let params = self.slice(args.iter().filter_map(|node| match node {
             Node::Expr(aast::Expr(
                 _,
-                full_pos,
+                _,
                 aast::Expr_::ClassConst(&(
                     aast::ClassId(_, _, aast::ClassId_::CI(&Id(pos, class_name))),
                     (_, "class"),
                 )),
             )) => {
-                let name = if class_name.starts_with(':')
-                    && self.opts.disable_xhp_element_mangling
-                    && self.retain_or_omit_user_attributes_for_facts
+                let name = if class_name.starts_with(':') && self.opts.disable_xhp_element_mangling
                 {
                     // for facts, allow xhp class consts to be mangled later on
                     // even when xhp_element_mangling is disabled
@@ -5560,66 +5491,48 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
                 } else {
                     self.elaborate_id(Id(pos, class_name))
                 };
-                Some(ClassNameParam { name, full_pos })
+                Some(AttributeParam::Classname(name))
             }
-            Node::StringLiteral((name, full_pos))
-                if self.retain_or_omit_user_attributes_for_facts =>
-            {
-                Some(ClassNameParam {
-                    name: Id(NO_POS, self.str_from_utf8_for_bytes_in_arena(name)),
-                    full_pos,
-                })
+            Node::EnumClassLabel(label) => Some(AttributeParam::EnumClassLabel(label)),
+            Node::Expr(e @ aast::Expr(_, pos, _)) => {
+                // Try to parse a sequence of string concatenations
+                fn fold_string_concat<'a>(
+                    expr: &nast::Expr<'a>,
+                    acc: &mut bump::Vec<'a, u8>,
+                ) -> bool {
+                    match *expr {
+                        aast::Expr(_, _, aast::Expr_::String(val)) => {
+                            acc.extend_from_slice(val);
+                            true
+                        }
+                        aast::Expr(
+                            _,
+                            _,
+                            aast::Expr_::Binop(&aast::Binop {
+                                bop: Bop::Dot,
+                                lhs,
+                                rhs,
+                            }),
+                        ) => fold_string_concat(lhs, acc) && fold_string_concat(rhs, acc),
+                        _ => false,
+                    }
+                }
+                let mut acc = bump::Vec::new_in(self.arena);
+                fold_string_concat(e, &mut acc)
+                    .then(|| AttributeParam::String(pos, acc.into_bump_slice().into()))
             }
-            Node::IntLiteral((name, full_pos)) if self.retain_or_omit_user_attributes_for_facts => {
-                Some(ClassNameParam {
-                    name: Id(NO_POS, name),
-                    full_pos,
-                })
-            }
+            Node::StringLiteral((slit, pos)) => Some(AttributeParam::String(pos, slit)),
+            Node::IntLiteral((ilit, _)) => Some(AttributeParam::Int(ilit)),
             _ => None,
         }));
-
-        let string_literal_params = if match name.1 {
-            "__Deprecated" | "__Cipp" | "__CippLocal" | "__Policied" | "__Docs"
-            | "__CrossPackage" => true,
-            _ => false,
-        } {
-            fn fold_string_concat<'a>(expr: &nast::Expr<'a>, acc: &mut bump::Vec<'a, u8>) {
-                match *expr {
-                    aast::Expr(_, _, aast::Expr_::String(val)) => acc.extend_from_slice(val),
-                    aast::Expr(
-                        _,
-                        _,
-                        aast::Expr_::Binop(&aast::Binop {
-                            bop: Bop::Dot,
-                            lhs,
-                            rhs,
-                        }),
-                    ) => {
-                        fold_string_concat(lhs, acc);
-                        fold_string_concat(rhs, acc);
-                    }
-                    _ => {}
-                }
-            }
-
-            self.slice(args.iter().filter_map(|expr| match expr {
-                Node::StringLiteral((x, p)) => Some((*p, *x)),
-                Node::Expr(e @ aast::Expr(_, p, aast::Expr_::Binop(_))) => {
-                    let mut acc = bump::Vec::new_in(self.arena);
-                    fold_string_concat(e, &mut acc);
-                    Some((p, acc.into_bump_slice().into()))
-                }
-                _ => None,
-            }))
-        } else {
-            &[]
-        };
-
+        let string_literal_param = params.first().and_then(|p| match *p {
+            AttributeParam::String(pos, s) => Some((pos, s)),
+            _ => None,
+        });
         Node::Attribute(self.alloc(UserAttributeNode {
             name,
-            classname_params,
-            string_literal_params,
+            params,
+            string_literal_param,
         }))
     }
 
@@ -5691,7 +5604,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             if let ParamMode::FPinout = fp.kind {
                 flags |= FunParamFlags::INOUT;
                 // Pessimise type for inout
-                param_type = if self.implicit_sdt() {
+                param_type = if self.implicit_sdt() && !self.no_auto_likes() {
                     self.alloc(Ty(self.alloc(Reason::hint(pos)), Ty_::Tlike(param_type)))
                 } else {
                     param_type
@@ -5739,7 +5652,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             flags |= FunTypeFlags::VARIADIC
         }
 
-        let pess_return_type = if self.implicit_sdt() {
+        let pess_return_type = if self.implicit_sdt() && !self.no_auto_likes() {
             self.alloc(Ty(self.alloc(Reason::hint(pos)), Ty_::Tlike(ret)))
         } else {
             ret
@@ -5929,7 +5842,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             None => return Node::Ignored(SK::TypeConstant),
         };
         let pos = self.merge_positions(ty, constant_name);
-        let ty = match (ty, self.classish_name_builder.get_current_classish_name()) {
+        let ty = match (ty, self.get_current_classish_name()) {
             (Node::Name(("self", self_pos)), Some((name, class_name_pos))) => {
                 // In classes, we modify the position when rewriting the
                 // `self` keyword to point to the class name. In traits,
@@ -6095,7 +6008,11 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
             let this = Rc::make_mut(&mut self.state);
             this.under_no_auto_dynamic = true;
         }
-        if self.retain_or_omit_user_attributes_for_facts {
+        if attributes.contains_marker_attribute("__NoAutoLikes") {
+            let this = Rc::make_mut(&mut self.state);
+            this.under_no_auto_likes = true;
+        }
+        if self.opts.keep_user_attributes {
             attributes
         } else {
             Node::Ignored(SK::AttributeSpecification)
@@ -6103,7 +6020,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
     }
 
     fn make_attribute(&mut self, _at: Self::Output, attribute: Self::Output) -> Self::Output {
-        if self.retain_or_omit_user_attributes_for_facts {
+        if self.opts.keep_user_attributes {
             attribute
         } else {
             Node::Ignored(SK::Attribute)
@@ -6211,7 +6128,7 @@ impl<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>> FlattenSmartConstructors
         attributes: Self::Output,
         _right_double_angle: Self::Output,
     ) -> Self::Output {
-        if self.retain_or_omit_user_attributes_for_facts {
+        if self.opts.keep_user_attributes {
             let this = Rc::make_mut(&mut self.state);
             this.file_attributes = List::empty();
             for attr in attributes.iter() {

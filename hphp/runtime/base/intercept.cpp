@@ -146,21 +146,28 @@ void rename_function(const String& old_name, const String& new_name) {
     not_reached();
   }
 
-  // Interceptable functions can be renamed even when
-  // JitEnableRenameFunction is false.
-  if (!(func->attrs() & AttrInterceptable)) {
-    if (!RuntimeOption::EvalJitEnableRenameFunction) {
-      // When EvalJitEnableRenameFunction is false, the translator may
-      // wire non-AttrInterceptable Func*'s into the TC. Don't rename
-      // functions.
+  if (!RuntimeOption::funcIsRenamable(old)) {
+    if (RuntimeOption::EvalJitEnableRenameFunction == 2) {
+      raise_error("fb_rename_function must be explicitly enabled for %s "
+                  "(when Eval.JitEnableRenameFunction=2 by adding it to "
+                  "option Eval.RenamableFunctions)", old->data());
+    } else {
       raise_error("fb_rename_function must be explicitly enabled"
-                  "(-v Eval.JitEnableRenameFunction=true)");
+                  "(-v Eval.JitEnableRenameFunction=1)");
     }
   }
 
   auto const fnew = Func::lookup(newNe);
   if (fnew && fnew != func) {
     raise_error("Function already defined: %s", n3w->data());
+  }
+
+  if (StructuredLog::enabled() &&
+    RuntimeOption::EvalDumpJitEnableRenameFunctionStats) {
+    StructuredLogEntry entry;
+    entry.setStr("old_function_name", old->data());
+    entry.setStr("new_function_name", n3w->data());
+    StructuredLog::log("hhvm_rename_function", entry);
   }
 
   always_assert(

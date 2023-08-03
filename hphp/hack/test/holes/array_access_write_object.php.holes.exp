@@ -4,7 +4,7 @@ Errors:
     { fd_namespace =
       { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
         ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-        ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+        ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
       fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([4:10-35], "\\array_access_write_object");
       fd_fun =
       { f_span = [4:1-8:2]; f_readonly_this = None; f_annotation = (); 
@@ -36,6 +36,6 @@ Errors:
                  (Binop { bop = (Eq None); lhs = ((bool), [7:3-10], (Array_get (((nothing), [7:3-7], (Lvar ([7:3-7], $obj))), (Some ((int), [7:8-9], (Int "1")))))); rhs = ((bool), [7:13-17], True) }))))
             ]
           };
-        f_fun_kind = FSync; f_user_attributes = []; f_external = false; 
-        f_doc_comment = None };
+        f_fun_kind = FSync; f_user_attributes = [{ ua_name = ([4:10-35], "__SupportDynamicType"); ua_params = [] }]; 
+        f_external = false; f_doc_comment = None };
       fd_internal = false; fd_module = None; fd_tparams = []; fd_where_constraints = [] })

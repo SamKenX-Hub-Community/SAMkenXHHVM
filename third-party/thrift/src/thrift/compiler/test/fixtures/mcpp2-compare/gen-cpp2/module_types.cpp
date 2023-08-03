@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::some::valid::ns::MyEnumA>::size;
+#endif
 folly::Range<::some::valid::ns::MyEnumA const*> const TEnumTraits<::some::valid::ns::MyEnumA>::values = folly::range(TEnumDataStorage<::some::valid::ns::MyEnumA>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::some::valid::ns::MyEnumA>::names = folly::range(TEnumDataStorage<::some::valid::ns::MyEnumA>::names);
 
@@ -28,18 +30,12 @@ bool TEnumTraits<::some::valid::ns::MyEnumA>::findValue(folly::StringPiece name,
 
 }} // apache::thrift
 
-namespace some { namespace valid { namespace ns {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _MyEnumA_EnumMapFactory::ValuesToNamesMapType _MyEnumA_VALUES_TO_NAMES = _MyEnumA_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // some::valid::ns
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::some::valid::ns::AnnotatedEnum>::size;
+#endif
 folly::Range<::some::valid::ns::AnnotatedEnum const*> const TEnumTraits<::some::valid::ns::AnnotatedEnum>::values = folly::range(TEnumDataStorage<::some::valid::ns::AnnotatedEnum>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::some::valid::ns::AnnotatedEnum>::names = folly::range(TEnumDataStorage<::some::valid::ns::AnnotatedEnum>::names);
 
@@ -53,18 +49,12 @@ bool TEnumTraits<::some::valid::ns::AnnotatedEnum>::findValue(folly::StringPiece
 
 }} // apache::thrift
 
-namespace some { namespace valid { namespace ns {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _AnnotatedEnum_EnumMapFactory::ValuesToNamesMapType _AnnotatedEnum_VALUES_TO_NAMES = _AnnotatedEnum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // some::valid::ns
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::some::valid::ns::AnnotatedEnum2>::size;
+#endif
 folly::Range<::some::valid::ns::AnnotatedEnum2 const*> const TEnumTraits<::some::valid::ns::AnnotatedEnum2>::values = folly::range(TEnumDataStorage<::some::valid::ns::AnnotatedEnum2>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::some::valid::ns::AnnotatedEnum2>::names = folly::range(TEnumDataStorage<::some::valid::ns::AnnotatedEnum2>::names);
 
@@ -78,18 +68,12 @@ bool TEnumTraits<::some::valid::ns::AnnotatedEnum2>::findValue(folly::StringPiec
 
 }} // apache::thrift
 
-namespace some { namespace valid { namespace ns {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _AnnotatedEnum2_EnumMapFactory::ValuesToNamesMapType _AnnotatedEnum2_VALUES_TO_NAMES = _AnnotatedEnum2_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // some::valid::ns
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::some::valid::ns::MyEnumB>::size;
+#endif
 folly::Range<::some::valid::ns::MyEnumB const*> const TEnumTraits<::some::valid::ns::MyEnumB>::values = folly::range(TEnumDataStorage<::some::valid::ns::MyEnumB>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::some::valid::ns::MyEnumB>::names = folly::range(TEnumDataStorage<::some::valid::ns::MyEnumB>::names);
 
@@ -103,14 +87,6 @@ bool TEnumTraits<::some::valid::ns::MyEnumB>::findValue(folly::StringPiece name,
 
 }} // apache::thrift
 
-namespace some { namespace valid { namespace ns {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _MyEnumB_EnumMapFactory::ValuesToNamesMapType _MyEnumB_VALUES_TO_NAMES = _MyEnumB_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // some::valid::ns
 
 namespace apache {
 namespace thrift {
@@ -419,7 +395,7 @@ MyStruct::MyStruct() :
       __fbthrift_field_MyBoolField(),
       __fbthrift_field_MyIntField(static_cast<::std::int64_t>(12)),
       __fbthrift_field_MyStringField(apache::thrift::StringTraits<std::string>::fromStringLiteral("test")),
-      __fbthrift_field_MyMapEnumAndInt(std::initializer_list<std::pair<const ::some::valid::ns::MyEnumA, ::std::string>>{{ ::some::valid::ns::MyEnumA::fieldA, apache::thrift::StringTraits<std::string>::fromStringLiteral("fieldA")},
+      __fbthrift_field_MyMapEnumAndInt(std::initializer_list<::std::map<::some::valid::ns::MyEnumA, ::std::string>::value_type>{{ ::some::valid::ns::MyEnumA::fieldA, apache::thrift::StringTraits<std::string>::fromStringLiteral("fieldA")},
   { ::some::valid::ns::MyEnumA::fieldC, apache::thrift::StringTraits<std::string>::fromStringLiteral("fieldC")},
   {static_cast< ::some::valid::ns::MyEnumA>(9), apache::thrift::StringTraits<std::string>::fromStringLiteral("nothing")}}) {
   ::apache::thrift::adapt_detail::construct<::CustomProtocolAdapter, 10>(__fbthrift_field_MyCustomField, *this);
@@ -661,7 +637,9 @@ void TccStructTraits<::some::valid::ns::SimpleUnion>::translateFieldName(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::some::valid::ns::SimpleUnion::Type>::size;
+#endif
 folly::Range<::some::valid::ns::SimpleUnion::Type const*> const TEnumTraits<::some::valid::ns::SimpleUnion::Type>::values = folly::range(TEnumDataStorage<::some::valid::ns::SimpleUnion::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::some::valid::ns::SimpleUnion::Type>::names = folly::range(TEnumDataStorage<::some::valid::ns::SimpleUnion::Type>::names);
 
@@ -776,7 +754,9 @@ void TccStructTraits<::some::valid::ns::ComplexUnion>::translateFieldName(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::some::valid::ns::ComplexUnion::Type>::size;
+#endif
 folly::Range<::some::valid::ns::ComplexUnion::Type const*> const TEnumTraits<::some::valid::ns::ComplexUnion::Type>::values = folly::range(TEnumDataStorage<::some::valid::ns::ComplexUnion::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::some::valid::ns::ComplexUnion::Type>::names = folly::range(TEnumDataStorage<::some::valid::ns::ComplexUnion::Type>::names);
 
@@ -959,7 +939,8 @@ bool ComplexUnion::operator==(const ComplexUnion& rhs) const {
     case Type::excp_field:
       return value_.excp_field == rhs.value_.excp_field;
     case Type::MyCustomField:
-      return value_.MyCustomField == rhs.value_.MyCustomField;
+      return ::apache::thrift::adapt_detail::equal<::CustomProtocolAdapter, ::some::valid::ns::CustomProtocolType>(
+value_.MyCustomField, rhs.value_.MyCustomField);
     default:
       return true;
   }
@@ -1028,7 +1009,8 @@ bool ComplexUnion::operator<(FOLLY_MAYBE_UNUSED const ComplexUnion& rhs) const {
     case Type::excp_field:
       return lhs.value_.excp_field < rhs.value_.excp_field;
     case Type::MyCustomField:
-      return lhs.value_.MyCustomField < rhs.value_.MyCustomField;
+      return ::apache::thrift::adapt_detail::less<::CustomProtocolAdapter, ::some::valid::ns::CustomProtocolType>(
+value_.MyCustomField, rhs.value_.MyCustomField);
     default:
       return false;
   }
@@ -1772,7 +1754,7 @@ containerStruct::containerStruct() :
   static_cast<::std::int32_t>(10),
   static_cast<::std::int32_t>(12)}}),
       fieldI(true),
-      fieldJ(std::initializer_list<std::pair<const ::std::string, ::std::vector<::std::int32_t>>>{{apache::thrift::StringTraits<std::string>::fromStringLiteral("subfieldA"), std::initializer_list<::std::int32_t>{static_cast<::std::int32_t>(1),
+      fieldJ(std::initializer_list<::std::map<::std::string, ::std::vector<::std::int32_t>>::value_type>{{apache::thrift::StringTraits<std::string>::fromStringLiteral("subfieldA"), std::initializer_list<::std::int32_t>{static_cast<::std::int32_t>(1),
   static_cast<::std::int32_t>(4),
   static_cast<::std::int32_t>(8),
   static_cast<::std::int32_t>(12)}},
@@ -2636,6 +2618,14 @@ MyIncludedStruct& MyIncludedStruct::operator=(const MyIncludedStruct& other) {
   return *this;
 }
 
+MyIncludedStruct::MyIncludedStruct() :
+      __fbthrift_field_MyIncludedInt(static_cast<::a::different::ns::IncludedInt64>(42)),
+      __fbthrift_field_ARefField(std::make_unique<::some::valid::ns::AStruct>()) {
+}
+
+
+MyIncludedStruct::~MyIncludedStruct() {}
+
 MyIncludedStruct::MyIncludedStruct(FOLLY_MAYBE_UNUSED MyIncludedStruct&& other) noexcept :
     __fbthrift_field_MyIncludedInt(std::move(other.__fbthrift_field_MyIncludedInt)),
     __fbthrift_field_MyIncludedStruct(std::move(other.__fbthrift_field_MyIncludedStruct)),
@@ -3396,6 +3386,12 @@ ComplexContainerStruct& ComplexContainerStruct::operator=(const ComplexContainer
   return *this;
 }
 
+ComplexContainerStruct::ComplexContainerStruct() {
+}
+
+
+ComplexContainerStruct::~ComplexContainerStruct() {}
+
 ComplexContainerStruct::ComplexContainerStruct(FOLLY_MAYBE_UNUSED ComplexContainerStruct&& other) noexcept :
     __fbthrift_field_map_of_iobufs(std::move(other.__fbthrift_field_map_of_iobufs)),
     __fbthrift_field_map_of_iobuf_ptrs(std::move(other.__fbthrift_field_map_of_iobuf_ptrs)),
@@ -3619,7 +3615,9 @@ void TccStructTraits<::some::valid::ns::FloatUnion>::translateFieldName(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::some::valid::ns::FloatUnion::Type>::size;
+#endif
 folly::Range<::some::valid::ns::FloatUnion::Type const*> const TEnumTraits<::some::valid::ns::FloatUnion::Type>::values = folly::range(TEnumDataStorage<::some::valid::ns::FloatUnion::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::some::valid::ns::FloatUnion::Type>::names = folly::range(TEnumDataStorage<::some::valid::ns::FloatUnion::Type>::names);
 

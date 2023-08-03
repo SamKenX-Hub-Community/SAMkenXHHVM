@@ -36,7 +36,7 @@
 #include "hphp/runtime/ext/generator/ext_generator.h"
 #include "hphp/runtime/ext/simplexml/ext_simplexml.h"
 #include "hphp/runtime/ext/datetime/ext_datetime.h"
-#include "hphp/runtime/ext/std/ext_std_closure.h"
+#include "hphp/runtime/ext/core/ext_core_closure.h"
 
 #include "hphp/runtime/vm/class.h"
 #include "hphp/runtime/vm/member-operations.h"
@@ -77,7 +77,7 @@ void verifyTypeHint(const Class* thisCls,
     prop->typeConstraint.verifyProperty(val, thisCls, prop->cls, prop->name);
   }
   if (RuntimeOption::EvalEnforceGenericsUB <= 0) return;
-  for (auto const& ub : prop->ubs) {
+  for (auto const& ub : prop->ubs.m_constraints) {
     if (ub.isCheckable()) {
       ub.verifyProperty(val, thisCls, prop->cls, prop->name);
     }
@@ -140,7 +140,7 @@ bool ObjectData::assertTypeHint(tv_rval prop, Slot slot) const {
   }
   if (!assertATypeHint(propDecl.typeConstraint, prop)) return false;
   if (RuntimeOption::EvalEnforceGenericsUB <= 2) return true;
-  for (auto const& ub : propDecl.ubs) {
+  for (auto const& ub : propDecl.ubs.m_constraints) {
     if (!assertATypeHint(ub, prop)) return false;
   }
   return true;
@@ -416,7 +416,8 @@ Variant ObjectData::o_get(const String& propName, bool error /* = true */,
   if (!context.empty()) {
     ctx = Class::lookup(context.get());
   }
-  auto const propCtx = MemberLookupContext(ctx);
+  auto const propCtx =
+    ctx ? MemberLookupContext(ctx, ctx->moduleName()) : nullctx;
 
   // Can't use propImpl here because if the property is not accessible and
   // there is no native get, propImpl will raise_error("Cannot access ...",
@@ -456,7 +457,8 @@ void ObjectData::o_set(const String& propName, const Variant& v,
   if (!context.empty()) {
     ctx = Class::lookup(context.get());
   }
-  auto const propCtx = MemberLookupContext(ctx);
+  auto const propCtx =
+    ctx ? MemberLookupContext(ctx, ctx->moduleName()) : nullctx;
 
   // Can't use setProp here because if the property is not accessible and
   // there is no native set, setProp will raise_error("Cannot access ...",
@@ -504,7 +506,8 @@ void ObjectData::o_setArray(const Array& properties) {
     // TODO(T126821336): property can be internal
     // This function is only used in ext_mysql.cpp,
     // but has its own encoding mechanism
-    auto const propCtx = MemberLookupContext(ctx);
+    auto const propCtx =
+      ctx ? MemberLookupContext(ctx, ctx->moduleName()) : nullctx;
     setProp(propCtx, k.get(), tvAssertPlausible(iter.secondVal()));
   }
 }
@@ -648,7 +651,8 @@ Array ObjectData::o_toIterArray(const String& context) {
   if (!context.empty()) {
     ctx = Class::lookup(context.get());
   }
-  auto const propCtx = MemberLookupContext(ctx);
+  auto const propCtx =
+    ctx ? MemberLookupContext(ctx, ctx->moduleName()) : nullctx;
 
   // Get all declared properties first, bottom-to-top in the inheritance
   // hierarchy, in declaration order.
@@ -1456,7 +1460,7 @@ tv_lval ObjectData::setOpProp(TypedValue& tvRef,
       if (setOpNeedsTypeCheck(tc, op, prop)) {
         return true;
       }
-      for (auto& ub : lookup.prop->ubs) {
+      for (auto& ub : lookup.prop->ubs.m_constraints) {
         if (setOpNeedsTypeCheck(ub, op, prop)) return true;
       }
       return false;
@@ -1533,7 +1537,7 @@ TypedValue ObjectData::incDecProp(const MemberLookupContext& ctx, IncDecOp op, c
       if (RuntimeOption::EvalCheckPropTypeHints <= 0) return true;
       auto const isAnyCheckable = lookup.prop && [&] {
         if (lookup.prop->typeConstraint.isCheckable()) return true;
-        for (auto const& ub : lookup.prop->ubs) {
+        for (auto const& ub : lookup.prop->ubs.m_constraints) {
           if (ub.isCheckable()) return true;
         }
         return false;

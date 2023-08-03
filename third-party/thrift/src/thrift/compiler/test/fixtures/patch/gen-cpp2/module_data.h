@@ -194,7 +194,7 @@ template <> struct TStructDataStorage<::test::fixtures::patch::Loop> {
 };
 
 template <> struct TStructDataStorage<::test::fixtures::patch::MyDataPatchStruct> {
-  static constexpr const std::size_t fields_size = 5;
+  static constexpr const std::size_t fields_size = 6;
   static const folly::StringPiece name;
   static const std::array<folly::StringPiece, fields_size> fields_names;
   static const std::array<int16_t, fields_size> fields_ids;
@@ -242,7 +242,7 @@ template <> struct TStructDataStorage<::test::fixtures::patch::MyDataEnsureStruc
 };
 
 template <> struct TStructDataStorage<::test::fixtures::patch::MyDataWithCustomDefaultPatchStruct> {
-  static constexpr const std::size_t fields_size = 5;
+  static constexpr const std::size_t fields_size = 6;
   static const folly::StringPiece name;
   static const std::array<folly::StringPiece, fields_size> fields_names;
   static const std::array<int16_t, fields_size> fields_ids;
@@ -354,7 +354,7 @@ template <> struct TStructDataStorage<::test::fixtures::patch::MyUnionFieldPatch
 };
 
 template <> struct TStructDataStorage<::test::fixtures::patch::MyStructPatchStruct> {
-  static constexpr const std::size_t fields_size = 5;
+  static constexpr const std::size_t fields_size = 6;
   static const folly::StringPiece name;
   static const std::array<folly::StringPiece, fields_size> fields_names;
   static const std::array<int16_t, fields_size> fields_ids;
@@ -402,7 +402,7 @@ template <> struct TStructDataStorage<::test::fixtures::patch::MyStructField23Pa
 };
 
 template <> struct TStructDataStorage<::test::fixtures::patch::MyStructField26PatchStruct> {
-  static constexpr const std::size_t fields_size = 6;
+  static constexpr const std::size_t fields_size = 4;
   static const folly::StringPiece name;
   static const std::array<folly::StringPiece, fields_size> fields_names;
   static const std::array<int16_t, fields_size> fields_ids;
@@ -450,23 +450,7 @@ template <> struct TStructDataStorage<::test::fixtures::patch::MyStructField28Pa
 };
 
 template <> struct TStructDataStorage<::test::fixtures::patch::MyStructField29PatchStruct> {
-  static constexpr const std::size_t fields_size = 6;
-  static const folly::StringPiece name;
-  static const std::array<folly::StringPiece, fields_size> fields_names;
-  static const std::array<int16_t, fields_size> fields_ids;
-  static const std::array<protocol::TType, fields_size> fields_types;
-
- private:
-  // The following fields describe internal storage metadata, and are private to
-  // prevent user logic from accessing them, but they can be inspected by
-  // debuggers.
-  static const std::array<folly::StringPiece, fields_size> storage_names;
-  // -1 if the field has no isset.
-  static const std::array<int, fields_size> isset_indexes;
-};
-
-template <> struct TStructDataStorage<::test::fixtures::patch::MyStructField29Patch1Struct> {
-  static constexpr const std::size_t fields_size = 7;
+  static constexpr const std::size_t fields_size = 4;
   static const folly::StringPiece name;
   static const std::array<folly::StringPiece, fields_size> fields_names;
   static const std::array<int16_t, fields_size> fields_ids;
@@ -546,7 +530,7 @@ template <> struct TStructDataStorage<::test::fixtures::patch::MyStructEnsureStr
 };
 
 template <> struct TStructDataStorage<::test::fixtures::patch::LateDefStructPatchStruct> {
-  static constexpr const std::size_t fields_size = 5;
+  static constexpr const std::size_t fields_size = 6;
   static const folly::StringPiece name;
   static const std::array<folly::StringPiece, fields_size> fields_names;
   static const std::array<int16_t, fields_size> fields_ids;
@@ -594,7 +578,7 @@ template <> struct TStructDataStorage<::test::fixtures::patch::LateDefStructEnsu
 };
 
 template <> struct TStructDataStorage<::test::fixtures::patch::RecursivePatchStruct> {
-  static constexpr const std::size_t fields_size = 5;
+  static constexpr const std::size_t fields_size = 6;
   static const folly::StringPiece name;
   static const std::array<folly::StringPiece, fields_size> fields_names;
   static const std::array<int16_t, fields_size> fields_ids;
@@ -658,7 +642,7 @@ template <> struct TStructDataStorage<::test::fixtures::patch::RecursiveEnsureSt
 };
 
 template <> struct TStructDataStorage<::test::fixtures::patch::BarPatchStruct> {
-  static constexpr const std::size_t fields_size = 5;
+  static constexpr const std::size_t fields_size = 6;
   static const folly::StringPiece name;
   static const std::array<folly::StringPiece, fields_size> fields_names;
   static const std::array<int16_t, fields_size> fields_ids;

@@ -26,7 +26,7 @@
   ast
   collections
   nast
-  package
+  package_info
   parser
   provider_backend
   server_command_types
@@ -156,7 +156,6 @@
   decl_provider
   provider_utils
   tast_env
-  typing_service_api
   typing_toplevel)
  (preprocess
   (pps ppx_deriving.std)))

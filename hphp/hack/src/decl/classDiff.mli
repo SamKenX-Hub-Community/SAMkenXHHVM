@@ -109,17 +109,15 @@ module MajorChange : sig
   [@@deriving eq, show]
 end
 
-type minor_change = {
-  mro_positions_changed: bool;
-  member_diff: member_diff;
-}
-[@@deriving eq, show]
-
 type t =
   | Unchanged
   | Major_change of MajorChange.t
-  | Minor_change of minor_change
+  | Minor_change of member_diff
 [@@deriving eq, show]
+
+val has_changed : t -> bool
+
+val pretty : name:string -> t -> string
 
 val empty_member_diff : member_diff
 

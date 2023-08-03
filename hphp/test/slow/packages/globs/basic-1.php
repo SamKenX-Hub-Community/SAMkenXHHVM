@@ -1,8 +1,8 @@
 <?hh
 
 <<__EntryPoint>>
-function main() {
-  $deployments = vec["one", "two", "three"];
+function main() :mixed{
+  $deployments = vec["one", "two", "three", "four"];
   $modules = vec["a", "b.c", "x.c", "t.a.x"];
 
   foreach ($deployments as $deployment) {

@@ -38,7 +38,7 @@ namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
 
 namespace hackc {
-  struct FactsResult;
+  struct FileFacts;
 }
 
 struct UnitIndex;
@@ -399,9 +399,9 @@ struct UnitIndex final {
   Map modules;
 };
 
-// Given the result of running `hackc::decls_to_facts_cpp_ffi`, create a
+// Given the result of running `hackc::decls_to_facts()`, create a
 // `Package::IndexMeta` containing the names of all decls in `facts`.
-Package::IndexMeta summary_of_facts(const hackc::FactsResult& facts);
+Package::IndexMeta summary_of_facts(const hackc::FileFacts& facts);
 
 ///////////////////////////////////////////////////////////////////////////////
 }

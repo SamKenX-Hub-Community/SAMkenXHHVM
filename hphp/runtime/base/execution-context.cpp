@@ -40,12 +40,12 @@
 #include "hphp/runtime/base/builtin-functions.h"
 #include "hphp/runtime/base/comparisons.h"
 #include "hphp/runtime/base/program-functions.h"
+#include "hphp/runtime/base/replayer.h"
 #include "hphp/runtime/base/runtime-option.h"
 #include "hphp/runtime/base/tv-refcount.h"
 #include "hphp/runtime/base/tv-type.h"
 #include "hphp/runtime/base/type-variant.h"
 #include "hphp/runtime/base/unit-cache.h"
-#include "hphp/runtime/base/system-profiler.h"
 #include "hphp/runtime/base/container-functions.h"
 #include "hphp/runtime/base/hhprof.h"
 #include "hphp/runtime/base/apc-stats.h"
@@ -238,9 +238,9 @@ static void safe_stdout(const  void  *ptr,  size_t  size) {
   write(fileno(stdout), ptr, size);
 }
 
-void ExecutionContext::writeStdout(const char *s, int len) {
+void ExecutionContext::writeStdout(const char *s, int len, bool skipHooks) {
   fflush(stdout);
-  if (m_stdoutHooks.empty()) {
+  if (skipHooks || m_stdoutHooks.empty()) {
     if (s_stdout_color) {
       safe_stdout(s_stdout_color, strlen(s_stdout_color));
       safe_stdout(s, len);
@@ -804,10 +804,6 @@ void ExecutionContext::handleError(const std::string& msg,
 
     if (!handled) {
       recordLastError(ee, errnum);
-    }
-
-    if (g_system_profiler) {
-      g_system_profiler->errorCallBack(ee, errnum, msg);
     }
   }
 
@@ -1387,21 +1383,23 @@ StaticString
   s_stdClass("stdClass");
 
 void ExecutionContext::requestInit() {
-  assertx(SystemLib::s_unit);
-
   initBlackHole();
   createGlobalNVTable();
   vmStack().requestInit();
   ResourceHdr::resetMaxId();
   jit::tc::requestInit();
-  if (UNLIKELY(RO::EvalRecordReplay && RO::EvalRecordSampleRate > 0)) {
-    m_recorder.emplace();
-    m_recorder->requestInit();
+  if (UNLIKELY(RO::EvalRecordReplay)) {
+    if (RO::EvalRecordSampleRate > 0) {
+      m_recorder.emplace();
+      m_recorder->requestInit();
+    } else if (RO::EvalReplay) {
+      Replayer::get().requestInit();
+    }
   }
 
   *rl_num_coeffect_violations = 0;
 
-  if (RuntimeOption::EvalJitEnableRenameFunction) {
+  if (RuntimeOption::EvalJitEnableRenameFunction == 1) {
     assertx(SystemLib::s_anyNonPersistentBuiltins);
   }
 
@@ -1410,18 +1408,12 @@ void ExecutionContext::requestInit() {
    * persistent, and every systemlib unit is accordingly going to be
    * merge only.
    *
-   * However, if we have rename_function generally enabled, or if any
-   * builtin functions were specified as interceptable at
-   * repo-generation time, we'll actually need to merge systemlib on
-   * every request because some of the builtins will not be marked
-   * persistent.
+   * However, if we have builtins that are renamable, we'll actually
+   * need to merge systemlib on every request because some of the
+   * builtins will not be marked persistent.
    */
   if (UNLIKELY(SystemLib::s_anyNonPersistentBuiltins)) {
-    SystemLib::s_unit->merge();
     SystemLib::mergePersistentUnits();
-  } else {
-    // System units are merge only, and everything is persistent.
-    assertx(SystemLib::s_unit->isEmpty());
   }
 
   assertx(!ImplicitContext::activeCtx.isInit());
@@ -1477,6 +1469,10 @@ void ExecutionContext::requestExit() {
 
   if (!m_lastError.isNull()) {
     clearLastError();
+  }
+
+  if (!m_visitedFiles.isNull()) {
+    m_visitedFiles = Array();
   }
 
   {

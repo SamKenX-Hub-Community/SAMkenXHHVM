@@ -17,6 +17,7 @@
 namespace cpp2 apache.thrift.test
 
 include "thrift/annotation/thrift.thrift"
+include "thrift/annotation/cpp.thrift"
 
 cpp_include "thrift/test/StructsExtra.h"
 
@@ -37,30 +38,24 @@ struct HasInt {
 }
 
 struct BasicRefs {
-  1: HasInt def_field (cpp.ref);
+  @cpp.Ref{type = cpp.RefType.Unique}
+  1: HasInt def_field;
 }
 
 struct BasicRefsShared {
-  1: HasInt def_field (cpp.ref_type = "shared");
+  @cpp.Ref{type = cpp.RefType.SharedMutable}
+  1: HasInt def_field;
 }
 
-typedef Basic (
-  cpp.type = "WrappedTypeField<Basic>",
-  cpp.indirection,
-) BasicIndirection
+@cpp.Type{name = "WrappedTypeField<Basic>"}
+typedef Basic (cpp.indirection) BasicIndirection
 
-typedef binary (
-  cpp.type = "WrappedTypeField<folly::IOBuf>",
-  cpp.indirection,
-) t_foo
-typedef binary (
-  cpp.type = "WrappedTypeField<std::string>",
-  cpp.indirection,
-) t_bar
-typedef binary (
-  cpp.type = "WrappedTypeMethod<folly::IOBuf>",
-  cpp.indirection,
-) t_baz
+@cpp.Type{name = "WrappedTypeField<folly::IOBuf>"}
+typedef binary (cpp.indirection) t_foo
+@cpp.Type{name = "WrappedTypeField<std::string>"}
+typedef binary (cpp.indirection) t_bar
+@cpp.Type{name = "WrappedTypeMethod<folly::IOBuf>"}
+typedef binary (cpp.indirection) t_baz
 struct IOBufIndirection {
   1: t_foo foo;
   2: t_bar bar;
@@ -68,8 +63,10 @@ struct IOBufIndirection {
 }
 
 struct HasSmallSortedVector {
-  1: set<i32> (cpp.template = "SmallSortedVectorSet") set_field;
-  2: map<i32, i32> (cpp.template = "SmallSortedVectorMap") map_field;
+  @cpp.Type{template = "SmallSortedVectorSet"}
+  1: set<i32> set_field;
+  @cpp.Type{template = "SmallSortedVectorMap"}
+  2: map<i32, i32> map_field;
 }
 
 struct NoexceptMoveStruct {
@@ -95,11 +92,16 @@ struct NotEmptiableStruct {
 }
 
 struct OptionalFieldsStruct {
-  1: optional HasInt def_field (cpp.ref);
-  2: optional HasInt shared_field (cpp.ref_type = "shared");
-  3: optional list<HasInt> shared_fields (cpp.ref_type = "shared");
-  4: optional HasInt shared_field_const (cpp.ref_type = "shared_const");
-  5: optional list<HasInt> shared_fields_const (cpp.ref_type = "shared_const");
+  @cpp.Ref{type = cpp.RefType.Unique}
+  1: optional HasInt def_field;
+  @cpp.Ref{type = cpp.RefType.SharedMutable}
+  2: optional HasInt shared_field;
+  @cpp.Ref{type = cpp.RefType.SharedMutable}
+  3: optional list<HasInt> shared_fields;
+  @cpp.Ref{type = cpp.RefType.Shared}
+  4: optional HasInt shared_field_const;
+  @cpp.Ref{type = cpp.RefType.Shared}
+  5: optional list<HasInt> shared_fields_const;
   @thrift.Box
   6: optional HasInt boxed_field;
 }

@@ -178,6 +178,13 @@ class AtomicCoreCachedSharedPtr {
     reset(std::move(p));
   }
 
+  AtomicCoreCachedSharedPtr(AtomicCoreCachedSharedPtr&& other) noexcept
+      : slots_(other.slots_.load(std::memory_order_relaxed)) {
+    other.slots_.store(nullptr, std::memory_order_relaxed);
+  }
+  AtomicCoreCachedSharedPtr& operator=(AtomicCoreCachedSharedPtr&& other) =
+      delete;
+
   ~AtomicCoreCachedSharedPtr() {
     // Delete of AtomicCoreCachedSharedPtr must be synchronized, no
     // need for slots->retire().
@@ -199,12 +206,20 @@ class AtomicCoreCachedSharedPtr {
   }
 
   std::shared_ptr<T> get() const {
-    folly::hazptr_local<1> hazptr;
-    if (auto slots = hazptr[0].protect(slots_)) {
-      return slots->slots[AccessSpreader<>::cachedCurrent(SlotsConfig::num())];
-    } else {
+    // Avoid the hazptr cost if empty.
+    auto slots = slots_.load(std::memory_order_relaxed);
+    if (slots == nullptr) {
       return nullptr;
     }
+
+    folly::hazptr_local<1> hazptr;
+    while (!hazptr[0].try_protect(slots, slots_)) {
+      // Lost the update race, retry.
+    }
+    if (slots == nullptr) { // Need to check again, try_protect reloads slots.
+      return nullptr;
+    }
+    return slots->slots[AccessSpreader<>::cachedCurrent(SlotsConfig::num())];
   }
 
  private:

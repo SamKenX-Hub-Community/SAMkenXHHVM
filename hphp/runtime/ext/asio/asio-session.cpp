@@ -31,7 +31,7 @@
 #include "hphp/runtime/ext/asio/ext_external-thread-event-wait-handle.h"
 #include "hphp/runtime/ext/asio/ext_sleep-wait-handle.h"
 #include "hphp/runtime/ext/asio/ext_wait-handle.h"
-#include "hphp/runtime/ext/std/ext_std_closure.h"
+#include "hphp/runtime/ext/core/ext_core_closure.h"
 #include "hphp/runtime/vm/bytecode.h"
 #include "hphp/runtime/vm/event-hook.h"
 #include "hphp/system/systemlib.h"
@@ -125,11 +125,15 @@ void AsioSession::onIOWaitEnter() {
   runCallback(m_onIOWaitEnter, empty_vec_array(), "Awaitable::onIOWaitEnter");
 }
 
-void AsioSession::onIOWaitExit() {
-  runCallback(m_onIOWaitExit, empty_vec_array(), "Awaitable::onIOWaitExit");
+void AsioSession::onIOWaitExit(c_WaitableWaitHandle* waitHandle) {
+  runCallback(
+    m_onIOWaitExit,
+    make_vec_array(waitHandle),
+    "Awaitable::onIOWaitExit"
+  );
 }
 
-void AsioSession::onJoin(c_Awaitable* waitHandle) {
+void AsioSession::onJoin(c_WaitableWaitHandle* waitHandle) {
   runCallback(m_onJoin, make_vec_array(waitHandle), "Awaitable::onJoin");
 }
 

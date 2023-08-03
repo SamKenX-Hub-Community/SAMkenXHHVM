@@ -35,7 +35,6 @@ pub mod ffi {
         AttrTrait = 0x100,
         AttrNoInjection = 0x200,
         AttrInitialSatisfiesTC = 0x200,
-        AttrUnique = 0x400,
         AttrNoBadRedeclare = 0x400,
         AttrInterceptable = 0x800,
         AttrSealed = 0x800,
@@ -83,7 +82,6 @@ pub mod ffi {
     enum TypeConstraintFlags {
         NoFlags = 0x0,
         Nullable = 0x1,
-        CaseType = 0x2,
         ExtendedHint = 0x4,
         TypeVar = 0x8,
         Soft = 0x10,
@@ -158,6 +156,7 @@ pub mod ffi {
 use ffi::type_flags_to_string_ffi;
 pub use ffi::Attr;
 pub use ffi::TypeConstraintFlags;
+pub use ffi::TypeStructureKind;
 
 impl Default for TypeConstraintFlags {
     fn default() -> Self {
@@ -230,6 +229,12 @@ impl From<&TypeConstraintFlags> for u16 {
     }
 }
 
+impl From<TypeStructureKind> for i64 {
+    fn from(r: TypeStructureKind) -> Self {
+        r.repr as i64
+    }
+}
+
 impl From<u32> for Attr {
     fn from(r: u32) -> Self {
         Self { repr: r }
@@ -247,7 +252,7 @@ impl From<oxidized::ast_defs::Visibility> for Attr {
             // exclusive with other visibility modifiers or it should be a
             // modifier on top the others.
             // In order to unblock typechecker, let it be a modifier on top for now.
-            Visibility::Internal => (Self::AttrInternal | Self::AttrPublic).into(),
+            Visibility::Internal => Self::AttrInternal | Self::AttrPublic,
         }
     }
 }
@@ -263,7 +268,7 @@ impl From<&oxidized::ast_defs::Visibility> for Attr {
             // exclusive with other visibility modifiers or it should be a
             // modifier on top the others.
             // In order to unblock typechecker, let it be a modifier on top for now.
-            Visibility::Internal => (Self::AttrInternal | Self::AttrPublic).into(),
+            Visibility::Internal => Self::AttrInternal | Self::AttrPublic,
         }
     }
 }

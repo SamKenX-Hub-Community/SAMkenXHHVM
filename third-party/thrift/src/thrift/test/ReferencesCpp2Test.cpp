@@ -346,18 +346,34 @@ TEST(References, intern_box_access) {
       &*std::as_const(a).intern_box_field(),
       &*std::as_const(b).intern_box_field());
 
-  // reset sets fill boxed intern field to the shared default.
-  b.intern_box_field().reset();
+  b.intern_box_field().emplace();
   // address does not match.
   EXPECT_NE(
       &*std::as_const(a).intern_box_field(),
       &*std::as_const(b).intern_box_field());
+
+  // reset sets fill boxed intern field to the shared intrinsic default when the
+  // field does not have custom default.
+  b.intern_box_field().reset();
   // value should still be equal.
   EXPECT_EQ(
       *std::as_const(a).intern_box_field(),
       *std::as_const(b).intern_box_field());
   EXPECT_EQ(
       std::as_const(a).intern_box_field(), std::as_const(b).intern_box_field());
+}
+
+TEST(References, intern_box_empty) {
+  TerseInternBox obj;
+  EXPECT_TRUE(apache::thrift::empty(obj));
+
+  // own the field.
+  obj.intern_box_field().emplace();
+  EXPECT_TRUE(apache::thrift::empty(obj));
+
+  // explicitly set the inner field.
+  obj.intern_box_field().value().field() = 0;
+  EXPECT_TRUE(apache::thrift::empty(obj));
 }
 
 TEST(References, structured_annotation) {
@@ -612,6 +628,14 @@ TEST(References, DoubleAdaptedRefStruct) {
   EXPECT_EQ(objd.req_shared_const_field_ref()->value.value.data(), 1);
   EXPECT_EQ(objd.opt_shared_const_field_ref()->value.value.data(), 1);
   EXPECT_EQ(objd.opt_box_field()->value.value.data(), 1);
+}
+
+TEST(References, NonTriviallyDestructibleUnion) {
+  NonTriviallyDestructibleUnion obj;
+  obj.int_field_ref().ensure() = 1;
+  auto objd = CompactSerializer::deserialize<NonTriviallyDestructibleUnion>(
+      CompactSerializer::serialize<std::string>(obj));
+  EXPECT_EQ(obj, objd);
 }
 
 } // namespace cpp2

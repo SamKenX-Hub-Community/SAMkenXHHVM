@@ -122,6 +122,9 @@ class SharedSSLContextManagerImpl : public SharedSSLContextManager {
     for (auto& sslContext : config_.sslContextConfigs) {
       sslContext = ssl;
     }
+    for (auto& sniConfig : config_.sniConfigs) {
+      sniConfig.contextConfig = ssl;
+    }
     reloadSSLContextConfigs();
   }
 
@@ -159,10 +162,21 @@ class SharedSSLContextManagerImpl : public SharedSSLContextManager {
       }
     }
     auto ctxManager = std::make_shared<SSLContextManager>(
-        "vip_" + config_.name, config_.strictSSL, nullptr);
+        "vip_" + config_.name,
+        SSLContextManagerSettings().setStrict(config_.strictSSL),
+        nullptr);
     for (const auto& sslCtxConfig : config_.sslContextConfigs) {
       ctxManager->addSSLContextConfig(
           sslCtxConfig,
+          config_.sslCacheOptions,
+          &seeds_,
+          config_.bindAddress,
+          cacheProvider_);
+    }
+    for (const auto& sniConfig : config_.sniConfigs) {
+      ctxManager->addSSLContextConfig(
+          sniConfig.snis,
+          sniConfig.contextConfig,
           config_.sslCacheOptions,
           &seeds_,
           config_.bindAddress,

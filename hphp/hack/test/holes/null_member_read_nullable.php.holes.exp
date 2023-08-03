@@ -47,15 +47,15 @@
       c_namespace =
       { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
         ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-        ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
-      c_user_attributes = []; c_file_attributes = []; c_docs_url = None; 
-      c_enum = None; c_doc_comment = None; c_emit_id = None; c_internal = false; 
-      c_module = None });
+        ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+      c_user_attributes = [{ ua_name = ([3:7-17], "__SupportDynamicType"); ua_params = [] }]; 
+      c_file_attributes = []; c_docs_url = None; c_enum = None; c_doc_comment = None; 
+      c_emit_id = None; c_internal = false; c_module = None });
   (Fun
      { fd_namespace =
        { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
          ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-         ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+         ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
        fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([8:10-35], "\\null_member_read_nullable");
        fd_fun =
        { f_span = [8:1-14:2]; f_readonly_this = None; f_annotation = (); 
@@ -88,13 +88,14 @@
              ([13:3-13],
               (Expr
                  ((void), [13:3-12],
-                  (Call (
-                     (((function(): void)), [13:3-10],
-                      (Obj_get (((?MyVeryOwnC), [13:3-5], (Hole (((?MyVeryOwnC), [13:3-5], (Lvar ([13:3-5], $c))), (?MyVeryOwnC), (MyVeryOwnC), Typing))),
-                         (((function(): void)), [13:7-10], (Id ([13:7-10], "bar"))), OG_nullthrows, Is_method))),
-                     [], [], None)))))
+                  (Call
+                     { func =
+                       (((function(): void)), [13:3-10],
+                        (Obj_get (((?MyVeryOwnC), [13:3-5], (Hole (((?MyVeryOwnC), [13:3-5], (Lvar ([13:3-5], $c))), (?MyVeryOwnC), (MyVeryOwnC), Typing))),
+                           (((function(): void)), [13:7-10], (Id ([13:7-10], "bar"))), OG_nullthrows, Is_method)));
+                       targs = []; args = []; unpacked_arg = None }))))
              ]
            };
-         f_fun_kind = FSync; f_user_attributes = []; f_external = false; 
-         f_doc_comment = None };
+         f_fun_kind = FSync; f_user_attributes = [{ ua_name = ([8:10-35], "__SupportDynamicType"); ua_params = [] }]; 
+         f_external = false; f_doc_comment = None };
        fd_internal = false; fd_module = None; fd_tparams = []; fd_where_constraints = [] })

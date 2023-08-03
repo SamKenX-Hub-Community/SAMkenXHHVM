@@ -65,6 +65,8 @@ void Cpp2Worker::initRequestsRegistry() {
           *evb, memPerReq, memPerWorker, maxFinished);
       self->workerProvider_ =
           detail::createIOWorkerProvider(evb, requestsRegistry_);
+      // add mapping from evb to worker
+      self->server_->evbToWorker_.emplace(*evb, this);
     }
   });
 }
@@ -129,12 +131,8 @@ void Cpp2Worker::onNewConnection(
           }
         }
       }
-      if (!getServer()->isDuplex()) {
-        new TransportPeekingManager(
-            shared_from_this(), *addr, tinfo, server_, std::move(sock));
-      } else {
-        handleHeader(std::move(sock), addr, tinfo);
-      }
+      new TransportPeekingManager(
+          shared_from_this(), *addr, tinfo, server_, std::move(sock));
       break;
     default:
       LOG(ERROR) << "Unsupported Secure Transport Type";
@@ -153,7 +151,7 @@ void Cpp2Worker::handleHeader(
 
   auto thriftTransport = createThriftTransport(std::move(sock));
   auto connection = std::make_shared<Cpp2Connection>(
-      std::move(thriftTransport), addr, shared_from_this(), nullptr);
+      std::move(thriftTransport), addr, shared_from_this());
   Acceptor::addConnection(connection.get());
   connection->addConnection(connection, tinfo);
   connection->start();
@@ -210,31 +208,6 @@ folly::AsyncSocket::UniquePtr Cpp2Worker::makeNewAsyncSocket(
   return Acceptor::makeNewAsyncSocket(base, fd, peerAddress);
 }
 
-void Cpp2Worker::useExistingChannel(
-    const std::shared_ptr<HeaderServerChannel>& serverChannel) {
-  folly::SocketAddress address;
-
-  auto conn = std::make_shared<Cpp2Connection>(
-      nullptr, &address, shared_from_this(), serverChannel);
-  Acceptor::getConnectionManager()->addConnection(conn.get(), false);
-  conn->addConnection(conn);
-
-  conn->start();
-}
-
-void Cpp2Worker::stopDuplex(std::shared_ptr<ThriftServer> myServer) {
-  // They better have given us the correct ThriftServer
-  DCHECK(server_ == myServer.get());
-
-  // This does not really fully drain everything but at least
-  // prevents the connections from accepting new requests
-  wangle::Acceptor::drainAllConnections();
-
-  // Capture a shared_ptr to our ThriftServer making sure it will outlive us
-  // Otherwise our raw pointer to it (server_) will be jeopardized.
-  duplexServer_ = myServer;
-}
-
 void Cpp2Worker::updateSSLStats(
     const folly::AsyncTransport* sock,
     std::chrono::milliseconds /* acceptLatency */,
@@ -288,11 +261,16 @@ wangle::AcceptorHandshakeHelper::UniquePtr Cpp2Worker::createSSLHelper(
     std::chrono::steady_clock::time_point acceptTime,
     wangle::TransportInfo& tInfo) {
   if (accConfig_.fizzConfig.enableFizz) {
-    if (auto parametersContext = getThriftParametersContext()) {
-      fizzPeeker_.setThriftParametersContext(
+    auto helper =
+        fizzPeeker_.getThriftHelper(bytes, clientAddr, acceptTime, tInfo);
+    if (!helper) {
+      return nullptr;
+    }
+    if (auto parametersContext = getThriftParametersContext(clientAddr)) {
+      helper->setThriftParametersContext(
           folly::copy_to_shared_ptr(*parametersContext));
     }
-    return getFizzPeeker()->getHelper(bytes, clientAddr, acceptTime, tInfo);
+    return helper;
   }
   return defaultPeekingCallback_.getHelper(
       bytes, clientAddr, acceptTime, tInfo);
@@ -314,8 +292,8 @@ bool Cpp2Worker::shouldPerformSSL(
   }
 }
 
-std::optional<ThriftParametersContext>
-Cpp2Worker::getThriftParametersContext() {
+std::optional<ThriftParametersContext> Cpp2Worker::getThriftParametersContext(
+    const folly::SocketAddress& clientAddr) {
   auto thriftConfigBase =
       folly::get_ptr(accConfig_.customConfigMap, "thrift_tls_config");
   if (!thriftConfigBase) {
@@ -329,7 +307,8 @@ Cpp2Worker::getThriftParametersContext() {
 
   auto thriftParametersContext = ThriftParametersContext();
   thriftParametersContext.setUseStopTLS(
-      thriftConfig->enableStopTLS || **ThriftServer::enableStopTLS());
+      clientAddr.getFamily() == AF_UNIX || thriftConfig->enableStopTLS ||
+      **ThriftServer::enableStopTLS());
   return thriftParametersContext;
 }
 
@@ -352,6 +331,7 @@ void Cpp2Worker::requestStop() {
     }
     cancelQueuedRequests();
     stopping_.store(true, std::memory_order_relaxed);
+    server_->evbToWorker_.erase(*getEventBase());
     if (activeRequests_ == 0) {
       stopBaton_.post();
     }

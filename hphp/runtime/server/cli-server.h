@@ -81,6 +81,69 @@ struct ucred {
 };
 #endif
 
+struct CLIContext {
+  enum Flags {
+    None = 0,
+    ProxyXbox = 1,
+    AssumeRepoReadable = 2,
+    AssumeRepoRealpath = 4,
+  };
+  struct Data {
+    int client{-1};
+    int lwp_afdt{-1};
+
+    FILE* in{nullptr};
+    FILE* out{nullptr};
+    FILE* err{nullptr};
+  };
+
+  struct SharedData {
+    ucred user;
+    std::string cwd;
+    std::vector<std::string> argv;
+    std::vector<std::string> envp;
+    folly::dynamic ini;
+    Flags flags{Flags::None};
+    std::filesystem::path repo;
+    std::string uuid;
+  };
+
+  ~CLIContext();
+
+  CLIContext(CLIContext&&);
+  CLIContext& operator=(CLIContext&&);
+
+  static CLIContext initFromClient(int client);
+  static CLIContext initFromParent(const CLIContext& parent);
+
+  int client() const { assertx(m_data.client != -1); return m_data.client; }
+  ucred* user() const { assertx(m_data.client != -1); return &m_shared->user; }
+
+  Data* getData() { assertx(m_data.client != -1); return &m_data; }
+  SharedData* getShared() {
+    assertx(m_data.client != -1);
+    return m_shared.get();
+  }
+
+  std::shared_ptr<SharedData> copyShared() {
+    assertx(m_data.client != -1);
+    return m_shared;
+  }
+
+private:
+  CLIContext(Data&& data, SharedData&& sd)
+    : m_data(std::move(data))
+    , m_shared(std::make_shared<SharedData>(std::move(sd)))
+  {}
+  CLIContext(Data&& data, std::shared_ptr<SharedData> sd)
+    : m_data(std::move(data))
+    , m_shared(std::move(sd))
+  {}
+
+  Data m_data;
+  std::shared_ptr<SharedData> m_shared;
+};
+
 /*
  * The API version of the CLI-Server protocol
  */
@@ -137,6 +200,11 @@ ucred* get_cli_ucred();
 bool cli_mkstemp(char* buf);
 
 /*
+ * Can the current CLIContext be cloned to start a new xbox thread?
+ */
+bool cli_supports_clone();
+
+/*
  * Explicitly open a file via the CLI-server client.
  *
  * WARNING: use of this function should be considered a last resort, it's
@@ -153,6 +221,19 @@ int cli_openfd_unsafe(const String& filename, int flags, mode_t mode,
  * Fetch the environment for the CLI process.
  */
 Array cli_env();
+
+/*
+ * Invoke a function using the CLI context ctx, created using clone.
+ */
+void cli_invoke(
+  CLIContext&& ctx,
+  std::function<void(const std::string&)>&& invoke
+);
+
+/*
+ * Clone the current CLI context
+ */
+CLIContext cli_clone_context();
 
 }
 

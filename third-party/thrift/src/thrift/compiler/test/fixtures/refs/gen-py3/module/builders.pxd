@@ -10,14 +10,16 @@ cimport folly.iobuf as _fbthrift_iobuf
 
 cimport thrift.py3.builder
 
-cimport facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
-cimport facebook.thrift.annotation.cpp.builders as _facebook_thrift_annotation_cpp_builders
 
 cimport module.types as _module_types
 
 cdef class MyUnion_Builder(thrift.py3.builder.StructBuilder):
     cdef public pint anInteger
     cdef public str aString
+
+
+cdef class NonTriviallyDestructibleUnion_Builder(thrift.py3.builder.StructBuilder):
+    cdef public pint int_field
 
 
 cdef class MyField_Builder(thrift.py3.builder.StructBuilder):
@@ -82,15 +84,21 @@ cdef class StructWithBox_Builder(thrift.py3.builder.StructBuilder):
 cdef class StructWithInternBox_Builder(thrift.py3.builder.StructBuilder):
     cdef public object field1
     cdef public object field2
-    cdef public object field3
-    cdef public object field4
+
+
+cdef class StructWithTerseInternBox_Builder(thrift.py3.builder.StructBuilder):
+    cdef public object field1
+    cdef public object field2
 
 
 cdef class AdaptedStructWithInternBox_Builder(thrift.py3.builder.StructBuilder):
     cdef public object field1
     cdef public object field2
-    cdef public object field3
-    cdef public object field4
+
+
+cdef class AdaptedStructWithTerseInternBox_Builder(thrift.py3.builder.StructBuilder):
+    cdef public object field1
+    cdef public object field2
 
 
 cdef class StructWithRefTypeUnique_Builder(thrift.py3.builder.StructBuilder):

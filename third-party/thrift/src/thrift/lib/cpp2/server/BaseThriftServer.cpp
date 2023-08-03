@@ -42,18 +42,31 @@ THRIFT_PLUGGABLE_FUNC_REGISTER(
   return folly::observer::makeStaticObserver(
       AdaptiveConcurrencyController::Config{});
 }
-
 } // namespace detail
 
 using namespace std;
+
+folly::observer::Observer<CPUConcurrencyController::Config>
+BaseThriftServer::makeCPUConcurrencyControllerConfigInternal() {
+  return folly::observer::makeObserver(
+      [mockConfig = mockCPUConcurrencyControllerConfig_.getObserver(),
+       config = detail::makeCPUConcurrencyControllerConfig(
+           this)]() -> CPUConcurrencyController::Config {
+        if (auto config = **mockConfig) {
+          return *config;
+        }
+        return **config;
+      });
+}
 
 BaseThriftServer::BaseThriftServer()
     : thriftConfig_(),
       adaptiveConcurrencyController_{
           apache::thrift::detail::makeAdaptiveConcurrencyConfig(),
-          thriftConfig_.getMaxRequests().getObserver()},
+          thriftConfig_.getMaxRequests().getObserver(),
+          detail::getThriftServerConfig(*this)},
       cpuConcurrencyController_{
-          detail::makeCPUConcurrencyControllerConfig(this),
+          makeCPUConcurrencyControllerConfigInternal(),
           *this,
           detail::getThriftServerConfig(*this)},
       addresses_(1) {}
@@ -63,7 +76,8 @@ BaseThriftServer::BaseThriftServer(
     : thriftConfig_(initialConfig),
       adaptiveConcurrencyController_{
           apache::thrift::detail::makeAdaptiveConcurrencyConfig(),
-          thriftConfig_.getMaxRequests().getObserver()},
+          thriftConfig_.getMaxRequests().getObserver(),
+          detail::getThriftServerConfig(*this)},
       cpuConcurrencyController_{
           detail::makeCPUConcurrencyControllerConfig(this),
           *this,
@@ -132,7 +146,8 @@ bool BaseThriftServer::getTaskExpireTimeForRequest(
     queueTimeout = getQueueTimeout();
   }
 
-  if (taskTimeout != std::chrono::milliseconds(0) && getUseClientTimeout()) {
+  if (taskTimeout != std::chrono::milliseconds(0) && getUseClientTimeout() &&
+      clientTimeoutMs.count() >= 0) {
     // we add 10% to the client timeout so that the request is much more likely
     // to timeout on the client side than to read the timeout from the server
     // as a TApplicationException (which can be confusing)

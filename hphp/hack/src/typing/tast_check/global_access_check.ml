@@ -30,6 +30,7 @@ module Cls = Decl_provider.Class
 module Hashtbl = Stdlib.Hashtbl
 module Option = Stdlib.Option
 module GlobalAccessCheck = Error_codes.GlobalAccessCheck
+module SN = Naming_special_names
 
 (* Recognize common patterns for global access (only writes for now). *)
 type global_access_pattern =
@@ -297,12 +298,14 @@ let super_global_class_map : super_global_class_detail SMap.t =
 let check_super_global_method expr env external_fun_name =
   match expr with
   | Call
-      ( ( func_ty,
-          pos,
-          Class_const ((_, _, CI (_, class_name)), (_, method_name)) ),
-        _,
-        tpl,
-        _ ) ->
+      {
+        func =
+          ( func_ty,
+            pos,
+            Class_const ((_, _, CI (_, class_name)), (_, method_name)) );
+        args;
+        _;
+      } ->
     (* Check if the class is a super global class *)
     (match SMap.find_opt class_name super_global_class_map with
     | Some class_detail ->
@@ -327,7 +330,7 @@ let check_super_global_method expr env external_fun_name =
                then the 1st parameter of those get/set methods is assumed to
                be the global var; and if it's a string literal, we simply use
                it, otherwise we don't know and use default name. *)
-            (match tpl with
+            (match args with
             | (_, (_, _, para_expr)) :: _ ->
               (match para_expr with
               | String s -> "$" ^ s
@@ -482,7 +485,7 @@ let rec is_expr_static env (_, _, te) =
    Notice that this does not handle arbitrary expressions. *)
 let rec print_global_expr env expr =
   match expr with
-  | Call ((_, _, caller_expr), _, _, _) ->
+  | Call { func = (_, _, caller_expr); _ } ->
     (* For function/method calls, we print the caller expression, which could be
        Id (e.g. memoized_func()) or Obj_get (e.g. $baz->memoized_method()). *)
     print_global_expr env caller_expr
@@ -515,10 +518,17 @@ let rec print_global_expr env expr =
 (* Given a function call of type Aast.expr_, if it's memoized, return its function
    name, otherwise return None. *)
 let check_func_is_memoized func_expr env =
-  let (func_ty, _, te) = func_expr in
   let open Typing_defs in
-  match get_node func_ty with
-  | Tfun fty when get_ft_is_memoized fty -> Some (print_global_expr env te)
+  let rec find_fty ty =
+    match get_node ty with
+    | Tnewtype (name, _, ty) when String.equal name SN.Classes.cSupportDyn ->
+      find_fty ty
+    | Tfun fty -> Some fty
+    | _ -> None
+  in
+  let (func_ty, _, te) = func_expr in
+  match find_fty func_ty with
+  | Some fty when get_ft_is_memoized fty -> Some (print_global_expr env te)
   | _ -> None
 
 (* Check if type is a collection. *)
@@ -538,6 +548,8 @@ let is_value_collection_ty env ty =
 let rec has_no_object_ref_ty env (seen : SSet.t) ty =
   let open Typing_defs_core in
   let (env, ty) = Tast_env.expand_type env ty in
+  let tenv = Tast_env.tast_env_as_typing_env env in
+  let ty = Typing_utils.strip_dynamic tenv ty in
   match get_node ty with
   (* Allow all primitive types *)
   | Tprim _ -> true
@@ -641,7 +653,7 @@ let rec get_data_srcs_from_expr env ctx (tp, _, te) =
       Hashtbl.find !(ctx.var_data_src_tbl) (Local_id.to_string id)
     else
       DataSourceSet.singleton Unknown
-  | Call (((_, _, func_expr) as caller), _, tpl, _) ->
+  | Call { func = (_, _, func_expr) as caller; args; _ } ->
     (match check_func_is_memoized caller env with
     | Some func_name ->
       (* If the called function is memoized, then its return is global. *)
@@ -655,7 +667,7 @@ let rec get_data_srcs_from_expr env ctx (tp, _, te) =
          is assumed to be the same as its first parameter. *)
       (match func_expr with
       | Id (_, func_id) when SSet.mem func_id src_from_first_para_func_ids ->
-        (match tpl with
+        (match args with
         | (_, para_expr) :: _ -> get_data_srcs_from_expr env ctx para_expr
         | [] -> DataSourceSet.singleton Unknown)
       | Id (_, func_id) ->
@@ -663,7 +675,7 @@ let rec get_data_srcs_from_expr env ctx (tp, _, te) =
           DataSourceSet.singleton NonSensitive
         else if SSet.mem func_id src_from_para_func_ids then
           List.fold
-            tpl
+            args
             ~init:DataSourceSet.empty
             ~f:(fun cur_src_set (_, para_expr) ->
               DataSourceSet.union
@@ -859,9 +871,9 @@ let visitor =
              dictionary, return expr and true (i.e. if branch). *)
           | Unop
               ( Ast_defs.Unot,
-                (_, _, Call ((_, _, Id (_, func_id)), _, para_list, _)) )
+                (_, _, Call { func = (_, _, Id (_, func_id)); args; _ }) )
             when SSet.mem func_id check_non_null_func_ids ->
-            (match para_list with
+            (match args with
             | [] -> None
             | (_, para_expr) :: _ -> Some (para_expr, true))
           (* For the condition of format "expr is nonnull", "expr !== null" or "expr != null",
@@ -876,9 +888,9 @@ let visitor =
             Some (cond_expr, false)
           (* For the condition of format "C\contains_key(expr, $key)" where expr shall be a
              dictionary, return expr and false (i.e. else branch). *)
-          | Call ((_, _, Id (_, func_id)), _, para_list, _)
+          | Call { func = (_, _, Id (_, func_id)); args; _ }
             when SSet.mem func_id check_non_null_func_ids ->
-            (match para_list with
+            (match args with
             | [] -> None
             | (_, para_expr) :: _ -> Some (para_expr, false))
           | _ -> None
@@ -985,7 +997,7 @@ let visitor =
             (SSet.singleton expr_str)
             (GlobalAccessPatternSet.singleton NoPattern)
             GlobalAccessCheck.DefiniteGlobalRead
-      | Call (((func_ty, _, _) as func_expr), _, tpl, _) ->
+      | Call { func = (func_ty, _, _) as func_expr; args; _ } ->
         (* First check if the called functions is from super globals. *)
         let is_super_global_call = check_super_global_method e env fun_name in
         (if not is_super_global_call then
@@ -1002,7 +1014,7 @@ let visitor =
               GlobalAccessCheck.DefiniteGlobalRead
           | None -> ());
         (* Lastly, check if a global variable is used as the parameter. *)
-        List.iter tpl ~f:(fun (pk, ((ty, pos, _) as expr)) ->
+        List.iter args ~f:(fun (pk, ((ty, pos, _) as expr)) ->
             let e_global_opt =
               match pk with
               | Ast_defs.Pinout _ -> get_global_vars_from_expr env ctx expr

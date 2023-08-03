@@ -311,6 +311,10 @@ pub mod user_attributes {
 
     pub const NO_AUTO_DYNAMIC: &str = "__NoAutoDynamic";
 
+    pub const NO_AUTO_LIKES: &str = "__NoAutoLikes";
+
+    pub const NO_AUTO_BOUND: &str = "__NoAutoBound";
+
     pub const REQUIRE_DYNAMIC: &str = "__RequireDynamic";
 
     pub const ENABLE_METHOD_TRAIT_DIAMOND: &str = "__EnableMethodTraitDiamond";
@@ -655,7 +659,6 @@ pub mod typehints {
 
     pub const TANY_MARKER: &str = "\\HH\\FIXME\\TANY_MARKER";
     pub const POISON_MARKER: &str = "\\HH\\FIXME\\POISON_MARKER";
-    pub const SUPPORTDYN_MARKER: &str = "\\HH\\FIXME\\SUPPORTDYN_MARKER";
 
     pub const WILDCARD: &str = "_";
 
@@ -822,10 +825,6 @@ pub mod fb {
     pub const IDXREADONLY: &str = "\\HH\\idx_readonly";
 
     pub const TYPE_STRUCTURE: &str = "\\HH\\TypeStructure";
-
-    pub const INCORRECT_TYPE: &str = "\\HH\\INCORRECT_TYPE";
-
-    pub const INCORRECT_TYPE_NO_NS: &str = "HH\\INCORRECT_TYPE";
 }
 
 pub mod hh {
@@ -1149,7 +1148,11 @@ pub mod regex {
 pub mod emitter_special_functions {
     pub const EVAL: &str = "\\eval";
     pub const SET_FRAME_METADATA: &str = "\\HH\\set_frame_metadata";
+    pub const SET_PRODUCT_ATTRIBUTION_ID: &str = "\\HH\\set_product_attribution_id";
+    pub const SET_PRODUCT_ATTRIBUTION_ID_DEFERRED: &str =
+        "\\HH\\set_product_attribution_id_deferred";
     pub const SYSTEMLIB_REIFIED_GENERICS: &str = "\\__systemlib_reified_generics";
+    pub const GENA: &str = "gena";
 }
 
 pub mod math {

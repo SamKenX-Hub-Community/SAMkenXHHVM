@@ -41,12 +41,14 @@ enum class StateEnum {
 enum class ECHStatus { NotRequested, Accepted, Rejected };
 
 struct ECHState {
-  // Cipher suite used (for HRR)
+  // Cipher suite used in initial ECH request, for use with HRR and logging
   ech::HpkeSymmetricCipherSuite cipherSuite;
-  // Config ID used (for HRR)
+  // Config ID used in initial ECH request, for use with HRR and logging
   uint8_t configId;
   // HPKE context saved for use with HRR, if needed.
   mutable std::unique_ptr<hpke::HpkeContext> hpkeContext;
+  // Sni of the outer client hello, for logging.
+  folly::Optional<std::string> outerSni;
 };
 
 struct HandshakeLogging {

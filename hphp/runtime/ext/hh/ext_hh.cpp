@@ -41,9 +41,9 @@
 #include "hphp/runtime/base/unit-cache.h"
 #include "hphp/runtime/base/variable-serializer.h"
 #include "hphp/runtime/base/bespoke/type-structure.h"
-#include "hphp/runtime/ext/fb/ext_fb.h"
 #include "hphp/runtime/ext/collections/ext_collections-pair.h"
-#include "hphp/runtime/ext/std/ext_std_closure.h"
+#include "hphp/runtime/ext/core/ext_core_closure.h"
+#include "hphp/runtime/ext/fb/ext_fb.h"
 #include "hphp/runtime/vm/class-meth-data-ref.h"
 #include "hphp/runtime/vm/memo-cache.h"
 #include "hphp/runtime/vm/repo-global-data.h"
@@ -114,33 +114,33 @@ Variant HHVM_FUNCTION(autoload_type_alias_to_path, const String& typeAlias) {
 
 namespace {
 
-Array autoload_path_to_symbols(const String& path, AutoloadMap::KindOf kind) {
+AutoloadMap* autoloadMap() {
   if (!HHVM_FN(autoload_is_native)()) {
     SystemLib::throwInvalidOperationExceptionObject("Only available if using native autoloader");
   }
-  return AutoloadHandler::s_instance->getSymbols(path, kind);
+  return AutoloadHandler::s_instance->getAutoloadMap();
 }
 
 } // end anonymous namespace
 
 Array HHVM_FUNCTION(autoload_path_to_types, const String& path) {
-  return autoload_path_to_symbols(path, AutoloadMap::KindOf::Type);
+  return autoloadMap()->getFileTypes(path);
 }
 
 Array HHVM_FUNCTION(autoload_path_to_functions, const String& path) {
-  return autoload_path_to_symbols(path, AutoloadMap::KindOf::Function);
+  return autoloadMap()->getFileFunctions(path);
 }
 
 Array HHVM_FUNCTION(autoload_path_to_constants, const String& path) {
-  return autoload_path_to_symbols(path, AutoloadMap::KindOf::Constant);
+  return autoloadMap()->getFileConstants(path);
 }
 
 Array HHVM_FUNCTION(autoload_path_to_modules, const String& path) {
-  return autoload_path_to_symbols(path, AutoloadMap::KindOf::Module);
+  return autoloadMap()->getFileModules(path);
 }
 
 Array HHVM_FUNCTION(autoload_path_to_type_aliases, const String& path) {
-  return autoload_path_to_symbols(path, AutoloadMap::KindOf::TypeAlias);
+  return autoloadMap()->getFileTypeAliases(path);
 }
 
 bool HHVM_FUNCTION(could_include, const String& file) {
@@ -1126,13 +1126,6 @@ bool HHVM_FUNCTION(get_soft, const Array& ts) {
   return getBool(ts, s_soft);
 }
 
-bool HHVM_FUNCTION(get_like, const Array& ts) {
-  if (auto const bespokeTS = getBespokeTS(ts)) {
-    return bespokeTS->like();
-  }
-  return getBool(ts, s_like);
-}
-
 bool HHVM_FUNCTION(get_opaque, const Array& ts) {
   if (auto const bespokeTS = getBespokeTS(ts)) {
     return bespokeTS->opaque();
@@ -1538,7 +1531,6 @@ static struct HHExtension final : Extension {
     X(get_kind);
     X(get_nullable);
     X(get_soft);
-    X(get_like);
     X(get_opaque);
     X(get_optional_shape_field);
     X(get_alias);

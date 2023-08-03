@@ -864,6 +864,18 @@ class EventBase : public TimeoutManager,
    */
   const std::string& getName();
 
+  /**
+   * Returns the ID of the thread that this event base is running in
+   */
+  std::thread::id getLoopThreadId();
+
+  /**
+   * Returns the timepoint at the start of the loop callbacks.
+   */
+  std::chrono::steady_clock::time_point getLoopCallbacksStartTime() {
+    return startWork_;
+  }
+
   /// Implements the Executor interface
   void add(Cob fn) override { runInEventBaseThread(std::move(fn)); }
 

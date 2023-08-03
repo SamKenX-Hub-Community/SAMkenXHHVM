@@ -7,12 +7,12 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::Result;
 use clap::Args;
 use compile::Profile;
 use decl_provider::SelfProvider;
-use ocamlrep::rc::RcOc;
 use parking_lot::Mutex;
 use parser_core_types::source_text::SourceText;
 use rayon::prelude::*;
@@ -49,8 +49,11 @@ pub struct Opts {
     skip_unimplemented: bool,
 }
 
-pub fn run(opts: Opts) -> Result<()> {
+pub fn run(mut opts: Opts) -> Result<()> {
     textual::KEEP_GOING.store(opts.keep_going, std::sync::atomic::Ordering::Release);
+    // Always unwrap concurrent blocks for infer use-cases. We can make it configurable later on if
+    // needed.
+    opts.single_file_opts.unwrap_concurrent = true;
 
     let writer: SyncWrite = match &opts.output_file {
         None => Mutex::new(Box::new(io::stdout())),
@@ -91,7 +94,7 @@ fn convert_single_file(path: &Path, opts: &Opts) -> Result<Vec<u8>> {
 
     let action = || {
         let pre_alloc = bumpalo::Bump::default();
-        build_ir(&pre_alloc, path, &content, &opts.single_file_opts).and_then(|unit| {
+        build_ir(&pre_alloc, path, &content, opts).and_then(|unit| {
             let mut output = Vec::new();
             textual::textual_writer(&mut output, path, unit, opts.no_builtins)?;
             Ok(output)
@@ -109,11 +112,11 @@ fn build_ir<'a, 'arena>(
     alloc: &'arena bumpalo::Bump,
     path: &'a Path,
     content: &[u8],
-    single_file_opts: &'a SingleFileOpts,
+    opts: &'a Opts,
 ) -> Result<ir::Unit<'arena>> {
     let filepath = RelativePath::make(Prefix::Dummy, path.to_path_buf());
-    let source_text = SourceText::make(RcOc::new(filepath.clone()), content);
-    let env = crate::compile::native_env(filepath, single_file_opts)?;
+    let source_text = SourceText::make(Arc::new(filepath.clone()), content);
+    let env = crate::compile::native_env(filepath, &opts.single_file_opts)?;
     let mut profile = Profile::default();
     let decl_arena = bumpalo::Bump::new();
     let decl_provider = SelfProvider::wrap_existing_provider(

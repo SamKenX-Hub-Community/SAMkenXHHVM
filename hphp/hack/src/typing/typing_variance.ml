@@ -249,13 +249,15 @@ let get_declared_variance : Nast.tparam -> variance =
 (* Checks that a 'this' type is correctly used at a given contravariant       *)
 (* position in a final class.                                                 *)
 (******************************************************************************)
-let check_final_this_pos_variance : variance -> Pos.t -> Nast.class_ -> unit =
- fun env_variance rpos class_ ->
+let check_final_this_pos_variance :
+    Typing_env_types.env -> variance -> Pos.t -> Nast.class_ -> unit =
+ fun env env_variance rpos class_ ->
   if class_.Aast.c_final then
     List.iter class_.Aast.c_tparams ~f:(fun t ->
         match (env_variance, t.Aast.tp_variance) with
         | (Vcontravariant _, (Ast_defs.Covariant | Ast_defs.Contravariant)) ->
           Typing_error_utils.add_typing_error
+            ~env
             Typing_error.(
               primary
               @@ Primary.Contravariant_this
@@ -333,7 +335,7 @@ and get_typarams ~tracked tenv (ty : decl_ty) =
   | Tany _
   | Tthis
   | Tmixed
-  | Tvar _ ->
+  | Twildcard ->
     empty
   | Toption ty
   | Tlike ty
@@ -545,8 +547,14 @@ let get_positive_negative_generics ~tracked ~is_mutable env acc ty =
   else
     union acc r
 
-let generic_ : Env.type_parameter_env -> variance -> string -> _ -> unit =
- fun env variance name _targs ->
+let generic_ :
+    Typing_env_types.env ->
+    Env.type_parameter_env ->
+    variance ->
+    string ->
+    _ ->
+    unit =
+ fun tyenv env variance name _targs ->
   (* TODO(T69931993) Once we support variance for higher-kinded generics, we have to update this.
      For now, having type arguments implies that the declared must be invariant *)
   let declared_variance = get_tparam_variance env name in
@@ -564,6 +572,7 @@ let generic_ : Env.type_parameter_env -> variance -> string -> _ -> unit =
     let (pos2, _, _) = List.hd_exn stack2 in
     let emsg = lazy (detailed_message "contravariant (-)" pos2 stack2) in
     Typing_error_utils.add_typing_error
+      ~env:tyenv
       Typing_error.(
         primary
         @@ Primary.Declared_covariant
@@ -573,6 +582,7 @@ let generic_ : Env.type_parameter_env -> variance -> string -> _ -> unit =
     let (pos2, _, _) = List.hd_exn stack2 in
     let emsg = lazy (detailed_message "covariant (+)" pos2 stack2) in
     Typing_error_utils.add_typing_error
+      ~env:tyenv
       Typing_error.(
         primary
         @@ Primary.Declared_contravariant
@@ -613,10 +623,11 @@ let rec hint : Env.t -> variance -> Aast_defs.hint -> unit =
         Vcontravariant ((pos, x, y) :: rest)
       | x -> x
     in
-    generic_ env.Env.tpenv variance name targs
+    generic_ env.Env.env env.Env.tpenv variance name targs
   | Hany
   | Herr
   | Hmixed
+  | Hwildcard
   | Hnonnull
   | Hdynamic
   | Hnothing
@@ -636,7 +647,7 @@ let rec hint : Env.t -> variance -> Aast_defs.hint -> unit =
     Option.value_map
       env.Env.enclosing_class
       ~default:()
-      ~f:(check_final_this_pos_variance variance pos)
+      ~f:(check_final_this_pos_variance env.Env.env variance pos)
   | Hoption h
   | Hlike h
   | Hsoft h
@@ -930,7 +941,7 @@ let class_method : Env.t -> Nast.class_ -> Nast.method_ -> unit =
   } =
     method_
   in
-  if String.equal m_name Naming_special_names.Members.__construct then
+  if String.equal m_name SN.Members.__construct then
     ()
   else
     match m_visibility with
@@ -959,8 +970,7 @@ let props_from_constructors : Nast.method_ list -> Nast.class_var list =
  fun methods ->
   let constructors =
     List.filter methods ~f:(fun m ->
-        Ast_defs.get_id m.Aast.m_name
-        |> String.equal Naming_special_names.Members.__construct)
+        Ast_defs.get_id m.Aast.m_name |> String.equal SN.Members.__construct)
   in
   List.map constructors ~f:(fun m ->
       m.Aast.m_params
@@ -1074,6 +1084,7 @@ let typedef : Typing_env_types.env -> Nast.typedef -> unit =
     t_internal = _;
     t_module = _;
     t_docs_url = _;
+    t_doc_comment = _;
   } =
     typedef
   in

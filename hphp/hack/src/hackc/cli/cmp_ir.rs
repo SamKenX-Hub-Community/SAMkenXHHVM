@@ -481,12 +481,12 @@ fn cmp_hack_constant(
     let HackConstant {
         name: a_name,
         value: a_value,
-        is_abstract: a_is_abstract,
+        attrs: a_attrs,
     } = a;
     let HackConstant {
         name: b_name,
         value: b_value,
-        is_abstract: b_is_abstract,
+        attrs: b_attrs,
     } = b;
     cmp_id(a_name.id, b_name.id).qualified("name")?;
     cmp_option(
@@ -495,7 +495,7 @@ fn cmp_hack_constant(
         cmp_typed_value,
     )
     .qualified("value")?;
-    cmp_eq(a_is_abstract, b_is_abstract).qualified("is_abstract")?;
+    cmp_eq(a_attrs, b_attrs).qualified("attrs")?;
     Ok(())
 }
 
@@ -1090,12 +1090,20 @@ fn cmp_instr_member_op_base(
             cmp_eq(a_readonly, b_readonly).qualified("readonly")?;
             cmp_loc_id((*a_loc, a_func, a_strings), (*b_loc, b_func, b_strings)).qualified("loc")?;
         }
+        (BaseOp::BaseST { mode: a_mode, readonly: a_readonly, loc: a_loc, prop: a_prop },
+         BaseOp::BaseST { mode: b_mode, readonly: b_readonly, loc: b_loc, prop: b_prop }) => {
+            cmp_eq(a_mode, b_mode).qualified("mode")?;
+            cmp_eq(a_readonly, b_readonly).qualified("readonly")?;
+            cmp_loc_id((*a_loc, a_func, a_strings), (*b_loc, b_func, b_strings)).qualified("loc")?;
+            cmp_id((a_prop.id, a_strings), (b_prop.id, b_strings)).qualified("prop")?;
+        }
 
         (BaseOp::BaseC { .. }, _)
         | (BaseOp::BaseGC { .. }, _)
         | (BaseOp::BaseH { .. }, _)
         | (BaseOp::BaseL { .. }, _)
-        | (BaseOp::BaseSC { .. }, _) => unreachable!(),
+        | (BaseOp::BaseSC { .. }, _)
+        | (BaseOp::BaseST { .. }, _) => unreachable!(),
     };
 
     Ok(())
@@ -1777,26 +1785,33 @@ fn cmp_typedef(
     let Typedef {
         name: a_name,
         attributes: a_attributes,
-        type_info: a_type_info,
+        type_info_union: a_type_info_union,
         type_structure: a_type_structure,
         loc: a_loc,
         attrs: a_attrs,
+        case_type: a_case_type,
     } = a;
     let Typedef {
         name: b_name,
         attributes: b_attributes,
-        type_info: b_type_info,
+        type_info_union: b_type_info_union,
         type_structure: b_type_structure,
         loc: b_loc,
         attrs: b_attrs,
+        case_type: b_case_type,
     } = b;
     cmp_id(a_name.id, b_name.id).qualified("name")?;
     cmp_attributes((a_attributes, a_strings), (b_attributes, b_strings)).qualified("attributes")?;
-    cmp_type_info((a_type_info, a_strings), (b_type_info, b_strings)).qualified("type_info")?;
+    cmp_slice(
+        a_type_info_union.iter().map(|i| (i, a_strings)),
+        b_type_info_union.iter().map(|i| (i, b_strings)),
+        cmp_type_info,
+    )?;
     cmp_typed_value((a_type_structure, a_strings), (b_type_structure, b_strings))
         .qualified("type_structure")?;
     cmp_src_loc((a_loc, a_strings), (b_loc, b_strings)).qualified("loc")?;
     cmp_eq(a_attrs, b_attrs).qualified("attrs")?;
+    cmp_eq(a_case_type, b_case_type).qualified("case_type")?;
     Ok(())
 }
 

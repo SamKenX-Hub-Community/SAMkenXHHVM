@@ -24,6 +24,8 @@ class AllLogs(NamedTuple):
     client_log: str
     current_server_log: str
     current_monitor_log: str
+    lsp_log: str
+    ide_log: str
 
 
 class CommonTestDriver(TestDriver):
@@ -74,9 +76,7 @@ class CommonTestDriver(TestDriver):
         shutil.rmtree(cls.bin_dir)
         shutil.rmtree(cls.hh_tmp_dir)
 
-    def write_load_config(
-        self, use_serverless_ide: bool = False, use_saved_state: bool = False
-    ) -> None:
+    def write_load_config(self, use_saved_state: bool = False) -> None:
         """
         Writes out a script that will print the list of changed files,
         and adds the path to that script to .hhconfig
@@ -194,6 +194,12 @@ class CommonTestDriver(TestDriver):
         client_file = cls.proc_call(
             [hh_client, "--client-logname", repo_dir], log=False
         )[0].strip()
+        lsp_file = cls.proc_call([hh_client, "--lsp-logname", repo_dir], log=False)[
+            0
+        ].strip()
+        ide_file = cls.proc_call([hh_client, "--ide-logname", repo_dir], log=False)[
+            0
+        ].strip()
         # Server log
         try:
             with open(server_file) as f:
@@ -249,6 +255,18 @@ class CommonTestDriver(TestDriver):
                 client_log = "%s\n%s\n" % (old_client_log, client_log)
         except Exception:
             pass
+        # Lsp log
+        try:
+            with open(lsp_file) as f:
+                lsp_log = f.read()
+        except Exception as err:
+            lsp_log = lsp_file + " - " + format(err)
+        # Ide log
+        try:
+            with open(ide_file) as f:
+                ide_log = f.read()
+        except Exception as err:
+            ide_log = ide_file + " - " + format(err)
         # All together...
         return AllLogs(
             all_server_logs=all_server_logs,
@@ -256,6 +274,8 @@ class CommonTestDriver(TestDriver):
             client_log=client_log,
             current_server_log=current_server_log,
             current_monitor_log=current_monitor_log,
+            lsp_log=lsp_log,
+            ide_log=ide_log,
         )
 
     def run_check(
@@ -292,7 +312,7 @@ class CommonTestDriver(TestDriver):
         return True
 
     # Runs `hh_client check` asserting the stdout is equal the expected.
-    # Returns stderr.
+    # Returns stdout and stderr.
     # Note: assert_laoded_mini_state is ignored here and only used
     # in some derived classes.
     def check_cmd(
@@ -301,7 +321,7 @@ class CommonTestDriver(TestDriver):
         stdin: Optional[str] = None,
         options: Optional[List[str]] = None,
         assert_loaded_saved_state: bool = False,
-    ) -> str:
+    ) -> Tuple[str, str]:
         (output, err, retcode) = self.run_check(stdin, options)
         root = self.repo_dir + os.path.sep
         if retcode != 0:
@@ -324,7 +344,7 @@ class CommonTestDriver(TestDriver):
                     file=sys.stderr,
                 )
                 raise
-        return err
+        return output, err
 
     def check_cmd_and_json_cmd(
         self,
@@ -455,9 +475,9 @@ class BarebonesTests(TestCase[CommonTestDriver]):
         self.test_driver.check_cmd(
             [
                 "{root}foo_4.php:3:19,21: Name already bound: `FOO` (Naming[2012])",
-                "  {root}foo_3.php:7:15,17: Previous definition `F~~oo~~` differs only by case ",
+                "  {root}foo_3.php:7:15,17: Previous definition is here",
                 "{root}foo_4.php:4:22,22: Name already bound: `H` (Naming[2012])",
-                "  {root}foo_3.php:3:18,18: Previous definition `~~h~~` differs only by case ",
+                "  {root}foo_3.php:3:18,18: Previous definition is here",
             ]
         )
 
@@ -500,9 +520,8 @@ class CommonTests(BarebonesTests):
         """
         self.test_driver.start_hh_server()
 
-        stderr = self.test_driver.check_cmd([], options=["--json"])
-        last_line = stderr.splitlines()[-1]
-        output = json.loads(last_line)
+        stdout, _ = self.test_driver.check_cmd(None, options=["--json"])
+        output = json.loads(stdout)
 
         self.assertEqual(output["errors"], [])
         self.assertEqual(output["passed"], True)
@@ -707,144 +726,6 @@ class CommonTests(BarebonesTests):
             options=["--identify", "f"],
         )
 
-    def test_ide_find_refs(self) -> None:
-        self.test_driver.start_hh_server()
-        path = os.path.join(self.test_driver.repo_dir, "foo_2.php")
-        self.test_driver.check_cmd_and_json_cmd(
-            [
-                "g",
-                'File "{root}foo_2.php", line 3, characters 18-18:',
-                'File "{root}foo_1.php", line 4, characters 20-20:',
-                "2 total results",
-            ],
-            [
-                '[{{"name":"g","filename":"{root}foo_2.php",'
-                '"line":3,"char_start":18,"char_end":18}},'
-                '{{"name":"g","filename":"{root}foo_1.php",'
-                '"line":4,"char_start":20,"char_end":20}}]'
-            ],
-            options=["--ide-find-refs", "{}:3,18".format(path)],
-        )
-
-    def test_ide_go_to_impl(self) -> None:
-        self.test_driver.start_hh_server()
-        path = os.path.join(self.test_driver.repo_dir, "foo_6.php")
-        self.test_driver.check_cmd_and_json_cmd(
-            [
-                "IFoo",
-                'File "{root}foo_6.php", line 7, characters 7-23:',
-                "1 total results",
-            ],
-            [
-                '[{{"name":"IFoo","filename":"{root}foo_6.php",'
-                '"line":7,"char_start":7,"char_end":23}}]'
-            ],
-            options=["--ide-go-to-impl", "{}:3,11".format(path)],
-        )
-
-    def test_ide_refactor(self) -> None:
-        self.test_driver.start_hh_server()
-        path = os.path.join(self.test_driver.repo_dir, "foo_readonly.php")
-        self.test_driver.check_cmd_and_json_cmd(
-            ["Rewrote 1 file."],
-            [
-                '[{{"filename":"{root}foo_readonly.php","patches":[{{'
-                '"char_start":75,"char_end":77,"line":3,"col_start":70,'
-                '"col_end":71,"patch_type":"replace","replacement":"$renamed"}},'
-                '{{"char_start":94,"char_end":96,"line":4,"col_start":8,'
-                '"col_end":9,"patch_type":"replace","replacement":"$renamed"}}]}}]'
-            ],
-            options=["--ide-refactor", "{}:3:71:{}".format(path, "renamed")],
-        )
-
-    def test_ide_highlight_refs(self) -> None:
-        self.test_driver.start_hh_server()
-
-        self.test_driver.check_cmd_and_json_cmd(
-            ["line 1, characters 20-22", "line 1, characters 36-38", "2 total results"],
-            [
-                '[{{"line":1,"char_start":20,"char_end":22}},'
-                '{{"line":1,"char_start":36,"char_end":38}}]'
-            ],
-            options=["--ide-highlight-refs", "1:20"],
-            stdin="<?hh function test(Foo $foo) { new Foo(); }",
-        )
-
-    def test_search(self) -> None:
-        """
-        Test hh_client --search
-        """
-
-        self.test_driver.start_hh_server()
-
-        self.test_driver.check_cmd_and_json_cmd(
-            [
-                'File "{root}foo_3.php", line 9, characters 18-40: some_long_function_name, function'
-            ],
-            [
-                '[{{"name":"some_long_function_name","filename":"{root}foo_3.php","desc":"function","line":9,"char_start":18,"char_end":40,"scope":""}}]'
-            ],
-            options=["--search", "some_lo"],
-        )
-
-    def test_search_case_insensitive1(self) -> None:
-        """
-        Test that global search is not case sensitive
-        """
-        self.maxDiff = None
-        self.test_driver.start_hh_server()
-
-        self.test_driver.check_cmd(
-            [
-                'File "{root}foo_4.php", line 4, characters 10-24: '
-                "aaaaaaaaaaa_fun, function",
-                'File "{root}foo_4.php", line 3, characters 7-23: '
-                "Aaaaaaaaaaa_class, class",
-            ],
-            options=["--search", "Aaaaaaaaaaa"],
-        )
-
-    def test_search_case_insensitive2(self) -> None:
-        """
-        Test that global search is not case sensitive
-        """
-        self.test_driver.start_hh_server()
-
-        self.test_driver.check_cmd(
-            [
-                'File "{root}foo_4.php", line 4, characters 10-24: '
-                "aaaaaaaaaaa_fun, function",
-                'File "{root}foo_4.php", line 3, characters 7-23: '
-                "Aaaaaaaaaaa_class, class",
-            ],
-            options=["--search", "aaaaaaaaaaa"],
-        )
-
-    def test_auto_complete(self) -> None:
-        """
-        Test hh_client --auto-complete
-        """
-
-        self.test_driver.start_hh_server()
-
-        self.test_driver.check_cmd_and_json_cmd(
-            ["some_long_function_name (function(): void)"],
-            [
-                # test the --json output because the non-json one doesn't contain
-                # the filename, and we are especially interested in testing file
-                # paths
-                # the doubled curly braces are because this string gets passed
-                # through format()
-                '[{{"name":"some_long_function_name",'
-                '"type":"(function(): void)",'
-                '"pos":{{"filename":"{root}foo_3.php",'
-                '"line":9,"char_start":18,"char_end":40}},'
-                '"expected_ty":false}}]'
-            ],
-            options=["--auto-complete"],
-            stdin="<?hh function f() { some_AUTO332\n",
-        )
-
     def test_list_files(self) -> None:
         """
         Test hh_client --list-files
@@ -1044,7 +925,7 @@ class CommonTests(BarebonesTests):
         # We've sent a kill signal to the server, but it may take some time for
         # the server to actually die. For instance, it may be attempting to
         # print a backtrace in the signal handler, which takes less than a
-        # second in @//mode/opt-clang, but can take minutes in @//mode/dev. If we
+        # second in @//mode/opt, but can take minutes in @//mode/dev. If we
         # attempt to connect before the server process actually dies, the
         # monitor will happily hand us off to the dying server, which will
         # abruptly close our connection when its process exits. What we want
@@ -1062,7 +943,7 @@ class CommonTests(BarebonesTests):
                 break
             attempts += 1
             time.sleep(1)
-        client_error = self.test_driver.check_cmd(
+        _, client_error = self.test_driver.check_cmd(
             expected_output=None, assert_loaded_saved_state=False
         )
         self.assertIn("Last server killed by signal", client_error)
@@ -1146,23 +1027,22 @@ class CommonTests(BarebonesTests):
         self.test_driver.check_cmd_and_json_cmd(
             ["Rewrote 1 file."],
             [
-                '[{{"filename":"{root}foo_4.php","patches":[{{'
-                '"char_start":74,"char_end":75,"line":4,"col_start":33,'
-                '"col_end":33,"patch_type":"replace","replacement":"wat"}},'
-                '{{"char_start":254,"char_end":255,"line":10,"col_start":28,'
-                '"col_end":28,"patch_type":"replace","replacement":"wat"}}]}}]'
+                '[{{"filename":"{root}foo_4.php","patches":['
+                '{{"char_start":74,"char_end":75,"line":4,"col_start":33,"col_end":33,"patch_type":"replace","replacement":"wat"}},'
+                '{{"char_start":254,"char_end":255,"line":10,"col_start":28,"col_end":28,"patch_type":"replace","replacement":"wat"}},'
+                '{{"char_start":42,"char_end":42,"line":4,"col_start":1,"col_end":1,"patch_type":"insert","replacement":"\\n                <<__Deprecated(\\"Use `wat` instead\\")>>\\n                public function f(): void {{\\n                  $this->wat();\\n                }}\\n"}}'
+                "]}}]"
             ],
             options=["--refactor", "Method", "Bar::f", "Bar::wat"],
         )
         self.test_driver.check_cmd_and_json_cmd(
             ["Rewrote 1 file."],
             [
-                '[{{"filename":"{root}foo_4.php","patches":[{{'
-                '"char_start":121,"char_end":122,"line":5,"col_start":33,'
-                '"col_end":33,"patch_type":"replace",'
-                '"replacement":"overrideMe"}},{{"char_start":217,'
-                '"char_end":218,"line":9,"col_start":33,"col_end":33,'
-                '"patch_type":"replace","replacement":"overrideMe"}}]}}]'
+                '[{{"filename":"{root}foo_4.php","patches":['
+                '{{"char_start":270,"char_end":271,"line":10,"col_start":33,"col_end":33,"patch_type":"replace","replacement":"overrideMe"}},'
+                '{{"char_start":366,"char_end":367,"line":14,"col_start":33,"col_end":33,"patch_type":"replace","replacement":"overrideMe"}},'
+                '{{"char_start":238,"char_end":238,"line":10,"col_start":1,"col_end":1,"patch_type":"insert","replacement":"\\n                <<__Deprecated(\\"Use `overrideMe` instead\\")>>\\n                public function g(): void {{\\n                  $this->overrideMe();\\n                }}\\n"}}'
+                "]}}]"
             ],
             options=["--refactor", "Method", "Bar::g", "Bar::overrideMe"],
         )
@@ -1174,7 +1054,17 @@ class CommonTests(BarebonesTests):
                 """<?hh
 
             class Bar extends Foo {
+
+                <<__Deprecated("Use `wat` instead")>>
+                public function f(): void {
+                  $this->wat();
+                }
                 public function wat(): void {}
+
+                <<__Deprecated("Use `overrideMe` instead")>>
+                public function g(): void {
+                  $this->overrideMe();
+                }
                 public function overrideMe(): void {}
             }
 
@@ -1294,6 +1184,30 @@ class CommonTests(BarebonesTests):
 """,
             )
 
+        # test no double-rename (T157645473)
+        with open(os.path.join(self.test_driver.repo_dir, "foo_4.php"), "w") as f:
+            f.write(
+                """<?hh
+                class Foo {
+                  const type TEntry = int;
+                  public function main(): self::TEntry {
+                    return 3;
+                  }
+                }
+
+            """
+            )
+        self.test_driver.start_hh_server(changed_files=["foo_4.php"])
+
+        self.test_driver.check_cmd_and_json_cmd(
+            ["Rewrote 1 file."],
+            [
+                '[{{"filename":"{root}foo_4.php","patches":[{{"char_start":27,"char_end":30,"line":2,"col_start":23,"col_end":25,"patch_type":"replace","replacement":"Bar"}}'
+                "]}}]"
+            ],
+            options=["--refactor", "Class", "Foo", "Bar"],
+        )
+
     def test_refactor_functions(self) -> None:
         with open(os.path.join(self.test_driver.repo_dir, "foo_4.php"), "w") as f:
             f.write(
@@ -1312,25 +1226,23 @@ class CommonTests(BarebonesTests):
         self.test_driver.check_cmd_and_json_cmd(
             ["Rewrote 1 file."],
             [
-                '[{{"filename":"{root}foo_4.php","patches":[{{'
-                '"char_start":127,"char_end":130,"line":8,"col_start":22,'
-                '"col_end":24,"patch_type":"replace","replacement":"woah"}},'
-                '{{"char_start":56,"char_end":59,"line":4,"col_start":17,'
-                '"col_end":19,"patch_type":"replace","replacement":"woah"}}]'
-                "}}]"
+                '[{{"filename":"{root}foo_4.php","patches":['
+                '{{"char_start":127,"char_end":130,"line":8,"col_start":22,"col_end":24,"patch_type":"replace","replacement":"woah"}},'
+                '{{"char_start":56,"char_end":59,"line":4,"col_start":17,"col_end":19,"patch_type":"replace","replacement":"woah"}},'
+                '{{"char_start":105,"char_end":105,"line":7,"col_start":1,"col_end":1,"patch_type":"insert","replacement":"\\n            <<__Deprecated(\\"Use `woah` instead\\")>>\\n            function wat(): void {{\\n              woah();\\n            }}\\n"}}'
+                "]}}]"
             ],
             options=["--refactor", "Function", "wat", "woah"],
         )
         self.test_driver.check_cmd_and_json_cmd(
             ["Rewrote 2 files."],
             [
-                '[{{"filename":"{root}foo_4.php","patches":[{{'
-                '"char_start":87,"char_end":88,"line":5,"col_start":24,'
-                '"col_end":24,"patch_type":"replace","replacement":"fff"}}]}},'
-                '{{"filename":"{root}foo_1.php","patches":[{{'
-                '"char_start":23,"char_end":24,"line":3,"col_start":18,'
-                '"col_end":18,"patch_type":"replace","replacement":"fff"}}]'
-                "}}]"
+                '[{{"filename":"{root}foo_4.php","patches":['
+                '{{"char_start":87,"char_end":88,"line":5,"col_start":24,"col_end":24,"patch_type":"replace","replacement":"fff"}}'
+                ']}},{{"filename":"{root}foo_1.php","patches":['
+                '{{"char_start":23,"char_end":24,"line":3,"col_start":18,"col_end":18,"patch_type":"replace","replacement":"fff"}},'
+                '{{"char_start":5,"char_end":5,"line":2,"col_start":1,"col_end":1,"patch_type":"insert","replacement":"\\n        <<__Deprecated(\\"Use `fff` instead\\")>>\\n        function f(): int {{\\n          return fff();\\n        }}\\n"}}'
+                "]}}]"
             ],
             options=["--refactor", "Function", "f", "fff"],
         )
@@ -1346,6 +1258,11 @@ class CommonTests(BarebonesTests):
                 return fff();
             }
 
+            <<__Deprecated("Use `woah` instead")>>
+            function wat(): void {
+              woah();
+            }
+
             function woah(): void {}
             """,
             )
@@ -1355,6 +1272,11 @@ class CommonTests(BarebonesTests):
             self.assertEqual(
                 out,
                 """<?hh
+
+        <<__Deprecated("Use `fff` instead")>>
+        function f(): int {
+          return fff();
+        }
 
         function fff(): int {
             return g() + 1;
@@ -1485,6 +1407,8 @@ class CommonTests(BarebonesTests):
 
         self.test_driver.check_cmd(
             [
+                ":2:11,14: Name already bound: `aaaa` (Naming[2012])",
+                "  {root}typing_error.php:2:11,14: Previous definition is here",
                 ":2:32,34: Invalid return type (Typing[4110])",
                 "  :2:19,21: Expected `int`",
                 "  {root}foo_3.php:3:23,28: But got `string`",

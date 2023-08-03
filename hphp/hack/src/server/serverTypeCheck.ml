@@ -142,96 +142,45 @@ let get_files_with_stale_errors
     ~(* A subset of files which errors we want to update, or None if we want
       * to update entire error list. *)
      filter
-    ~(* Consider errors only coming from those phases *)
-     phases
     ~(* Current global error list *)
      errors
     ~ctx =
   let fold =
     match filter with
     | None ->
-      fun phase init f ->
+      fun init f ->
         (* Looking at global files *)
-        Errors.fold_errors
-          errors
-          ~phase
-          ~init
-          ~f:(fun source _phase error acc -> f source error acc)
+        Errors.fold_errors errors ~init ~f:(fun source error acc ->
+            f source error acc)
     | Some files ->
-      fun phase init f ->
+      fun init f ->
         (* Looking only at subset of files *)
         Relative_path.Set.fold files ~init ~f:(fun file acc ->
-            Errors.fold_errors_in
-              errors
-              ~file
-              ~phase
-              ~init:acc
-              ~f:(fun error acc -> f file error acc))
+            Errors.fold_errors_in errors ~file ~init:acc ~f:(fun error acc ->
+                f file error acc))
   in
-  List.fold phases ~init:Relative_path.Set.empty ~f:(fun acc phase ->
-      fold phase acc (fun source error acc ->
-          if
-            List.exists (User_error.to_list_ error) ~f:(fun e ->
-                Relative_path.Set.mem
-                  reparsed
-                  (fst e |> Naming_provider.resolve_position ctx |> Pos.filename))
-          then
-            Relative_path.Set.add acc source
-          else
-            acc))
+  fold Relative_path.Set.empty (fun source error acc ->
+      if
+        List.exists (User_error.to_list_ error) ~f:(fun e ->
+            Relative_path.Set.mem
+              reparsed
+              (fst e |> Naming_provider.resolve_position ctx |> Pos.filename))
+      then
+        Relative_path.Set.add acc source
+      else
+        acc)
 
 (*****************************************************************************)
 (* Parses the set of modified files *)
 (*****************************************************************************)
 
-let push_errors env ~rechecked ~phase new_errors =
-  let (diagnostic_pusher, time_errors_pushed) =
-    Diagnostic_pusher.push_new_errors
-      env.diagnostic_pusher
-      ~rechecked
-      new_errors
-      ~phase
-  in
-  let env = { env with diagnostic_pusher } in
-  (env, time_errors_pushed)
-
-(** This function handles the three errors paradigms:
-* (1) env.errorl paradigm: it takes input [errors_acc], adds/updates/remove errors according to
-rechecked/new_errors/phase, and returns the updated list of all errors.
-* (2) persistent-connection paradigm: it sends error deltas over the persistent connection.
-* (3) errors-file: all [new_errors] are accumulated in errors.bin *)
-let push_and_accumulate_errors
-    ((env, errors_acc) : env * Errors.t)
-    ~(do_errors_file : bool)
-    ~(rechecked : Relative_path.Set.t)
-    (new_errors : Errors.t)
-    ~(phase : Errors.phase) : env * Errors.t * seconds_since_epoch option =
-  (* paradigm 1: env.errorl *)
-  let errors =
-    Errors.incremental_update ~old:errors_acc ~new_:new_errors ~rechecked phase
-  in
-  (* paradigm 2: persistent-connection *)
-  let (env, time_errors_pushed) =
-    push_errors env new_errors ~rechecked ~phase
-  in
-  (* paradigm 3: errors-file *)
-  if do_errors_file then ServerProgress.ErrorsWrite.report new_errors;
-  (* return *)
-  (env, errors, time_errors_pushed)
-
 (** This pushes all [phase] errors in errors, that aren't in [files],
 to the errors-file. *)
 let push_errors_outside_files_to_errors_file
-    ?(phase : Errors.phase option)
-    (errors : Errors.t)
-    ~(files : Relative_path.Set.t) : unit =
+    (errors : Errors.t) ~(files : Relative_path.Set.t) : unit =
   let typing_errors_not_in_files_to_check =
     errors
-    |> Errors.fold_errors
-         ~drop_fixmed:true
-         ?phase
-         ~init:[]
-         ~f:(fun path _phase error acc ->
+    |> Errors.fold_errors ~drop_fixmed:true ~init:[] ~f:(fun path error acc ->
            if Relative_path.Set.mem files path then
              acc
            else
@@ -379,12 +328,7 @@ module FullCheckKind : CheckKindType = struct
      * reparsed, since positions in those errors can be now stale.
      *)
     let stale_errors =
-      get_files_with_stale_errors
-        ~reparsed
-        ~filter:None
-        ~phases:[Errors.Typing]
-        ~errors:env.errorl
-        ~ctx
+      get_files_with_stale_errors ~reparsed ~filter:None ~errors:env.errorl ~ctx
     in
     let to_recheck = Relative_path.Set.union stale_errors to_recheck in
     let to_recheck = Relative_path.Set.union env.needs_recheck to_recheck in
@@ -467,7 +411,6 @@ module LazyCheckKind : CheckKindType = struct
         ~ctx
         ~reparsed
         ~filter:(Some (some_ide_diagnosed_files env))
-        ~phases:[Errors.Typing]
         ~errors:env.errorl
     in
     let to_recheck = Relative_path.Set.union to_recheck stale_errors in
@@ -545,24 +488,30 @@ functor
       SSet.union new_classes old_classes
 
     type naming_result = {
-      duplicate_name_errors: Errors.t;
       failed_naming: Relative_path.Set.t;
       naming_table: Naming_table.t;
       telemetry: Telemetry.t;
     }
 
-    (** Update the naming_table, which is a map from filename to the names of
+    (** Updates the naming_table, which is a map from filename to the names of
         toplevel symbols declared in that file: at any given point in time, we want
-        to know what each file defines. The datastructure that maintains this information
-        is called file_info. This code updates the file information.
-        Also, update Typing_deps' table,
-        which is a map from toplevel symbol hash (Dep.t) to filename.
-        Also run Naming_global, updating the reverse naming table (which maps the names
-        of toplevel symbols to the files in which they were declared) in shared
-        memory. Does not run Naming itself (which converts an AST to a NAST by
-        assigning unique identifiers to locals, among other things). The Naming
-        module is something of a historical artifact and is slated for removal,
-        but for now, it is run immediately before typechecking. *)
+        to know what each file defines. The updated naming table is returned
+        in the return value.
+        Also runs [Naming_global.ndecl_file_and_get_conflict_files] which updates
+        the global reverse naming table.
+
+        The "winner" in case of duplicate definitions? All filenames involved in any
+        duplicate definition were stored by the caller in [env.failed_parsing], and
+        the caller includes then in [defs_per_file_parsed]. We iterate over them
+        in alphabetical order. Thus, the winner definition will be the one from the
+        alphabetically first file. (Within a file, classes win over types, and
+        after that the lexically first definition wins).
+
+        Note that on the first typecheck after a duplicate definition has been introduced,
+        then [env.failed_parsing] doesn't yet contain all filenames involved, so the
+        winner in this first typecheck is non-determnistic -- it's simply previous
+        definition. We only get the alphabetically first filename as winner on subsequent
+        typechecks. Yuck. *)
     let do_naming
         (env : env)
         (ctx : Provider_context.t)
@@ -572,18 +521,17 @@ functor
       let start_t = Unix.gettimeofday () in
       let count = Relative_path.Map.cardinal defs_per_file_parsed in
       CgroupProfiler.step_start_end cgroup_steps "naming" @@ fun _cgroup_step ->
-      (* Update name->filename reverse naming table (global, mutable),
-         and gather "duplicate name" errors *)
+      (* Update name->filename reverse naming table (global, mutable) *)
       remove_decls env defs_per_file_parsed;
-      let (duplicate_name_errors, failed_naming) =
+      let failed_naming =
         Relative_path.Map.fold
           defs_per_file_parsed
-          ~init:(Errors.empty, Relative_path.Set.empty)
-          ~f:(fun file fileinfo (errorl, failed) ->
-            let (errorl', failed') =
-              Naming_global.ndecl_file_error_if_already_bound ctx file fileinfo
+          ~init:Relative_path.Set.empty
+          ~f:(fun file fileinfo failed ->
+            let failed' =
+              Naming_global.ndecl_file_and_get_conflict_files ctx file fileinfo
             in
-            (Errors.merge errorl' errorl, Relative_path.Set.union failed' failed))
+            Relative_path.Set.union failed' failed)
       in
       let t2 =
         Hh_logger.log_duration "Declare_names (name->filename)" start_t
@@ -607,7 +555,7 @@ functor
              ~key:"failed_naming_count"
              ~value:(Relative_path.Set.cardinal failed_naming)
       in
-      { duplicate_name_errors; failed_naming; naming_table; telemetry }
+      { failed_naming; naming_table; telemetry }
 
     type redecl_result = {
       changed: Typing_deps.DepSet.t;
@@ -631,7 +579,7 @@ functor
       let ctx = Provider_utils.ctx_from_server_env env in
       let {
         Decl_redecl_service.old_decl_missing_count;
-        fanout = { Decl_redecl_service.changed; to_recheck = to_recheck_deps };
+        fanout = { Fanout.changed; to_recheck = to_recheck_deps };
       } =
         CgroupProfiler.step_start_end cgroup_steps "redecl"
         @@ fun _cgroup_step ->
@@ -663,10 +611,8 @@ functor
     let do_type_checking
         (genv : genv)
         (env : env)
-        (capture_snapshot : ServerRecheckCapture.snapshot)
         ~(errors : Errors.t)
         ~(files_to_check : Relative_path.Set.t)
-        ~(files_to_parse : Relative_path.Set.t)
         ~(lazy_check_later : Relative_path.Set.t)
         ~(check_reason : string)
         ~(cgroup_steps : CgroupProfiler.step_group)
@@ -710,7 +656,6 @@ functor
         let ( ( env,
                 {
                   Typing_check_service.errors = errorl;
-                  delegate_state;
                   telemetry;
                   diagnostic_pusher =
                     (diagnostic_pusher, time_first_typing_error);
@@ -721,7 +666,6 @@ functor
             ~diagnostic_pusher:env.ServerEnv.diagnostic_pusher
             ctx
             genv.workers
-            env.typing_service.delegate_state
             telemetry
             (files_to_check |> Relative_path.Set.elements)
             ~root
@@ -742,7 +686,6 @@ functor
             env with
             diagnostic_pusher =
               Option.value diagnostic_pusher ~default:env.diagnostic_pusher;
-            typing_service = { env.typing_service with delegate_state };
           }
         in
         (errorl, telemetry, env, cancelled, time_first_typing_error)
@@ -787,18 +730,6 @@ functor
           ~old:errors
           ~new_:errorl'
           ~rechecked:files_checked
-          Errors.Typing
-      in
-      let (env, _future) : ServerEnv.env * string Future.t option =
-        ServerRecheckCapture.update_after_recheck
-          genv
-          env
-          capture_snapshot
-          ~changed_files:files_to_parse
-          ~cancelled_files:(Relative_path.Set.of_list cancelled)
-          ~rechecked_files:files_checked
-          ~recheck_errors:errorl'
-          ~all_errors:errors
       in
       let full_check_done =
         CheckKind.is_full && Relative_path.Set.is_empty needs_recheck
@@ -928,7 +859,6 @@ functor
 
       (* Parse all changed files. This clears the file contents cache prior
           to parsing. *)
-      let parse_t = Unix.gettimeofday () in
       let telemetry =
         Telemetry.duration telemetry ~key:"parse_start" ~start_time
       in
@@ -955,12 +885,7 @@ functor
         Telemetry.duration telemetry ~key:"naming_start" ~start_time
       in
       let ctx = Provider_utils.ctx_from_server_env env in
-      let {
-        duplicate_name_errors;
-        failed_naming;
-        naming_table;
-        telemetry = naming_telemetry;
-      } =
+      let { failed_naming; naming_table; telemetry = naming_telemetry } =
         do_naming env ctx ~defs_per_file_parsed ~cgroup_steps
         (* Note: although do_naming updates global reverse-naming-table maps,
            the updated forward-naming-table "naming_table" only gets assigned
@@ -971,23 +896,6 @@ functor
         telemetry
         |> Telemetry.duration ~key:"naming_end" ~start_time
         |> Telemetry.object_ ~key:"naming" ~value:naming_telemetry
-      in
-
-      let rechecked =
-        defs_per_file_parsed
-        |> Relative_path.Map.keys
-        |> Relative_path.Set.of_list
-      in
-      let (env, errors, time_errors_pushed) =
-        push_and_accumulate_errors
-          (env, errors)
-          duplicate_name_errors
-          ~do_errors_file
-          ~rechecked
-          ~phase:Errors.Naming
-      in
-      let time_first_error =
-        Option.first_some time_first_error time_errors_pushed
       in
 
       (* REDECL PHASE 1 ********************************************************)
@@ -1149,13 +1057,6 @@ functor
             genv.ServerEnv.local_config
               .ServerLocalConfig.enable_type_check_filter_files
       in
-      let env =
-        ServerRemoteUtils.start_delegate_if_needed
-          env
-          genv
-          (Relative_path.Set.cardinal files_to_check)
-          errors
-      in
 
       ServerProgress.write
         "typechecking %d files"
@@ -1175,17 +1076,14 @@ functor
       in
 
       (* The errors file must accumulate ALL errors. The call below to [do_type_checking ~files_to_check]
-         will report all errors in [files_to_check] using the [Errors.Typing] phase.
-         But there might be other [Errors.Typing] errors in [env.errorl] from a previous round of typecheck,
+         will report all errors in [files_to_check].
+         But there might be other errors in [env.errorl] from a previous round of typecheck,
          but which aren't in the current fanout i.e. not in [files_to_check]. We must report those too.
          It remains open for discussion whether the user-experience would be better to have these
          not-in-fanout errors reported here before the typecheck starts, or later after the typecheck
          has finished. We'll report them here for now. *)
       if do_errors_file then begin
-        push_errors_outside_files_to_errors_file
-          errors
-          ~files:files_to_check
-          ~phase:Errors.Typing
+        push_errors_outside_files_to_errors_file errors ~files:files_to_check
       end;
       (* And what about the files in [files_to_check] which we were going to typecheck but then
          the typecheck got interrupted  and they were returned from [do_typechecking] as [needs_recheck]?
@@ -1195,14 +1093,6 @@ functor
       let to_recheck_count = Relative_path.Set.cardinal files_to_check in
       (* The intent of capturing the snapshot here is to increase the likelihood
           of the state-on-disk being the same as what the parser saw *)
-      let (env, capture_snapshot) =
-        ServerRecheckCapture.update_before_recheck
-          genv
-          env
-          ~to_recheck_count
-          ~changed_files:files_to_parse
-          ~parse_t
-      in
       Hh_logger.log "Begin typechecking %d files." to_recheck_count;
       if do_errors_file then
         ServerProgress.ErrorsWrite.telemetry
@@ -1232,15 +1122,12 @@ functor
         do_type_checking
           genv
           env
-          capture_snapshot
           ~errors
           ~files_to_check
-          ~files_to_parse
           ~lazy_check_later
           ~check_reason
           ~cgroup_steps
-          ~files_with_naming_errors:
-            (Errors.get_failed_files errors Errors.Naming)
+          ~files_with_naming_errors:env.failed_naming
       in
       let time_first_error =
         Option.first_some time_first_error time_first_typing_error
@@ -1408,17 +1295,6 @@ functor
           ~start_time
       in
 
-      let env =
-        {
-          env with
-          typing_service =
-            {
-              delegate_state =
-                Typing_service_delegate.stop env.typing_service.delegate_state;
-              enabled = false;
-            };
-        }
-      in
       let telemetry =
         Telemetry.duration telemetry ~key:"stop_typing_service" ~start_time
       in

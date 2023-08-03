@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<b4db1a77ae361ea735ba3f424e133314>>
+// @generated SignedSource<<300986842c3e4c9ed96b1db608bbb336>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -144,7 +144,6 @@ pub enum NamingError {
         pos: pos::Pos,
         name: String,
         prev_pos: pos::Pos,
-        prev_name: String,
     },
     #[rust_to_ocaml(name = "Unbound_name")]
     UnboundName {
@@ -401,4 +400,13 @@ pub enum NamingError {
     },
     #[rust_to_ocaml(name = "Tparam_non_shadowing_reuse")]
     TparamNonShadowingReuse { pos: pos::Pos, tparam_name: String },
+    #[rust_to_ocaml(name = "Dynamic_hint_disallowed")]
+    DynamicHintDisallowed(pos::Pos),
+    #[rust_to_ocaml(name = "Illegal_typed_local")]
+    IllegalTypedLocal {
+        join: bool,
+        id_pos: pos::Pos,
+        id_name: String,
+        def_pos: pos::Pos,
+    },
 }

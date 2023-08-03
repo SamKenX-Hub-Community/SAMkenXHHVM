@@ -420,7 +420,7 @@ class mstch_program : public mstch_base {
         this,
         {
             {"program:name", &mstch_program::name},
-            {"program:path", &mstch_program::path},
+            {"program:autogen_path", &mstch_program::autogen_path},
             {"program:includePrefix", &mstch_program::include_prefix},
             {"program:structs", &mstch_program::structs},
             {"program:enums", &mstch_program::enums},
@@ -450,7 +450,13 @@ class mstch_program : public mstch_base {
   virtual std::string get_program_namespace(const t_program*) { return {}; }
 
   mstch::node name() { return program_->name(); }
-  mstch::node path() { return program_->path(); }
+  mstch::node autogen_path() {
+    std::string path = program_->path();
+    // use posix path separators, even on windows, for autogen comment
+    // to avoid spurious fixture regen diffs
+    std::replace(path.begin(), path.end(), '\\', '/');
+    return path;
+  }
   mstch::node include_prefix() { return program_->include_prefix(); }
   mstch::node has_enums() { return !program_->enums().empty(); }
   mstch::node has_structs() {
@@ -731,6 +737,7 @@ class mstch_type : public mstch_base {
             {"type:void?", &mstch_type::is_void},
             {"type:string?", &mstch_type::is_string},
             {"type:binary?", &mstch_type::is_binary},
+            {"type:primitive?", &mstch_type::is_primitive},
             {"type:bool?", &mstch_type::is_bool},
             {"type:byte?", &mstch_type::is_byte},
             {"type:i16?", &mstch_type::is_i16},
@@ -786,11 +793,17 @@ class mstch_type : public mstch_base {
   mstch::node is_i64() { return resolved_type_->is_i64(); }
   mstch::node is_double() { return resolved_type_->is_double(); }
   mstch::node is_float() { return resolved_type_->is_float(); }
+  mstch::node is_primitive() {
+    return resolved_type_->is_void() || resolved_type_->is_bool() ||
+        resolved_type_->is_byte() || resolved_type_->is_i16() ||
+        resolved_type_->is_i32() || resolved_type_->is_i64() ||
+        resolved_type_->is_double() || resolved_type_->is_float();
+  }
   mstch::node is_floating_point() {
     return resolved_type_->is_floating_point();
   }
   mstch::node is_struct() {
-    return resolved_type_->is_struct() || resolved_type_->is_xception();
+    return resolved_type_->is_struct() || resolved_type_->is_exception();
   }
   mstch::node is_union() { return resolved_type_->is_union(); }
   mstch::node is_enum() { return resolved_type_->is_enum(); }
@@ -925,10 +938,10 @@ class mstch_struct : public mstch_base {
   mstch::node name() { return struct_->get_name(); }
   mstch::node has_fields() { return struct_->has_fields(); }
   mstch::node fields();
-  mstch::node is_exception() { return struct_->is_xception(); }
+  mstch::node is_exception() { return struct_->is_exception(); }
   mstch::node is_union() { return struct_->is_union(); }
   mstch::node is_plain() {
-    return !struct_->is_xception() && !struct_->is_union();
+    return !struct_->is_exception() && !struct_->is_union();
   }
   mstch::node has_structured_annotations() {
     return !struct_->structured_annotations().empty();
@@ -1366,7 +1379,7 @@ class mstch_const_value : public mstch_base {
   mstch::node map_elems();
   mstch::node const_struct();
   mstch::node referenceable() {
-    return current_const_ && const_value_->get_owner() &&
+    return const_value_->get_owner() &&
         current_const_ != const_value_->get_owner() && same_type_as_expected();
   }
   mstch::node owning_const();

@@ -18,10 +18,12 @@ use crate::types;
 pub(crate) fn convert_type<'a>(ty: &hhbc::TypeInfo<'a>, strings: &StringInterner) -> ir::TypeInfo {
     let user_type = ty.user_type.into_option();
     let name = ty.type_constraint.name.into_option();
-    let constraint_ty = if let Some(name) = name {
-        cvt_constraint_type(name, strings)
-    } else {
-        user_type
+    let constraint_ty = match name {
+        // Checking for emptiness to filter out cases where the type constraint is not enforceable
+        // (e.g. name = "", hint = type_const).
+        Some(name) if !name.is_empty() => cvt_constraint_type(name, strings),
+        Some(_) => BaseType::None,
+        _ => user_type
             .as_ref()
             .and_then(|user_type| {
                 use std::collections::HashMap;
@@ -36,7 +38,7 @@ pub(crate) fn convert_type<'a>(ty: &hhbc::TypeInfo<'a>, strings: &StringInterner
 
                 unconstrained_by_name.get(user_type).cloned()
             })
-            .unwrap_or(BaseType::Mixed)
+            .unwrap_or(BaseType::Mixed),
     };
 
     ir::TypeInfo {
@@ -102,10 +104,11 @@ pub(crate) fn convert_typedef<'a>(
     let hhbc::Typedef {
         name,
         attributes,
-        type_info,
+        type_info_union,
         type_structure,
         span,
         attrs,
+        case_type,
     } = td;
 
     let loc = ir::SrcLoc::from_span(filename, span);
@@ -114,15 +117,19 @@ pub(crate) fn convert_typedef<'a>(
         .iter()
         .map(|a| convert::convert_attribute(a, strings))
         .collect_vec();
-    let type_info = types::convert_type(type_info, strings);
+    let type_info_union = type_info_union
+        .iter()
+        .map(|ti| types::convert_type(ti, strings))
+        .collect_vec();
     let type_structure = convert::convert_typed_value(type_structure, strings);
 
     ir::Typedef {
         name,
         attributes,
-        type_info,
+        type_info_union,
         type_structure,
         loc,
         attrs: *attrs,
+        case_type: *case_type,
     }
 }

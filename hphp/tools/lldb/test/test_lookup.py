@@ -13,7 +13,7 @@ class LookupCommandTestCase(base.TestHHVMBinary):
         # just need to make sure the functions are loaded.
         self.run_until_breakpoint("lookupObjMethod")
         _, output = self.run_commands(["lookup func 0"])
-        self.assertEqual("(HPHP::Func *) m_s = NULL", output.strip())
+        self.assertRegex(output.strip(), r"\(HPHP::Func \*\) (m_s|\$\d+) = (NULL|nullptr)")
 
 class LookupHelperTestCase(base.TestHHVMBinary):
 
@@ -26,6 +26,6 @@ class LookupHelperTestCase(base.TestHHVMBinary):
         fp1 = utils.reg("fp", self.frame.parent)
         self.assertIsNotNone(fp1)
         func1 = lookup.lookup_func_from_frame_pointer(fp1.Cast(act_rec_type))
-        self.assertTrue(func1.IsValid())
+        self.assertTrue(func1 is not None and func1.GetError().Success())
         fname = utils.nameof(func1)
         self.assertEqual(fname, "C::86reifiedinit")

@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::cpp2::Animal>::size;
+#endif
 folly::Range<::cpp2::Animal const*> const TEnumTraits<::cpp2::Animal>::values = folly::range(TEnumDataStorage<::cpp2::Animal>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::cpp2::Animal>::names = folly::range(TEnumDataStorage<::cpp2::Animal>::names);
 
@@ -28,14 +30,6 @@ bool TEnumTraits<::cpp2::Animal>::findValue(folly::StringPiece name, type* out) 
 
 }} // apache::thrift
 
-namespace cpp2 {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _Animal_EnumMapFactory::ValuesToNamesMapType _Animal_VALUES_TO_NAMES = _Animal_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-} // cpp2
 
 namespace apache {
 namespace thrift {

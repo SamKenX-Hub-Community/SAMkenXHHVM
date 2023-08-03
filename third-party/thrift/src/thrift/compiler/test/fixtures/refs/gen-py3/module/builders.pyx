@@ -11,6 +11,12 @@ cdef class MyUnion_Builder(thrift.py3.builder.StructBuilder):
         yield "anInteger", self.anInteger
         yield "aString", self.aString
 
+cdef class NonTriviallyDestructibleUnion_Builder(thrift.py3.builder.StructBuilder):
+    _struct_type = _module_types.NonTriviallyDestructibleUnion
+
+    def __iter__(self):
+        yield "int_field", self.int_field
+
 cdef class MyField_Builder(thrift.py3.builder.StructBuilder):
     _struct_type = _module_types.MyField
 
@@ -94,8 +100,13 @@ cdef class StructWithInternBox_Builder(thrift.py3.builder.StructBuilder):
     def __iter__(self):
         yield "field1", self.field1
         yield "field2", self.field2
-        yield "field3", self.field3
-        yield "field4", self.field4
+
+cdef class StructWithTerseInternBox_Builder(thrift.py3.builder.StructBuilder):
+    _struct_type = _module_types.StructWithTerseInternBox
+
+    def __iter__(self):
+        yield "field1", self.field1
+        yield "field2", self.field2
 
 cdef class AdaptedStructWithInternBox_Builder(thrift.py3.builder.StructBuilder):
     _struct_type = _module_types.AdaptedStructWithInternBox
@@ -103,8 +114,13 @@ cdef class AdaptedStructWithInternBox_Builder(thrift.py3.builder.StructBuilder):
     def __iter__(self):
         yield "field1", self.field1
         yield "field2", self.field2
-        yield "field3", self.field3
-        yield "field4", self.field4
+
+cdef class AdaptedStructWithTerseInternBox_Builder(thrift.py3.builder.StructBuilder):
+    _struct_type = _module_types.AdaptedStructWithTerseInternBox
+
+    def __iter__(self):
+        yield "field1", self.field1
+        yield "field2", self.field2
 
 cdef class StructWithRefTypeUnique_Builder(thrift.py3.builder.StructBuilder):
     _struct_type = _module_types.StructWithRefTypeUnique

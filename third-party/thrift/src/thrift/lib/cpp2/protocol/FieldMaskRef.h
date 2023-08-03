@@ -49,13 +49,19 @@ class MaskRef {
   // exist in the map, it returns noneMask or allMask depending on whether the
   // field should be included. Throws a runtime exception if the mask is not a
   // map mask.
-  MaskRef get(std::string_view key) const;
+  MaskRef get(const std::string& key) const;
 
   // Returns whether the ref includes all fields.
   bool isAllMask() const;
 
   // Returns whether the ref includes no fields.
   bool isNoneMask() const;
+
+  // Returns whether the ref includes all fields.
+  bool isAllMapMask() const;
+
+  // Returns whether the ref includes no fields.
+  bool isNoneMapMask() const;
 
   // Returns whether the ref is logically exclusive in context.
   bool isExclusive() const;

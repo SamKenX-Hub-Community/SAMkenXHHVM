@@ -23,6 +23,7 @@
 #include "hphp/runtime/base/bespoke/type-structure.h"
 #include "hphp/runtime/base/comparisons.h"
 #include "hphp/runtime/base/double-to-int64.h"
+#include "hphp/runtime/base/package.h"
 #include "hphp/runtime/base/repo-auth-type.h"
 #include "hphp/runtime/base/tv-refcount.h"
 #include "hphp/runtime/base/tv-type.h"
@@ -50,7 +51,7 @@
 
 #include "hphp/runtime/ext/hh/ext_hh.h"
 #include "hphp/runtime/ext/asio/ext_static-wait-handle.h"
-#include "hphp/runtime/ext/std/ext_std_closure.h"
+#include "hphp/runtime/ext/core/ext_core_closure.h"
 
 #include "hphp/util/overflow.h"
 #include "hphp/util/trace.h"
@@ -342,6 +343,21 @@ SSATmp* simplifyCallViolatesModuleBoundary(State& env,
   return cns(env, will_symbol_raise_module_boundary_violation(callee, caller));
 }
 
+SSATmp* simplifyCallViolatesDeploymentBoundary(State& env,
+                                               const IRInstruction* inst) {
+  auto const packageInfo = env.unit.packageInfo();
+  if (inst->src(0)->hasConstVal(TFunc)) {
+    auto const symbol = inst->src(0)->funcVal();
+    return cns(env,
+               will_symbol_raise_deployment_boundary_violation(packageInfo, *symbol));
+  }
+  if (inst->src(0)->hasConstVal(TCls)) {
+    auto const symbol = inst->src(0)->clsVal();
+    return cns(env,
+               will_symbol_raise_deployment_boundary_violation(packageInfo, *symbol));
+  }
+  return nullptr;
+}
 
 SSATmp* simplifyEqFunc(State& env, const IRInstruction* inst) {
   auto const src0 = canonical(inst->src(0));
@@ -1781,10 +1797,10 @@ SSATmp* simplifyInstanceOf(State& env, const IRInstruction* inst) {
   auto const spec2 = src2->type().clsSpec();
 
   if (auto const cls = spec2.exactCls()) {
-    if (isNormalClass(cls) && (cls->attrs() & AttrUnique)) {
+    if (isNormalClass(cls) && (cls->attrs() & AttrPersistent)) {
       return gen(env, ExtendsClass, ExtendsClassData{ cls }, src1);
     }
-    if (isInterface(cls) && (cls->attrs() & AttrUnique)) {
+    if (isInterface(cls) && (cls->attrs() & AttrPersistent)) {
       return gen(env, InstanceOfIface, src1, cns(env, cls->name()));
     }
   }
@@ -2284,7 +2300,7 @@ bool handleConvNoticeLevel(
       return true;
     case ConvNoticeLevel::Log:
       gen(env, RaiseNotice, trace, str);
-    // FALLTHROUGH
+    [[fallthrough]];
     case ConvNoticeLevel::None:
       return false;
   }
@@ -4038,6 +4054,7 @@ SSATmp* simplifyWork(State& env, const IRInstruction* inst) {
       X(ClassHasAttr)
       X(LdFuncRequiredCoeffects)
       X(CallViolatesModuleBoundary)
+      X(CallViolatesDeploymentBoundary)
       X(LookupClsCtxCns)
       X(LdClsCtxCns)
       X(LdObjClass)

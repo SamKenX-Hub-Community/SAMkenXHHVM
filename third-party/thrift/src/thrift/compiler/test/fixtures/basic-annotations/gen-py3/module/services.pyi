@@ -11,7 +11,6 @@ from thrift.py3.server import RequestContext, ServiceInterface
 from abc import abstractmethod, ABCMeta
 
 import module.types as _module_types
-import facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
 
 _MyServiceInterfaceT = _typing.TypeVar('_MyServiceInterfaceT', bound='MyServiceInterface')
 
@@ -122,6 +121,34 @@ class BadServiceInterface(
     async def bar(
         self
     ) -> int: ...
+    pass
+
+
+_FooBarBazServiceInterfaceT = _typing.TypeVar('_FooBarBazServiceInterfaceT', bound='FooBarBazServiceInterface')
+
+
+class FooBarBazServiceInterface(
+    ServiceInterface,
+    metaclass=ABCMeta,
+):
+
+
+    @abstractmethod
+    async def foo(
+        self
+    ) -> None: ...
+
+
+    @abstractmethod
+    async def bar(
+        self
+    ) -> None: ...
+
+
+    @abstractmethod
+    async def baz(
+        self
+    ) -> None: ...
     pass
 
 

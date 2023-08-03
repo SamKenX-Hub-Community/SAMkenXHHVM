@@ -46,6 +46,14 @@ val string_list :
   t ->
   t
 
+val string_list_opt :
+  ?truncate_list:int ->
+  ?truncate_each_string:int ->
+  key:string ->
+  value:string list option ->
+  t ->
+  t
+
 val object_list : key:string -> value:t list -> t -> t
 
 val bool_ : key:string -> value:bool -> t -> t
@@ -62,7 +70,7 @@ val object_ : key:string -> value:t -> t -> t
 
 val object_opt : key:string -> value:t option -> t -> t
 
-val duration : ?key:string -> start_time:float -> t -> t
+val duration : ?key:string -> start_time:float -> ?end_time:float -> t -> t
 
 val float_ : key:string -> value:float -> t -> t
 

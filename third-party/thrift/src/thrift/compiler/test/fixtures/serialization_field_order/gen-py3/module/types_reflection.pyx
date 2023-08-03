@@ -14,7 +14,6 @@ from thrift.py3.reflection cimport (
     Qualifier as __Qualifier,
 )
 
-cimport facebook.thrift.annotation.thrift.types as _facebook_thrift_annotation_thrift_types
 
 cimport module.types as _module_types
 
@@ -40,6 +39,7 @@ cdef __StructSpec get_reflection__Foo():
         __FieldSpec._fbthrift_create(
             id=3,
             name="field1",
+            py_name="field1",
             type=int,
             kind=__NumberType.I32,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -52,6 +52,7 @@ cdef __StructSpec get_reflection__Foo():
         __FieldSpec._fbthrift_create(
             id=1,
             name="field2",
+            py_name="field2",
             type=int,
             kind=__NumberType.I32,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -64,6 +65,7 @@ cdef __StructSpec get_reflection__Foo():
         __FieldSpec._fbthrift_create(
             id=2,
             name="field3",
+            py_name="field3",
             type=int,
             kind=__NumberType.I32,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -89,6 +91,7 @@ cdef __StructSpec get_reflection__Foo2():
         __FieldSpec._fbthrift_create(
             id=3,
             name="field1",
+            py_name="field1",
             type=int,
             kind=__NumberType.I32,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -101,6 +104,7 @@ cdef __StructSpec get_reflection__Foo2():
         __FieldSpec._fbthrift_create(
             id=1,
             name="field2",
+            py_name="field2",
             type=int,
             kind=__NumberType.I32,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -113,6 +117,7 @@ cdef __StructSpec get_reflection__Foo2():
         __FieldSpec._fbthrift_create(
             id=2,
             name="field3",
+            py_name="field3",
             type=int,
             kind=__NumberType.I32,
             qualifier=__Qualifier.UNQUALIFIED,

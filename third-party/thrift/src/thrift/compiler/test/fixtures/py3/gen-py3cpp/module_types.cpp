@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::py3::simple::AnEnum>::size;
+#endif
 folly::Range<::py3::simple::AnEnum const*> const TEnumTraits<::py3::simple::AnEnum>::values = folly::range(TEnumDataStorage<::py3::simple::AnEnum>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::py3::simple::AnEnum>::names = folly::range(TEnumDataStorage<::py3::simple::AnEnum>::names);
 
@@ -28,18 +30,12 @@ bool TEnumTraits<::py3::simple::AnEnum>::findValue(folly::StringPiece name, type
 
 }} // apache::thrift
 
-namespace py3 { namespace simple {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _AnEnum_EnumMapFactory::ValuesToNamesMapType _AnEnum_VALUES_TO_NAMES = _AnEnum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}} // py3::simple
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::py3::simple::AnEnumRenamed>::size;
+#endif
 folly::Range<::py3::simple::AnEnumRenamed const*> const TEnumTraits<::py3::simple::AnEnumRenamed>::values = folly::range(TEnumDataStorage<::py3::simple::AnEnumRenamed>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::py3::simple::AnEnumRenamed>::names = folly::range(TEnumDataStorage<::py3::simple::AnEnumRenamed>::names);
 
@@ -53,18 +49,12 @@ bool TEnumTraits<::py3::simple::AnEnumRenamed>::findValue(folly::StringPiece nam
 
 }} // apache::thrift
 
-namespace py3 { namespace simple {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _AnEnumRenamed_EnumMapFactory::ValuesToNamesMapType _AnEnumRenamed_VALUES_TO_NAMES = _AnEnumRenamed_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}} // py3::simple
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::py3::simple::Flags>::size;
+#endif
 folly::Range<::py3::simple::Flags const*> const TEnumTraits<::py3::simple::Flags>::values = folly::range(TEnumDataStorage<::py3::simple::Flags>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::py3::simple::Flags>::names = folly::range(TEnumDataStorage<::py3::simple::Flags>::names);
 
@@ -78,14 +68,6 @@ bool TEnumTraits<::py3::simple::Flags>::findValue(folly::StringPiece name, type*
 
 }} // apache::thrift
 
-namespace py3 { namespace simple {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _Flags_EnumMapFactory::ValuesToNamesMapType _Flags_VALUES_TO_NAMES = _Flags_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}} // py3::simple
 
 namespace apache {
 namespace thrift {
@@ -235,6 +217,12 @@ OptionalRefStruct& OptionalRefStruct::operator=(const OptionalRefStruct& other) 
   swap(*this, tmp);
   return *this;
 }
+
+OptionalRefStruct::OptionalRefStruct() {
+}
+
+
+OptionalRefStruct::~OptionalRefStruct() {}
 
 OptionalRefStruct::OptionalRefStruct(FOLLY_MAYBE_UNUSED OptionalRefStruct&& other) noexcept :
     __fbthrift_field_optional_blob(std::move(other.__fbthrift_field_optional_blob)),
@@ -530,6 +518,13 @@ HiddenTypeFieldsStruct& HiddenTypeFieldsStruct::operator=(const HiddenTypeFields
   return *this;
 }
 
+HiddenTypeFieldsStruct::HiddenTypeFieldsStruct() {
+  ::apache::thrift::adapt_detail::construct<Adapter, 1>(__fbthrift_field_field1, *this);
+}
+
+
+HiddenTypeFieldsStruct::~HiddenTypeFieldsStruct() {}
+
 HiddenTypeFieldsStruct::HiddenTypeFieldsStruct(FOLLY_MAYBE_UNUSED HiddenTypeFieldsStruct&& other) noexcept :
     __fbthrift_field_field1(std::move(other.__fbthrift_field_field1)),
     __fbthrift_field_field2(std::move(other.__fbthrift_field_field2)),
@@ -653,7 +648,9 @@ void TccStructTraits<::py3::simple::detail::AdaptedUnion>::translateFieldName(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::py3::simple::detail::AdaptedUnion::Type>::size;
+#endif
 folly::Range<::py3::simple::detail::AdaptedUnion::Type const*> const TEnumTraits<::py3::simple::detail::AdaptedUnion::Type>::values = folly::range(TEnumDataStorage<::py3::simple::detail::AdaptedUnion::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::py3::simple::detail::AdaptedUnion::Type>::names = folly::range(TEnumDataStorage<::py3::simple::detail::AdaptedUnion::Type>::names);
 
@@ -1096,7 +1093,9 @@ void TccStructTraits<::py3::simple::BinaryUnion>::translateFieldName(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::py3::simple::BinaryUnion::Type>::size;
+#endif
 folly::Range<::py3::simple::BinaryUnion::Type const*> const TEnumTraits<::py3::simple::BinaryUnion::Type>::values = folly::range(TEnumDataStorage<::py3::simple::BinaryUnion::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::py3::simple::BinaryUnion::Type>::names = folly::range(TEnumDataStorage<::py3::simple::BinaryUnion::Type>::names);
 

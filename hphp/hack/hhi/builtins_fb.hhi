@@ -14,15 +14,6 @@ namespace {
 
   const int FB_COMPACT_SERIALIZE_FORCE_PHP_ARRAYS;
 
-  const int XHPROF_FLAGS_NO_BUILTINS;
-  const int XHPROF_FLAGS_CPU;
-  const int XHPROF_FLAGS_MEMORY;
-  const int XHPROF_FLAGS_VTSC;
-  const int XHPROF_FLAGS_TRACE;
-  const int XHPROF_FLAGS_MEASURE_XHPROF_DISABLE;
-  const int XHPROF_FLAGS_MALLOC;
-  const int XHPROF_FLAGS_I_HAVE_INFINITE_MEMORY;
-
   const int SETPROFILE_FLAGS_ENTERS;
   const int SETPROFILE_FLAGS_EXITS;
   const int SETPROFILE_FLAGS_DEFAULT;
@@ -87,25 +78,6 @@ namespace {
   <<__PHPStdLib>>
   function fb_disable_code_coverage(): \HH\FIXME\MISSING_RETURN_TYPE;
   <<__PHPStdLib>>
-  function xhprof_enable(
-    int $flags = 0,
-    HH\FIXME\MISSING_PARAM_TYPE $args = null,
-  ): \HH\FIXME\MISSING_RETURN_TYPE;
-  <<__PHPStdLib>>
-  function xhprof_disable(): \HH\FIXME\MISSING_RETURN_TYPE;
-  <<__PHPStdLib>>
-  function xhprof_network_enable(): \HH\FIXME\MISSING_RETURN_TYPE;
-  <<__PHPStdLib>>
-  function xhprof_network_disable(): \HH\FIXME\MISSING_RETURN_TYPE;
-  <<__PHPStdLib>>
-  function xhprof_frame_begin(string $name): \HH\FIXME\MISSING_RETURN_TYPE;
-  <<__PHPStdLib>>
-  function xhprof_frame_end(): \HH\FIXME\MISSING_RETURN_TYPE;
-  <<__PHPStdLib>>
-  function xhprof_sample_enable(): \HH\FIXME\MISSING_RETURN_TYPE;
-  <<__PHPStdLib>>
-  function xhprof_sample_disable(): \HH\FIXME\MISSING_RETURN_TYPE;
-  <<__PHPStdLib>>
   function fb_output_compression(
     bool $new_value,
   ): \HH\FIXME\MISSING_RETURN_TYPE;
@@ -160,4 +132,41 @@ namespace HH {
   function enable_function_coverage(): \HH\FIXME\MISSING_RETURN_TYPE;
 
   function collect_function_coverage(): \HH\FIXME\MISSING_RETURN_TYPE;
+
+  /**
+   * Sets product attribution id into the caller's frame in order to be fetched
+   * later down the call stack.
+   */
+  function set_product_attribution_id(int $id)[]: void;
+
+  /**
+   * Same as the above `set_product_attribution_id` function except it takes a
+   * lambda that returns the attribution id to be called before fetching the value
+   */
+  function set_product_attribution_id_deferred((function()[leak_safe]: int) $fn)[]: void;
+
+  /**
+   * Fetches the closest product attribution id.
+   * If no value is set, returns null.
+   */
+  function get_product_attribution_id()[leak_safe]: ?int;
+
+  /**
+   * Propagates the current product ID attribution into a lambda so that attempts
+   * to retrieve attribution inside the lambda will return the creator's
+   * attribution instead of the eventual caller's attribution.
+   */
+  function embed_product_attribution_id_in_closure<T>(
+    (function ()[defaults]: T) $f,
+  )[leak_safe]: (function ()[defaults]: T);
+
+  /**
+   * Propagates the current product ID attribution into an async lambda so that
+   * attempts to retrieve attribution inside the lambda will return the creator's
+   * attribution instead of the eventual caller's attribution.
+   */
+  function embed_product_attribution_id_in_async_closure<T>(
+    (function ()[defaults]: Awaitable<T>) $f,
+  )[leak_safe]: (function ()[defaults]: Awaitable<T>);
+
 } // HH namespace

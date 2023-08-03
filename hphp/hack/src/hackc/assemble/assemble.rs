@@ -19,6 +19,7 @@ use ffi::Maybe;
 use ffi::Slice;
 use ffi::Str;
 use hash::HashMap;
+use hhvm_types_ffi::Attr;
 use log::trace;
 use naming_special_names_rust::coeffects::Ctx;
 use parse_macro::parse;
@@ -184,7 +185,12 @@ impl<'a> UnitBuilder<'a> {
                 )?)
             }
             b".alias" => {
-                self.typedefs.push(assemble_typedef(alloc, token_iter)?);
+                self.typedefs
+                    .push(assemble_typedef(alloc, token_iter, false)?);
+            }
+            b".case_type" => {
+                self.typedefs
+                    .push(assemble_typedef(alloc, token_iter, true)?);
             }
             b".const" => {
                 assemble_const_or_type_const(
@@ -287,12 +293,18 @@ fn assemble_file_attributes<'arena>(
 fn assemble_typedef<'arena>(
     alloc: &'arena Bump,
     token_iter: &mut Lexer<'_>,
+    case_type: bool,
 ) -> Result<hhbc::Typedef<'arena>> {
-    parse!(token_iter, ".alias"
+    if case_type {
+        parse!(token_iter, ".case_type");
+    } else {
+        parse!(token_iter, ".alias");
+    }
+    parse!(token_iter,
            <attrs:assemble_special_and_user_attrs(alloc)>
            <name:assemble_class_name(alloc)>
            "="
-           <type_info:assemble_type_info(alloc, TypeInfoKind::TypeDef)>
+           <type_info_union:assemble_type_info_union(alloc)>
            <span:assemble_span>
            <type_structure:assemble_triple_quoted_typed_value(alloc)>
            ";");
@@ -300,10 +312,11 @@ fn assemble_typedef<'arena>(
     Ok(hhbc::Typedef {
         name,
         attributes,
-        type_info,
+        type_info_union,
         type_structure,
         span,
         attrs,
+        case_type,
     })
 }
 
@@ -432,6 +445,10 @@ fn assemble_const_or_type_const<'arena>(
     type_consts: &mut Vec<hhbc::TypeConstant<'arena>>,
 ) -> Result<()> {
     token_iter.expect_str(Token::is_decl, ".const")?;
+    let mut attrs = Attr::AttrNone;
+    if token_iter.peek_is(Token::is_open_bracket) {
+        attrs = assemble_special_and_user_attrs(token_iter, alloc)?.0;
+    }
     let name = token_iter.expect(Token::is_identifier)?.into_ffi_str(alloc);
     if token_iter.next_is_str(Token::is_identifier, "isType") {
         //type const
@@ -449,7 +466,6 @@ fn assemble_const_or_type_const<'arena>(
     } else {
         //const
         let name = hhbc::ConstName::new(name);
-        let is_abstract = token_iter.next_is_str(Token::is_identifier, "isAbstract");
         let value = if token_iter.next_is(Token::is_equal) {
             if token_iter.next_is_str(Token::is_identifier, "uninit") {
                 Maybe::Just(hhbc::TypedValue::Uninit)
@@ -459,11 +475,7 @@ fn assemble_const_or_type_const<'arena>(
         } else {
             Maybe::Nothing
         };
-        consts.push(hhbc::Constant {
-            name,
-            value,
-            is_abstract,
-        });
+        consts.push(hhbc::Constant { name, value, attrs });
     }
     token_iter.expect(Token::is_semicolon)?;
     Ok(())
@@ -1221,7 +1233,6 @@ fn assemble_special_and_user_attrs<'arena>(
 }
 
 fn assemble_hhvm_attr(token_iter: &mut Lexer<'_>) -> Result<hhvm_types_ffi::ffi::Attr> {
-    use hhvm_types_ffi::ffi::Attr;
     let tok = token_iter.expect_token()?;
     let flag = match tok.into_identifier()? {
         b"abstract" => Attr::AttrAbstract,
@@ -1266,7 +1277,6 @@ fn assemble_hhvm_attr(token_iter: &mut Lexer<'_>) -> Result<hhvm_types_ffi::ffi:
         b"support_async_eager_return" => Attr::AttrSupportsAsyncEagerReturn,
         b"sys_initial_val" => Attr::AttrSystemInitialValue,
         b"trait" => Attr::AttrTrait,
-        b"unique" => Attr::AttrUnique,
         b"unused_max_attr" => Attr::AttrUnusedMaxAttr,
         b"variadic_param" => Attr::AttrVariadicParam,
         _ => return Err(tok.error("Unknown attr")),
@@ -1326,6 +1336,14 @@ fn assemble_type_info<'arena>(
     } else {
         Err(anyhow!("TypeInfo expected at end"))
     }
+}
+
+fn assemble_type_info_union<'arena>(
+    token_iter: &mut Lexer<'_>,
+    alloc: &'arena Bump,
+) -> Result<Slice<'arena, hhbc::TypeInfo<'arena>>> {
+    parse!(token_iter, <tis:assemble_type_info(alloc, TypeInfoKind::TypeDef),*>);
+    Ok(Slice::from_vec(alloc, tis))
 }
 
 /// Ex: <"HH\\void" N >
@@ -1388,7 +1406,6 @@ fn assemble_type_constraint(
         b"type_var" => Ok(TypeConstraintFlags::TypeVar),
         b"extended_hint" => Ok(TypeConstraintFlags::ExtendedHint),
         b"nullable" => Ok(TypeConstraintFlags::Nullable),
-        b"case_type" => Ok(TypeConstraintFlags::CaseType),
         _ => Err(tok.error("Unknown type constraint flag")),
     }
 }

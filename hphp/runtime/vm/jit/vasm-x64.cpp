@@ -122,6 +122,8 @@ struct Vgen {
     setCallFuncId(env, a.frontier());
   }
   void emit(const restoreripm& i);
+  void emit(const restorerips& /*i*/) {}
+  void emit(const saverips& /*i*/) {}
   void emit(const phpret& i);
   void emit(const contenter& i);
 
@@ -208,7 +210,6 @@ struct Vgen {
   void emit(const ldbindretaddr& i);
   void emit(const lea& i);
   void emit(const leap& i) { a.lea(i.s, i.d); }
-  void emit(const leav& i);
   void emit(const lead& i) { a.lea(rip[(intptr_t)i.s.get()], i.d); }
   void emit(const loadups& i) { a.prefix(i.s.mr()).movups(i.s, i.d); }
   void emit(const loadtqb& i) { a.prefix(i.s.mr()).loadb(i.s, i.d); }
@@ -949,13 +950,6 @@ void Vgen<X64Asm>::emit(const lea& i) {
   } else {
     a.lea(i.s, i.d);
   }
-}
-
-template<class X64Asm>
-void Vgen<X64Asm>::emit(const leav& i) {
-  auto const addr = a.frontier();
-  emit(leap{reg::rip[(intptr_t)addr], i.d});
-  env.leas.push_back({addr, i.s});
 }
 
 template<class X64Asm>

@@ -210,6 +210,8 @@ class FizzHandshakeOptions {
   friend class FizzAcceptorHandshakeHelper;
 };
 
+class SSLContextManager;
+
 class FizzAcceptorHandshakeHelper
     : public wangle::AcceptorHandshakeHelper,
       public fizz::server::AsyncFizzServer::HandshakeCallback,
@@ -218,12 +220,14 @@ class FizzAcceptorHandshakeHelper
  public:
   FizzAcceptorHandshakeHelper(
       std::shared_ptr<const fizz::server::FizzServerContext> context,
+      std::shared_ptr<const SSLContextManager> sslContextManager,
       const folly::SocketAddress& clientAddr,
       std::chrono::steady_clock::time_point acceptTime,
       wangle::TransportInfo& tinfo,
       FizzHandshakeOptions&& options,
       fizz::AsyncFizzBase::TransportOptions transportOptions)
-      : context_(context),
+      : context_(std::move(context)),
+        sslContextManager_(std::move(sslContextManager)),
         tokenBindingContext_(std::move(options.tokenBindingCtx_)),
         clientAddr_(clientAddr),
         acceptTime_(acceptTime),
@@ -231,7 +235,10 @@ class FizzAcceptorHandshakeHelper
         loggingCallback_(options.loggingCallback_),
         handshakeRecordAlignedReads_(options.handshakeRecordAlignedReads_),
         preferIoUringSocket_(options.preferIoUringSocket_),
-        transportOptions_(transportOptions) {}
+        transportOptions_(transportOptions) {
+    DCHECK(context_);
+    DCHECK(sslContextManager_);
+  }
 
   void start(
       folly::AsyncSSLSocket::UniquePtr sock,
@@ -270,7 +277,7 @@ class FizzAcceptorHandshakeHelper
       fizz::server::AsyncFizzServer* transport,
       folly::exception_wrapper ex) noexcept override;
   void fizzHandshakeAttemptFallback(
-      std::unique_ptr<folly::IOBuf> clientHello) override;
+      fizz::server::AttemptVersionFallback fallback) override;
 
   // AsyncSSLSocket::HandshakeCallback API
   void handshakeSuc(folly::AsyncSSLSocket* sock) noexcept override;
@@ -284,8 +291,15 @@ class FizzAcceptorHandshakeHelper
       std::unique_ptr<folly::IOBuf> unread) noexcept override;
   void fdDetachFail(const folly::AsyncSocketException& ex) noexcept override;
 
+  /**
+   * Handles SSLContext selection for TLS handshake fallback logic.
+   * Returns the default ssl context if no sni or no context match for sni.
+   */
+  std::shared_ptr<folly::SSLContext> selectSSLCtx(
+      const folly::Optional<std::string>& sni) const;
+
   std::shared_ptr<const fizz::server::FizzServerContext> context_;
-  std::shared_ptr<folly::SSLContext> sslContext_;
+  std::shared_ptr<const SSLContextManager> sslContextManager_;
   std::shared_ptr<fizz::extensions::TokenBindingContext> tokenBindingContext_;
   std::shared_ptr<fizz::extensions::TokenBindingServerExtension>
       tokenBindingExtension_;
@@ -299,7 +313,7 @@ class FizzAcceptorHandshakeHelper
   FizzLoggingCallback* loggingCallback_;
   bool handshakeRecordAlignedReads_{false};
 
-  std::unique_ptr<folly::IOBuf> clientHello_;
+  fizz::server::AttemptVersionFallback fallback_;
   bool preferIoUringSocket_{false};
   fizz::AsyncFizzBase::TransportOptions transportOptions_;
 };
@@ -317,6 +331,11 @@ class DefaultToFizzPeekingCallback
   void setContext(
       std::shared_ptr<const fizz::server::FizzServerContext> context) {
     context_ = std::move(context);
+  }
+
+  void setSSLContextManager(
+      std::shared_ptr<const SSLContextManager> sslContextManager) {
+    sslContextManager_ = std::move(sslContextManager);
   }
 
   void setTransportOptions(
@@ -343,9 +362,13 @@ class DefaultToFizzPeekingCallback
       std::chrono::steady_clock::time_point acceptTime,
       wangle::TransportInfo& tinfo) override {
     auto optionsCopy = options_;
+    if (!(context_ && sslContextManager_)) {
+      return nullptr;
+    }
     return wangle::AcceptorHandshakeHelper::UniquePtr(
         new FizzAcceptorHandshakeHelper(
             context_,
+            sslContextManager_,
             clientAddr,
             acceptTime,
             tinfo,
@@ -355,6 +378,7 @@ class DefaultToFizzPeekingCallback
 
  protected:
   std::shared_ptr<const fizz::server::FizzServerContext> context_;
+  std::shared_ptr<const SSLContextManager> sslContextManager_;
   FizzHandshakeOptions options_;
   fizz::AsyncFizzBase::TransportOptions transportOptions_;
 };

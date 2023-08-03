@@ -906,6 +906,27 @@ pub const empty_expression_illegal: Error =
 pub const empty_switch_cases: Error =
     Cow::Borrowed("`switch` statements need to have at least one `case` or a `default` block");
 
+pub const empty_match_statement: Error =
+    Cow::Borrowed("`match` statements need to have at least one arm");
+
+pub const expected_pattern: Error = Cow::Borrowed("A pattern is expected here.");
+
+pub const variable_patterns_nyi: Error =
+    Cow::Borrowed("Binding a variable in a pattern is not yet supported.");
+
+pub const destructuring_patterns_nyi: Error =
+    Cow::Borrowed("Destructuring values in patterns is not yet supported.");
+
+pub const constructor_patterns_nyi: Error = Cow::Borrowed(
+    "Constructor patterns are not yet supported. Use a type refinement pattern `_: T` instead.",
+);
+
+pub fn wildcard_underscore(name: &str) -> Error {
+    Cow::Owned(format!(
+        "Wildcard patterns must begin with the `_` character. To bind a variable, use a `$` character (`${name}`).",
+    ))
+}
+
 pub const preceding_backslash: Error = Cow::Borrowed("Unnecessary preceding backslash");
 
 pub fn multiple_entrypoints(loc: &str) -> Error {

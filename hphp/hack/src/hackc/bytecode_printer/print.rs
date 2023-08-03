@@ -253,7 +253,11 @@ fn print_adata_region(ctx: &Context<'_>, w: &mut dyn Write, adata: &Adata<'_>) -
 
 fn print_typedef(ctx: &Context<'_>, w: &mut dyn Write, td: &Typedef<'_>) -> Result<()> {
     newline(w)?;
-    w.write_all(b".alias ")?;
+    w.write_all(if td.case_type {
+        b".case_type "
+    } else {
+        b".alias "
+    })?;
     print_special_and_user_attrs(
         ctx,
         w,
@@ -263,7 +267,7 @@ fn print_typedef(ctx: &Context<'_>, w: &mut dyn Write, td: &Typedef<'_>) -> Resu
     )?;
     w.write_all(td.name.as_bstr())?;
     w.write_all(b" = ")?;
-    print_typedef_info(w, &td.type_info)?;
+    print_typedef_info_union(w, td.type_info_union.as_ref())?;
     w.write_all(b" ")?;
     print_span(w, &td.span)?;
     w.write_all(b" ")?;
@@ -420,10 +424,8 @@ fn print_property(ctx: &Context<'_>, w: &mut dyn Write, property: &Property<'_>)
 fn print_constant(ctx: &Context<'_>, w: &mut dyn Write, c: &Constant<'_>) -> Result<()> {
     ctx.newline(w)?;
     w.write_all(b".const ")?;
+    print_special_and_user_attrs(ctx, w, &[], &AttrContext::Constant, &c.attrs)?;
     w.write_all(c.name.as_bstr())?;
-    if c.is_abstract {
-        w.write_all(b" isAbstract")?;
-    }
     match c.value.as_ref() {
         Just(TypedValue::Uninit) => w.write_all(b" = uninit")?,
         Just(value) => {
@@ -817,7 +819,7 @@ fn print_module_use(w: &mut dyn Write, m_opt: &Maybe<Str<'_>>) -> Result<()> {
 fn is_bareword_char(c: &u8) -> bool {
     match *c {
         b'_' | b'.' | b'$' | b'\\' => true,
-        c => (b'0'..=b'9').contains(&c) || (b'a'..=b'z').contains(&c) || (b'A'..=b'Z').contains(&c),
+        c => c.is_ascii_alphanumeric(),
     }
 }
 
@@ -1170,13 +1172,16 @@ fn print_typedef_info(w: &mut dyn Write, ti: &TypeInfo<'_>) -> Result<()> {
                     .as_bstr()
             )
         )?;
-        let flags = ti.type_constraint.flags
-            & (TypeConstraintFlags::Nullable | TypeConstraintFlags::CaseType);
+        let flags = ti.type_constraint.flags & TypeConstraintFlags::Nullable;
         if !flags.is_empty() {
             wrap_by(w, " ", |w| print_type_flags(w, flags))?;
         }
         Ok(())
     })
+}
+
+fn print_typedef_info_union(w: &mut dyn Write, tis: &[TypeInfo<'_>]) -> Result<()> {
+    concat_by(w, ",", tis, print_typedef_info)
 }
 
 fn print_extends(w: &mut dyn Write, base: Option<&str>) -> Result<()> {

@@ -117,7 +117,7 @@ impl ClassState<'_, '_, '_> {
 
     /// Write the type for a (class, is_static) with the properties of the class.
     fn write_type(&mut self, is_static: IsStatic) -> Result {
-        let mut metadata: IndexMap<&str, textual::Expr> = IndexMap::default();
+        let mut metadata: IndexMap<&str, textual::Const> = IndexMap::default();
 
         let kind = if self.class.flags.is_interface() {
             "interface"
@@ -247,19 +247,31 @@ impl ClassState<'_, '_, '_> {
     /// The factory only allocates an object of the required type. The initialization is done via a separate constructor invocation on the allocated object.
     ///
     /// The factory method is used only when the class of an object to allocate is not known statically. Otherwise, we directly use Textual's typed allocation builtin.
-    fn write_factory<'s>(&mut self) -> Result {
+    fn write_factory(&mut self) -> Result {
         let name = FunctionName::Intrinsic(Intrinsic::Factory(self.class.name));
         let static_ty = static_ty(self.class.name);
         let ty = non_static_ty(self.class.name);
 
-        let params = vec![(special_idents::THIS, &static_ty)];
+        let params = vec![textual::Param {
+            name: special_idents::THIS.into(),
+            attr: None,
+            ty: static_ty.into(),
+        }];
+        let attributes = textual::FuncAttributes::default();
 
-        self.txf
-            .define_function(&name, Some(&self.class.src_loc), &params, &ty, &[], |fb| {
+        self.txf.define_function(
+            &name,
+            Some(&self.class.src_loc),
+            &attributes,
+            &params,
+            &ty,
+            &[],
+            |fb| {
                 let obj = fb.write_expr_stmt(textual::Expr::Alloc(ty.deref()))?;
                 fb.ret(obj)?;
                 Ok(())
-            })
+            },
+        )
     }
 
     fn write_method(&mut self, method: ir::Method<'_>) -> Result {
@@ -278,6 +290,7 @@ impl ClassState<'_, '_, '_> {
 
         let func_info = FuncInfo::Method(MethodInfo {
             name: method.name,
+            attrs: method.attrs,
             class: &self.class,
             is_static,
             flags: method.flags,

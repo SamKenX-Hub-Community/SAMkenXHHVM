@@ -29,6 +29,100 @@ namespace apache {
 namespace thrift {
 namespace compiler {
 
+namespace {
+
+const t_type* resolve_type(const t_type* type) {
+  while (type->is_typedef()) {
+    type = dynamic_cast<const t_typedef*>(type)->get_type();
+  }
+  return type;
+}
+
+void match_type_with_const_value(
+    diagnostic_context& ctx,
+    t_program& program,
+    const t_type* long_type,
+    t_const_value* value) {
+  const t_type* type = resolve_type(long_type);
+  value->set_ttype(t_type_ref::from_req_ptr(type));
+  if (type->is_list()) {
+    auto* elem_type = dynamic_cast<const t_list*>(type)->get_elem_type();
+    for (auto list_val : value->get_list()) {
+      match_type_with_const_value(ctx, program, elem_type, list_val);
+    }
+  }
+  if (type->is_set()) {
+    auto* elem_type = dynamic_cast<const t_set*>(type)->get_elem_type();
+    for (auto set_val : value->get_list()) {
+      match_type_with_const_value(ctx, program, elem_type, set_val);
+    }
+  }
+  if (type->is_map()) {
+    auto* key_type = dynamic_cast<const t_map*>(type)->get_key_type();
+    auto* val_type = dynamic_cast<const t_map*>(type)->get_val_type();
+    for (auto map_val : value->get_map()) {
+      match_type_with_const_value(ctx, program, key_type, map_val.first);
+      match_type_with_const_value(ctx, program, val_type, map_val.second);
+    }
+  }
+  if (type->is_struct()) {
+    auto* struct_type = dynamic_cast<const t_struct*>(type);
+    for (auto map_val : value->get_map()) {
+      auto name = map_val.first->get_string();
+      auto tfield = struct_type->get_field_by_name(name);
+      if (!tfield) {
+        // Error reported by const_checker.
+        return;
+      }
+      match_type_with_const_value(
+          ctx, program, tfield->get_type(), map_val.second);
+    }
+  }
+  // Set constant value types as enums when they are declared with integers
+  if (type->is_enum() && !value->is_enum()) {
+    value->set_is_enum();
+    auto enm = dynamic_cast<const t_enum*>(type);
+    value->set_enum(enm);
+    if (value->get_type() == t_const_value::CV_STRING) {
+      // The enum was defined after the struct field with that type was declared
+      // so the field default value, if present, was treated as a string rather
+      // than resolving to the enum constant in the parser.
+      // So we have to resolve the string to the enum constant here instead.
+      auto str = value->get_string();
+      auto constant = program.scope()->find_constant(str);
+      if (!constant) {
+        auto full_str = program.name() + "." + str;
+        constant = program.scope()->find_constant(full_str);
+      }
+      if (!constant) {
+        throw std::runtime_error(
+            std::string("type error: no matching constant: ") + str);
+      }
+      auto value_copy = constant->get_value()->clone();
+      value->assign(std::move(*value_copy));
+    }
+    if (enm->find_value(value->get_integer())) {
+      value->set_enum_value(enm->find_value(value->get_integer()));
+    }
+  }
+  // Remove enum_value if type is a base_type to use the integer instead
+  if (type->is_base_type() && value->is_enum()) {
+    value->set_enum_value(nullptr);
+  }
+}
+
+static void match_annotation_types_with_const_values(
+    diagnostic_context& ctx, mutator_context& mCtx, t_named& node) {
+  for (t_const& tconst : node.structured_annotations()) {
+    if (tconst.get_type() && tconst.get_value()) {
+      match_type_with_const_value(
+          ctx, mCtx.program(), tconst.get_type(), tconst.get_value());
+    }
+  }
+}
+
+} // namespace
+
 // TODO(afuller): Instead of mutating the AST, readers should look for
 // the interaction level annotation and the validation logic should be moved to
 // a standard validator.
@@ -50,52 +144,22 @@ void propagate_process_in_event_base_annotation(
   }
 }
 
-void remove_param_list_field_qualifiers(
-    diagnostic_context& ctx, mutator_context&, t_function& node) {
-  for (auto& field : node.params().fields()) {
-    switch (field.qualifier()) {
-      case t_field_qualifier::none:
-        continue;
-      case t_field_qualifier::required:
-        ctx.warning("optional keyword is ignored in argument lists.");
-        break;
-      case t_field_qualifier::optional:
-        ctx.warning("required keyword is ignored in argument lists.");
-        break;
-      case t_field_qualifier::terse:
-        ctx.warning(
-            "@thrift.TerseWrite annotation is ignored in argument lists.");
-        break;
-    }
-    field.set_qualifier(t_field_qualifier::none);
-  }
-}
-
-// Only an unqualified field is eligible for terse write.
-void mutate_terse_write_annotation_field(
-    diagnostic_context& ctx, mutator_context&, t_field& node) {
-  const t_const* terse_write_annotation =
-      node.find_structured_annotation_or_null(kTerseWriteUri);
-
-  if (terse_write_annotation) {
-    auto qual = node.qualifier();
-    ctx.check(
-        qual == t_field_qualifier::none,
-        "`@thrift.TerseWrite` cannot be used with qualified fields. Remove `{}` qualifier from field `{}`.",
-        qual == t_field_qualifier::required ? "required" : "optional",
-        node.name());
-    node.set_qualifier(t_field_qualifier::terse);
-  }
-}
-
 // Only an unqualified field is eligible for terse write.
 void mutate_terse_write_annotation_structured(
     diagnostic_context& ctx, mutator_context&, t_structured& node) {
-  if (ctx.program().inherit_annotation_or_null(node, kTerseWriteUri)) {
-    for (auto& field : node.fields()) {
-      if (field.qualifier() == t_field_qualifier::none) {
-        field.set_qualifier(t_field_qualifier::terse);
-      }
+  bool program_has_terse_write =
+      ctx.program().inherit_annotation_or_null(node, kTerseWriteUri);
+  for (auto& field : node.fields()) {
+    bool field_has_terse_write =
+        field.find_structured_annotation_or_null(kTerseWriteUri);
+    if (!field_has_terse_write && !program_has_terse_write) {
+      continue;
+    }
+    if (field.qualifier() == t_field_qualifier::none) {
+      field.set_qualifier(t_field_qualifier::terse);
+    } else if (field_has_terse_write) {
+      ctx.error(
+          field, "`@thrift.TerseWrite` cannot be used with qualified fields");
     }
   }
 }
@@ -201,84 +265,52 @@ void inherit_release_state(
 void normalize_return_type(
     diagnostic_context& ctx, mutator_context&, t_function& node) {
   auto& types = node.return_types();
-  for (size_t i = 0; i < types.size(); ++i) {
-    if (!types[i].resolve()) {
-      ctx.error(node, "Failed to resolve return type of `{}`.", node.name());
-      return;
-    }
-
-    const auto* type = types[i]->get_true_type();
-    if (auto* interaction = dynamic_cast<const t_interaction*>(type)) {
-      if (i != 0) {
-        ctx.error(
-            "Interactions are only allowed as the leftmost return type: {}",
-            type->get_full_name());
-      }
-
-      // Old syntax treats returned interaction as response instead
-      if (node.is_interaction_constructor()) {
-        assert(types.size() == 1);
-        node.set_response_pos(i);
-        break;
-      }
-      node.set_returned_interaction_pos(i);
-      if (types.size() == 1) {
-        node.set_return_type(t_base_type::t_void());
-        break;
-      }
-    } else if (auto* stream = dynamic_cast<const t_stream_response*>(type)) {
-      if (i + 1 != types.size()) {
-        ctx.error(
-            "Streams are only allowed as the rightmost return type: {}",
-            type->get_full_name());
-      }
-      // TODO: move first response out of t_stream_response
-      if (const auto& ret = node.return_type()) {
-        const_cast<t_stream_response*>(stream)->set_first_response_type(ret);
-      }
-      node.set_response_pos(i);
-    } else if (auto* sink = dynamic_cast<const t_sink*>(type)) {
-      if (i + 1 != types.size()) {
-        ctx.error(
-            "Sinks are only allowed as the rightmost return type: {}",
-            type->get_full_name());
-      }
-      // TODO: move first response out of t_sink
-      if (const auto& ret = node.return_type()) {
-        const_cast<t_sink*>(sink)->set_first_response_type(ret);
-      }
-      node.set_response_pos(i);
-    } else if (
-        dynamic_cast<const t_service*>(type) ||
-        dynamic_cast<const t_exception*>(type)) {
-      ctx.error("Invalid return type: {}", type->get_full_name());
-    } else {
-      if (node.return_type()) {
-        ctx.error("Too many return types: {}", type->get_full_name());
-      }
-      node.set_response_pos(i);
-    }
+  if (types.empty()) {
+    return;
   }
-}
-
-void gen_default_enum_values(
-    diagnostic_context& ctx, mutator_context&, t_enum& node) {
-  const auto* annot =
-      ctx.program().inherit_annotation_or_null(node, kGenDefaultEnumValueUri);
-  if (annot == nullptr || node.find_value(0) != nullptr) {
+  if (!types.front().resolve()) {
+    ctx.error(node, "Failed to resolve return type of `{}`.", node.name());
     return;
   }
 
-  std::string name;
-  if (auto* customName =
-          annot->get_value_from_structured_annotation_or_null("name")) {
-    name = customName->get_string();
-  } else {
-    name = "Unspecified";
+  size_t response_pos = 0;
+  t_templated_type* sink_or_stream = node.sink_or_stream();
+  if (auto* interaction = dynamic_cast<const t_interaction*>(&*types.front())) {
+    // Old syntax treats a returned interaction as a response.
+    if (node.is_interaction_constructor()) {
+      assert(types.size() == 1 && !sink_or_stream);
+      node.set_response_pos(0);
+      return;
+    }
+    node.set_returned_interaction_pos(0);
+    if (types.size() == 1) {
+      if (!sink_or_stream) {
+        node.set_return_type(t_base_type::t_void());
+      }
+      return;
+    }
+    response_pos = 1;
+  } else if (types.size() > 1) {
+    ctx.error("Too many return types");
   }
-  auto defaultValue = std::make_unique<t_enum_value>(std::move(name), 0);
-  defaultValue->set_generated();
-  node.append_value(std::move(defaultValue));
+
+  // Check the (first) response type.
+  auto type = types[response_pos];
+  const t_type* true_type = type->get_true_type();
+  if (dynamic_cast<const t_service*>(true_type) ||
+      dynamic_cast<const t_exception*>(true_type)) {
+    ctx.error("Invalid first response type: {}", type->get_full_name());
+  }
+
+  if (!sink_or_stream) {
+    node.set_response_pos(response_pos);
+  } else if (auto* sink = dynamic_cast<t_sink*>(sink_or_stream)) {
+    // TODO: move first response out of t_sink.
+    sink->set_first_response_type(type);
+  } else if (auto* stream = dynamic_cast<t_stream_response*>(sink_or_stream)) {
+    // TODO: move first response out of t_stream_response.
+    stream->set_first_response_type(type);
+  }
 }
 
 template <typename Nde>
@@ -349,7 +381,7 @@ void generate_service_schema(
     diagnostic_context& ctx, mutator_context& mCtx, t_service& node) {
   generate_runtime_schema<t_service&>(
       ctx, mCtx, true, "facebook.com/thrift/type/Schema", node, [&node]() {
-        return schematizer().gen_schema(node);
+        return schematizer().gen_full_schema(node);
       });
 }
 
@@ -436,6 +468,15 @@ void lower_type_annotations(
   }
 }
 
+template <typename Node>
+void const_type_to_const_value(
+    diagnostic_context& ctx, mutator_context& mCtx, Node& node) {
+  if (node.get_type() && node.get_value()) {
+    match_type_with_const_value(
+        ctx, mCtx.program(), node.get_type(), node.get_value());
+  }
+}
+
 ast_mutators standard_mutators() {
   ast_mutators mutators;
   {
@@ -448,17 +489,14 @@ ast_mutators standard_mutators() {
     });
     initial.add_interaction_visitor(
         &propagate_process_in_event_base_annotation);
-    initial.add_function_visitor(&remove_param_list_field_qualifiers);
     initial.add_function_visitor(&normalize_return_type);
     initial.add_definition_visitor(&set_generated);
     initial.add_definition_visitor(&set_release_state);
-    initial.add_enum_visitor(&gen_default_enum_values);
   }
 
   {
     auto& main = mutators[standard_mutator_stage::main];
     main.add_definition_visitor(&inherit_release_state);
-    main.add_field_visitor(&mutate_terse_write_annotation_field);
     main.add_struct_visitor(&mutate_terse_write_annotation_structured);
     main.add_exception_visitor(&mutate_terse_write_annotation_structured);
     main.add_struct_visitor(&mutate_inject_metadata_fields);
@@ -469,7 +507,11 @@ ast_mutators standard_mutators() {
     main.add_const_visitor(&generate_const_schema);
     main.add_enum_visitor(&generate_enum_schema);
     main.add_typedef_visitor(&generate_typedef_schema);
+    main.add_const_visitor(&const_type_to_const_value<t_const>);
+    main.add_field_visitor(&const_type_to_const_value<t_field>);
+    main.add_definition_visitor(&match_annotation_types_with_const_values);
   }
+
   add_patch_mutators(mutators);
   return mutators;
 }

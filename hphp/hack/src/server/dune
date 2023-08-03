@@ -29,20 +29,6 @@
   (pps lwt_ppx ppx_deriving.std)))
 
 (library
- (name server_global_inference)
- (wrapped false)
- (modules serverGlobalInference)
- (libraries
-  full_fidelity
-  server_codemod_type_printer
-  tast_type_collector
-  typing_defs
-  typing_global_inference
-  utils_core)
- (preprocess
-  (pps lwt_ppx ppx_deriving.std)))
-
-(library
  (name server_revision_tracker)
  (wrapped false)
  (modules serverRevisionTracker)
@@ -103,6 +89,21 @@
  (libraries provider_context server_services)
  (preprocess
   (pps lwt_ppx ppx_deriving.std)))
+
+(library
+ (name server_type_hierarchy)
+ (wrapped false)
+ (modules serverTypeHierarchy)
+ (libraries
+  provider_context
+  server_services
+  server_infer_type)
+ (preprocess
+  (pps
+  lwt_ppx
+  ppx_deriving.std
+  ppx_deriving.show
+  ppx_deriving.enum)))
 
 (library
  (name server_file_outline)
@@ -179,6 +180,7 @@
   (wrapped false)
   (modules serverConfig serverLocalConfig)
   (libraries
+   custom_error_config
    server_args
    errors
    experiments_config_file
@@ -191,7 +193,8 @@
    parser_options
    procs_bucket
    server_local_config_knobs_stubs
-   utils_config_file)
+   utils_config_file
+   )
  (preprocess
   (pps lwt_ppx ppx_deriving.std)))
 
@@ -205,9 +208,7 @@
   diagnostic_pusher
   server_client_provider
   server_config
-  server_notifier
-  typing_service_api
-  typing_service_delegate_types)
+  server_notifier)
  (preprocess
   (pps lwt_ppx ppx_deriving.std)))
 
@@ -256,6 +257,7 @@
   serverFormatTypes
   serverGlobalInferenceTypes
   serverHighlightRefsTypes
+  serverTypeHierarchyTypes
   serverLintTypes
   serverRageTypes
   serverRenameTypes
@@ -277,7 +279,7 @@
   utils_lint
   version)
  (preprocess
-  (pps lwt_ppx ppx_deriving.std)))
+  (pps lwt_ppx ppx_deriving.std ppx_deriving.show ppx_deriving.enum)))
 
 (library
  (name server_client_provider)
@@ -363,51 +365,6 @@
  (preprocess
   (pps lwt_ppx ppx_deriving.std)))
 
-(library
- (name server_code_actions_services)
- (wrapped false)
- (modules
-  codeActionsService
-  codeActionsServiceExtractVariable
-  codeActionsServiceFlipAroundComma
-  codeActionsServiceInlineVariable
- )
- (libraries
-  annotated_ast
-  ast
-  collections
-  decl_provider
-  errors
-  full_fidelity
-  lsp
-  pos
-  provider_context
-  tast_env
-  tast_provider
-  typing_skeleton
-  utils_core)
- (preprocess
-  (pps lwt_ppx ppx_deriving.std)))
-
-(library
- (name server_api)
- (wrapped false)
- (modules serverApi)
- (libraries
-  direct_decl_service
-  decl_redecl_service
-  fileutils
-  logging
-  remote
-  server_env
-  sys_utils
-  typing
-  typing_check
-  typing_service_api
-  state_loader
-  utils_core)
- (preprocess
-  (pps lwt_ppx ppx_deriving.std)))
 
 (library
  (name server_search)
@@ -481,7 +438,8 @@
   symbol
   tast_provider
   typing
-  utils_core)
+  utils_core
+ )
  (preprocess
   (pps lwt_ppx ppx_deriving.std)))
 
@@ -505,7 +463,6 @@
   serverFileDependents
   serverFileSync
   serverFormat
-  serverGenPrefetchDir
   serverIdle
   serverInferTypeBatch
   serverTastHolesBatch
@@ -514,11 +471,10 @@
   serverLint
   serverMethodJumps
   serverMethodJumpsBatch
+  serverPopulateRemoteDecls
   serverRage
-  serverRecheckCapture
   serverRename
   serverRewriteLambdaParameters
-  serverRewriteTypeParamsType
   serverSignatureHelp
   serverStamp
   serverStatusSingle
@@ -544,12 +500,10 @@
   linting_main
   lints_core
   lsp
-  remote
   security_stubs
   shallow_classes_provider
   direct_decl_parser
   direct_decl_utils
-  server_api
   server_codemod_type_printer
   server_code_actions_services
   server_docblock_at
@@ -558,14 +512,12 @@
   server_hover
   server_infer_type
   server_prechecked_files
-  server_remote_utils
   server_revision_tracker
   server_services
   server_symbol_info_service_utils
   sys_utils
   tast_provider
   typing
-  typing_service_api
   typing_check_job
   utils_core
   version
@@ -584,11 +536,22 @@
   (copy# facebook/serverInitMessages.ml serverInitMessages.fb.ml)))
 
 (library
+  (name custom_error_config)
+  (wrapped false)
+  (modules customErrorConfig)
+  (libraries
+    custom_error_types
+    relative_path
+    sys_utils
+    utils_exit
+  )
+)
+
+(library
   (name hh_server_monitor)
   (wrapped false)
   (modules
     client_command_handler
-    packageConfig
     serverCommand
     serverCommandLwt
     serverEagerInit
@@ -598,7 +561,6 @@
     serverInitTypes
     serverLazyInit
     serverMain
-    serverRemoteInit
     serverRpc)
   (libraries
     ast
@@ -606,25 +568,24 @@
     build
     ci_util
     cgroupprofiler
+    custom_error_config
     direct_decl_service
     folly_stubs
     load_script
     lwt
     memory_stats
+    package_config
     parent
     provider_backend
     security_stubs
     server
     server_env_build
-    server_global_inference
     server_call_hierarchy
     server_go_to
     server_highlight_refs
     server_search
     startup_initializer_stubs
     state_loader
-    typing_service_api
-    vfs
     watchman_client
     write_symbol_info
   (select

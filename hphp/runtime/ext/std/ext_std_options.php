@@ -75,6 +75,19 @@ function get_required_files(): varray<string> {
   return get_included_files();
 }
 
+/* For the duration of the request, keep track of all files that were
+ * invovled in autoloading
+ */
+<<__Native>>
+function record_visited_files(): void;
+
+/* Return a list of all files that were involved in autoloading for
+ * this request. Recording of visited files starts when the method
+ * record_visited_files is called.
+ */
+<<__Native>>
+function get_visited_files(): keyset<string>;
+
 <<__Native>>
 function getenv(string $varname)[read_globals]: mixed;
 
@@ -573,7 +586,7 @@ namespace __SystemLib {
         $this->body->appendChild($this->element('br'));
         $this->xml->appendChild($html);
         \header('content-type: text/html; charset=UTF-8');
-        echo $this->xml->saveHTML() as dynamic;
+        echo HH\FIXME\UNSAFE_CAST<mixed, arraykey>($this->xml->saveHTML());
       }
     }
   }

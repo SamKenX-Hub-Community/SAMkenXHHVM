@@ -7,18 +7,18 @@ package module // [[[ program thrift source path ]]]
 import (
     "context"
     "fmt"
+    "sync"
 
-    thrift0 "thrift/annotation/thrift"
 
     "thrift/lib/go/thrift"
 )
 
-var _ = thrift0.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = context.Background
 var _ = fmt.Printf
 var _ = thrift.ZERO
+var _ = sync.Mutex{}
 
 
 
@@ -59,6 +59,7 @@ func (c *MyServiceChannelClient) Open() error {
 // Deprecated: Use MyServiceChannelClient instead.
 type MyServiceClient struct {
     chClient *MyServiceChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ MyServiceClientInterface = &MyServiceClient{}
@@ -151,7 +152,7 @@ func (x *reqMyServiceQuery) GetUNonCompat() *MyUnion {
 
 func (x *reqMyServiceQuery) GetU() *MyUnion {
     if !x.IsSetU() {
-        return NewMyUnion()
+        return nil
     }
 
     return x.U
@@ -214,7 +215,9 @@ func (x *reqMyServiceQuery) DefaultGetU() *MyUnion {
 }
 
 func (x *reqMyServiceQuery) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceQueryAlias reqMyServiceQuery
+    valueAlias := (*reqMyServiceQueryAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -314,7 +317,7 @@ func (x *respMyServiceQuery) GetValueNonCompat() *MyStruct {
 
 func (x *respMyServiceQuery) GetValue() *MyStruct {
     if !x.IsSetValue() {
-        return NewMyStruct()
+        return nil
     }
 
     return x.Value
@@ -377,7 +380,9 @@ func (x *respMyServiceQuery) DefaultGetValue() *MyStruct {
 }
 
 func (x *respMyServiceQuery) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceQueryAlias respMyServiceQuery
+    valueAlias := (*respMyServiceQueryAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -532,7 +537,7 @@ func (p *procFuncMyServiceQuery) Write(seqId int32, result thrift.WritableStruct
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Query", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("query", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {

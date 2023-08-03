@@ -12,8 +12,6 @@ from thrift.Thrift import TType, TMessageType, TPriority, TRequestContext, TProc
 from thrift.protocol.TProtocol import TProtocolException
 
 
-import thrift.annotation.thrift.ttypes
-
 
 import pprint
 import warnings
@@ -264,9 +262,6 @@ Fields.thrift_spec = (
 Fields.thrift_struct_annotations = {
 }
 Fields.thrift_field_annotations = {
-  102: {
-    "thrift.box": "1",
-  },
 }
 
 def Fields__init__(self, injected_field=None, injected_structured_annotation_field=None, injected_unstructured_annotation_field=None,):

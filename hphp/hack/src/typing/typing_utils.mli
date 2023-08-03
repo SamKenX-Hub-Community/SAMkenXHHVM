@@ -87,6 +87,11 @@ val is_sub_type_ignore_generic_params_ref : is_sub_type_type ref
 val is_sub_type_ignore_generic_params :
   Typing_env_types.env -> Typing_defs.locl_ty -> Typing_defs.locl_ty -> bool
 
+val can_sub_type_ref : is_sub_type_type ref
+
+val can_sub_type :
+  Typing_env_types.env -> Typing_defs.locl_ty -> Typing_defs.locl_ty -> bool
+
 val unwrap_class_type :
   Typing_defs.decl_phase Typing_defs.ty ->
   Typing_defs.decl_phase Typing_defs.Reason.t_
@@ -199,9 +204,6 @@ val get_base_type :
   Typing_defs.locl_ty
 
 val get_printable_shape_field_name : Typing_defs.tshape_field_name -> string
-
-val shape_field_name :
-  Typing_env_types.env -> ('a, 'b) Aast.expr -> Ast_defs.shape_field_name option
 
 val shape_field_name_with_ty_err :
   Typing_env_types.env ->
@@ -364,6 +366,7 @@ val wrap_union_inter_ty_in_var :
 
 val get_concrete_supertypes :
   ?expand_supportdyn:bool ->
+  ?include_case_types:bool ->
   abstract_enum:bool ->
   Typing_env_types.env ->
   Typing_defs.locl_ty ->
@@ -541,3 +544,8 @@ val make_simplify_typed_expr :
   Typing_defs.locl_ty ->
   (Typing_defs.locl_ty, Tast.saved_env) Aast_defs.expr_ ->
   Typing_env_types.env * Tast.expr
+
+val partition_union :
+  f:('a Typing_defs.ty -> bool) ->
+  'a Typing_defs.ty list ->
+  'a Typing_defs.ty list * 'a Typing_defs.ty list

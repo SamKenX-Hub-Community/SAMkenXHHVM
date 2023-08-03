@@ -31,19 +31,19 @@ class MysqlConnectionHolder {
   // Closes the connection in hold
   virtual ~MysqlConnectionHolder();
   const std::string& host() const {
-    return conn_key_.host;
+    return conn_key_.host();
   }
   int port() const {
-    return conn_key_.port;
+    return conn_key_.port();
   }
   const std::string& user() const {
-    return conn_key_.user;
+    return conn_key_.user();
   }
   const std::string& database() const {
-    return conn_key_.db_name;
+    return conn_key_.db_name();
   }
   const std::string& password() const {
-    return conn_key_.password;
+    return conn_key_.password();
   }
   MYSQL* mysql() const {
     return mysql_;
@@ -119,7 +119,7 @@ class MysqlConnectionHolder {
   // origin is deleted.
   explicit MysqlConnectionHolder(
       std::unique_ptr<MysqlConnectionHolder> from_holder,
-      const ConnectionKey* connKey = nullptr);
+      std::optional<ConnectionKey> connKey = std::nullopt);
 
  protected:
   MysqlClientBase* client_;

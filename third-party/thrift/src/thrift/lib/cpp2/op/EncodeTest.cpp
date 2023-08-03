@@ -15,12 +15,16 @@
  */
 
 #include <type_traits>
+#include <common/datastruct/hashtable/FBHashSet.h>
 #include <folly/portability/GTest.h>
+#include <folly/sorted_vector_types.h>
 #include <thrift/conformance/cpp2/internal/AnyStructSerializer.h>
 #include <thrift/lib/cpp/util/EnumUtils.h>
 #include <thrift/lib/cpp2/TypeClass.h>
 #include <thrift/lib/cpp2/op/Encode.h>
+#include <thrift/lib/cpp2/protocol/DebugProtocol.h>
 #include <thrift/lib/cpp2/protocol/Object.h>
+#include <thrift/lib/cpp2/protocol/Serializer.h>
 #include <thrift/lib/cpp2/type/Tag.h>
 #include <thrift/test/AdapterTest.h>
 #include <thrift/test/testset/Testset.h>
@@ -30,7 +34,7 @@ using namespace ::apache::thrift::conformance;
 using detail::protocol_reader_t;
 using detail::protocol_writer_t;
 
-namespace apache::thrift::op {
+namespace apache::thrift::op::detail {
 namespace {
 using apache::thrift::protocol::asValueStruct;
 using apache::thrift::protocol::TType;
@@ -112,7 +116,15 @@ void testSerializedSizeBasicTypes() {
   testSerializedSize<Protocol, type::i64_t, type_class::integral>((int64_t)1);
   testSerializedSize<Protocol, type::float_t, type_class::floating_point>(1.5f);
   testSerializedSize<Protocol, type::double_t, type_class::floating_point>(1.5);
+  testSerializedSize<Protocol, type::string_t, type_class::string>(
+      std::string("foo"));
+  testSerializedSize<Protocol, type::string_t, type_class::string>(
+      folly::StringPiece("foo"));
   testSerializedSize<Protocol, type::string_t, type_class::string>("foo");
+  testSerializedSize<Protocol, type::binary_t, type_class::binary>(
+      std::string("foo"));
+  testSerializedSize<Protocol, type::binary_t, type_class::binary>(
+      folly::StringPiece("foo"));
   testSerializedSize<Protocol, type::binary_t, type_class::binary>("foo");
   enum class MyEnum { value = 1 };
   testSerializedSize<Protocol, type::enum_t<MyEnum>, type_class::enumeration>(
@@ -308,6 +320,8 @@ void testEncodeBasicTypes() {
   testEncode<Protocol, type::i64_t>(1);
   testEncode<Protocol, type::float_t>(1.5);
   testEncode<Protocol, type::double_t>(1.5);
+  testEncode<Protocol, type::string_t>(std::string("foo"), false);
+  testEncode<Protocol, type::string_t>(folly::StringPiece("foo"), false);
   testEncode<Protocol, type::string_t>("foo", false);
   testEncode<Protocol, type::binary_t>("foo");
   testEncode<Protocol, type::enum_t<int>>(1);
@@ -433,6 +447,14 @@ void testEncodeAdapted() {
         test::TemplatedTestAdapter::fromThrift(value), TType::T_MAP, false);
     EXPECT_EQ(result, asValueStruct<Tag>(value));
   }
+  {
+    // test op::encode with Adapter::encode optimization
+    using AdaptedTag = type::adapted<test::EncodeAdapter, type::i64_t>;
+    test::Num value{1};
+    auto result =
+        encodeAndParseValue<Protocol, AdaptedTag>(value, TType::T_I64);
+    EXPECT_EQ(result, asValueStruct<type::i64_t>(1));
+  }
 }
 
 TEST(EncodeTest, EncodeBasicTypes) {
@@ -513,9 +535,21 @@ void testDecodeContainers() {
   testDecode<Protocol, type::list<type::bool_t>>(
       std::vector<bool>{true, false, true});
   testDecode<Protocol, type::set<type::bool_t>>(std::set<bool>{true, false});
+  testDecode<Protocol, type::set<type::bool_t>>(
+      std::unordered_set<bool>{true, false});
   testDecode<Protocol, type::map<type::string_t, type::byte_t>>(
       std::map<std::string, int8_t>{
           {std::string("foo"), 1}, {std::string("foo"), 2}});
+  testDecode<Protocol, type::map<type::string_t, type::byte_t>>(
+      std::unordered_map<std::string, int8_t>{
+          {std::string("foo"), 1}, {std::string("foo"), 2}});
+  testDecode<Protocol, type::set<type::byte_t>>(
+      folly::sorted_vector_set<int8_t>{3, 1, 2});
+  testDecode<Protocol, type::map<type::string_t, type::byte_t>>(
+      folly::sorted_vector_map<std::string, int8_t>{
+          {std::string("foo"), 1}, {std::string("foo"), 2}});
+  testDecode<Protocol, type::set<type::byte_t>>(
+      facebook::datastruct::FBHashSet<int8_t>{3, 1, 2});
 
   // Test if it skips when value type doesn't match.
   {
@@ -616,6 +650,41 @@ void testDecodeCppType() {
   }
 }
 
+template <
+    conformance::StandardProtocol Protocol,
+    typename Struct,
+    typename Tag,
+    typename T>
+void testEncodeAndDecodeFieldAdapted(T value) {
+  SCOPED_TRACE(folly::pretty_name<Tag>());
+  // s is used as a placeholder.
+  Struct s;
+  const test::AdaptedWithContext<T, Struct, 0> adapted{value};
+  using AdaptedTag = type::adapted<test::TemplatedTestFieldAdapter, Tag>;
+  using FieldTag = type::field<AdaptedTag, FieldContext<Struct, 0>>;
+
+  protocol_writer_t<Protocol> writer;
+  folly::IOBufQueue queue;
+  writer.setOutput(&queue);
+  encode<AdaptedTag>(writer, adapted);
+
+  protocol_reader_t<Protocol> reader;
+  auto serialized = queue.move();
+  reader.setInput(serialized.get());
+  test::AdaptedWithContext<T, Struct, 0> result;
+  decode<FieldTag>(reader, result, s);
+  EXPECT_EQ(adapted, result);
+
+  using AdaptedTag2 = type::adapted<test::EncodeFieldAdapter, Tag>;
+  using FieldTag2 = type::field<AdaptedTag2, FieldContext<Struct, 0>>;
+  encode<AdaptedTag2>(writer, adapted);
+
+  auto serialized2 = queue.move();
+  reader.setInput(serialized2.get());
+  decode<FieldTag2>(reader, result, s);
+  EXPECT_EQ(adapted, result);
+}
+
 template <conformance::StandardProtocol Protocol>
 void testDecodeAdapted() {
   SCOPED_TRACE(apache::thrift::util::enumNameSafe(Protocol));
@@ -626,6 +695,11 @@ void testDecodeAdapted() {
   testDecodeObject<Protocol, Struct, type::struct_t<Struct>, true>(1);
   using Union = test::testset::union_with<type::i32_t>;
   testDecodeObject<Protocol, Union, type::union_t<Union>, true>(1);
+  testDecode<Protocol, type::adapted<test::EncodeAdapter, type::i64_t>>(
+      test::Num{1});
+  using Struct64 = test::testset::struct_with<type::i64_t>;
+  testEncodeAndDecodeFieldAdapted<Protocol, Struct64, type::i64_t>(
+      static_cast<int64_t>(42));
 }
 
 TEST(DecodeTest, DecodeBasicTypes) {
@@ -652,6 +726,63 @@ TEST(DecodeTest, DecodeAdapted) {
   testDecodeAdapted<conformance::StandardProtocol::Binary>();
   testDecodeAdapted<conformance::StandardProtocol::Compact>();
 }
-
 } // namespace
-} // namespace apache::thrift::op
+
+enum { UseWrite, UseStructEncode };
+
+struct MockStruct {
+  static const bool __fbthrift_cpp2_gen_json = false;
+  template <class T>
+  uint32_t write(T&&) const {
+    return UseWrite;
+  }
+};
+
+struct JSONMockStruct {
+  static const bool __fbthrift_cpp2_gen_json = true;
+  template <class T>
+  uint32_t write(T&&) const {
+    return UseWrite;
+  }
+};
+
+template <>
+struct StructEncode<MockStruct> {
+  template <typename T, typename U>
+  uint32_t operator()(T&&, const U&) const {
+    return UseStructEncode;
+  }
+};
+
+template <>
+struct StructEncode<JSONMockStruct> {
+  template <typename T, typename U>
+  uint32_t operator()(T&&, const U&) const {
+    return UseStructEncode;
+  }
+};
+
+TEST(EncodeTest, EncodeMethod) {
+  CompactProtocolWriter compact;
+  BinaryProtocolWriter binary;
+  SimpleJSONProtocolWriter simpleJson;
+  JSONProtocolWriter json;
+  DebugProtocolWriter debug;
+  MockStruct mock;
+  JSONMockStruct jsonMock;
+  auto encodeMockStruct = op::encode<type::struct_t<MockStruct>>;
+  auto encodeJSONMockStruct = op::encode<type::struct_t<JSONMockStruct>>;
+
+  EXPECT_EQ(encodeMockStruct(compact, mock), UseWrite);
+  EXPECT_EQ(encodeMockStruct(binary, mock), UseWrite);
+  EXPECT_EQ(encodeMockStruct(simpleJson, mock), UseStructEncode);
+  EXPECT_EQ(encodeMockStruct(json, mock), UseStructEncode);
+  EXPECT_EQ(encodeMockStruct(debug, mock), UseStructEncode);
+  EXPECT_EQ(encodeJSONMockStruct(compact, jsonMock), UseWrite);
+  EXPECT_EQ(encodeJSONMockStruct(binary, jsonMock), UseWrite);
+  EXPECT_EQ(encodeJSONMockStruct(simpleJson, jsonMock), UseWrite);
+  EXPECT_EQ(encodeJSONMockStruct(json, jsonMock), UseStructEncode);
+  EXPECT_EQ(encodeJSONMockStruct(debug, jsonMock), UseStructEncode);
+}
+
+} // namespace apache::thrift::op::detail

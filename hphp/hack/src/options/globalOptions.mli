@@ -55,23 +55,10 @@ type t = {
      always lazily declares classes not already in cache. *)
   tco_defer_class_declaration_threshold: int option;
   (* Whether the Eden prefetch hook should be invoked *)
-  tco_prefetch_deferred_files: bool;
-  (* If set, distributes type checking to remote workers if the number of files to
-     type check exceeds the threshold. If not set, then always checks everything locally. *)
-  tco_remote_type_check_threshold: int;
-  (* Turns on remote type checking *)
-  tco_remote_type_check: bool;
-  (* If set, uses the key to fetch type checking jobs *)
-  tco_remote_worker_key: string option;
-  (* If set, uses the check ID when logging events in the context of remove init/work *)
-  tco_remote_check_id: string option;
-  (* Dictates the number of remote type checking workers *)
-  tco_num_remote_workers: int;
   (* The capacity of the localization cache for large types *)
   tco_locl_cache_capacity: int;
   (* The number of nodes a type has to exceed to enter the localization cache *)
   tco_locl_cache_node_threshold: int;
-  so_remote_version_specifier: string option;
   (* Enables the reverse naming table to fall back to SQLite for queries. *)
   so_naming_sqlite_path: string option;
   (* Namespace aliasing map *)
@@ -157,6 +144,10 @@ type t = {
    * Flag to produce an error whenever the TAST contains unresolved type variables
    *)
   tco_disallow_unresolved_type_variables: bool;
+  (*
+   * Allows additional error messages to be added to typing errors via config
+   *)
+  tco_custom_error_config: Custom_error_config.t;
   (* Enable class-level where clauses, i.e.
      class base<T> where T = int {} *)
   po_enable_class_level_where_clauses: bool;
@@ -166,12 +157,6 @@ type t = {
   po_allowed_decl_fixme_codes: ISet.t;
   (* Enable @ attribute syntax *)
   po_allow_new_attribute_syntax: bool;
-  (* Perform global inference globally on the code base to infer missing type annotations. *)
-  tco_global_inference: bool;
-  tco_gi_reinfer_types: string list;
-      (** Types we want to remove and replace by inferred types during global inference. *)
-  tco_ordered_solving: bool;
-      (** Whether to solve typing inference constraints using ordered solving or transitive closure. *)
   (* Enable const static properties *)
   tco_const_static_props: bool;
   (* Disable <<...>> attribute syntax *)
@@ -190,12 +175,6 @@ type t = {
    * (skipping post parse error checks) *)
   po_parser_errors_only: bool;
   tco_check_attribute_locations: bool;
-  (* Service name for glean connection; default "" to autoselect server *)
-  glean_service: string;
-  (* Hostname for glean connection; default "" to autoselect server *)
-  glean_hostname: string;
-  (* Port number for glean connection; default 0 to autoselect server *)
-  glean_port: int;
   (* Reponame used for glean connection, default to "www.autocomplete" *)
   glean_reponame: string;
   (* Path prefix to use for files relative to the repository root when writing symbol info to JSON *)
@@ -243,6 +222,8 @@ type t = {
   po_disable_xhp_children_declarations: bool;
   (* Disable HH_IGNORE_ERROR comments, either raising an error if 1 or treating them as normal comments if 2. *)
   po_disable_hh_ignore_error: int;
+  (* Parse all user attributes rather than only the ones needed for typing *)
+  po_keep_user_attributes: bool;
   (* Enable features used to typecheck systemlib *)
   tco_is_systemlib: bool;
   (* Controls if higher-kinded types are supported *)
@@ -259,6 +240,10 @@ type t = {
   tco_typecheck_sample_rate: float;
   (* Experimental implementation of a "sound" dynamic type *)
   tco_enable_sound_dynamic: bool;
+  (* Under sound dynamic, introduce like-types for built-in operations e.g. on Vector.
+     This is done anyway if everything_sdt=true
+  *)
+  tco_pessimise_builtins: bool;
   (* Allow use of attribute <<__NoAutoDynamic>> *)
   tco_enable_no_auto_dynamic: bool;
   (* Skip second check of method under dynamic assumptions *)
@@ -340,14 +325,18 @@ type t = {
   tco_populate_dead_unsafe_cast_heap: bool;
   po_disallow_static_constants_in_default_func_args: bool;
   tco_load_hack_64_distc_saved_state: bool;
-  tco_ide_should_use_hack_64_distc: bool;
   (* Produce variations of methods and functions in TASTs that are cheked under
      dynamic assumptions. *)
-  tco_tast_under_dynamic: bool;
   (* Use the Rust implementation of naming elaboration and NAST checks. *)
   tco_rust_elab: bool;
-  tco_ide_load_naming_table_on_disk: bool;
-      (** POC: @nzthomas - allow ClientIdeDaemon to grab any naming table from disk before trying Watchman / Manifold *)
+  dump_tast_hashes: bool;  (** Dump tast hashes in /tmp/hh_server/tast_hashes *)
+  tco_autocomplete_mode: bool;  (** Are we running in autocomplete mode ? *)
+  tco_package_info: PackageInfo.t;
+      (** Information used to determine which package a module belongs to during typechecking. *)
+  po_unwrap_concurrent: bool;
+      (** Replace concurrent blocks with their bodies in the AST *)
+  tco_log_exhaustivity_check: bool;
+      (** Instrument the existing exhaustivity lint (for strict switch statements) *)
 }
 [@@deriving eq, show]
 
@@ -362,15 +351,8 @@ val set :
   ?tco_num_local_workers:int ->
   ?tco_max_typechecker_worker_memory_mb:int ->
   ?tco_defer_class_declaration_threshold:int ->
-  ?tco_prefetch_deferred_files:bool ->
-  ?tco_remote_type_check_threshold:int ->
-  ?tco_remote_type_check:bool ->
-  ?tco_remote_worker_key:string ->
-  ?tco_remote_check_id:string ->
-  ?tco_num_remote_workers:int ->
   ?tco_locl_cache_capacity:int ->
   ?tco_locl_cache_node_threshold:int ->
-  ?so_remote_version_specifier:string ->
   ?so_naming_sqlite_path:string ->
   ?po_auto_namespace_map:(string * string) list ->
   ?po_codegen:bool ->
@@ -398,13 +380,11 @@ val set :
   ?tco_check_xhp_attribute:bool ->
   ?tco_check_redundant_generics:bool ->
   ?tco_disallow_unresolved_type_variables:bool ->
+  ?tco_custom_error_config:Custom_error_config.t ->
   ?po_enable_class_level_where_clauses:bool ->
   ?po_disable_legacy_soft_typehints:bool ->
   ?po_allowed_decl_fixme_codes:ISet.t ->
   ?po_allow_new_attribute_syntax:bool ->
-  ?tco_global_inference:bool ->
-  ?tco_gi_reinfer_types:string list ->
-  ?tco_ordered_solving:bool ->
   ?tco_const_static_props:bool ->
   ?po_disable_legacy_attribute_syntax:bool ->
   ?tco_const_attribute:bool ->
@@ -414,9 +394,6 @@ val set :
   ?po_abstract_static_props:bool ->
   ?po_parser_errors_only:bool ->
   ?tco_check_attribute_locations:bool ->
-  ?glean_service:string ->
-  ?glean_hostname:string ->
-  ?glean_port:int ->
   ?glean_reponame:string ->
   ?symbol_write_ownership:bool ->
   ?symbol_write_root_path:string ->
@@ -437,6 +414,7 @@ val set :
   ?po_disable_xhp_element_mangling:bool ->
   ?po_disable_xhp_children_declarations:bool ->
   ?po_disable_hh_ignore_error:int ->
+  ?po_keep_user_attributes:bool ->
   ?po_allow_unstable_features:bool ->
   ?tco_is_systemlib:bool ->
   ?tco_higher_kinded_types:bool ->
@@ -444,6 +422,7 @@ val set :
   ?tco_report_pos_from_reason:bool ->
   ?tco_typecheck_sample_rate:float ->
   ?tco_enable_sound_dynamic:bool ->
+  ?tco_pessimise_builtins:bool ->
   ?tco_enable_no_auto_dynamic:bool ->
   ?tco_skip_check_under_dynamic:bool ->
   ?tco_ifc_enabled:string list ->
@@ -479,10 +458,12 @@ val set :
   ?tco_populate_dead_unsafe_cast_heap:bool ->
   ?po_disallow_static_constants_in_default_func_args:bool ->
   ?tco_load_hack_64_distc_saved_state:bool ->
-  ?tco_ide_should_use_hack_64_distc:bool ->
-  ?tco_tast_under_dynamic:bool ->
   ?tco_rust_elab:bool ->
-  ?tco_ide_load_naming_table_on_disk:bool ->
+  ?dump_tast_hashes:bool ->
+  ?tco_autocomplete_mode:bool ->
+  ?tco_package_info:PackageInfo.t ->
+  ?po_unwrap_concurrent:bool ->
+  ?tco_log_exhaustivity_check:bool ->
   t ->
   t
 
@@ -490,8 +471,6 @@ val default : t
 
 (* NOTE: set/getters for tco_* options moved to TypecheckerOptions *)
 (* NOTE: set/getters for po_* options moved to ParserOptions *)
-
-val so_remote_version_specifier : t -> string option
 
 val so_naming_sqlite_path : t -> string option
 

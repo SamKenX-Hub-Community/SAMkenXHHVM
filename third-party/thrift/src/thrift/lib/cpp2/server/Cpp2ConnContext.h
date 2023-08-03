@@ -99,17 +99,16 @@ class Cpp2ConnContext : public apache::thrift::server::TConnectionContext {
       const folly::SocketAddress* address,
       const folly::AsyncTransport* transport,
       folly::EventBaseManager* manager,
-      const std::shared_ptr<RequestChannel>& duplexChannel,
       std::shared_ptr<X509> peerCert,
       apache::thrift::ClientIdentityHook clientIdentityHook,
       const Cpp2Worker* worker,
-      const IOWorkerContext* workerContext)
+      const IOWorkerContext* workerContext,
+      detail::ConnectionInternalFieldsT internalFields)
       : transport_(transport),
         manager_(manager),
-        duplexChannel_(duplexChannel),
         worker_(worker),
         workerContext_(workerContext),
-        internalFields_(detail::createPerConnectionInternalFields()) {
+        internalFields_(std::move(internalFields)) {
     if (address) {
       transportInfo_.peerAddress = *address;
     }
@@ -142,6 +141,28 @@ class Cpp2ConnContext : public apache::thrift::server::TConnectionContext {
     }
   }
 
+ protected:
+  /** DO NOT use this ctor to override internal fields if you are not sure
+   * because this may result in a security SEV**/
+  template <typename WorkerT>
+  explicit Cpp2ConnContext(
+      const folly::SocketAddress* address,
+      const folly::AsyncTransport* transport,
+      folly::EventBaseManager* manager,
+      std::shared_ptr<X509> peerCert /*overridden from socket*/,
+      apache::thrift::ClientIdentityHook clientIdentityHook,
+      const WorkerT* worker,
+      detail::ConnectionInternalFieldsT internalFields)
+      : Cpp2ConnContext(
+            address,
+            transport,
+            manager,
+            std::move(peerCert),
+            std::move(clientIdentityHook),
+            worker,
+            worker,
+            std::move(internalFields)) {}
+
  public:
   enum class TransportType {
     HEADER,
@@ -153,25 +174,23 @@ class Cpp2ConnContext : public apache::thrift::server::TConnectionContext {
       const folly::SocketAddress* address = nullptr,
       const folly::AsyncTransport* transport = nullptr,
       folly::EventBaseManager* manager = nullptr,
-      const std::shared_ptr<RequestChannel>& duplexChannel = nullptr,
       std::shared_ptr<X509> peerCert = nullptr /*overridden from socket*/,
       apache::thrift::ClientIdentityHook clientIdentityHook = nullptr)
       : Cpp2ConnContext(
             address,
             transport,
             manager,
-            duplexChannel,
             std::move(peerCert),
             std::move(clientIdentityHook),
             nullptr,
-            nullptr) {}
+            nullptr,
+            detail::createPerConnectionInternalFields()) {}
 
   template <typename WorkerT>
   explicit Cpp2ConnContext(
       const folly::SocketAddress* address,
       const folly::AsyncTransport* transport,
       folly::EventBaseManager* manager,
-      const std::shared_ptr<RequestChannel>& duplexChannel,
       std::shared_ptr<X509> peerCert /*overridden from socket*/,
       apache::thrift::ClientIdentityHook clientIdentityHook,
       const WorkerT* worker)
@@ -179,11 +198,11 @@ class Cpp2ConnContext : public apache::thrift::server::TConnectionContext {
             address,
             transport,
             manager,
-            duplexChannel,
             std::move(peerCert),
             std::move(clientIdentityHook),
             worker,
-            worker) {}
+            worker,
+            detail::createPerConnectionInternalFields()) {}
 
   ~Cpp2ConnContext() override { DCHECK(tiles_.empty()); }
   Cpp2ConnContext(Cpp2ConnContext&&) = default;
@@ -223,17 +242,6 @@ class Cpp2ConnContext : public apache::thrift::server::TConnectionContext {
       return "";
     }
     return folly::ssl::OpenSSLUtils::getCommonName(osslCert->getX509().get());
-  }
-
-  template <typename Client>
-  std::shared_ptr<Client> getDuplexClient() {
-    DCHECK(duplexChannel_);
-    auto client = std::dynamic_pointer_cast<Client>(duplexClient_);
-    if (!client) {
-      duplexClient_.reset(new Client(duplexChannel_));
-      client = std::dynamic_pointer_cast<Client>(duplexClient_);
-    }
-    return client;
   }
 
   virtual const std::string& getSecurityProtocol() const {
@@ -517,8 +525,6 @@ class Cpp2ConnContext : public apache::thrift::server::TConnectionContext {
   const folly::AsyncTransport* transport_;
 
   folly::EventBaseManager* manager_;
-  std::shared_ptr<RequestChannel> duplexChannel_;
-  std::shared_ptr<TClientBase> duplexClient_;
   PeerCred peerCred_;
   // A CancellationSource that will be signaled when the connection is closed.
   folly::CancellationSource cancellationSource_;
@@ -543,15 +549,29 @@ class Cpp2ClientRequestContext
 
 // Request-specific context
 class Cpp2RequestContext : public apache::thrift::server::TConnectionContext {
- public:
-  explicit Cpp2RequestContext(
+ protected:
+  /** DO NOT use this ctor to override internal fields if you are not sure
+   * because this may result in a security SEV**/
+  Cpp2RequestContext(
       Cpp2ConnContext* ctx,
+      detail::RequestInternalFieldsT internalFields,
       apache::thrift::transport::THeader* header = nullptr,
       std::string methodName = std::string{})
       : TConnectionContext(header),
         ctx_(ctx),
         methodName_(std::move(methodName)),
-        internalFields_(detail::createPerRequestInternalFields()) {}
+        internalFields_(std::move(internalFields)) {}
+
+ public:
+  explicit Cpp2RequestContext(
+      Cpp2ConnContext* ctx,
+      apache::thrift::transport::THeader* header = nullptr,
+      std::string methodName = std::string{})
+      : Cpp2RequestContext(
+            ctx,
+            detail::createPerRequestInternalFields(),
+            header,
+            std::move(methodName)) {}
 
   void setConnectionContext(Cpp2ConnContext* ctx) { ctx_ = ctx; }
 

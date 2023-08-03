@@ -116,8 +116,6 @@ The paper refers to this approach as "restarting", and further suggests that rec
 the chain of jobs could be used to minimize the number of restarts.
  *)
 
-module Delegate = Typing_service_delegate
-
 type seconds_since_epoch = float
 
 type log_message = string
@@ -129,6 +127,7 @@ let should_enable_deferring (file : check_file_workitem) =
 
 type process_file_results = {
   file_errors: Errors.t;
+  file_tast_hashes: Tast_hashes.by_names option;
   deferred_decls: Deferred_decl.deferment list;
 }
 
@@ -153,44 +152,26 @@ let process_file
   let fn = file.path in
   let (file_errors, ast) = Ast_provider.get_ast_with_error ~full:true ctx fn in
   if not (Errors.is_empty file_errors) then
-    { file_errors; deferred_decls = [] }
+    { file_errors; deferred_decls = []; file_tast_hashes = None }
   else
     let opts = Provider_context.get_tcopt ctx in
-    let (funs, classes, typedefs, gconsts, modules) = Nast.get_defs ast in
     let ctx = Provider_context.map_tcopt ctx ~f:(fun _tcopt -> opts) in
     try
-      let result =
+      let (result : (_, unit) result) =
         Deferred_decl.with_deferred_decls
           ~enable:(should_enable_deferring file)
           ~declaration_threshold_opt:
             (TypecheckerOptions.defer_class_declaration_threshold opts)
           ~memory_mb_threshold_opt:decl_cap_mb
-        @@ fun () ->
-        Errors.do_with_context ~drop_fixmed:false fn Errors.Typing @@ fun () ->
-        let _fun_tasts =
-          List.map funs ~f:FileInfo.id_name
-          |> List.filter_map ~f:(Typing_check_job.type_fun ctx fn)
-        in
-        let _class_tasts =
-          List.map classes ~f:FileInfo.id_name
-          |> List.filter_map ~f:(Typing_check_job.type_class ctx fn)
-        in
-        let _typedef_asts =
-          List.map typedefs ~f:FileInfo.id_name
-          |> List.filter_map ~f:(Typing_check_job.check_typedef ctx fn)
-        in
-        let _const_asts =
-          List.map gconsts ~f:FileInfo.id_name
-          |> List.filter_map ~f:(Typing_check_job.check_const ctx fn)
-        in
-        let _module_asts =
-          List.map modules ~f:FileInfo.id_name
-          |> List.filter_map ~f:(Typing_check_job.check_module ctx fn)
-        in
-        ()
+          (fun () ->
+            Typing_check_job.calc_errors_and_tast
+              ctx
+              fn
+              ~drop_fixmed:false
+              ~full_ast:ast)
       in
       match result with
-      | Ok (file_errors, ()) ->
+      | Ok (file_errors, tasts) ->
         if log_errors then
           List.iter (Errors.get_error_list file_errors) ~f:(fun error ->
               let { User_error.claim; code; _ } = error in
@@ -205,7 +186,18 @@ let process_file
                 c2
                 code
                 msg);
-        { file_errors; deferred_decls = [] }
+        {
+          file_errors;
+          deferred_decls = [];
+          file_tast_hashes =
+            (if
+             Provider_context.get_tcopt ctx
+             |> TypecheckerOptions.dump_tast_hashes
+            then
+              Some (Tast_hashes.hash_tasts tasts)
+            else
+              None);
+        }
       | Error () ->
         let deferred_decls =
           Errors.ignore_ (fun () -> Naming.program ctx ast)
@@ -215,7 +207,7 @@ let process_file
                  Naming_provider.get_class_path ctx class_name >>| fun fn ->
                  (fn, class_name))
         in
-        { file_errors = Errors.empty; deferred_decls }
+        { file_errors = Errors.empty; deferred_decls; file_tast_hashes = None }
     with
     | WorkerCancel.Worker_should_exit as exn ->
       (* Cancellation requests must be re-raised *)
@@ -230,7 +222,6 @@ module ProcessFilesTally = struct
   (** Counters for the [check_file_workitem] of each sort being processed *)
   type t = {
     decls: int;  (** how many [Declare] items we performed *)
-    prefetches: int;  (** how many [Prefetch] items we performed *)
     checks_done: int;  (** how many [Check] items we typechecked *)
     checks_deferred: int;  (** how many [Check] items we deferred to later *)
     decls_deferred: int;  (** how many [Declare] items we added for later *)
@@ -240,7 +231,6 @@ module ProcessFilesTally = struct
   let empty =
     {
       decls = 0;
-      prefetches = 0;
       checks_done = 0;
       checks_deferred = 0;
       decls_deferred = 0;
@@ -255,8 +245,6 @@ module ProcessFilesTally = struct
     else
       { tally with exceeded_cap_count = tally.exceeded_cap_count + 1 }
 
-  let incr_prefetches tally = { tally with prefetches = tally.prefetches + 1 }
-
   let incr_checks tally deferred_decls =
     if List.is_empty deferred_decls then
       { tally with checks_done = tally.checks_done + 1 }
@@ -267,13 +255,11 @@ module ProcessFilesTally = struct
         decls_deferred = tally.decls_deferred + List.length deferred_decls;
       }
 
-  let count tally =
-    tally.checks_done + tally.checks_deferred + tally.decls + tally.prefetches
+  let count tally = tally.checks_done + tally.checks_deferred + tally.decls
 
   let get_telemetry tally =
     Telemetry.create ()
     |> Telemetry.int_ ~key:"decls" ~value:tally.decls
-    |> Telemetry.int_ ~key:"prefetches" ~value:tally.prefetches
     |> Telemetry.int_ ~key:"checks_done" ~value:tally.checks_done
     |> Telemetry.int_ ~key:"checks_deferred" ~value:tally.checks_deferred
     |> Telemetry.int_ ~key:"decls_deferred" ~value:tally.decls_deferred
@@ -297,15 +283,10 @@ let get_stats ~include_slightly_costly_stats tally :
 external hh_malloc_trim : unit -> unit = "hh_malloc_trim"
 
 type workitem_accumulator = {
-  progress: typing_progress;
   errors: Errors.t;
+  tast_hashes: Tast_hashes.t;
   tally: ProcessFilesTally.t;
   stats: HackEventLogger.ProfileTypeCheck.stats;
-}
-
-type process_workitem_result = {
-  acc: workitem_accumulator;
-  workitem_ends_under_cap: bool;
 }
 
 let process_one_workitem
@@ -315,16 +296,9 @@ let process_one_workitem
     ~memory_cap
     ~longlived_workers
     ~error_count_at_start_of_batch
-    ~(acc : workitem_accumulator) : process_workitem_result =
-  let { progress; errors; tally; stats } = acc in
-
-  let { remaining; completed; deferred } = progress in
-  let (fn, remaining) =
-    match remaining with
-    | [] -> failwith "progress.remaining wasn't expected to be empty"
-    | fn :: remaining -> (fn, remaining)
-  in
-
+    (fn : workitem)
+    ({ errors; tast_hashes; tally; stats } : workitem_accumulator) :
+    TypingProgress.progress_outcome * workitem_accumulator =
   let decl_cap_mb =
     if check_info.use_max_typechecker_worker_memory_for_decl_deferral then
       memory_cap
@@ -337,7 +311,13 @@ let process_one_workitem
       .HackEventLogger.PerFileProfilingConfig.profile_type_check_twice
   in
 
-  let (file, decl, mid_stats, file_errors, new_deferred, tally) =
+  let ( file,
+        decl,
+        mid_stats,
+        file_errors,
+        tast_hashes,
+        deferred_workitems,
+        tally ) =
     match fn with
     | Check file ->
       (* We'll show at least the first five errors in the project. Maybe more,
@@ -347,7 +327,12 @@ let process_one_workitem
         check_info.log_errors
         && error_count_at_start_of_batch + Errors.count errors < 5
       in
-      let result = process_file ctx file ~decl_cap_mb ~log_errors in
+      let { file_errors; file_tast_hashes; deferred_decls } =
+        process_file ctx file ~decl_cap_mb ~log_errors
+      in
+      let tast_hashes =
+        Tast_hashes.add tast_hashes ~key:file.path ~data:file_tast_hashes
+      in
       let mid_stats =
         if type_check_twice then
           Some (get_stats ~include_slightly_costly_stats:false tally)
@@ -359,15 +344,15 @@ let process_one_workitem
           let _ignored = process_file ctx file ~decl_cap_mb in
           ()
       end;
-      let tally = ProcessFilesTally.incr_checks tally result.deferred_decls in
+      let tally = ProcessFilesTally.incr_checks tally deferred_decls in
       let deferred =
-        if List.is_empty result.deferred_decls then
+        if List.is_empty deferred_decls then
           []
         else
-          List.map result.deferred_decls ~f:(fun fn -> Declare fn)
+          List.map deferred_decls ~f:(fun fn -> Declare fn)
           @ [Check { file with was_already_deferred = true }]
       in
-      (Some file, None, mid_stats, result.file_errors, deferred, tally)
+      (Some file, None, mid_stats, file_errors, tast_hashes, deferred, tally)
     | Declare (_path, class_name) ->
       let (_ : Decl_provider.class_decl option) =
         Decl_provider.get_class ctx class_name
@@ -376,16 +361,9 @@ let process_one_workitem
         Some class_name,
         None,
         Errors.empty,
+        tast_hashes,
         [],
         ProcessFilesTally.incr_decls tally )
-    | Prefetch paths ->
-      Vfs.prefetch paths;
-      ( None,
-        None,
-        None,
-        Errors.empty,
-        [],
-        ProcessFilesTally.incr_prefetches tally )
   in
   let errors = Errors.merge file_errors errors in
   let workitem_ends_under_cap = Gc_utils.get_heap_size () <= workitem_cap_mb in
@@ -433,23 +411,13 @@ let process_one_workitem
     ~workitem_end_stats
     ~workitem_end_second_stats;
 
-  let progress =
-    {
-      completed = fn :: completed;
-      remaining;
-      deferred = List.concat [new_deferred; deferred];
-    }
-  in
-
-  {
-    acc = { progress; errors; tally; stats = final_stats };
-    workitem_ends_under_cap;
-  }
+  ( { TypingProgress.deferred_workitems; continue = workitem_ends_under_cap },
+    { errors; tast_hashes; tally; stats = final_stats } )
 
 let process_workitems
     (ctx : Provider_context.t)
-    ({ errors; dep_edges; profiling_info } : typing_result)
-    (progress : typing_progress)
+    ({ errors; tast_hashes; dep_edges; profiling_info } : typing_result)
+    (progress : TypingProgress.t)
     ~(memory_cap : int option)
     ~(longlived_workers : bool)
     ~(check_info : check_info)
@@ -457,7 +425,7 @@ let process_workitems
     ~(batch_number : int)
     ~(error_count_at_start_of_batch : int)
     ~(typecheck_info : HackEventLogger.ProfileTypeCheck.typecheck_info) :
-    typing_result * typing_progress =
+    typing_result * TypingProgress.t =
   Decl_counters.set_mode
     check_info.per_file_profiling
       .HackEventLogger.PerFileProfilingConfig.profile_decling;
@@ -467,7 +435,7 @@ let process_workitems
       ~typecheck_info
       ~worker_id
       ~batch_number
-      ~batch_size:(List.length progress.remaining)
+      ~batch_size:(List.length (TypingProgress.remaining progress))
       ~start_batch_stats:
         (get_stats ~include_slightly_costly_stats:true ProcessFilesTally.empty)
   in
@@ -476,40 +444,25 @@ let process_workitems
   File_provider.local_changes_push_sharedmem_stack ();
   Ast_provider.local_changes_push_sharedmem_stack ();
 
-  let rec process_workitems_loop ~(acc : workitem_accumulator) :
-      workitem_accumulator =
-    match acc.progress.remaining with
-    | [] -> acc
-    | _ ->
-      let { acc; workitem_ends_under_cap } =
-        process_one_workitem
-          ~ctx
-          ~check_info
-          ~batch_info
-          ~error_count_at_start_of_batch
-          ~memory_cap
-          ~longlived_workers
-          ~acc
-      in
-      if workitem_ends_under_cap then
-        process_workitems_loop ~acc
-      else
-        acc
-  in
-
   (* Process as many files as we can, and merge in their errors *)
-  let { progress; errors; tally = _; stats = _ } =
-    process_workitems_loop
-      ~acc:
-        {
-          progress;
-          errors;
-          tally = ProcessFilesTally.empty;
-          stats =
-            get_stats
-              ~include_slightly_costly_stats:true
-              ProcessFilesTally.empty;
-        }
+  let (progress, { errors; tast_hashes; tally = _; stats = _ }) =
+    let init =
+      {
+        errors;
+        tast_hashes;
+        tally = ProcessFilesTally.empty;
+        stats =
+          get_stats ~include_slightly_costly_stats:true ProcessFilesTally.empty;
+      }
+    in
+    TypingProgress.progress_through ~init progress
+    @@ process_one_workitem
+         ~ctx
+         ~check_info
+         ~batch_info
+         ~error_count_at_start_of_batch
+         ~memory_cap
+         ~longlived_workers
   in
 
   (* Update edges *)
@@ -536,12 +489,12 @@ let process_workitems
   TypingLogger.flush_buffers ();
   Ast_provider.local_changes_pop_sharedmem_stack ();
   File_provider.local_changes_pop_sharedmem_stack ();
-  ({ errors; dep_edges; profiling_info }, progress)
+  ({ errors; tast_hashes; dep_edges; profiling_info }, progress)
 
 let load_and_process_workitems
     (ctx : Provider_context.t)
     (typing_result : typing_result)
-    (progress : typing_progress)
+    (progress : TypingProgress.t)
     ~(memory_cap : int option)
     ~(longlived_workers : bool)
     ~(check_info : check_info)
@@ -549,7 +502,7 @@ let load_and_process_workitems
     ~(batch_number : int)
     ~(error_count_at_start_of_batch : int)
     ~(typecheck_info : HackEventLogger.ProfileTypeCheck.typecheck_info) :
-    typing_result * typing_progress =
+    typing_result * TypingProgress.t =
   Option.iter check_info.memtrace_dir ~f:(fun temp_dir ->
       let file = Caml.Filename.temp_file ~temp_dir "memtrace.worker." ".ctf" in
       Daemon.start_memtracing file);
@@ -575,7 +528,7 @@ let load_and_process_workitems
 (*****************************************************************************)
 
 let possibly_push_new_errors_to_lsp_client :
-    progress:Typing_service_types.typing_progress ->
+    progress:Typing_service_types.TypingProgress.t ->
     Errors.t ->
     Diagnostic_pusher.t option ->
     Diagnostic_pusher.t option * seconds_since_epoch option =
@@ -584,20 +537,14 @@ let possibly_push_new_errors_to_lsp_client :
   | None -> (None, None)
   | Some diag ->
     let rechecked =
-      progress.completed
+      TypingProgress.completed progress
       |> List.filter_map ~f:(function
              | Check { path; was_already_deferred = _ } -> Some path
-             | Declare _
-             | Prefetch _ ->
-               None)
+             | Declare _ -> None)
       |> Relative_path.Set.of_list
     in
     let (diag, time_errors_pushed) =
-      Diagnostic_pusher.push_new_errors
-        diag
-        ~rechecked
-        new_errors
-        ~phase:Errors.Typing
+      Diagnostic_pusher.push_new_errors diag ~rechecked new_errors
     in
     (Some diag, time_errors_pushed)
 
@@ -607,11 +554,9 @@ let possibly_push_new_errors_to_lsp_client :
     (gasp) mutation to track that, so combine the errors but always return an
     empty list for the list of unchecked files. *)
 let merge
-    ~(should_prefetch_deferred_files : bool)
     ~(batch_counts_by_worker_id : int SMap.t ref)
     ~(errors_so_far : int ref)
     ~(check_info : check_info)
-    (delegate_state : Delegate.state ref)
     (workitems_to_process : workitem BigList.t ref)
     (workitems_initial_count : int)
     (workitems_in_progress : workitem Hash_set.t)
@@ -620,7 +565,7 @@ let merge
     (time_first_error : seconds_since_epoch option ref)
     ( (worker_id : string),
       (produced_by_job : typing_result),
-      ({ kind = progress_kind; progress : typing_progress } : job_progress) )
+      ({ kind = progress_kind; progress : TypingProgress.t } : job_progress) )
     (acc : typing_result) : typing_result =
   (* Update batch count *)
   begin
@@ -632,47 +577,23 @@ let merge
       in
       batch_counts_by_worker_id :=
         SMap.add worker_id (prev_batch_count + 1) !batch_counts_by_worker_id
-    | DelegateProgress _ -> ()
-    | SimpleDelegateProgress _ -> ()
   end;
 
   (* And error count *)
   errors_so_far := !errors_so_far + Errors.count produced_by_job.errors;
 
-  (* Merge in remote-worker results *)
-  begin
-    match progress_kind with
-    | Progress -> ()
-    | SimpleDelegateProgress _ -> ()
-    | DelegateProgress _ ->
-      delegate_state :=
-        Delegate.merge !delegate_state produced_by_job.errors progress
-  end;
-
   workitems_to_process :=
-    BigList.append progress.remaining !workitems_to_process;
+    BigList.append (TypingProgress.remaining progress) !workitems_to_process;
 
   (* Let's also prepend the deferred files! *)
-  workitems_to_process := BigList.append progress.deferred !workitems_to_process;
-
-  (* Prefetch the deferred files, if necessary *)
   workitems_to_process :=
-    if should_prefetch_deferred_files && List.length progress.deferred > 10 then
-      let files_to_prefetch =
-        List.fold progress.deferred ~init:[] ~f:(fun acc computation ->
-            match computation with
-            | Declare (path, _) -> path :: acc
-            | _ -> acc)
-      in
-      BigList.cons (Prefetch files_to_prefetch) !workitems_to_process
-    else
-      !workitems_to_process;
+    BigList.append (TypingProgress.deferred progress) !workitems_to_process;
 
   (* If workers can steal work from each other, then it's possible that
      some of the files that the current worker completed checking have already
      been removed from the in-progress set. Thus, we should keep track of
      how many type check computations we actually remove from the in-progress
-     set. Note that we also skip counting Declare and Prefetch computations,
+     set. Note that we also skip counting Declare computations,
      since they are not relevant for computing how many files we've type
      checked. *)
   let completed_check_count =
@@ -686,7 +607,7 @@ let merge
           | _ -> acc
         end
         | _ -> acc)
-      progress.completed
+      (TypingProgress.completed progress)
   in
 
   (* Deferred type check computations should be subtracted from completed
@@ -698,7 +619,9 @@ let merge
     | Check _ -> true
     | _ -> false
   in
-  let deferred_check_count = List.count ~f:is_check progress.deferred in
+  let deferred_check_count =
+    List.count ~f:is_check (TypingProgress.deferred progress)
+  in
   let completed_check_count = completed_check_count - deferred_check_count in
 
   files_checked_count := !files_checked_count + completed_check_count;
@@ -707,7 +630,7 @@ let merge
     ~done_count:!files_checked_count
     ~total_count:workitems_initial_count
     ~unit:"files"
-    ~extra:(Typing_service_delegate.get_progress !delegate_state);
+    ~extra:None;
 
   (* Handle errors paradigm (3) - push updates to errors-file as soon as their batch is finished *)
   if check_info.log_errors then
@@ -734,13 +657,9 @@ let merge
 
 let next
     (workers : MultiWorker.worker list option)
-    (delegate_state : Delegate.state ref)
     (workitems_to_process : workitem BigList.t ref)
     (workitems_in_progress : workitem Hash_set.Poly.t)
-    (workitems_processed_count : int ref)
-    (remote_payloads : remote_computation_payload list ref)
-    (record : Measure.record)
-    (telemetry : Telemetry.t) : unit -> job_progress Bucket.bucket =
+    (record : Measure.record) : unit -> job_progress Bucket.bucket =
   let num_workers =
     match workers with
     | Some w -> List.length w
@@ -751,107 +670,36 @@ let next
        writing OCaml or anything. *)
     workitems_to_process := remaining_jobs;
     List.iter ~f:(Hash_set.Poly.add workitems_in_progress) current_bucket;
-    Bucket.Job
-      {
-        kind;
-        progress = { completed = []; remaining = current_bucket; deferred = [] };
-      }
+    Bucket.Job { kind; progress = TypingProgress.init current_bucket }
   in
   fun () ->
     Measure.time ~record "time" @@ fun () ->
     let workitems_to_process_length = BigList.length !workitems_to_process in
-    let controller_started = Delegate.controller_started !delegate_state in
-    let delegate_job =
-      (*
-          This is the "reduce" part of the mapreduce paradigm. We activate this when workitems_to_check is empty,
-          or in other words the local typechecker is done with its work. We'll try and download all the remote
-          worker outputs in once go. For any payloads that aren't available we'll simply stop waiting on the
-          remote worker and have the local worker "steal" the work.
-        *)
-      let remote_workitems_to_process_length =
-        List.fold ~init:0 !remote_payloads ~f:(fun acc payload ->
-            acc + BigList.length payload.payload)
-      in
-      let ( remaining_local_workitems_to_process,
-            controller,
-            remaining_payloads,
-            job,
-            _telemetry ) =
-        Typing_service_delegate.collect
-          ~telemetry
-          !delegate_state
-          !workitems_to_process
-          workitems_to_process_length
-          !remote_payloads
-      in
-      (* Update the total workitems_processed_count after remote workers
-         have made progress, so we can update the progress bar with the
-         correct number of files typechecked.
-      *)
-      (if List.length !remote_payloads > List.length remaining_payloads then
-        let remaining_remote_workitems_to_process =
-          List.fold ~init:0 remaining_payloads ~f:(fun acc payload ->
-              acc + BigList.length payload.payload)
-        in
-        let local_processed_count =
-          !workitems_processed_count
-          - BigList.length remaining_local_workitems_to_process
-        in
-        let remote_processed_count =
-          remote_workitems_to_process_length
-          - remaining_remote_workitems_to_process
-        in
-        workitems_processed_count :=
-          local_processed_count + remote_processed_count);
 
-      workitems_to_process := remaining_local_workitems_to_process;
-      delegate_state := controller;
-      remote_payloads := remaining_payloads;
-
-      job
-    in
-
-    let (state, delegate_job) = (!delegate_state, delegate_job) in
-    delegate_state := state;
-
-    (* If a delegate job is returned, then that means that it should be done
-       by the next MultiWorker worker (the one for whom we're creating a job
-       in this function). If delegate job is None, then the regular (local
-       type checking) logic applies. *)
-    match delegate_job with
-    | Some { current_bucket; remaining_jobs; job } ->
-      if controller_started then
-        return_bucket_job
-          (SimpleDelegateProgress job)
-          ~current_bucket
-          ~remaining_jobs
-      else
-        return_bucket_job (DelegateProgress job) ~current_bucket ~remaining_jobs
-    | None ->
-      (* WARNING: the following List.length is costly - for a full init, files_to_process starts
-         out as the size of the entire repo, and we're traversing the entire list. *)
-      (match workitems_to_process_length with
-      | 0 when Hash_set.Poly.is_empty workitems_in_progress -> Bucket.Done
-      | 0 -> Bucket.Wait
-      | _ ->
-        let jobs = !workitems_to_process in
-        begin
-          match num_workers with
-          (* When num_workers is zero, the execution mode is delegate-only, so we give an empty bucket to MultiWorker for execution. *)
-          | 0 ->
-            return_bucket_job Progress ~current_bucket:[] ~remaining_jobs:jobs
-          | _ ->
-            let bucket_size =
-              Bucket.calculate_bucket_size
-                ~num_jobs:workitems_to_process_length
-                ~num_workers
-                ()
-            in
-            let (current_bucket, remaining_jobs) =
-              BigList.split_n jobs bucket_size
-            in
-            return_bucket_job Progress ~current_bucket ~remaining_jobs
-        end)
+    (* WARNING: the following List.length is costly - for a full init, files_to_process starts
+        out as the size of the entire repo, and we're traversing the entire list. *)
+    match workitems_to_process_length with
+    | 0 when Hash_set.Poly.is_empty workitems_in_progress -> Bucket.Done
+    | 0 -> Bucket.Wait
+    | _ ->
+      let jobs = !workitems_to_process in
+      begin
+        match num_workers with
+        (* When num_workers is zero, the execution mode is delegate-only, so we give an empty bucket to MultiWorker for execution. *)
+        | 0 ->
+          return_bucket_job Progress ~current_bucket:[] ~remaining_jobs:jobs
+        | _ ->
+          let bucket_size =
+            Bucket.calculate_bucket_size
+              ~num_jobs:workitems_to_process_length
+              ~num_workers
+              ()
+          in
+          let (current_bucket, remaining_jobs) =
+            BigList.split_n jobs bucket_size
+          in
+          return_bucket_job Progress ~current_bucket ~remaining_jobs
+      end
 
 let on_cancelled
     (next : unit -> 'a Bucket.bucket)
@@ -884,6 +732,11 @@ let rec drain_events (done_count, total_count, handle, check_info) =
   | Ok None -> Ok (done_count, total_count)
   | Error error -> Error error
 
+type 'env distc_outcome =
+  | Success of Errors.t * Tast_hashes.t * Typing_deps.dep_edges * 'env
+  | DistCError of log_message
+  | Cancel of 'env * MultiThreadedCall.cancel_reason
+
 (**
   This is the event loop that powers hh_distc. It keeps looping and calling
   select on a series of fds including ones from watchman, hh_distc, hh_client, etc.
@@ -904,11 +757,7 @@ let rec event_loop
     ~(fd_distc : Unix.file_descr)
     ~(handle : Hh_distc_ffi.handle)
     ~(check_info : check_info)
-    ~(hhdg_path : string) :
-    [> `Success of Errors.t * Typing_deps.dep_edges * 'env
-    | `Error of log_message
-    | `Cancel of 'env * MultiThreadedCall.cancel_reason
-    ] =
+    ~(hhdg_path : string) : _ distc_outcome =
   let handler_fds = List.map handlers ~f:fst in
   (* hh_distc sends a byte each time new events are ready. *)
   let (ready_fds, _, _) =
@@ -919,14 +768,15 @@ let rec event_loop
     | None ->
       ServerProgress.write "hh_distc done";
       (match Hh_distc_ffi.join handle with
-      | Ok errors ->
+      | Ok (errors, tast_hashes) ->
         (* TODO: Clear in memory deps. Doesn't effect correctness but can cause larger fanouts *)
         Typing_deps.replace (Typing_deps_mode.InMemoryMode (Some hhdg_path));
-        `Success
+        Success
           ( errors,
+            tast_hashes,
             Typing_deps.dep_edges_make (),
             interrupt.MultiThreadedCall.env )
-      | Error error -> `Error error)
+      | Error error -> DistCError error)
     | Some _ ->
       (match drain_events (done_count, total_count, handle, check_info) with
       | Ok (done_count, total_count) ->
@@ -945,7 +795,7 @@ let rec event_loop
           ~handle
           ~check_info
           ~hhdg_path
-      | Error error -> `Error error)
+      | Error error -> DistCError error)
   else
     let (env, decision, handlers) =
       List.fold
@@ -974,7 +824,7 @@ let rec event_loop
     match decision with
     | MultiThreadedCall.Cancel reason ->
       let () = Hh_distc_ffi.cancel handle in
-      `Cancel (interrupt.MultiThreadedCall.env, reason)
+      Cancel (interrupt.MultiThreadedCall.env, reason)
     | MultiThreadedCall.Continue ->
       event_loop
         ~done_count
@@ -1004,12 +854,8 @@ let rec event_loop
 let process_with_hh_distc
     ~(root : Path.t option)
     ~(interrupt : 'a MultiThreadedCall.interrupt_config)
-    ~(check_info : check_info) :
-    [> `Success of Errors.t * Typing_deps.dep_edges * 'env
-    | `Error of log_message
-    | `Cancel of 'env * MultiThreadedCall.cancel_reason
-    ] =
-  (* TODO: Plumb extra --config name=value args through to spawn() *)
+    ~(check_info : check_info)
+    ~(tcopt : TypecheckerOptions.t) : _ distc_outcome =
   (* We don't want to use with_tempdir because we need to keep the folder around
      for subseqent typechecks that will read the dep graph in the folder *)
   let root = Option.value_exn root in
@@ -1018,7 +864,11 @@ let process_with_hh_distc
     Path.(to_string @@ concat ss_dir "hh_mini_saved_state.hhdg")
   in
   let hh_distc_handle =
-    Hh_distc_ffi.spawn (Path.to_string root) (Path.to_string ss_dir) hhdg_path
+    Hh_distc_ffi.spawn
+      ~root:(Path.to_string root)
+      ~ss_dir:(Path.to_string ss_dir)
+      ~hhdg_path
+      tcopt
     |> Result.ok_or_failwith
   in
   let fd_distc = Hh_distc_ffi.get_fd hh_distc_handle in
@@ -1045,7 +895,6 @@ let process_in_parallel
     ?diagnostic_pusher
     (ctx : Provider_context.t)
     (workers : MultiWorker.worker list option)
-    (delegate_state : Delegate.state)
     (telemetry : Telemetry.t)
     (workitems : workitem BigList.t)
     ~(interrupt : 'a MultiThreadedCall.interrupt_config)
@@ -1054,62 +903,22 @@ let process_in_parallel
     ~(check_info : check_info)
     ~(typecheck_info : HackEventLogger.ProfileTypeCheck.typecheck_info) :
     typing_result
-    * Delegate.state
     * Telemetry.t
     * _
     * (Relative_path.t list * MultiThreadedCall.cancel_reason) option
     * (Diagnostic_pusher.t option * seconds_since_epoch option) =
   let record = Measure.create () in
   (* [record] is used by [next] *)
-  let delegate_state = ref delegate_state in
   let workitems_to_process = ref workitems in
   let workitems_in_progress = Hash_set.Poly.create () in
-  let workitems_processed_count = ref 0 in
   let workitems_initial_count = BigList.length workitems in
-  let remote_payloads = ref [] in
+  let workitems_processed_count = ref 0 in
   let diagnostic_pusher = ref diagnostic_pusher in
   let time_first_error = ref None in
   let errors_so_far = ref 0 in
-  let controller_started = Delegate.controller_started !delegate_state in
   let batch_counts_by_worker_id = ref SMap.empty in
 
-  let (telemetry, telemetry_start_t) : Telemetry.t * float option =
-    if controller_started then (
-      Hh_logger.log "Dispatch hulk lite initial payloads";
-      let workitems_to_process_length = BigList.length !workitems_to_process in
-      let ( payloads,
-            workitems,
-            controller,
-            (dispatch_telemetry, hulk_dispatch_start_t) ) =
-        Typing_service_delegate.dispatch
-          !delegate_state
-          !workitems_to_process
-          workitems_to_process_length
-      in
-      remote_payloads := payloads;
-      workitems_to_process := workitems;
-      delegate_state := controller;
-      (dispatch_telemetry, Some hulk_dispatch_start_t)
-    ) else
-      (telemetry, None)
-  in
-
-  let next =
-    next
-      workers
-      delegate_state
-      workitems_to_process
-      workitems_in_progress
-      workitems_processed_count
-      remote_payloads
-      record
-      telemetry
-  in
-  let should_prefetch_deferred_files =
-    Vfs.is_vfs ()
-    && TypecheckerOptions.prefetch_deferred_files
-         (Provider_context.get_tcopt ctx)
-  in
+  let next = next workers workitems_to_process workitems_in_progress record in
   (* The [job] lambda is marshalled, sent to the worker process, unmarshalled there, and executed.
      It is marshalled immediately before being executed. *)
   let job (typing_result : typing_result) (progress : job_progress) :
@@ -1131,8 +940,6 @@ let process_in_parallel
             |> Option.value ~default:0)
           typing_result
           progress.progress
-      | DelegateProgress job -> Delegate.process job
-      | SimpleDelegateProgress job -> Delegate.process job
     in
     (worker_id, typing_result, { progress with progress = computation_progress })
   in
@@ -1143,11 +950,9 @@ let process_in_parallel
       ~neutral:(neutral ())
       ~merge:
         (merge
-           ~should_prefetch_deferred_files
            ~batch_counts_by_worker_id
            ~errors_so_far
            ~check_info
-           delegate_state
            workitems_to_process
            workitems_initial_count
            workitems_in_progress
@@ -1161,7 +966,9 @@ let process_in_parallel
   in
   let paths_of (unfinished : job_progress list) : Relative_path.t list =
     let paths_of (cancelled_progress : job_progress) =
-      let cancelled_computations = cancelled_progress.progress.remaining in
+      let cancelled_computations =
+        TypingProgress.remaining cancelled_progress.progress
+      in
       let paths_of paths (cancelled_workitem : workitem) =
         match cancelled_workitem with
         | Check { path; _ } -> path :: paths
@@ -1175,24 +982,7 @@ let process_in_parallel
     Option.map cancelled_results ~f:(fun (unfinished, reason) ->
         (paths_of unfinished, reason))
   in
-  let _ =
-    if controller_started then
-      HackEventLogger.hulk_type_check_end
-        telemetry
-        workitems_initial_count
-        ~start_t:
-          (Option.value_exn
-             telemetry_start_t
-             ~message:"Unexpected missing telemetry start time for Hulk Lite")
-    else
-      ()
-  in
-
-  (* We want to ensure controller state is reset for the recheck *)
-  delegate_state := Typing_service_delegate.stop !delegate_state;
-
   ( typing_result,
-    !delegate_state,
     telemetry,
     env,
     cancelled_results,
@@ -1263,16 +1053,32 @@ module Mocking =
 
 type result = {
   errors: Errors.t;
-  delegate_state: Delegate.state;
   telemetry: Telemetry.t;
   diagnostic_pusher: Diagnostic_pusher.t option * seconds_since_epoch option;
 }
+
+let write_tast_hashes_to_disk ~(check_info : check_info) tast_hashes =
+  ServerProgress.write "Converting TAST hashes to JSON";
+  let tast_hashes_json = Tast_hashes.yojson_of_t tast_hashes in
+  ServerProgress.write "Writing TAST hashes to disk";
+  let tast_dir =
+    Tmp.make_dir_in_tmp ~description_what_for:"tast_hashes" ~root:None
+  in
+  let tast_hashes_file =
+    Filename.concat
+      tast_dir
+      (Printf.sprintf
+         "initId%s_recheckId%s.json"
+         check_info.init_id
+         (Option.value check_info.recheck_id ~default:"None"))
+  in
+  Out_channel.with_file tast_hashes_file ~f:(fun out ->
+      Yojson.Safe.pretty_to_channel out tast_hashes_json)
 
 let go_with_interrupt
     ?(diagnostic_pusher : Diagnostic_pusher.t option)
     (ctx : Provider_context.t)
     (workers : MultiWorker.worker list option)
-    (delegate_state : Delegate.state)
     (telemetry : Telemetry.t)
     (fnl : Relative_path.t list)
     ~(root : Path.t option)
@@ -1296,8 +1102,8 @@ let go_with_interrupt
            (Telemetry.create ()))
       ~config:check_info.per_file_profiling
   in
-  let opts = Provider_context.get_tcopt ctx in
-  let sample_rate = TypecheckerOptions.typecheck_sample_rate opts in
+  let tcopt = Provider_context.get_tcopt ctx in
+  let sample_rate = TypecheckerOptions.typecheck_sample_rate tcopt in
   let original_fnl = fnl in
   let fnl = BigList.create fnl in
   ServerProgress.write "typechecking %d files" (BigList.length fnl);
@@ -1324,7 +1130,7 @@ let go_with_interrupt
     BigList.map fnl ~f:(fun path ->
         Check { path; was_already_deferred = false })
   in
-  let num_workers = TypecheckerOptions.num_local_workers opts in
+  let num_workers = TypecheckerOptions.num_local_workers tcopt in
   let workers =
     match (workers, num_workers) with
     | (Some workers, Some num_local_workers) ->
@@ -1336,7 +1142,6 @@ let go_with_interrupt
   in
   Mocking.with_test_mocking fnl @@ fun fnl ->
   let ( typing_result,
-        delegate_state,
         telemetry,
         env,
         cancelled_fnl_and_reason,
@@ -1353,29 +1158,28 @@ let go_with_interrupt
       if will_use_distc then (
         (* distc doesn't yet give any profiling_info about how its workers fared *)
         let profiling_info = Telemetry.create () in
-        match process_with_hh_distc ~root ~interrupt ~check_info with
-        | `Success (errors, dep_edges, env) ->
+        match process_with_hh_distc ~root ~interrupt ~check_info ~tcopt with
+        | Success (errors, tast_hashes, dep_edges, env) ->
           Some
-            ( { errors; dep_edges; profiling_info },
-              delegate_state,
+            ( { errors; tast_hashes; dep_edges; profiling_info },
               telemetry,
               env,
               None,
               (None, None) )
-        | `Cancel (env, reason) ->
+        | Cancel (env, reason) ->
           (* Typecheck is cancelled due to interrupt *)
           Some
             ( {
                 errors = Errors.empty;
+                tast_hashes = Tast_hashes.empty;
                 dep_edges = Typing_deps.dep_edges_make ();
                 profiling_info;
               },
-              delegate_state,
               telemetry,
               env,
               Some (original_fnl, reason),
               (None, None) )
-        | `Error msg ->
+        | DistCError msg ->
           Hh_logger.log "Error with hh_distc: %s" msg;
           HackEventLogger.invariant_violation_bug
             "Unexpected hh_distc error"
@@ -1396,7 +1200,6 @@ let go_with_interrupt
         ?diagnostic_pusher
         ctx
         workers
-        delegate_state
         telemetry
         fnl
         ~interrupt
@@ -1405,19 +1208,19 @@ let go_with_interrupt
         ~check_info
         ~typecheck_info
   in
-  let { errors; dep_edges; profiling_info } = typing_result in
+  let { errors; tast_hashes; dep_edges; profiling_info } = typing_result in
   Typing_deps.register_discovered_dep_edges dep_edges;
+  if TypecheckerOptions.dump_tast_hashes tcopt then
+    write_tast_hashes_to_disk ~check_info tast_hashes;
 
   let telemetry =
     telemetry |> Telemetry.object_ ~key:"profiling_info" ~value:profiling_info
   in
-  ( (env, { errors; delegate_state; telemetry; diagnostic_pusher }),
-    cancelled_fnl_and_reason )
+  ((env, { errors; telemetry; diagnostic_pusher }), cancelled_fnl_and_reason)
 
 let go
     (ctx : Provider_context.t)
     (workers : MultiWorker.worker list option)
-    (delegate_state : Delegate.state)
     (telemetry : Telemetry.t)
     (fnl : Relative_path.t list)
     ~(root : Path.t option)
@@ -1432,7 +1235,6 @@ let go
       ?diagnostic_pusher:None
       ctx
       workers
-      delegate_state
       telemetry
       fnl
       ~root

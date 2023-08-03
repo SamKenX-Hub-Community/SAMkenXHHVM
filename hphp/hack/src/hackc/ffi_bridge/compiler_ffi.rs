@@ -23,7 +23,6 @@ use decl_provider::SelfProvider;
 use direct_decl_parser::DeclParserOptions;
 use direct_decl_parser::ParsedFile;
 use external_decl_provider::ExternalDeclProvider;
-use facts_rust as facts;
 use hhbc::Unit;
 use options::HhbcFlags;
 use options::Hhvm;
@@ -37,6 +36,11 @@ use sha1::Sha1;
 #[allow(clippy::derivable_impls)]
 #[cxx::bridge(namespace = "HPHP::hackc")]
 pub mod compile_ffi {
+    enum JitEnableRenameFunction {
+        Disable,
+        Enable,
+        RestrictedEnable,
+    }
     struct NativeEnv {
         /// Pointer to decl_provider opaque object, cast to usize. 0 means null.
         decl_provider: usize,
@@ -44,6 +48,8 @@ pub mod compile_ffi {
         filepath: String,
         aliased_namespaces: Vec<StringMapEntry>,
         include_roots: Vec<StringMapEntry>,
+        renamable_functions: Vec<String>,
+        jit_enable_rename_function: JitEnableRenameFunction,
 
         hhbc_flags: HhbcFlags,
         parser_flags: ParserFlags,
@@ -67,8 +73,6 @@ pub mod compile_ffi {
     struct HhbcFlags {
         ltr_assign: bool,
         uvs: bool,
-        repo_authoritative: bool,
-        jit_enable_rename_function: bool,
         log_extern_compiler_perf: bool,
         enable_intrinsics_extension: bool,
         emit_cls_meth_pointers: bool,
@@ -105,8 +109,7 @@ pub mod compile_ffi {
         hhvm_compat_mode: bool,
     }
 
-    pub struct DeclResult {
-        nopos_hash: u64,
+    pub struct DeclsAndBlob {
         serialized: Vec<u8>,
         decls: Box<DeclsHolder>,
         has_errors: bool,
@@ -115,7 +118,6 @@ pub mod compile_ffi {
     #[derive(Debug)]
     enum TypeKind {
         Class,
-        Record,
         Interface,
         Enum,
         Trait,
@@ -127,59 +129,53 @@ pub mod compile_ffi {
     #[derive(Debug, PartialEq)]
     struct Attribute {
         name: String,
+
+        /// Values are Hack values encoded as JSON
         args: Vec<String>,
     }
 
     #[derive(Debug, PartialEq)]
-    struct MethodFacts {
+    struct MethodDetails {
+        name: String,
         attributes: Vec<Attribute>,
     }
 
     #[derive(Debug, PartialEq)]
-    struct Method {
+    pub struct TypeDetails {
         name: String,
-        methfacts: MethodFacts,
+        kind: TypeKind,
+        flags: u8,
+
+        /// List of types which this `extends`, `implements`, or `use`s
+        base_types: Vec<String>,
+
+        // List of attributes and their arguments
+        attributes: Vec<Attribute>,
+
+        /// List of classes which this `require class`
+        require_class: Vec<String>,
+
+        /// List of classes or interfaces which this `require extends`
+        require_extends: Vec<String>,
+
+        /// List of interfaces which this `require implements`
+        require_implements: Vec<String>,
+        methods: Vec<MethodDetails>,
     }
 
     #[derive(Debug, PartialEq)]
-    pub struct TypeFacts {
-        pub base_types: Vec<String>,
-        pub kind: TypeKind,
-        pub attributes: Vec<Attribute>,
-        pub flags: isize,
-        pub require_extends: Vec<String>,
-        pub require_implements: Vec<String>,
-        pub require_class: Vec<String>,
-        pub methods: Vec<Method>,
-    }
-
-    #[derive(Debug, PartialEq)]
-    struct TypeFactsByName {
+    struct ModuleDetails {
         name: String,
-        typefacts: TypeFacts,
-    }
-
-    #[derive(Debug, PartialEq)]
-    struct ModuleFactsByName {
-        name: String,
-        // Currently does not have modulefacts, since it would be an empty struct
-        // modulefacts
     }
 
     #[derive(Debug, Default, PartialEq)]
-    struct Facts {
-        pub types: Vec<TypeFactsByName>,
-        pub functions: Vec<String>,
-        pub constants: Vec<String>,
-        pub file_attributes: Vec<Attribute>,
-        pub modules: Vec<ModuleFactsByName>,
-    }
-
-    #[derive(Debug, Default)]
-    pub struct FactsResult {
-        facts: Facts,
-        sha1sum: String,
-        has_errors: bool,
+    pub struct FileFacts {
+        types: Vec<TypeDetails>,
+        functions: Vec<String>,
+        constants: Vec<String>,
+        modules: Vec<ModuleDetails>,
+        attributes: Vec<Attribute>,
+        sha1hex: String,
     }
 
     extern "Rust" {
@@ -187,38 +183,49 @@ pub mod compile_ffi {
         type UnitWrapper;
 
         /// Compile Hack source code to a Unit or an error.
-        unsafe fn compile_unit_from_text_cpp_ffi(
+        unsafe fn compile_unit_from_text(
             env: &NativeEnv,
-            source_text: &CxxString,
+            source_text: &[u8],
         ) -> Result<Box<UnitWrapper>>;
 
         /// Compile Hack source code to either HHAS or an error.
-        fn compile_from_text_cpp_ffi(env: &NativeEnv, source_text: &CxxString) -> Result<Vec<u8>>;
+        fn compile_from_text(env: &NativeEnv, source_text: &[u8]) -> Result<Vec<u8>>;
 
-        /// Invoke the hackc direct decl parser and return every shallow decl in the file.
-        fn direct_decl_parse(
+        /// Invoke the hackc direct decl parser and return every shallow decl in the file,
+        /// as well as a serialized blob holding the same content.
+        fn direct_decl_parse_and_serialize(
             config: &DeclParserConfig,
             filename: &CxxString,
-            text: &CxxString,
-        ) -> DeclResult;
+            text: &[u8],
+        ) -> DeclsAndBlob;
+
+        /// Invoke the hackc direct decl parser and return every shallow decl in the file.
+        /// Return Err(_) if there were decl parsing errors, which will translate to
+        /// throwing an exception to the C++ caller.
+        fn parse_decls(
+            config: &DeclParserConfig,
+            filename: &CxxString,
+            text: &[u8],
+        ) -> Result<Box<DeclsHolder>>;
 
         fn hash_unit(unit: &UnitWrapper) -> [u8; 20];
 
         /// Return true if this type (class or alias) is in the given Decls.
-        fn type_exists(decls: &DeclResult, symbol: &str) -> bool;
+        fn type_exists(decls: &DeclsHolder, symbol: &str) -> bool;
 
         /// For testing: return true if deserializing produces the expected Decls.
-        fn verify_deserialization(decls: &DeclResult) -> bool;
-
-        /// Serialize a FactsResult to JSON
-        fn facts_to_json_cpp_ffi(facts: FactsResult, pretty: bool) -> String;
+        fn verify_deserialization(decls: &DeclsAndBlob) -> bool;
 
         /// Extract Facts from Decls, passing along the source text hash.
-        fn decls_to_facts_cpp_ffi(decls: &DeclResult, sha1sum: &CxxString) -> FactsResult;
+        fn decls_to_facts(decls: &DeclsHolder, sha1sum: &CxxString) -> FileFacts;
+
+        /// Extract Facts in condensed JSON format from Decls, including the source text hash.
+        fn decls_to_facts_json(decls: &DeclsHolder, sha1sum: &CxxString) -> String;
     }
 }
 
 // Opaque to C++, so we don't need repr(C).
+#[derive(Debug)]
 pub struct DeclsHolder {
     _arena: bumpalo::Bump,
     parsed_file: ParsedFile<'static>,
@@ -230,7 +237,17 @@ pub struct DeclsHolder {
 pub struct UnitWrapper(Unit<'static>, bumpalo::Bump);
 
 ///////////////////////////////////////////////////////////////////////////////////
-
+impl From<compile_ffi::JitEnableRenameFunction> for options::JitEnableRenameFunction {
+    fn from(other: compile_ffi::JitEnableRenameFunction) -> Self {
+        match other {
+            compile_ffi::JitEnableRenameFunction::Enable => Self::Enable,
+            compile_ffi::JitEnableRenameFunction::Disable => Self::Disable,
+            compile_ffi::JitEnableRenameFunction::RestrictedEnable => Self::RestrictedEnable,
+            _ => panic!("Enum value does not match one of listed variants"),
+        }
+    }
+}
+///////////////////////////////////////////////////////////////////////////////////
 impl compile_ffi::NativeEnv {
     fn to_compile_env(&self) -> Option<compile::NativeEnv> {
         Some(compile::NativeEnv {
@@ -242,6 +259,12 @@ impl compile_ffi::NativeEnv {
                 include_roots: (self.include_roots.iter())
                     .map(|e| (e.key.clone().into(), e.value.clone().into()))
                     .collect(),
+                renamable_functions: self
+                    .renamable_functions
+                    .iter()
+                    .map(|e| e.clone().into())
+                    .collect(),
+                jit_enable_rename_function: self.jit_enable_rename_function.into(),
                 parser_options: ParserOptions {
                     po_auto_namespace_map: (self.aliased_namespaces.iter())
                         .map(|e| (e.key.clone(), e.value.clone()))
@@ -271,8 +294,6 @@ impl compile_ffi::NativeEnv {
             hhbc_flags: HhbcFlags {
                 ltr_assign: self.hhbc_flags.ltr_assign,
                 uvs: self.hhbc_flags.uvs,
-                repo_authoritative: self.hhbc_flags.repo_authoritative,
-                jit_enable_rename_function: self.hhbc_flags.jit_enable_rename_function,
                 log_extern_compiler_perf: self.hhbc_flags.log_extern_compiler_perf,
                 enable_intrinsics_extension: self.hhbc_flags.enable_intrinsics_extension,
                 emit_cls_meth_pointers: self.hhbc_flags.emit_cls_meth_pointers,
@@ -302,14 +323,11 @@ fn hash_unit(UnitWrapper(unit, _): &UnitWrapper) -> [u8; 20] {
     hasher.finalize().into()
 }
 
-fn compile_from_text_cpp_ffi(
-    env: &compile_ffi::NativeEnv,
-    source_text: &CxxString,
-) -> Result<Vec<u8>, String> {
+fn compile_from_text(env: &compile_ffi::NativeEnv, source_text: &[u8]) -> Result<Vec<u8>, String> {
     let native_env = env.to_compile_env().unwrap();
     let text = SourceText::make(
-        ocamlrep::rc::RcOc::new(native_env.filepath.clone()),
-        source_text.as_bytes(),
+        std::sync::Arc::new(native_env.filepath.clone()),
+        source_text,
     );
     let decl_allocator = bumpalo::Bump::new();
 
@@ -341,21 +359,34 @@ fn compile_from_text_cpp_ffi(
     Ok(output)
 }
 
-fn type_exists(result: &compile_ffi::DeclResult, symbol: &str) -> bool {
+fn type_exists(holder: &DeclsHolder, symbol: &str) -> bool {
     // TODO T123158488: fix case insensitive lookups
-    result
-        .decls
+    holder
         .parsed_file
         .decls
         .types()
         .any(|(sym, _)| *sym == symbol)
 }
 
-pub fn direct_decl_parse(
+pub fn direct_decl_parse_and_serialize(
     config: &compile_ffi::DeclParserConfig,
     filename: &CxxString,
-    text: &CxxString,
-) -> compile_ffi::DeclResult {
+    text: &[u8],
+) -> compile_ffi::DeclsAndBlob {
+    match parse_decls(config, filename, text) {
+        Ok(decls) | Err(DeclsError(decls, _)) => compile_ffi::DeclsAndBlob {
+            serialized: decl_provider::serialize_decls(&decls.parsed_file.decls).unwrap(),
+            has_errors: decls.parsed_file.has_first_pass_parse_errors,
+            decls,
+        },
+    }
+}
+
+pub fn parse_decls(
+    config: &compile_ffi::DeclParserConfig,
+    filename: &CxxString,
+    text: &[u8],
+) -> Result<Box<DeclsHolder>, DeclsError> {
     let decl_opts = DeclParserOptions {
         auto_namespace_map: (config.aliased_namespaces.iter())
             .map(|e| (e.key.clone(), e.value.clone()))
@@ -366,45 +397,50 @@ pub fn direct_decl_parse(
         enable_xhp_class_modifier: config.enable_xhp_class_modifier,
         php5_compat_mode: config.php5_compat_mode,
         hhvm_compat_mode: config.hhvm_compat_mode,
+        keep_user_attributes: true,
         ..Default::default()
     };
-    let text = text.as_bytes();
     let path = PathBuf::from(OsStr::from_bytes(filename.as_bytes()));
-    let filename = RelativePath::make(Prefix::Root, path);
+    let relpath = RelativePath::make(Prefix::Root, path);
     let arena = bumpalo::Bump::new();
     let alloc: &'static bumpalo::Bump =
         unsafe { std::mem::transmute::<&'_ bumpalo::Bump, &'static bumpalo::Bump>(&arena) };
     let parsed_file: ParsedFile<'static> =
-        direct_decl_parser::parse_decls_for_bytecode(&decl_opts, filename, text, alloc);
-
-    compile_ffi::DeclResult {
-        nopos_hash: no_pos_hash::position_insensitive_hash(&parsed_file.decls),
-        serialized: decl_provider::serialize_decls(&parsed_file.decls).unwrap(),
-        decls: Box::new(DeclsHolder {
-            parsed_file,
-            _arena: arena,
-        }),
-        has_errors: parsed_file.has_first_pass_parse_errors,
+        direct_decl_parser::parse_decls_for_bytecode(&decl_opts, relpath, text, alloc);
+    let holder = Box::new(DeclsHolder {
+        parsed_file,
+        _arena: arena,
+    });
+    match holder.parsed_file.has_first_pass_parse_errors {
+        false => Ok(holder),
+        true => Err(DeclsError(
+            holder,
+            PathBuf::from(OsStr::from_bytes(filename.as_bytes())),
+        )),
     }
 }
 
-fn verify_deserialization(result: &compile_ffi::DeclResult) -> bool {
+#[derive(thiserror::Error, Debug)]
+#[error("{}: File contained first-pass parse errors", .1.display())]
+pub struct DeclsError(Box<DeclsHolder>, PathBuf);
+
+fn verify_deserialization(result: &compile_ffi::DeclsAndBlob) -> bool {
     let arena = bumpalo::Bump::new();
     let decls = decl_provider::deserialize_decls(&arena, &result.serialized).unwrap();
     decls == result.decls.parsed_file.decls
 }
 
-fn compile_unit_from_text_cpp_ffi(
+fn compile_unit_from_text(
     env: &compile_ffi::NativeEnv,
-    source_text: &CxxString,
+    source_text: &[u8],
 ) -> Result<Box<UnitWrapper>, String> {
     let bump = bumpalo::Bump::new();
     let alloc: &'static bumpalo::Bump =
         unsafe { std::mem::transmute::<&'_ bumpalo::Bump, &'static bumpalo::Bump>(&bump) };
     let native_env = env.to_compile_env().unwrap();
     let text = SourceText::make(
-        ocamlrep::rc::RcOc::new(native_env.filepath.clone()),
-        source_text.as_bytes(),
+        std::sync::Arc::new(native_env.filepath.clone()),
+        source_text,
     );
 
     let decl_allocator = bumpalo::Bump::new();
@@ -435,31 +471,15 @@ fn compile_unit_from_text_cpp_ffi(
     .map_err(|e| e.to_string())
 }
 
-pub fn facts_to_json_cpp_ffi(facts_result: compile_ffi::FactsResult, pretty: bool) -> String {
-    if facts_result.has_errors {
-        String::new()
-    } else {
-        let facts = facts::Facts::from(facts_result.facts);
-        facts.to_json(pretty, &facts_result.sha1sum)
+fn decls_to_facts(holder: &DeclsHolder, sha1sum: &CxxString) -> compile_ffi::FileFacts {
+    let facts = facts::Facts::from_decls(&holder.parsed_file);
+    compile_ffi::FileFacts {
+        sha1hex: sha1sum.to_string_lossy().into_owned(),
+        ..facts.into()
     }
 }
 
-pub fn decls_to_facts_cpp_ffi(
-    decl_result: &compile_ffi::DeclResult,
-    sha1sum: &CxxString,
-) -> compile_ffi::FactsResult {
-    if decl_result.has_errors {
-        compile_ffi::FactsResult {
-            has_errors: true,
-            ..Default::default()
-        }
-    } else {
-        let facts =
-            compile_ffi::Facts::from(facts::Facts::from_decls(&decl_result.decls.parsed_file));
-        compile_ffi::FactsResult {
-            facts,
-            sha1sum: sha1sum.to_string_lossy().to_string(),
-            has_errors: false,
-        }
-    }
+fn decls_to_facts_json(decls: &DeclsHolder, sha1sum: &CxxString) -> String {
+    let facts = facts::Facts::from_decls(&decls.parsed_file);
+    facts.to_json(false, &sha1sum.to_string_lossy())
 }

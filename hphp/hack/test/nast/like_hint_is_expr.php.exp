@@ -1,3 +1,5 @@
+Errors:
+  [5:12-14] Cannot use experimental feature: like-types
 [(Class
     { c_span = [2:1-11]; c_annotation = (); c_mode = Mstrict; c_final = false; 
       c_is_xhp = false; c_has_xhp_keyword = false; c_kind = (Cclass Concrete); 
@@ -8,7 +10,7 @@
       c_namespace =
       { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
         ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-        ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+        ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
       c_user_attributes = []; c_file_attributes = []; c_docs_url = None; 
       c_enum = None; c_doc_comment = None; c_emit_id = None; c_internal = false; 
       c_module = None });
@@ -16,7 +18,7 @@
      { fd_namespace =
        { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
          ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-         ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+         ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
        fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([4:10-27], "\\like_hint_is_expr");
        fd_fun =
        { f_span = [4:1-7:2]; f_readonly_this = None; f_annotation = (); 

@@ -55,6 +55,7 @@ impl<R: Reason> ToOcamlRep for FoldedClass<R> {
             has_xhp_keyword,
             support_dynamic_type,
             module,
+            is_module_level_trait,
             tparams,
             where_constraints,
             substs,
@@ -81,7 +82,7 @@ impl<R: Reason> ToOcamlRep for FoldedClass<R> {
         } = self;
         let need_init = self.has_concrete_constructor();
         let abstract_ = self.is_abstract();
-        let mut block = alloc.block_with_size(35);
+        let mut block = alloc.block_with_size(36);
         alloc.set_field(&mut block, 0, alloc.add_copy(need_init));
         alloc.set_field(&mut block, 1, alloc.add_copy(abstract_));
         alloc.set_field(&mut block, 2, alloc.add(is_final));
@@ -92,31 +93,32 @@ impl<R: Reason> ToOcamlRep for FoldedClass<R> {
         alloc.set_field(&mut block, 7, alloc.add(is_xhp));
         alloc.set_field(&mut block, 8, alloc.add(has_xhp_keyword));
         alloc.set_field(&mut block, 9, alloc.add(module));
-        alloc.set_field(&mut block, 10, alloc.add(name));
-        alloc.set_field(&mut block, 11, alloc.add(pos));
-        alloc.set_field(&mut block, 12, alloc.add(tparams));
-        alloc.set_field(&mut block, 13, alloc.add(where_constraints));
-        alloc.set_field(&mut block, 14, alloc.add(substs));
-        alloc.set_field(&mut block, 15, alloc.add(consts));
-        alloc.set_field(&mut block, 16, alloc.add(type_consts));
-        alloc.set_field(&mut block, 17, alloc.add(props));
-        alloc.set_field(&mut block, 18, alloc.add(static_props));
-        alloc.set_field(&mut block, 19, alloc.add(methods));
-        alloc.set_field(&mut block, 20, alloc.add(static_methods));
-        alloc.set_field(&mut block, 21, alloc.add(constructor));
-        alloc.set_field(&mut block, 22, alloc.add(ancestors));
-        alloc.set_field(&mut block, 23, alloc.add(support_dynamic_type));
-        alloc.set_field(&mut block, 24, alloc.add(req_ancestors));
-        alloc.set_field(&mut block, 25, alloc.add(req_ancestors_extends));
-        alloc.set_field(&mut block, 26, alloc.add(req_class_ancestors));
-        alloc.set_field(&mut block, 27, alloc.add(extends));
-        alloc.set_field(&mut block, 28, alloc.add(sealed_whitelist));
-        alloc.set_field(&mut block, 29, alloc.add(xhp_attr_deps));
-        alloc.set_field(&mut block, 30, alloc.add(xhp_enum_values));
-        alloc.set_field(&mut block, 31, alloc.add(xhp_marked_empty));
-        alloc.set_field(&mut block, 32, alloc.add(enum_type));
-        alloc.set_field(&mut block, 33, alloc.add(decl_errors));
-        alloc.set_field(&mut block, 34, alloc.add(docs_url));
+        alloc.set_field(&mut block, 10, alloc.add(is_module_level_trait));
+        alloc.set_field(&mut block, 11, alloc.add(name));
+        alloc.set_field(&mut block, 12, alloc.add(pos));
+        alloc.set_field(&mut block, 13, alloc.add(tparams));
+        alloc.set_field(&mut block, 14, alloc.add(where_constraints));
+        alloc.set_field(&mut block, 15, alloc.add(substs));
+        alloc.set_field(&mut block, 16, alloc.add(consts));
+        alloc.set_field(&mut block, 17, alloc.add(type_consts));
+        alloc.set_field(&mut block, 18, alloc.add(props));
+        alloc.set_field(&mut block, 19, alloc.add(static_props));
+        alloc.set_field(&mut block, 20, alloc.add(methods));
+        alloc.set_field(&mut block, 21, alloc.add(static_methods));
+        alloc.set_field(&mut block, 22, alloc.add(constructor));
+        alloc.set_field(&mut block, 23, alloc.add(ancestors));
+        alloc.set_field(&mut block, 24, alloc.add(support_dynamic_type));
+        alloc.set_field(&mut block, 25, alloc.add(req_ancestors));
+        alloc.set_field(&mut block, 26, alloc.add(req_ancestors_extends));
+        alloc.set_field(&mut block, 27, alloc.add(req_class_ancestors));
+        alloc.set_field(&mut block, 28, alloc.add(extends));
+        alloc.set_field(&mut block, 29, alloc.add(sealed_whitelist));
+        alloc.set_field(&mut block, 30, alloc.add(xhp_attr_deps));
+        alloc.set_field(&mut block, 31, alloc.add(xhp_enum_values));
+        alloc.set_field(&mut block, 32, alloc.add(xhp_marked_empty));
+        alloc.set_field(&mut block, 33, alloc.add(enum_type));
+        alloc.set_field(&mut block, 34, alloc.add(decl_errors));
+        alloc.set_field(&mut block, 35, alloc.add(docs_url));
         block.build()
     }
 }
@@ -125,7 +127,7 @@ impl<R: Reason> ToOcamlRep for FoldedClass<R> {
 // See comment on impl of ToOcamlRep for FoldedClass.
 impl<R: Reason> FromOcamlRep for FoldedClass<R> {
     fn from_ocamlrep(value: ocamlrep::Value<'_>) -> Result<Self, ocamlrep::FromError> {
-        let block = ocamlrep::from::expect_tuple(value, 35)?;
+        let block = ocamlrep::from::expect_tuple(value, 36)?;
         Ok(Self {
             is_final: ocamlrep::from::field(block, 2)?,
             is_const: ocamlrep::from::field(block, 3)?,
@@ -135,31 +137,32 @@ impl<R: Reason> FromOcamlRep for FoldedClass<R> {
             is_xhp: ocamlrep::from::field(block, 7)?,
             has_xhp_keyword: ocamlrep::from::field(block, 8)?,
             module: ocamlrep::from::field(block, 9)?,
-            name: ocamlrep::from::field(block, 10)?,
-            pos: ocamlrep::from::field(block, 11)?,
-            tparams: ocamlrep::from::field(block, 12)?,
-            where_constraints: ocamlrep::from::field(block, 13)?,
-            substs: ocamlrep::from::field(block, 14)?,
-            consts: ocamlrep::from::field(block, 15)?,
-            type_consts: ocamlrep::from::field(block, 16)?,
-            props: ocamlrep::from::field(block, 17)?,
-            static_props: ocamlrep::from::field(block, 18)?,
-            methods: ocamlrep::from::field(block, 19)?,
-            static_methods: ocamlrep::from::field(block, 20)?,
-            constructor: ocamlrep::from::field(block, 21)?,
-            ancestors: ocamlrep::from::field(block, 22)?,
-            support_dynamic_type: ocamlrep::from::field(block, 23)?,
-            req_ancestors: ocamlrep::from::field(block, 24)?,
-            req_ancestors_extends: ocamlrep::from::field(block, 25)?,
-            req_class_ancestors: ocamlrep::from::field(block, 26)?,
-            extends: ocamlrep::from::field(block, 27)?,
-            sealed_whitelist: ocamlrep::from::field(block, 28)?,
-            xhp_attr_deps: ocamlrep::from::field(block, 29)?,
-            xhp_enum_values: ocamlrep::from::field(block, 30)?,
-            xhp_marked_empty: ocamlrep::from::field(block, 31)?,
-            enum_type: ocamlrep::from::field(block, 32)?,
-            decl_errors: ocamlrep::from::field(block, 33)?,
-            docs_url: ocamlrep::from::field(block, 34)?,
+            is_module_level_trait: ocamlrep::from::field(block, 10)?,
+            name: ocamlrep::from::field(block, 11)?,
+            pos: ocamlrep::from::field(block, 12)?,
+            tparams: ocamlrep::from::field(block, 13)?,
+            where_constraints: ocamlrep::from::field(block, 14)?,
+            substs: ocamlrep::from::field(block, 15)?,
+            consts: ocamlrep::from::field(block, 16)?,
+            type_consts: ocamlrep::from::field(block, 17)?,
+            props: ocamlrep::from::field(block, 18)?,
+            static_props: ocamlrep::from::field(block, 19)?,
+            methods: ocamlrep::from::field(block, 20)?,
+            static_methods: ocamlrep::from::field(block, 21)?,
+            constructor: ocamlrep::from::field(block, 22)?,
+            ancestors: ocamlrep::from::field(block, 23)?,
+            support_dynamic_type: ocamlrep::from::field(block, 24)?,
+            req_ancestors: ocamlrep::from::field(block, 25)?,
+            req_ancestors_extends: ocamlrep::from::field(block, 26)?,
+            req_class_ancestors: ocamlrep::from::field(block, 27)?,
+            extends: ocamlrep::from::field(block, 28)?,
+            sealed_whitelist: ocamlrep::from::field(block, 29)?,
+            xhp_attr_deps: ocamlrep::from::field(block, 30)?,
+            xhp_enum_values: ocamlrep::from::field(block, 31)?,
+            xhp_marked_empty: ocamlrep::from::field(block, 32)?,
+            enum_type: ocamlrep::from::field(block, 33)?,
+            decl_errors: ocamlrep::from::field(block, 34)?,
+            docs_url: ocamlrep::from::field(block, 35)?,
         })
     }
 }
@@ -251,6 +254,71 @@ impl<R: Reason> ToOcamlRep for ShapeFieldType<R> {
     }
 }
 
+impl<R: Reason> ToOcamlRep for ShapeType<R> {
+    fn to_ocamlrep<'a, A: ocamlrep::Allocator>(&'a self, alloc: &'a A) -> ocamlrep::Value<'a> {
+        let Self(shape_kind, shape_field_type_map) = &self;
+        let map = if shape_field_type_map.is_empty() {
+            ocamlrep::Value::int(0)
+        } else {
+            let len = shape_field_type_map.len();
+            let mut iter = shape_field_type_map.iter().map(|(k, v)| {
+                let k = shape_field_name_to_ocamlrep(alloc, k, &v.field_name_pos);
+                (k, v.to_ocamlrep(alloc))
+            });
+            let (map, _) = ocamlrep::sorted_iter_to_ocaml_map(&mut iter, alloc, len);
+            map
+        };
+
+        let mut block = alloc.block_with_size(3);
+        // Note: we always set decl shapes to Missing_origin (0) as it is only for type aliases
+        alloc.set_field(&mut block, 0, ocamlrep::Value::int(0));
+        alloc.set_field(&mut block, 1, alloc.add(shape_kind));
+        alloc.set_field(&mut block, 2, map);
+        block.build()
+    }
+}
+
+impl<R: Reason> FromOcamlRep for ShapeType<R> {
+    fn from_ocamlrep(value: ocamlrep::Value<'_>) -> Result<Self, ocamlrep::FromError> {
+        let block = ocamlrep::from::expect_tuple(value, 3)?;
+        Ok(ShapeType(
+            ocamlrep::from::field(block, 1)?,
+            ocamlrep::vec_from_ocaml_map(block[2])?
+                .into_iter()
+                .map(|(k, (optional, ty))| match k {
+                    OcamlShapeFieldName::Int(pos_id) => (
+                        TshapeFieldName::TSFlitInt(pos_id.id()),
+                        ShapeFieldType {
+                            optional,
+                            ty,
+                            field_name_pos: ShapeFieldNamePos::Simple(pos_id.into_pos()),
+                        },
+                    ),
+                    OcamlShapeFieldName::Str(pos_id) => (
+                        TshapeFieldName::TSFlitStr(pos_id.id()),
+                        ShapeFieldType {
+                            optional,
+                            ty,
+                            field_name_pos: ShapeFieldNamePos::Simple(pos_id.into_pos()),
+                        },
+                    ),
+                    OcamlShapeFieldName::ClassConst(cls_id, const_id) => (
+                        TshapeFieldName::TSFclassConst(cls_id.id(), const_id.id()),
+                        ShapeFieldType {
+                            optional,
+                            ty,
+                            field_name_pos: ShapeFieldNamePos::ClassConst(
+                                cls_id.into_pos(),
+                                const_id.into_pos(),
+                            ),
+                        },
+                    ),
+                })
+                .collect(),
+        ))
+    }
+}
+
 // Hand-written because we represent shape field names differently (see comment
 // on `shape_field_name_to_ocamlrep`) and don't represent TanySentinel.
 impl<R: Reason> ToOcamlRep for Ty_<R> {
@@ -270,6 +338,7 @@ impl<R: Reason> ToOcamlRep for Ty_<R> {
                 block.build()
             }
             Ty_::Tmixed => ocamlrep::Value::int(1),
+            Ty_::Twildcard => ocamlrep::Value::int(2),
             Ty_::Tlike(x) => {
                 let mut block = alloc.block_with_size_and_tag(1usize, 2u8);
                 alloc.set_field(&mut block, 0, alloc.add(x));
@@ -280,8 +349,8 @@ impl<R: Reason> ToOcamlRep for Ty_<R> {
                 alloc.set_field(&mut block, 0, alloc.add(&())); // TanySentinel
                 block.build()
             }
-            Ty_::Tnonnull => ocamlrep::Value::int(2),
-            Ty_::Tdynamic => ocamlrep::Value::int(3),
+            Ty_::Tnonnull => ocamlrep::Value::int(3),
+            Ty_::Tdynamic => ocamlrep::Value::int(4),
             Ty_::Toption(x) => {
                 let mut block = alloc.block_with_size_and_tag(1usize, 4u8);
                 alloc.set_field(&mut block, 0, alloc.add(x));
@@ -303,54 +372,34 @@ impl<R: Reason> ToOcamlRep for Ty_<R> {
                 block.build()
             }
             Ty_::Tshape(shape) => {
-                let (shape_kind, shape_field_type_map): &(_, _) = shape;
-                let map = if shape_field_type_map.is_empty() {
-                    ocamlrep::Value::int(0)
-                } else {
-                    let len = shape_field_type_map.len();
-                    let mut iter = shape_field_type_map.iter().map(|(k, v)| {
-                        let k = shape_field_name_to_ocamlrep(alloc, k, &v.field_name_pos);
-                        (k, v.to_ocamlrep(alloc))
-                    });
-                    let (map, _) = ocamlrep::sorted_iter_to_ocaml_map(&mut iter, alloc, len);
-                    map
-                };
-
-                let mut block = alloc.block_with_size_and_tag(3usize, 8u8);
-                alloc.set_field(&mut block, 0, ocamlrep::Value::int(0));
-                alloc.set_field(&mut block, 1, alloc.add(shape_kind));
-                alloc.set_field(&mut block, 2, map);
-                block.build()
-            }
-            Ty_::Tvar(ident) => {
-                let mut block = alloc.block_with_size_and_tag(1usize, 9u8);
-                alloc.set_field(&mut block, 0, alloc.add(ident));
+                let mut block = alloc.block_with_size_and_tag(1usize, 8u8);
+                alloc.set_field(&mut block, 0, alloc.add(&**shape));
                 block.build()
             }
             Ty_::Tgeneric(x) => {
-                let mut block = alloc.block_with_size_and_tag(2usize, 10u8);
+                let mut block = alloc.block_with_size_and_tag(2usize, 9u8);
                 alloc.set_field(&mut block, 0, alloc.add(&x.0));
                 alloc.set_field(&mut block, 1, alloc.add(&x.1));
                 block.build()
             }
             Ty_::Tunion(x) => {
-                let mut block = alloc.block_with_size_and_tag(1usize, 11u8);
+                let mut block = alloc.block_with_size_and_tag(1usize, 10u8);
                 alloc.set_field(&mut block, 0, alloc.add(&**x));
                 block.build()
             }
             Ty_::Tintersection(x) => {
-                let mut block = alloc.block_with_size_and_tag(1usize, 12u8);
+                let mut block = alloc.block_with_size_and_tag(1usize, 11u8);
                 alloc.set_field(&mut block, 0, alloc.add(&**x));
                 block.build()
             }
             Ty_::TvecOrDict(x) => {
-                let mut block = alloc.block_with_size_and_tag(2usize, 13u8);
+                let mut block = alloc.block_with_size_and_tag(2usize, 12u8);
                 alloc.set_field(&mut block, 0, alloc.add(&x.0));
                 alloc.set_field(&mut block, 1, alloc.add(&x.1));
                 block.build()
             }
             Ty_::Taccess(x) => {
-                let mut block = alloc.block_with_size_and_tag(1usize, 14u8);
+                let mut block = alloc.block_with_size_and_tag(1usize, 13u8);
                 alloc.set_field(&mut block, 0, alloc.add(&**x));
                 block.build()
             }
@@ -366,9 +415,10 @@ impl<R: Reason> FromOcamlRep for Ty_<R> {
             match value.as_int().unwrap() {
                 0 => Ok(Ty_::Tthis),
                 1 => Ok(Ty_::Tmixed),
-                2 => Ok(Ty_::Tnonnull),
-                3 => Ok(Ty_::Tdynamic),
-                t => Err(ocamlrep::FromError::NullaryVariantTagOutOfRange { max: 3, actual: t }),
+                2 => Ok(Ty_::Twildcard),
+                3 => Ok(Ty_::Tnonnull),
+                4 => Ok(Ty_::Tdynamic),
+                t => Err(ocamlrep::FromError::NullaryVariantTagOutOfRange { max: 4, actual: t }),
             }
         } else {
             let block = ocamlrep::from::expect_block(value)?;
@@ -413,74 +463,32 @@ impl<R: Reason> FromOcamlRep for Ty_<R> {
                     Ok(Ty_::Ttuple(ocamlrep::from::field(block, 0)?))
                 }
                 8 => {
-                    ocamlrep::from::expect_block_size(block, 3)?;
-                    Ok(Ty_::Tshape(Box::new((
-                        ocamlrep::from::field(block, 1)?,
-                        ocamlrep::vec_from_ocaml_map(block[2])?
-                            .into_iter()
-                            .map(|(k, (optional, ty))| match k {
-                                OcamlShapeFieldName::Int(pos_id) => (
-                                    TshapeFieldName::TSFlitInt(pos_id.id()),
-                                    ShapeFieldType {
-                                        optional,
-                                        ty,
-                                        field_name_pos: ShapeFieldNamePos::Simple(
-                                            pos_id.into_pos(),
-                                        ),
-                                    },
-                                ),
-                                OcamlShapeFieldName::Str(pos_id) => (
-                                    TshapeFieldName::TSFlitStr(pos_id.id()),
-                                    ShapeFieldType {
-                                        optional,
-                                        ty,
-                                        field_name_pos: ShapeFieldNamePos::Simple(
-                                            pos_id.into_pos(),
-                                        ),
-                                    },
-                                ),
-                                OcamlShapeFieldName::ClassConst(cls_id, const_id) => (
-                                    TshapeFieldName::TSFclassConst(cls_id.id(), const_id.id()),
-                                    ShapeFieldType {
-                                        optional,
-                                        ty,
-                                        field_name_pos: ShapeFieldNamePos::ClassConst(
-                                            cls_id.into_pos(),
-                                            const_id.into_pos(),
-                                        ),
-                                    },
-                                ),
-                            })
-                            .collect(),
-                    ))))
+                    ocamlrep::from::expect_block_size(block, 1)?;
+                    Ok(Ty_::Tshape(ocamlrep::from::field(block, 0)?))
                 }
                 9 => {
-                    ocamlrep::from::expect_block_size(block, 1)?;
-                    Ok(Ty_::Tvar(ocamlrep::from::field(block, 0)?))
-                }
-                10 => {
                     ocamlrep::from::expect_block_size(block, 2)?;
                     Ok(Ty_::Tgeneric(Box::new((
                         ocamlrep::from::field(block, 0)?,
                         ocamlrep::from::field(block, 1)?,
                     ))))
                 }
-                11 => {
+                10 => {
                     ocamlrep::from::expect_block_size(block, 1)?;
                     Ok(Ty_::Tunion(ocamlrep::from::field(block, 0)?))
                 }
-                12 => {
+                11 => {
                     ocamlrep::from::expect_block_size(block, 1)?;
                     Ok(Ty_::Tintersection(ocamlrep::from::field(block, 0)?))
                 }
-                13 => {
+                12 => {
                     ocamlrep::from::expect_block_size(block, 2)?;
                     Ok(Ty_::TvecOrDict(Box::new((
                         ocamlrep::from::field(block, 0)?,
                         ocamlrep::from::field(block, 1)?,
                     ))))
                 }
-                14 => {
+                13 => {
                     ocamlrep::from::expect_block_size(block, 1)?;
                     Ok(Ty_::Taccess(ocamlrep::from::field(block, 0)?))
                 }

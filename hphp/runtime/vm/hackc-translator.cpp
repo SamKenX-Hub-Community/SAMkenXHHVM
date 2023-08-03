@@ -40,6 +40,9 @@ using namespace HPHP::hackc::hhbc;
 
 
 struct TranslationState {
+
+  explicit TranslationState(bool isSystemLib): isSystemLib(isSystemLib) {}
+
   void enterCatch() {
     handler.push(fe->bcPos());
   }
@@ -119,6 +122,7 @@ struct TranslationState {
   uint32_t maxUnnamed{0};
   Location::Range srcLoc{-1,-1,-1,-1};
   std::vector<std::pair<hhbc::Label, Offset>> labelJumps;
+  bool isSystemLib{false};
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -342,12 +346,29 @@ void translateTypedef(TranslationState& ts, const hhbc::Typedef& t) {
   UserAttributeMap userAttrs;
   translateUserAttributes(t.attributes, userAttrs);
   auto attrs = t.attrs;
-  if (!SystemLib::s_inited) attrs |= AttrPersistent;
+  assertx(IMPLIES(ts.isSystemLib, attrs & AttrPersistent));
   auto const name = toStaticString(t.name._0);
 
-  auto const ty = translateTypeInfo(t.type_info).second;
-  auto tname = ty.typeName();
-  if (!tname) tname = staticEmptyString();
+  auto const tis = range(t.type_info_union);
+  assertx(!tis.empty());
+
+  TypeAndValueUnion typeAndValueUnion;
+  bool nullable = false;
+
+  if (RO::EvalTreatCaseTypesAsMixed && tis.size() > 1) {
+    typeAndValueUnion.emplace_back(TypeAndValue{AnnotType::Mixed, staticEmptyString()});
+  } else {
+    for (auto const& ti : tis) {
+      auto const ty = translateTypeInfo(ti).second;
+      nullable |= ((ty.flags() & TypeConstraintFlags::Nullable) != 0);
+      auto const tname = ty.typeName();
+      if (tname && !tname->empty()) {
+        typeAndValueUnion.emplace_back(TypeAndValue{ty.type(), tname});
+      } else {
+        typeAndValueUnion.emplace_back(TypeAndValue{AnnotType::Mixed, staticEmptyString()});
+      }
+    }
+  }
 
   auto tys = toTypedValue(t.type_structure);
   assertx(isArrayLikeType(tys.m_type));
@@ -358,10 +379,9 @@ void translateTypedef(TranslationState& ts, const hhbc::Typedef& t) {
     t.span.line_begin,
     t.span.line_end,
     attrs,
-    tname,
-    tname->empty() ? AnnotType::Mixed : ty.type(),
-    (ty.flags() & TypeConstraintFlags::Nullable) != 0,
-    (ty.flags() & TypeConstraintFlags::CaseType) != 0,
+    typeAndValueUnion,
+    nullable,
+    t.case_type,
     ArrNR{tys.m_data.parr},
     Array{}
   );
@@ -399,7 +419,7 @@ void addConstant(TranslationState& ts,
 void translateClassConstant(TranslationState& ts, const hhbc::Constant& c) {
   auto const name = toStaticString(c.name._0);
   auto const tv = maybe(c.value);
-  addConstant<false>(ts, name, tv, c.is_abstract);
+  addConstant<false>(ts, name, tv, c.attrs & AttrAbstract);
 }
 
 void translateTypeConstant(TranslationState& ts, const hhbc::TypeConstant& c) {
@@ -446,10 +466,10 @@ void translateProperty(TranslationState& ts, const hhbc::Property& p, const Uppe
   auto ub = getRelevantUpperBounds(typeConstraint, classUbs, classUbs, {});
 
   auto needsMultiUBs = false;
-  if (ub.size() == 1 && !hasReifiedGenerics) {
-    applyFlagsToUB(ub[0], typeConstraint);
-    typeConstraint = ub[0];
-  } else if (!ub.empty()) {
+  if (ub.isSimple() && !hasReifiedGenerics) {
+    applyFlagsToUB(ub.asSimpleMut(), typeConstraint);
+    typeConstraint = ub.asSimple();
+  } else if (!ub.isTop()) {
     needsMultiUBs = true;
   }
 
@@ -498,11 +518,10 @@ void translateClassBody(TranslationState& ts,
 
 void translateUbs(const hhbc::UpperBound& ub, UpperBoundMap& ubs) {
   auto const& name = toStaticString(ub.name);
-  CompactVector<TypeConstraint> ret;
 
   auto infos = range(ub.bounds);
   for (auto const& i : infos) {
-    ubs[name].emplace_back(translateTypeInfo(i).second);
+    ubs[name].m_constraints.emplace_back(translateTypeInfo(i).second);
   }
 }
 
@@ -951,16 +970,21 @@ void upperBoundsHelper(TranslationState& ts,
                        const UpperBoundMap& ubs,
                        const UpperBoundMap& classUbs,
                        const TParamNameVec& shadowedTParams,
-                       CompactVector<TypeConstraint>& upperBounds,
+                       TypeIntersectionConstraint& upperBounds,
                        TypeConstraint& tc,
-                       bool hasReifiedGenerics) {
+                       bool hasReifiedGenerics,
+                       bool isParam) {
   auto currUBs = getRelevantUpperBounds(tc, ubs, classUbs, shadowedTParams);
-  if (currUBs.size() == 1 && !hasReifiedGenerics) {
-    applyFlagsToUB(currUBs[0], tc);
-    tc = currUBs[0];
-  } else if (!currUBs.empty()) {
+  if (currUBs.isSimple() && !hasReifiedGenerics) {
+    applyFlagsToUB(currUBs.asSimpleMut(), tc);
+    tc = currUBs.asSimple();
+  } else if (!currUBs.isTop()) {
     upperBounds = std::move(currUBs);
-    ts.fe->hasReturnWithMultiUBs = true;
+    if (isParam) {
+      ts.fe->hasParamsWithMultiUBs = true;
+    } else {
+      ts.fe->hasReturnWithMultiUBs = true;
+    }
   }
 }
 
@@ -969,9 +993,10 @@ bool upperBoundsHelper(TranslationState& ts,
                        const UpperBoundMap& ubs,
                        const UpperBoundMap& classUbs,
                        const TParamNameVec& shadowedTParams,
-                       CompactVector<TypeConstraint>& upperBounds,
+                       TypeIntersectionConstraint& upperBounds,
                        TypeConstraint& tc,
-                       const UserAttributeMap& userAttrs) {
+                       const UserAttributeMap& userAttrs,
+                       bool isParam) {
   auto const hasReifiedGenerics = [&]() {
     if (userAttrs.find(s___Reified.get()) != userAttrs.end()) return true;
     if (checkPce) {
@@ -982,7 +1007,7 @@ bool upperBoundsHelper(TranslationState& ts,
   }();
 
   upperBoundsHelper(ts, ubs, classUbs, shadowedTParams,
-                    upperBounds, tc, hasReifiedGenerics);
+                    upperBounds, tc, hasReifiedGenerics, isParam);
   return hasReifiedGenerics;
 }
 
@@ -995,7 +1020,7 @@ void translateParameter(TranslationState& ts,
   FuncEmitter::ParamInfo param;
   translateUserAttributes(p.user_attributes, param.userAttributes);
   if (p.is_variadic) {
-    ts.fe->attrs |= AttrVariadicParam;
+    assertx(ts.fe->attrs & AttrVariadicParam);
     param.setFlag(Func::ParamInfo::Flags::Variadic);
   }
   if (p.is_inout) param.setFlag(Func::ParamInfo::Flags::InOut);
@@ -1005,7 +1030,7 @@ void translateParameter(TranslationState& ts,
       [&]() {return std::make_pair(nullptr, TypeConstraint{});});
 
   upperBoundsHelper(ts, ubs, classUbs, shadowedTParams, param.upperBounds,
-                    param.typeConstraint, hasReifiedGenerics);
+                    param.typeConstraint, hasReifiedGenerics, true);
 
   auto const dv = maybe(p.default_value);
   if (dv) translateDefaultParameterValue(ts, dv.value(), param);
@@ -1148,7 +1173,7 @@ void translateCoeffects(TranslationState& ts, const hhbc::Coeffects& coeffects) 
     ts.fe->coeffectRules.emplace_back(CoeffectRule(CoeffectRule::GeneratorThis{}));
   }
 
-  if (coeffects.caller) {
+if (coeffects.caller) {
     ts.fe->coeffectRules.emplace_back(CoeffectRule(CoeffectRule::Caller{}));
   }
 }
@@ -1164,11 +1189,13 @@ void translateFunction(TranslationState& ts, const hhbc::Function& f) {
   translateUserAttributes(f.attributes, userAttrs);
 
   Attr attrs = f.attrs;
-  if (!SystemLib::s_inited) {
-    attrs |= AttrUnique | AttrPersistent | AttrBuiltin;
-  }
+  assertx(IMPLIES(ts.isSystemLib, attrs & AttrBuiltin));
 
-  ts.fe = ts.ue->newFuncEmitter(toStaticString(f.name._0));
+  auto const name = toStaticString(f.name._0);
+  assertx(IMPLIES(ts.isSystemLib,
+    (attrs & AttrPersistent) != RO::funcIsRenamable(name)));
+
+  ts.fe = ts.ue->newFuncEmitter(name);
   ts.fe->init(f.span.line_begin, f.span.line_end, attrs, nullptr);
   ts.fe->isGenerator = (bool)(f.flags & hhbc::FunctionFlags_GENERATOR);
   ts.fe->isAsync = (bool)(f.flags & hhbc::FunctionFlags_ASYNC);
@@ -1182,7 +1209,8 @@ void translateFunction(TranslationState& ts, const hhbc::Function& f) {
       [&]() {return std::make_pair(nullptr, TypeConstraint{});});
 
   auto const hasReifiedGenerics =
-    upperBoundsHelper(ts, ubs, {}, {},ts.fe->retUpperBounds, retTypeInfo.second, userAttrs);
+    upperBoundsHelper(ts, ubs, {}, {},ts.fe->retUpperBounds, retTypeInfo.second,
+                      userAttrs, false);
 
   std::tie(ts.fe->retUserType, ts.fe->retTypeConstraint) = retTypeInfo;
   ts.srcLoc = Location::Range{static_cast<int>(f.span.line_begin), -1, static_cast<int>(f.span.line_end), -1};
@@ -1208,8 +1236,7 @@ void translateMethod(TranslationState& ts, const hhbc::Method& m, const UpperBou
   translateShadowedTParams(shadowedTParams, m.body.shadowed_tparams);
 
   Attr attrs = m.attrs;
-  if (!SystemLib::s_inited) attrs |= AttrBuiltin;
-
+  assertx(IMPLIES(ts.isSystemLib, attrs & AttrBuiltin));
   auto const name = toStaticString(m.name._0);
   ts.fe = ts.ue->newMethodEmitter(name, ts.pce);
   ts.pce->addMethod(ts.fe);
@@ -1231,7 +1258,8 @@ void translateMethod(TranslationState& ts, const hhbc::Method& m, const UpperBou
 
   auto const hasReifiedGenerics =
     upperBoundsHelper<true>(ts, ubs, classUbs, shadowedTParams,
-                            ts.fe->retUpperBounds, retTypeInfo.second, userAttrs);
+                            ts.fe->retUpperBounds, retTypeInfo.second, userAttrs,
+                            false);
 
   ts.srcLoc = Location::Range{static_cast<int>(m.span.line_begin), -1,
                               static_cast<int>(m.span.line_end), -1};
@@ -1255,7 +1283,8 @@ void translateClass(TranslationState& ts, const hhbc::Class& c) {
   ITRACE(2, "Translating attribute list {}\n", c.attributes.len);
   translateUserAttributes(c.attributes, userAttrs);
   auto attrs = c.flags;
-  if (!SystemLib::s_inited) attrs |= AttrUnique | AttrPersistent | AttrBuiltin;
+  assertx(IMPLIES(ts.isSystemLib, attrs & AttrPersistent &&
+                                  attrs & AttrBuiltin));
 
   auto const parentName = maybeOrElse(c.base,
     [&](ClassName& s) { return toStaticString(s._0); },
@@ -1311,18 +1340,13 @@ void translateAdata(TranslationState& ts, const hhbc::Adata& ad) {
 void translateConstant(TranslationState& ts, const hhbc::Constant& c) {
   HPHP::Constant constant;
   constant.name = toStaticString(c.name._0);
-  constant.attrs = SystemLib::s_inited ? AttrNone : AttrPersistent;
+  constant.attrs = c.attrs;
+  assertx(IMPLIES(ts.isSystemLib, c.attrs & AttrPersistent));
 
   constant.val = maybeOrElse(c.value,
     [&](hhbc::TypedValue& tv) {return toTypedValue(tv);},
     [&]() {return make_tv<KindOfNull>();});
 
-  // An uninit constant means its actually a "dynamic" constant whose value
-  // is evaluated at runtime. We store the callback in m_data.pcnt and invoke
-  // on lookup. (see constant.cpp) It's used for things like STDERR.
-  if (type(constant.val) == KindOfUninit) {
-    constant.val.m_data.pcnt = reinterpret_cast<MaybeCountable*>(HPHP::Constant::get);
-  }
   ts.ue->addConstant(constant);
 }
 
@@ -1521,9 +1545,10 @@ std::unique_ptr<UnitEmitter> unitEmitterFromHackCUnit(
   auto ue = std::make_unique<UnitEmitter>(sha1, bcSha1, nativeFuncs, packageInfo);
   StringData* sd = makeStaticString(filename);
   ue->m_filepath = sd;
+  bool isSystemLib = FileUtil::isSystemName(sd->slice());
 
   try {
-    TranslationState ts{};
+    auto ts = TranslationState(isSystemLib);
     ts.ue = ue.get();
     translate(ts, unit);
     ue->finish();

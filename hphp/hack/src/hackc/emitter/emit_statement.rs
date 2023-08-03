@@ -29,7 +29,6 @@ use naming_special_names_rust::superglobals;
 use oxidized::aast as a;
 use oxidized::ast;
 use oxidized::ast_defs;
-use oxidized::ast_defs::ParamKind;
 use oxidized::local_id;
 use oxidized::pos::Pos;
 use regex::Regex;
@@ -131,6 +130,8 @@ pub fn emit_stmt<'a, 'arena, 'decl>(
         a::Stmt_::Markup(x) => emit_markup(e, env, x, false),
         a::Stmt_::Fallthrough | a::Stmt_::Noop => Ok(instr::empty()),
         a::Stmt_::AssertEnv(_) => Ok(instr::empty()),
+        a::Stmt_::DeclareLocal(x) => emit_declare_local(e, env, pos, &x.0, &x.2),
+        a::Stmt_::Match(..) => todo!("TODO(jakebailey): match statements"),
     }
 }
 
@@ -263,28 +264,28 @@ fn emit_call<'a, 'arena, 'decl>(
     env: &mut Env<'a, 'arena>,
     e_: &ast::Expr,
     _pos: &Pos,
-    c: &(
-        ast::Expr,
-        Vec<ast::Targ>,
-        Vec<(ParamKind, ast::Expr)>,
-        Option<ast::Expr>,
-    ),
+    c: &ast::CallExpr,
 ) -> Result<InstrSeq<'arena>> {
     let alloc = env.arena;
-    if let (a::Expr(_, _, a::Expr_::Id(sid)), _, exprs, None) = c {
+    if let a::CallExpr {
+        func: a::Expr(_, _, a::Expr_::Id(sid)),
+        args,
+        unpacked_arg: None,
+        ..
+    } = c
+    {
         let ft = hhbc::FunctionName::from_ast_name(alloc, &sid.1);
         let fname = ft.unsafe_as_str();
         if fname.eq_ignore_ascii_case("unset") {
             Ok(InstrSeq::gather(
-                exprs
-                    .iter()
+                args.iter()
                     .map(|ex| {
                         emit_expr::emit_unset_expr(e, env, error::expect_normal_paramkind(ex)?)
                     })
                     .collect::<Result<Vec<_>, _>>()?,
             ))
         } else if let Some(kind) = set_bytes_kind(fname) {
-            emit_expr::emit_set_range_expr(e, env, &e_.1, fname, kind, exprs)
+            emit_expr::emit_set_range_expr(e, env, &e_.1, fname, kind, args)
         } else {
             emit_expr::emit_ignored_expr(e, env, &e_.1, e_)
         }
@@ -1657,5 +1658,28 @@ fn emit_if<'a, 'arena, 'decl>(
             alternative_instr,
             instr::label(done_label),
         ]))
+    }
+}
+
+// Treat the declaration of a local as a binop assignment.
+// TODO: clone less
+// TODO: Enforce the type hint from the declaration?
+fn emit_declare_local<'a, 'arena, 'decl>(
+    e: &mut Emitter<'arena, 'decl>,
+    env: &mut Env<'a, 'arena>,
+    pos: &Pos,
+    id: &ast::Lid,
+    e_: &Option<ast::Expr>,
+) -> Result<InstrSeq<'arena>> {
+    if let Some(e_) = e_ {
+        let bop = ast::Binop {
+            bop: ast_defs::Bop::Eq(None),
+            lhs: ast::Expr::new((), pos.clone(), ast::Expr_::mk_lvar(id.clone())),
+            rhs: e_.clone(),
+        };
+        let e2 = ast::Expr::new((), pos.clone(), ast::Expr_::mk_binop(bop.clone()));
+        emit_binop(e, env, &e2, pos, &bop)
+    } else {
+        Ok(InstrSeq::gather(vec![]))
     }
 }

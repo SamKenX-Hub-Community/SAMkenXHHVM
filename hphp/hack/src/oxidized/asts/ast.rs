@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<65007a8f810aa15199011989f7814c52>>
+// @generated SignedSource<<2aac5de012416a3ef9b43c670a1db6a6>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -24,6 +24,8 @@ pub type UsingStmt = aast_defs::UsingStmt<Ex, En>;
 pub type AsExpr = aast_defs::AsExpr<Ex, En>;
 pub type Block = aast_defs::Block<Ex, En>;
 pub type FinallyBlock = aast_defs::FinallyBlock<Ex, En>;
+pub type StmtMatch = aast_defs::StmtMatch<Ex, En>;
+pub type StmtMatchArm = aast_defs::StmtMatchArm<Ex, En>;
 pub type ClassId = aast_defs::ClassId<Ex, En>;
 pub type ClassId_ = aast_defs::ClassId_<Ex, En>;
 pub type Expr = aast_defs::Expr<Ex, En>;
@@ -48,6 +50,7 @@ pub type Efun = aast_defs::Efun<Ex, En>;
 pub type FuncBody = aast_defs::FuncBody<Ex, En>;
 pub type TypeHint = aast_defs::TypeHint<Ex>;
 pub type Targ = aast_defs::Targ<Ex>;
+pub type CallExpr = aast_defs::CallExpr<Ex, En>;
 pub type UserAttribute = aast_defs::UserAttribute<Ex, En>;
 pub type FileAttribute = aast_defs::FileAttribute<Ex, En>;
 pub type Tparam = aast_defs::Tparam<Ex, En>;

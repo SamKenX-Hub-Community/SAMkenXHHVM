@@ -209,7 +209,7 @@ TEST(FieldsTest, UnifiedAPIs) {
   checkField<struct3, field_ordinal<17>, field_id<17>, ident::fieldQ, true,  TypeTag17, FieldTag17>("fieldQ");
   checkField<struct3, field_ordinal<18>, field_id<18>, ident::fieldR, true,  TypeTag18, FieldTag18>("fieldR");
   checkField<struct3, field_ordinal<19>, field_id<20>, ident::fieldS, true,  TypeTag19, FieldTag19>("fieldS");
-  // clang-format off
+  // clang-format on
 }
 
 struct IncompleteType;
@@ -218,7 +218,9 @@ TEST(FieldsTest, IsReflectionMetadata) {
   using namespace apache::thrift::type::detail;
   static_assert(is_type_tag_v<bool_t>);
   static_assert(is_type_tag_v<list<i32_t>>);
-  static_assert(is_type_tag_v<field<list<i32_t>, FieldContext<test_cpp2::cpp_reflection::struct3, 1>>>);
+  static_assert(is_type_tag_v<field<
+                    list<i32_t>,
+                    FieldContext<test_cpp2::cpp_reflection::struct3, 1>>>);
   static_assert(!is_type_tag_v<bool>);
   static_assert(!is_type_tag_v<std::int32_t>);
   static_assert(!is_type_tag_v<std::vector<int32_t>>);
@@ -244,7 +246,9 @@ TEST(FieldsTest, IsReflectionMetadata) {
 
   static_assert(is_id_v<bool_t>);
   static_assert(is_id_v<list<i32_t>>);
-  static_assert(is_id_v<field<list<i32_t>, FieldContext<test_cpp2::cpp_reflection::struct3, 1>>>);
+  static_assert(is_id_v<field<
+                    list<i32_t>,
+                    FieldContext<test_cpp2::cpp_reflection::struct3, 1>>>);
   static_assert(is_id_v<field_id<0>>);
   static_assert(is_id_v<field_id<1>>);
   static_assert(is_id_v<field_ordinal<0>>);
@@ -263,7 +267,7 @@ TEST(FieldsTest, IsReflectionMetadata) {
   // op::get_ordinal<Struct, int>{}; // compile error
   // op::get_type_tag<Struct, int>{}; // compile error
   // op::get_ident<Struct, int>{}; // compile error
-  // op::get_native_type<int, Struct>{}; // compile error
+  // op::get_native_type<Struct, int>{}; // compile error
 }
 
 TEST(FieldsTest, NotFoundFieldInfo) {
@@ -294,7 +298,6 @@ TEST(FieldsTest, NotFoundFieldInfo) {
   test::same_tag<op::get_field_tag<Struct, ident::a>, void>;
 }
 
-
 template <typename Ident>
 bool isIdentTag(folly::tag_t<Ident>) {
   return is_ident_v<Ident>;
@@ -303,9 +306,11 @@ bool isIdentTag(folly::tag_t<Ident>) {
 TEST(FieldsTest, HelperAPIs) {
   using Struct = test_cpp2::cpp_reflection::struct3;
 
-  test::same_tag<op::get_native_type<field_ordinal<1>, Struct>, std::int32_t>;
-  test::same_tag<op::get_native_type<ident::fieldA, Struct>, std::int32_t>;
-  test::same_tag<op::get_native_type<field_id<11>, Struct>, std::deque<std::string>>;
+  test::same_tag<op::get_native_type<Struct, field_ordinal<1>>, std::int32_t>;
+  test::same_tag<op::get_native_type<Struct, ident::fieldA>, std::int32_t>;
+  test::same_tag<
+      op::get_native_type<Struct, field_id<11>>,
+      std::deque<std::string>>;
   EXPECT_EQ((op::get_field_id_v<Struct, field_ordinal<1>>), FieldId{2});
   EXPECT_EQ((op::get_ordinal_v<Struct, field_id<2>>), FieldOrdinal{1});
 
@@ -333,7 +338,11 @@ TEST(FieldsTest, HelperAPIs) {
 }
 
 TEST(FieldsTest, GetFieldNameCppName) {
-  EXPECT_EQ((op::get_name_v<test_cpp2::cpp_reflection::struct_with_renamed_field, field_ordinal<1>>), "fancy.idl.name");
+  EXPECT_EQ(
+      (op::get_name_v<
+          test_cpp2::cpp_reflection::struct_with_renamed_field,
+          field_ordinal<1>>),
+      "fancy.idl.name");
 }
 
 TEST(FieldsTest, GetClassName) {
@@ -343,5 +352,68 @@ TEST(FieldsTest, GetClassName) {
   EXPECT_EQ(op::get_class_name_v<test::RenamedMyStruct>, "MyStruct2");
   EXPECT_EQ(op::get_class_name_v<test::RenamedMyUnion>, "MyUnion2");
   EXPECT_EQ(op::get_class_name_v<test::RenamedMyException>, "MyException2");
+}
+
+TEST(FieldsTest, InvokeByFieldId) {
+  using namespace test_cpp2::cpp_reflection;
+  constexpr auto toValue = [](auto id) { return id.value; };
+  constexpr auto notFound = [] { return FieldId{0}; };
+  static_assert(
+      op::invoke_by_field_id<struct3>(FieldId{18}, toValue, notFound) ==
+      FieldId{18});
+  static_assert(
+      op::invoke_by_field_id<struct3>(FieldId{19}, toValue, notFound) ==
+      FieldId{0});
+  static_assert(
+      op::invoke_by_field_id<struct3>(FieldId{20}, toValue, notFound) ==
+      FieldId{20});
+  static_assert(
+      op::invoke_by_field_id<struct3>(FieldId{21}, toValue, notFound) ==
+      FieldId{0});
+  static_assert(
+      op::invoke_by_field_id<struct3>(FieldId{0}, toValue, notFound) ==
+      FieldId{0});
+
+  for (std::int16_t id = 0; id <= 21; id++) {
+    if (std::unordered_set{0, 19, 21}.contains(id)) {
+      EXPECT_EQ(
+          op::invoke_by_field_id<struct3>(FieldId{id}, toValue, notFound),
+          FieldId{0});
+    } else {
+      EXPECT_EQ(
+          op::invoke_by_field_id<struct3>(FieldId{id}, toValue, notFound),
+          FieldId{id});
+    }
+  }
+
+  for (std::int16_t id = 0; id <= 10; id++) {
+    if (std::unordered_set{1, 2, 3, 6}.contains(id)) {
+      EXPECT_EQ(
+          op::invoke_by_field_id<struct4>(FieldId{id}, toValue, notFound),
+          FieldId{id});
+    } else {
+      EXPECT_EQ(
+          op::invoke_by_field_id<struct4>(FieldId{id}, toValue, notFound),
+          FieldId{0});
+    }
+  }
+}
+
+TEST(FieldsTest, GetFieldRefType) {
+  using test_cpp2::cpp_reflection::enum1;
+  using test_cpp2::cpp_reflection::struct4;
+  using test_cpp2::cpp_reflection::structA;
+  static_assert(test::same_type<
+                op::get_field_ref<struct4, ident::field0>,
+                required_field_ref<std::int32_t&>>);
+  static_assert(test::same_type<
+                op::get_field_ref<struct4, ident::field1>,
+                optional_field_ref<std::string&>>);
+  static_assert(test::same_type<
+                op::get_field_ref<struct4, ident::field2>,
+                field_ref<enum1&>>);
+  static_assert(test::same_type<
+                op::get_field_ref<struct4, ident::field3>,
+                std::unique_ptr<structA>>);
 }
 } // namespace apache::thrift::type

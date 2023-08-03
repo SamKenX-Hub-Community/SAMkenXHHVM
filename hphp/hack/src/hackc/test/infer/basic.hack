@@ -139,12 +139,11 @@ function check_param_types(int $a, float $b, string $c): void {
 // TEST-CHECK-BAL: define $root.check_is_class
 // CHECK: define $root.check_is_class($this: *void, $a: *HackMixed) : *HackBool {
 // CHECK: #b0:
-// CHECK:   n0 = $builtins.hack_new_dict($builtins.hack_string("kind"), $builtins.hack_int(101), $builtins.hack_string("classname"), $builtins.hack_string("C"))
-// CHECK:   n1: *HackMixed = load &$a
-// CHECK:   n2 = $builtins.hhbc_is_type_struct_c(n1, n0, $builtins.hack_int(1))
-// CHECK:   n3 = $builtins.hhbc_is_type_bool(n2)
-// CHECK:   n4 = $builtins.hhbc_verify_type_pred(n2, n3)
-// CHECK:   ret n2
+// CHECK:   n0: *HackMixed = load &$a
+// CHECK:   n1 = $builtins.hack_bool(__sil_instanceof(n0, <C>))
+// CHECK:   n2 = $builtins.hhbc_is_type_bool(n1)
+// CHECK:   n3 = $builtins.hhbc_verify_type_pred(n1, n2)
+// CHECK:   ret n1
 // CHECK: }
 function check_is_class(mixed $a): bool {
   return $a is C;
@@ -156,8 +155,7 @@ function check_is_class(mixed $a): bool {
 // CHECK: #b0:
 // CHECK:   n0: *HackMixed = load &global::_SERVER
 // CHECK:   store &$global_server <- n0: *HackMixed
-// CHECK:   n1: *HackMixed = load &$global_server
-// CHECK:   n2 = $root.sink(null, n1)
+// CHECK:   n1 = $root.sink(null, n0)
 // CHECK:   ret null
 // CHECK: }
 function check_global(): void {
@@ -174,6 +172,16 @@ function check_global(): void {
 // CHECK: }
 function check_constant(): void {
   echo GLOBAL_CONSTANT;
+}
+
+// TEST-CHECK-BAL: define $root.check_file
+// CHECK: define $root.check_file($this: *void) : *void {
+// CHECK: #b0:
+// CHECK:   n0 = $root.printf(null, $builtins.hack_string("FILE: %s\n"), $builtins.hack_string("__FILE__"))
+// CHECK:   ret null
+// CHECK: }
+function check_file(): void {
+  printf("FILE: %s\n", __FILE__);
 }
 
 // TEST-CHECK-1: global global::_SERVER

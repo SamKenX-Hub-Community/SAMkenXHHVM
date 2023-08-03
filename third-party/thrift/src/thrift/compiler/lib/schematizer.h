@@ -32,7 +32,7 @@ namespace compiler {
 class schematizer {
  public:
   using InternFunc = std::function<t_program::value_id(
-      std::unique_ptr<t_const_value> val, t_type_ref type, t_program* program)>;
+      std::unique_ptr<t_const_value> val, t_program* program)>;
 
   explicit schematizer(InternFunc intern_value = &default_intern_value)
       : intern_value_(std::move(intern_value)) {}
@@ -46,13 +46,15 @@ class schematizer {
   std::unique_ptr<t_const_value> gen_schema(const t_program& node);
   std::unique_ptr<t_const_value> gen_schema(const t_typedef& node);
 
+  // Creates a constant of type schema.Schema describing the argument and all
+  // types recursively referenced by it. Calls gen_schema internally.
+  std::unique_ptr<t_const_value> gen_full_schema(const t_service& node);
+
  private:
-  std::function<t_program::value_id(
-      std::unique_ptr<t_const_value> val, t_type_ref type, t_program* program)>
-      intern_value_;
+  InternFunc intern_value_;
 
   static t_program::value_id default_intern_value(
-      std::unique_ptr<t_const_value> val, t_type_ref type, t_program* program);
+      std::unique_ptr<t_const_value> val, t_program* program);
 };
 
 // Turns a t_const_value holding some value V into a t_const_value holding a

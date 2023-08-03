@@ -1,14 +1,15 @@
 (library
  (name client_ide_service)
  (wrapped false)
- (modules clientIdeDaemon clientIdeIncremental clientIdeService)
+ (modules clientIdeDaemon clientIdeIncremental clientIdeInit clientIdeService)
  (libraries
   client_ide_message
   client_ide_utils
   folly_stubs
   lwt
   lsp
-  package
+  package_config
+  package_info
   rust_batch_index_ffi
   server
   server_autocomplete_services
@@ -16,6 +17,7 @@
   server_env_build
   server_go_to
   server_highlight_refs
+  server_type_hierarchy
   server_search
   state_loader
   naming_table_builder_ffi_externs

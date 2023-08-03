@@ -28,9 +28,12 @@
 #include <folly/String.h>
 #include <folly/portability/Sockets.h>
 
+#include "common/serialize/FBSerialize.h"
+
 #include "hphp/util/htonll.h"
 #include "hphp/util/logger.h"
 #include "hphp/runtime/base/array-init.h"
+#include "hphp/runtime/base/backtrace.h"
 #include "hphp/runtime/base/builtin-functions.h"
 #include "hphp/runtime/base/code-coverage.h"
 #include "hphp/runtime/base/file.h"
@@ -46,7 +49,6 @@
 #include "hphp/runtime/base/tv-type.h"
 #include "hphp/runtime/base/type-variant.h"
 #include "hphp/runtime/ext/std/ext_std_function.h"
-#include "hphp/runtime/ext/fb/FBSerialize/FBSerialize.h"
 #include "hphp/runtime/ext/fb/VariantController.h"
 #include "hphp/runtime/server/xbox-server.h"
 #include "hphp/runtime/vm/unwind.h"
@@ -73,10 +75,10 @@ static const UChar32 SUBSTITUTION_CHARACTER = 0xFFFD;
 #define FB_UNSERIALIZE_UNEXPECTED_ARRAY_KEY_TYPE 0x0004
 #define FB_UNSERIALIZE_MAX_DEPTH_EXCEEDED        0x0005
 
-#ifdef FACEBOOK
-# define HHVM_FACEBOOK true
+#ifdef HHVM_FACEBOOK
+# define HHVM_FACEBOOK_FLAG true
 #else
-# define HHVM_FACEBOOK false
+# define HHVM_FACEBOOK_FLAG false
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1312,6 +1314,39 @@ int64_t HHVM_FUNCTION(HH_int_mul_add_overflow,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// Product attribution id
+
+void HHVM_FUNCTION(set_product_attribution_id, int64_t) {
+  SystemLib::throwInvalidArgumentExceptionObject(
+    "Unsupported dynamic call of set_product_attribution_id()");
+}
+
+void HHVM_FUNCTION(set_product_attribution_id_deferred, const Variant&) {
+  SystemLib::throwInvalidArgumentExceptionObject(
+    "Unsupported dynamic call of set_product_attribution_id_deferred()");
+}
+
+Variant HHVM_FUNCTION(get_product_attribution_id_internal) {
+  // The caller of this function always eagerly syncs the vmregs, so in
+  // non-debug mode this anchor should be a no-op.
+  VMRegAnchor _;
+
+  Variant result{Variant::NullInit()};
+  walkStack([&] (const BTFrame& frm) {
+    auto const func = frm.func();
+    if (!(func->attrs() & AttrHasAttributionData)) return false;
+    if (!frm.localsAvailable()) return false; // can this be an assert instead?
+    auto local = func->lookupVarId(s_86productAttributionData.get());
+    assertx(local != kInvalidId);
+    auto const val = frm.local(local);
+    assertx(tvIsPlausible(*val));
+    result = Variant{variant_ref{val}};
+    return true;
+  });
+  return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // xbox APIs
 
 namespace {
@@ -1392,7 +1427,7 @@ struct FBExtension : Extension {
   FBExtension(): Extension("fb", "1.0.0", NO_ONCALL_YET) {}
 
   void moduleInit() override {
-    HHVM_RC_BOOL_SAME(HHVM_FACEBOOK);
+    HHVM_RC_BOOL(HHVM_FACEBOOK, HHVM_FACEBOOK_FLAG);
     HHVM_RC_INT_SAME(FB_UNSERIALIZE_NONSTRING_VALUE);
     HHVM_RC_INT_SAME(FB_UNSERIALIZE_UNEXPECTED_END);
     HHVM_RC_INT_SAME(FB_UNSERIALIZE_UNRECOGNIZED_OBJECT_TYPE);
@@ -1433,6 +1468,10 @@ struct FBExtension : Extension {
     HHVM_FALIAS(HH\\non_crypto_md5_lower, HH_non_crypto_md5_lower);
     HHVM_FALIAS(HH\\int_mul_overflow, HH_int_mul_overflow);
     HHVM_FALIAS(HH\\int_mul_add_overflow, HH_int_mul_add_overflow);
+
+    HHVM_FALIAS(HH\\set_product_attribution_id, set_product_attribution_id);
+    HHVM_FALIAS(HH\\set_product_attribution_id_deferred, set_product_attribution_id_deferred);
+    HHVM_FALIAS(HH\\get_product_attribution_id_internal, get_product_attribution_id_internal);
 
     HHVM_FE(fb_call_user_func_array_async);
     HHVM_FE(fb_check_user_func_async);

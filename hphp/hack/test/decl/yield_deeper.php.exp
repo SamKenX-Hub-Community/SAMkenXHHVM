@@ -21,9 +21,10 @@
              (make_ft_flags FGenerator ~return_disposable:false
                ~returns_readonly:false ~support_dynamic_type:false
                ~readonly_this:false ~is_memoized:false ~variadic:false);
-             ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
+             ft_ifc_decl = FDPolicied {PUBLIC}; ft_cross_package = None }));
        fe_pos = [3:10-11]; fe_php_std_lib = false;
-       fe_support_dynamic_type = false; fe_no_auto_dynamic = false }));
+       fe_support_dynamic_type = false; fe_no_auto_dynamic = false;
+       fe_no_auto_likes = false }));
   ("\\g",
    (Shallow_decl_defs.Fun
       { Typing_defs.fe_deprecated = None; fe_module = None;
@@ -40,9 +41,10 @@
               (make_ft_flags FSync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
+              ft_ifc_decl = FDPolicied {PUBLIC}; ft_cross_package = None }));
         fe_pos = [7:10-11]; fe_php_std_lib = false;
-        fe_support_dynamic_type = false; fe_no_auto_dynamic = false }));
+        fe_support_dynamic_type = false; fe_no_auto_dynamic = false;
+        fe_no_auto_likes = false }));
   ("\\h",
    (Shallow_decl_defs.Fun
       { Typing_defs.fe_deprecated = None; fe_module = None;
@@ -59,9 +61,10 @@
               (make_ft_flags FSync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
+              ft_ifc_decl = FDPolicied {PUBLIC}; ft_cross_package = None }));
         fe_pos = [13:10-11]; fe_php_std_lib = false;
-        fe_support_dynamic_type = false; fe_no_auto_dynamic = false }));
+        fe_support_dynamic_type = false; fe_no_auto_dynamic = false;
+        fe_no_auto_likes = false }));
   ("\\i",
    (Shallow_decl_defs.Fun
       { Typing_defs.fe_deprecated = None; fe_module = None;
@@ -82,9 +85,10 @@
               (make_ft_flags FAsync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
+              ft_ifc_decl = FDPolicied {PUBLIC}; ft_cross_package = None }));
         fe_pos = [19:16-17]; fe_php_std_lib = false;
-        fe_support_dynamic_type = false; fe_no_auto_dynamic = false }));
+        fe_support_dynamic_type = false; fe_no_auto_dynamic = false;
+        fe_no_auto_likes = false }));
   ("\\j",
    (Shallow_decl_defs.Fun
       { Typing_defs.fe_deprecated = None; fe_module = None;
@@ -107,7 +111,8 @@
               (make_ft_flags FAsyncGenerator ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
+              ft_ifc_decl = FDPolicied {PUBLIC}; ft_cross_package = None }));
         fe_pos = [26:16-17]; fe_php_std_lib = false;
-        fe_support_dynamic_type = false; fe_no_auto_dynamic = false }))
+        fe_support_dynamic_type = false; fe_no_auto_dynamic = false;
+        fe_no_auto_likes = false }))
   ]

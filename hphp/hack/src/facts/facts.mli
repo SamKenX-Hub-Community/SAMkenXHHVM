@@ -15,15 +15,12 @@ module InvSSet : Caml.Set.S with type elt = InvStringKey.t
 
 type type_kind =
   | TKClass
-  | TKRecord
   | TKInterface
   | TKEnum
   | TKTrait
   | TKTypeAlias
   | TKUnknown
   | TKMixed
-
-val is_tk_record : type_kind -> bool
 
 val is_tk_interface : type_kind -> bool
 
@@ -32,13 +29,8 @@ val is_tk_trait : type_kind -> bool
 val is_tk_unknown : type_kind -> bool
 
 type type_facts = {
-  base_types: InvSSet.t;
   kind: type_kind;
   flags: int;
-  require_extends: InvSSet.t;
-  require_implements: InvSSet.t;
-  require_class: InvSSet.t;
-  attributes: string list InvSMap.t;
 }
 
 type module_facts = unit
@@ -47,11 +39,8 @@ type facts = {
   types: type_facts InvSMap.t;
   functions: string list;
   constants: string list;
-  modules: module_facts InvSMap.t;
 }
 
 val empty : facts
-
-val facts_to_json : sha1:string -> facts -> Hh_json.json
 
 val facts_from_json : Hh_json.json -> facts option

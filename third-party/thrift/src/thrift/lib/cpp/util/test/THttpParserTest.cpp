@@ -19,6 +19,7 @@
 
 #include <fmt/core.h>
 
+#include <folly/Singleton.h>
 #include <folly/String.h>
 #include <folly/portability/GMock.h>
 #include <folly/portability/GTest.h>
@@ -43,16 +44,15 @@ void write(apache::thrift::util::THttpParser& parser, folly::StringPiece text) {
 } // namespace
 
 TEST_F(THttpClientParserTest, too_many_headers) {
+  folly::SingletonVault::singleton()->registrationComplete();
   apache::thrift::util::THttpClientParser parser;
   HeaderMap header;
   for (int i = 0; i < 100; i++) {
     header[fmt::format("testing_header{}", i)] = "test_header";
   }
-  HeaderMap header_persistent;
   auto answer = std::string("{'testing': 'this is a test'}");
   auto pre = folly::IOBuf::copyBuffer(answer.c_str(), answer.size());
-  auto buf = parser.constructHeader(
-      std::move(pre), header, header_persistent, nullptr);
+  auto buf = parser.constructHeader(std::move(pre), header, nullptr);
   auto fbs = buf->moveToFbString();
   std::string output = std::string(fbs.c_str(), fbs.size());
   for (int i = 0; i < 100; i++) {

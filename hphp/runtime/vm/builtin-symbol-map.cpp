@@ -34,10 +34,10 @@ namespace {
  * where *a* decl in said blob has its name as the key.
  */
 using SymbolMap = hphp_fast_map<const StringData*,
-                                std::shared_ptr<hackc::DeclResult>>;
+                                std::shared_ptr<hackc::DeclsAndBlob>>;
 /** Represents a case insensitive version of [SymbolMap] */
 using ISymbolMap = hphp_fast_map<const StringData*,
-                                 std::shared_ptr<hackc::DeclResult>,
+                                 std::shared_ptr<hackc::DeclsAndBlob>,
                                  string_data_hash,
                                  string_data_isame>;
 
@@ -62,31 +62,35 @@ void registerBuiltinSymbols(
   hackc::DeclParserConfig options;
   defaults.flags().initDeclConfig(options);
 
-  auto decls = hackc::direct_decl_parse(options, name, contents);
-  auto const facts = hackc::decls_to_facts_cpp_ffi(
-    decls,
+  auto decls = hackc::direct_decl_parse_and_serialize(
+      options,
+      name,
+      {(const uint8_t*)contents.data(), contents.size()}
+  );
+  auto const facts = hackc::decls_to_facts(
+    *decls.decls,
     "" // This is *meant* to be the hash of the source file, but it's not used
   );
-  auto const decls_ptr = std::make_shared<hackc::DeclResult>(std::move(decls));
-  for (auto const& e : facts.facts.types) {
+  auto const decls_ptr = std::make_shared<hackc::DeclsAndBlob>(std::move(decls));
+  for (auto const& e : facts.types) {
     s_types.emplace(
       makeStaticString(std::string(e.name)),
       decls_ptr
     );
   }
-  for (auto const& e : facts.facts.functions) {
+  for (auto const& e : facts.functions) {
     s_functions.emplace(
       makeStaticString(std::string(e)),
       decls_ptr
     );
   }
-  for (auto const& e : facts.facts.constants) {
+  for (auto const& e : facts.constants) {
     s_constants.emplace(
       makeStaticString(std::string(e)),
       decls_ptr
     );
   }
-  for (auto const& e : facts.facts.modules) {
+  for (auto const& e : facts.modules) {
     s_modules.emplace(
       makeStaticString(std::string(e.name)),
       decls_ptr
@@ -102,7 +106,7 @@ Optional<hackc::ExternalDeclProviderResult> getBuiltinDecls(
   auto const maybeGetDecls = [symbol](auto const& map) {
     auto const res = map.find(symbol);
     return res != map.end() ?
-      HPHP::make_optional(hackc::ExternalDeclProviderResult::from_decls(*res->second))
+      HPHP::make_optional(hackc::ExternalDeclProviderResult::from_decls(*res->second->decls))
     : std::nullopt;
   };
   // We should only ever call this if `EnableDecl` is set, and asserting on
@@ -123,9 +127,9 @@ Optional<hackc::ExternalDeclProviderResult> getBuiltinDecls(
   not_reached();
 }
 
-hphp_fast_set<const hackc::DeclResult*> getAllBuiltinDecls() {
+hphp_fast_set<const hackc::DeclsAndBlob*> getAllBuiltinDecls() {
   assertx(RuntimeOption::EvalEnableDecl);
-  hphp_fast_set<const hackc::DeclResult*> res;
+  hphp_fast_set<const hackc::DeclsAndBlob*> res;
   for (const auto& it: s_types) {
     res.emplace(it.second.get());
   }

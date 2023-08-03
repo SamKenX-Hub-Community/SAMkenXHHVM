@@ -350,12 +350,6 @@ type class_shell_change = {
 }
 [@@deriving eq, show { with_path = false }]
 
-type minor_change = {
-  mro_positions_changed: bool;
-  member_diff: member_diff;
-}
-[@@deriving eq, show { with_path = false }]
-
 module MajorChange = struct
   type t =
     | Unknown
@@ -368,8 +362,29 @@ end
 type t =
   | Unchanged
   | Major_change of MajorChange.t
-  | Minor_change of minor_change
+  | Minor_change of member_diff
 [@@deriving eq, show { with_path = false }]
+
+let has_changed = function
+  | Unchanged -> false
+  | Major_change _
+  | Minor_change _ ->
+    true
+
+let pretty ~(name : string) (diff : t) : string =
+  let buf = Buffer.create 512 in
+  let fmt = Format.formatter_of_buffer buf in
+  Format.pp_set_margin fmt 120;
+  Format.fprintf
+    fmt
+    "%s  @[<2>%s:@ %a@]@?"
+    (String.make 35 ' ') (* indentation hack (width of log timestamp) *)
+    (Utils.strip_ns name)
+    pp
+    diff;
+  let diffstr = Buffer.contents buf in
+  (* indentation hack *)
+  Printf.sprintf "  %s" (Caml.String.trim diffstr)
 
 module ClassShellChangeCategory = struct
   module ListChange = struct
@@ -651,7 +666,7 @@ module ChangeCategory = struct
     | Unchanged -> CUnchanged
     | Major_change change ->
       CMajor_change (MajorChangeCategory.of_major_change change)
-    | Minor_change { mro_positions_changed = _; member_diff } ->
+    | Minor_change member_diff ->
       CMinor_change (MemberDiffCategory.of_member_diff member_diff)
 
   let to_json = function

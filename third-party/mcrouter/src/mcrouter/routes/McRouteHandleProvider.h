@@ -14,6 +14,7 @@
 #include <vector>
 
 #include <folly/Range.h>
+#include <folly/container/F14Set.h>
 #include <folly/json.h>
 
 #include "mcrouter/PoolFactory.h"
@@ -126,8 +127,8 @@ class McRouteHandleProvider
     return std::move(asyncLogRoutes_);
   }
 
-  folly::StringKeyedUnorderedMap<RouteHandlePtr> releaseSRRoutes() {
-    return std::move(srRoutes_);
+  folly::StringKeyedUnorderedMap<RouteHandlePtr> releaseTierRoutes() {
+    return std::move(tierRoutes_);
   }
 
   folly::StringKeyedUnorderedMap<std::vector<RouteHandlePtr>> releasePools() {
@@ -143,7 +144,7 @@ class McRouteHandleProvider
     return std::move(partialConfigs_);
   }
   folly::StringKeyedUnorderedMap<
-      std::unordered_set<std::shared_ptr<const AccessPoint>>>
+      folly::F14FastSet<std::shared_ptr<const AccessPoint>>>
   releaseAccessPoints() {
     return std::move(accessPoints_);
   }
@@ -158,8 +159,8 @@ class McRouteHandleProvider
   // poolName -> AsynclogRoute
   folly::StringKeyedUnorderedMap<RouteHandlePtr> asyncLogRoutes_;
 
-  // poolName -> SRRoute
-  folly::StringKeyedUnorderedMap<RouteHandlePtr> srRoutes_;
+  // poolName -> tier level route
+  folly::StringKeyedUnorderedMap<RouteHandlePtr> tierRoutes_;
 
   // pool source name -> (allow_partial_reconfig, [(pool_config,[pool_names])])
   folly::StringKeyedUnorderedMap<std::pair<
@@ -169,19 +170,21 @@ class McRouteHandleProvider
           std::vector<std::string>>>>>
       partialConfigs_;
 
-  // poolName -> destinations
+  // poolName -> (destinations, weights)
   folly::StringKeyedUnorderedMap<std::vector<RouteHandlePtr>> pools_;
+  folly::StringKeyedUnorderedMap<std::optional<folly::dynamic>> poolWeights_;
 
   // poolName -> AccessPoints
   folly::StringKeyedUnorderedMap<
-      std::unordered_set<std::shared_ptr<const AccessPoint>>>
+      folly::F14FastSet<std::shared_ptr<const AccessPoint>>>
       accessPoints_;
 
   const RouteHandleFactoryMap routeMap_;
   const RouteHandleFactoryMapWithProxy routeMapWithProxy_;
   const RouteHandleFactoryMapForWrapper routeMapForWrapper_;
 
-  const std::vector<RouteHandlePtr>& makePool(
+  std::tuple<std::vector<RouteHandlePtr>, std::optional<folly::dynamic>>
+  makePool(
       RouteHandleFactory<RouteHandleIf>& factory,
       const PoolFactory::PoolJson& json);
 

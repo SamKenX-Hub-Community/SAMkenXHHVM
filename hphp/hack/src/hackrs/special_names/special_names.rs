@@ -298,6 +298,7 @@ pub mod user_attributes {
     pub static uaSupportDynamicType: Lazy<TypeName> =
         lazy!(sn::user_attributes::SUPPORT_DYNAMIC_TYPE);
     pub static uaNoAutoDynamic: Lazy<TypeName> = lazy!(sn::user_attributes::NO_AUTO_DYNAMIC);
+    pub static uaNoAutoBound: Lazy<TypeName> = lazy!(sn::user_attributes::NO_AUTO_BOUND);
     pub static uaRequireDynamic: Lazy<TypeName> = lazy!(sn::user_attributes::REQUIRE_DYNAMIC);
     pub static uaEnableMethodTraitDiamond: Lazy<TypeName> =
         lazy!(sn::user_attributes::ENABLE_METHOD_TRAIT_DIAMOND);
@@ -305,6 +306,7 @@ pub mod user_attributes {
         lazy!(sn::user_attributes::IGNORE_READONLY_LOCAL_ERRORS);
     pub static uaIgnoreCoeffectLocalErrors: Lazy<TypeName> =
         lazy!(sn::user_attributes::IGNORE_COEFFECT_LOCAL_ERRORS);
+    pub static uaModuleLevelTrait: Lazy<TypeName> = lazy!(sn::user_attributes::MODULE_LEVEL_TRAIT);
 
     pub fn iter() -> impl Iterator<Item = TypeName> {
         [
@@ -547,10 +549,9 @@ pub mod fb {
     pub static tInner: Lazy<TypeConstName> = lazy!(sn::fb::INNER);
     pub static idx: Lazy<FunName> = lazy!(sn::fb::IDX);
     pub static cTypeStructure: Lazy<TypeName> = lazy!(sn::fb::TYPE_STRUCTURE);
-    pub static cIncorrectType: Lazy<TypeName> = lazy!(sn::fb::INCORRECT_TYPE);
 
     pub fn types() -> impl Iterator<Item = TypeName> {
-        [*cEnum, *cTypeStructure, *cIncorrectType].into_iter()
+        [*cEnum, *cTypeStructure].into_iter()
     }
 
     pub fn functions() -> impl Iterator<Item = FunName> {

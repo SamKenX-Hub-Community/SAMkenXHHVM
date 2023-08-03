@@ -104,7 +104,7 @@ CompilerResult unitEmitterFromHackCUnitHandleErrors(const hackc::hhbc::Unit& uni
   }
 }
 
-CompilerResult assemble_string_handle_errors(const char* code,
+CompilerResult assemble_string_handle_errors(folly::StringPiece code,
                                              const std::string& hhas,
                                              const char* filename,
                                              const SHA1& sha1,
@@ -157,9 +157,20 @@ CompilerResult assemble_string_handle_errors(const char* code,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+std::string displayMismatch(const std::string& assemblerOut,
+                            const std::string& hackCTranslatorOut) {
+  int i = 0;
+  int min = std::min(assemblerOut.length(), hackCTranslatorOut.length());
+  while (i < min && assemblerOut[i] == hackCTranslatorOut[i]) i++;
+
+  int first = i - 100;
+  int length = 400;
+  return "assembler out:\n" + assemblerOut.substr(first, length)
+    + "\n\n" + "hackCTranslator out:\n" + hackCTranslatorOut.substr(first, length);
+}
 
 CompilerResult hackc_compile(
-  const char* code,
+  folly::StringPiece code,
   const char* filename,
   const SHA1& sha1,
   const Native::FuncTable& nativeFuncs,
@@ -170,12 +181,20 @@ CompilerResult hackc_compile(
   CompileAbortMode mode,
   hackc::DeclProvider* provider
 ) {
+  auto const getRenameFunctionValue = []() {
+    if (RO::EvalJitEnableRenameFunction == 1) {
+      return hackc::JitEnableRenameFunction::Enable;
+    } else if (RO::EvalJitEnableRenameFunction == 2) {
+      return hackc::JitEnableRenameFunction::RestrictedEnable;
+    } else {
+      return hackc::JitEnableRenameFunction::Disable;
+    }
+  };
   hackc::NativeEnv native_env{
     .decl_provider = reinterpret_cast<uint64_t>(provider),
     .filepath = filename,
+    .jit_enable_rename_function = getRenameFunctionValue(),
     .hhbc_flags = hackc::HhbcFlags {
-      .repo_authoritative = RO::RepoAuthoritative,
-      .jit_enable_rename_function = RO::EvalJitEnableRenameFunction,
       .log_extern_compiler_perf = RO::EvalLogExternCompilerPerf,
       .enable_intrinsics_extension = RO::EnableIntrinsicsExtension,
       .emit_cls_meth_pointers = RO::EvalEmitClsMethPointers,
@@ -200,6 +219,11 @@ CompilerResult hackc_compile(
       native_env.include_roots.emplace_back(hackc::StringMapEntry{k, v});
     }
   }
+  if (RO::EvalJitEnableRenameFunction == 2) {
+    for (auto& f : RO::RenamableFunctions) {
+      native_env.renamable_functions.emplace_back(rust::String{f});
+    }
+  }
 
   auto const fromHackCUnit = [&]() -> CompilerResult {
     rust::Box<hackc::UnitWrapper> unit_wrapped = [&] {
@@ -208,10 +232,13 @@ CompilerResult hackc_compile(
         [&] {
           return tracing::Props{}
             .add("filename", filename ? filename : "")
-            .add("code_size", strlen(code));
+            .add("code_size", code.size());
         }
       };
-      return hackc::compile_unit_from_text_cpp_ffi(native_env, code);
+      return hackc::compile_unit_from_text(
+          native_env,
+          {(const uint8_t*)code.data(), code.size()}
+      );
     }();
 
     auto const bcSha1 = SHA1(hash_unit(*unit_wrapped));
@@ -231,10 +258,13 @@ CompilerResult hackc_compile(
         [&] {
           return tracing::Props{}
             .add("filename", filename ? filename : "")
-            .add("code_size", strlen(code));
+            .add("code_size", code.size());
         }
       };
-      return hackc::compile_from_text_cpp_ffi(native_env, code);
+      return hackc::compile_from_text(
+          native_env,
+          {(const uint8_t*)code.data(), code.size()}
+      );
     }();
     auto const hhas = std::string(hhas_vec.begin(), hhas_vec.end());
 
@@ -262,6 +292,9 @@ CompilerResult hackc_compile(
     auto hackCTranslatorResult = fromHackCUnit();
     auto const assemblerOut = disassembleResult(assemblerResult);
     auto const hackCTranslatorOut = disassembleResult(hackCTranslatorResult);
+    SCOPE_ASSERT_DETAIL("translator mismatch") {
+      return displayMismatch(assemblerOut, hackCTranslatorOut);
+    };
     always_assert(hackCTranslatorOut == assemblerOut);
     return hackCTranslatorResult;
   }
@@ -335,46 +368,37 @@ CompilerAbort::CompilerAbort(const std::string& filename,
 
 ParseFactsResult extract_facts(
   const std::string& filename,
-  const std::string& code,
   const RepoOptionsFlags& options,
   folly::StringPiece expect_sha1
 ) {
-  auto const get_facts = [&](const std::string& source_text) -> ParseFactsResult {
-    auto actual_sha1 = string_sha1(source_text);
-    if (!expect_sha1.empty()) {
-      if (actual_sha1 != expect_sha1) {
-        return folly::sformat(
-            "Unexpected SHA1: {} != {}", actual_sha1, expect_sha1
-        );
-      }
-    }
-    try {
-      hackc::DeclParserConfig decl_config;
-      options.initDeclConfig(decl_config);
-      auto const decls = hackc::direct_decl_parse(
-        decl_config, filename, source_text
+  auto w = Stream::getWrapperFromURI(StrNR(filename));
+  if (!(w && dynamic_cast<FileStreamWrapper*>(w))) {
+    throwErrno("Failed to extract facts: Could not get FileStreamWrapper.");
+  }
+  const auto f = w->open(StrNR(filename), "r", 0, nullptr);
+  if (!f) throwErrno("Failed to extract facts: Could not read source code.");
+  auto const str = f->read();
+  auto const source_text = str.get()->slice();
+  auto actual_sha1 = string_sha1(source_text);
+  if (!expect_sha1.empty()) {
+    if (actual_sha1 != expect_sha1) {
+      return folly::sformat(
+          "Unexpected SHA1: {} != {}", actual_sha1, expect_sha1
       );
-      auto const facts = hackc::decls_to_facts_cpp_ffi(decls, actual_sha1);
-      rust::String json = hackc::facts_to_json_cpp_ffi(
-          facts, /* pretty= */ false
-      );
-      return FactsJSONString { std::string(json) };
-    } catch (const std::exception& e) {
-      return FactsJSONString { "" }; // Swallow errors from HackC
     }
-  };
-
-  if (!code.empty()) {
-    return get_facts(code);
-  } else {
-    auto w = Stream::getWrapperFromURI(StrNR(filename));
-    if (!(w && dynamic_cast<FileStreamWrapper*>(w))) {
-      throwErrno("Failed to extract facts: Could not get FileStreamWrapper.");
-    }
-    const auto f = w->open(StrNR(filename), "r", 0, nullptr);
-    if (!f) throwErrno("Failed to extract facts: Could not read source code.");
-    auto const str = f->read();
-    return get_facts(str.get()->toCppString());
+  }
+  try {
+    hackc::DeclParserConfig config;
+    options.initDeclConfig(config);
+    auto const decls = hackc::parse_decls(
+      config,
+      filename,
+      {(const uint8_t*)source_text.data(), source_text.size()}
+    );
+    rust::String json = hackc::decls_to_facts_json(*decls, actual_sha1);
+    return FactsJSONString { std::string(json) };
+  } catch (const std::exception& e) {
+    return FactsJSONString { "" }; // Swallow errors from HackC
   }
 }
 
@@ -383,7 +407,7 @@ FfpResult ffp_parse_file(
   const RepoOptionsFlags& options
 ) {
   auto const env = options.getParserEnvironment();
-  auto const json = hackc_parse_positioned_full_trivia_cpp_ffi(contents, env);
+  auto const json = hackc_parse_positioned_full_trivia(contents, env);
   return FfpJSONString { std::string(json.begin(), json.end()) };
 }
 
@@ -433,7 +457,7 @@ std::unique_ptr<UnitEmitter> UnitCompiler::compile(
 }
 
 std::unique_ptr<UnitEmitter> compile_unit(
-  const char* code,
+  folly::StringPiece code,
   const char* filename,
   const SHA1& sha1,
   const Native::FuncTable& nativeFuncs,

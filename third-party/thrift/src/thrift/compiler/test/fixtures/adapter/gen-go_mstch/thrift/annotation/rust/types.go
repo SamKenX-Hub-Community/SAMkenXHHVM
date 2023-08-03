@@ -6,11 +6,9 @@ package rust // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    scope "thrift/annotation/scope"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = scope.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
@@ -73,7 +71,9 @@ if err != nil {
 }
 
 func (x *Adapter) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AdapterAlias Adapter
+    valueAlias := (*AdapterAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -164,7 +164,7 @@ var _ thrift.Struct = &Derive{}
 
 func NewDerive() *Derive {
     return (&Derive{}).
-        SetDerivesNonCompat(make([]string, 0))
+        SetDerivesNonCompat(nil)
 }
 
 func (x *Derive) GetDerivesNonCompat() []string {
@@ -173,7 +173,7 @@ func (x *Derive) GetDerivesNonCompat() []string {
 
 func (x *Derive) GetDerives() []string {
     if !x.IsSetDerives() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.Derives
@@ -253,7 +253,9 @@ result := listResult
 }
 
 func (x *Derive) String() string {
-    return fmt.Sprintf("%+v", x)
+    type DeriveAlias Derive
+    valueAlias := (*DeriveAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -392,7 +394,9 @@ if err != nil {
 }
 
 func (x *ServiceExn) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ServiceExnAlias ServiceExn
+    valueAlias := (*ServiceExnAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

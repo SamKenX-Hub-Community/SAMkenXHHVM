@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::facebook::thrift::test::Enum>::size;
+#endif
 folly::Range<::facebook::thrift::test::Enum const*> const TEnumTraits<::facebook::thrift::test::Enum>::values = folly::range(TEnumDataStorage<::facebook::thrift::test::Enum>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::facebook::thrift::test::Enum>::names = folly::range(TEnumDataStorage<::facebook::thrift::test::Enum>::names);
 
@@ -28,14 +30,6 @@ bool TEnumTraits<::facebook::thrift::test::Enum>::findValue(folly::StringPiece n
 
 }} // apache::thrift
 
-namespace facebook { namespace thrift { namespace test {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _Enum_EnumMapFactory::ValuesToNamesMapType _Enum_VALUES_TO_NAMES = _Enum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // facebook::thrift::test
 
 namespace apache {
 namespace thrift {
@@ -160,6 +154,12 @@ const folly::StringPiece Bar::__fbthrift_get_class_name() {
 
 Bar::Bar(const Bar&) = default;
 Bar& Bar::operator=(const Bar&) = default;
+Bar::Bar() {
+}
+
+
+Bar::~Bar() {}
+
 Bar::Bar(FOLLY_MAYBE_UNUSED Bar&& other) noexcept :
     __fbthrift_field_list_field(std::move(other.__fbthrift_field_list_field)),
     __isset(other.__isset) {
@@ -267,6 +267,12 @@ const folly::StringPiece Baz::__fbthrift_get_class_name() {
 
 Baz::Baz(const Baz&) = default;
 Baz& Baz::operator=(const Baz&) = default;
+Baz::Baz() {
+}
+
+
+Baz::~Baz() {}
+
 Baz::Baz(FOLLY_MAYBE_UNUSED Baz&& other) noexcept :
     __fbthrift_field_list_field(std::move(other.__fbthrift_field_list_field)),
     __fbthrift_field_nested_list_field(std::move(other.__fbthrift_field_nested_list_field)),

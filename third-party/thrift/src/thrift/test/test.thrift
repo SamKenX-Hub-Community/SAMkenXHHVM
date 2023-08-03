@@ -16,6 +16,10 @@
 
 namespace cpp2 apache.thrift.test
 
+cpp_include "folly/sorted_vector_types.h"
+
+include "thrift/annotation/cpp.thrift"
+
 enum enum1 {
   field0 = 0,
   field1 = 1,
@@ -70,6 +74,7 @@ const map<string, string> m_e = {};
 const map<i32, i32> m_1 = {23: 97, 42: 37, 56: 11};
 const map<string, string> m_2 = {"foo": "bar", "baz": "gaz"};
 const map<string, i32> m_3 = {'"': 34, "'": 39, "\\": 92, "\x61": 97};
+const map_i32_i32_7023 m_4 = {1: 2};
 
 struct struct1 {
   1: i32 a = 1234567;
@@ -149,3 +154,7 @@ const double minPSDub = +4.9406564584124654e-324;
 const double maxNDub = -1.79769313486231e+308;
 const double minNDub = -2.2250738585072014e-308;
 const double minNSDub = -4.9406564584124654e-324;
+
+// The following were automatically generated and may benefit from renaming.
+@cpp.Type{template = "folly::sorted_vector_map"}
+typedef map<i32, i32> map_i32_i32_7023

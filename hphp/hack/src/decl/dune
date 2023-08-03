@@ -24,13 +24,6 @@
    rust_decl_ffi)))
 
 (library
- (name affectedDeps)
- (modules affectedDeps)
- (libraries decl_defs typing_defs typing_deps)
- (preprocess
-  (pps ppx_deriving.std)))
-
-(library
  (name classDiff)
  (modules classDiff)
  (libraries decl_defs typing_defs)
@@ -41,7 +34,6 @@
  (name decl)
  (modules decl)
  (libraries
-  affectedDeps
   classDiff
   ast_provider
   decl_class
@@ -117,7 +109,8 @@
   shallow_decl_defs
   pos_or_decl
   typing_defs
-  rust_decl_ffi)
+  rust_decl_ffi
+  search_utils)
  (preprocess
   (pps ppx_deriving.std)))
 
@@ -148,19 +141,13 @@
   decl_defs
   decl_heap
   decl_pos_utils
+  fanout
   naming_provider
   provider_context
   rust_provider_backend_stubs
   typechecker_options
   typing_defs
   typing_deps)
- (preprocess
-  (pps ppx_deriving.std)))
-
-(library
- (name decl_compare_utils)
- (modules decl_compare_utils)
- (libraries classDiff decl_defs typing_defs)
  (preprocess
   (pps ppx_deriving.std)))
 
@@ -200,7 +187,7 @@
 (library
  (name decl_fun_utils)
  (modules decl_fun_utils)
- (libraries decl_defs decl_env decl_hint typing_defs typing_error_utils)
+ (libraries decl_defs decl_env decl_hint typing_defs )
  (preprocess
   (pps ppx_deriving.std)))
 
@@ -264,7 +251,6 @@
  (name decl_redecl_service)
  (modules decl_redecl_service)
  (libraries
-  affectedDeps
   decl
   decl_class_elements
   decl_compare
@@ -298,7 +284,6 @@
   shallow_decl_defs
   typing_defs
   typing_error
-  typing_error_utils
   )
  (preprocess
   (pps ppx_deriving.std)))
@@ -315,6 +300,7 @@
   process_types
   provider_context
   shallow_decl_defs
+  sys_username
   sys_utils
   temp_file
   typing_defs
@@ -333,18 +319,25 @@
   decl_defs
   decl_pos_utils
   decl_utils
+  package_info
   shallow_decl_defs
   typing_defs)
  (preprocess
   (pps ppx_deriving.std)))
 
 (library
+ (name fanout)
+ (modules fanout)
+ (libraries
+  typing_deps))
+
+(library
  (name shallow_class_fanout)
  (modules shallow_class_fanout)
  (libraries
-  affectedDeps
   classDiff
   decl_defs
+  fanout
   naming_provider
   shallow_decl_defs
   typing_defs)
@@ -369,10 +362,9 @@
  (name shallow_decl_compare)
  (modules shallow_decl_compare)
  (libraries
-  affectedDeps
   classDiff
-  decl_compare_utils
   decl_defs
+  package_info
   shallow_class_diff
   shallow_class_fanout
   shallow_classes_provider

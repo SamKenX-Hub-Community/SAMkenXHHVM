@@ -7,14 +7,22 @@ import subprocess
 import typing
 from libfb.py.testutil import BaseFacebookTestCase
 
-# For lldb, until there's a buck-visible library we can use:
-lldb_path = subprocess.run(["/opt/llvm/bin/lldb", "-P"], stdout=subprocess.PIPE).stdout.decode("utf-8").strip()
+# For lldb, until there's a buck-visible library we can use.
+# Its path on TW containers starts at /host-mounts.
+lldb_path = None
+for path in ['/opt/llvm/bin/lldb', '/host-mounts/opt/llvm/bin/lldb']:
+    if os.path.exists(path):
+        lldb_path = subprocess.run([path, "-P"], stdout=subprocess.PIPE).stdout.decode("utf-8").strip()
+        break
+
+assert lldb_path, "Couldn't find lldb on host"
+
 sys.path.append(lldb_path)
 import lldb
 from fblldb.utils import run_lldb_command, get_lldb_object_description
 
-hhvm_path = pathlib.Path(__file__).parent.parent / "hhvm_cpp"
-hhvm_types_path = pathlib.Path(__file__).parent.parent / "hhvm_types"
+hhvm_path = pathlib.Path(__file__).parent.parent / "hhvm"
+hhvm_types_path = pathlib.Path(__file__).parent.parent / "hhvm_types_for_lldb_tests"
 hhvm_test_path = os.environ["HHVM_TEST_DIR"]
 scripts_path = os.environ["HHVM_LLDB_SCRIPTS"]
 
@@ -98,9 +106,10 @@ class LLDBTestBase(BaseFacebookTestCase):
         assert self.process.GetSelectedThread().GetStopReason() == lldb.eStopReasonBreakpoint, f"Unable to reach breakpoint at {breakpoint}"
 
 class TestHHVMBinary(LLDBTestBase):
-    def setUp(self, test_file=None, interp=False):
+    def setUp(self, test_file=None, interp=False, allow_hhas=False):
         self.test_file = test_file
         self.interp = interp
+        self.allow_hhas = allow_hhas
         super().setUp()
 
     def getTargetPath(self) -> str:
@@ -112,6 +121,8 @@ class TestHHVMBinary(LLDBTestBase):
             hhvm_args.extend(["--file", f"{hhvm_test_path}/{self.test_file}"])
         if self.interp:
             hhvm_args.extend(["-vEval.Jit=0"])
+        if self.allow_hhas:
+            hhvm_args.extend(["-vEval.AllowHhas=true"])
         return hhvm_args
 
 class TestHHVMTypesBinary(LLDBTestBase):

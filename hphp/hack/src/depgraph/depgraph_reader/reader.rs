@@ -164,34 +164,36 @@ impl Deref for DepGraph {
 }
 
 /// An memory-mapped dependency graph.
-#[ouroboros::self_referencing]
 pub struct NewDepGraph {
-    /// The file holding the storage for this graph. Boxed for ouroboros.
-    storage: Box<Mmap>,
+    /// The file holding the storage for this graph.
+    storage: Mmap,
 
     /// All Deps in the graph. These are NOT sorted -- use `deps_order` if you need sorting.
-    #[borrows(storage)]
-    deps: &'this [Dep],
+    ///
+    /// This holds the byte range in the mmap file for this data -- use `deps()` to access.
+    deps_range: Range<usize>,
 
     /// Indices into `deps` providing sorted order, e.g. deps[deps_order[0]] is first.
     /// One entry per entry in `deps`.
-    #[borrows(storage)]
-    deps_order: &'this [u32],
+    ///
+    /// This holds the byte range in the mmap file for this data -- use `deps_order()` to access.
+    deps_order_range: Range<usize>,
 
     /// Indices in `adjacency_lists` for the serialized edge list for the corresponding `deps`
     /// entry. One entry per entry in `deps`.
     ///
     /// Each entry in this array must be left shifted by `adjacency_list_alignment_shift`
     /// before being used as an index. This is to support `edge_lists` larger than 4GB.
-    #[borrows(storage)]
-    unshifted_edge_list_offset: &'this [u32],
+    ///
+    /// This holds the byte range in the mmap file for this data -- use `unshifted_edge_list_offset_range()` to access.
+    unshifted_edge_list_offset_range: Range<usize>,
 
     /// Amount to left-shift unshifted_edge_list_offset to get a byte index into `adjacency_lists`.
     adjacency_list_alignment_shift: u8,
 
     /// Individually serialized edge lists. `NewHashList` knows how to deserialize.
-    #[borrows(storage)]
-    adjacency_lists: &'this [u8],
+    /// This holds the byte range in the mmap file for this data -- use `unshifted_lists_range()` to access.
+    adjacency_lists_range: Range<usize>,
 }
 
 impl NewDepGraph {
@@ -218,22 +220,17 @@ impl NewDepGraph {
         }
 
         let num_deps = header.num_deps as usize;
-        let adjacency_list_alignment_shift = header.adjacency_list_alignment_shift;
 
-        let builder = NewDepGraphBuilder {
-            storage: Box::new(mmap),
-            deps_builder: |mmap: &Mmap| bytemuck::cast_slice(&mmap[hlen..hlen + num_deps * 8]),
-            deps_order_builder: |mmap: &Mmap| {
-                bytemuck::cast_slice(&mmap[hlen + num_deps * 8..hlen + num_deps * 12])
-            },
-            unshifted_edge_list_offset_builder: |mmap: &Mmap| {
-                bytemuck::cast_slice(&mmap[hlen + num_deps * 12..hlen + num_deps * 16])
-            },
-            adjacency_list_alignment_shift,
-            adjacency_lists_builder: |mmap: &Mmap| &mmap[hlen + num_deps * 16..],
+        let g = NewDepGraph {
+            deps_range: hlen..hlen + num_deps * 8,
+            deps_order_range: hlen + num_deps * 8..hlen + num_deps * 12,
+            unshifted_edge_list_offset_range: hlen + num_deps * 12..hlen + num_deps * 16,
+            adjacency_list_alignment_shift: header.adjacency_list_alignment_shift,
+            adjacency_lists_range: hlen + num_deps * 16..mmap.len(),
+            storage: mmap,
         };
 
-        Ok(builder.build())
+        Ok(g)
     }
 
     /// Return `true` iff the given hash list contains the index for the given hash.
@@ -245,20 +242,35 @@ impl NewDepGraph {
         }
     }
 
+    fn deps(&self) -> &[Dep] {
+        bytemuck::cast_slice(&self.storage[self.deps_range.clone()])
+    }
+
+    fn deps_order(&self) -> &[u32] {
+        bytemuck::cast_slice(&self.storage[self.deps_order_range.clone()])
+    }
+
+    fn unshifted_edge_list_offset(&self) -> &[u32] {
+        bytemuck::cast_slice(&self.storage[self.unshifted_edge_list_offset_range.clone()])
+    }
+
+    fn adjacency_lists(&self) -> &[u8] {
+        &self.storage[self.adjacency_lists_range.clone()]
+    }
+
     /// Implementation helper for `DepGraph::hash_list_hashes`.
     fn hash_list_hashes<'a>(
         &'a self,
         hash_list: NewHashList<'a>,
     ) -> impl Iterator<Item = Dep> + 'a {
-        hash_list
-            .hash_indices()
-            .map(|index| self.borrow_deps()[index as usize])
+        let deps = self.deps();
+        hash_list.hash_indices().map(move |i| deps[i as usize])
     }
 
     /// Returns the internal, physical order for a Dep, or None if not found.
     pub fn get_index(&self, dep: Dep) -> Option<u32> {
-        let deps = self.borrow_deps();
-        let deps_order = self.borrow_deps_order();
+        let deps = self.deps();
+        let deps_order = self.deps_order();
         deps_order
             .binary_search_by_key(&dep, move |&i| deps[i as usize])
             .map_or(None, move |x| Some(deps_order[x]))
@@ -268,25 +280,21 @@ impl NewDepGraph {
     pub fn all_hashes(
         &self,
     ) -> impl DoubleEndedIterator<Item = Dep> + ExactSizeIterator + FusedIterator + '_ {
-        let deps = self.borrow_deps();
-        self.borrow_deps_order()
-            .iter()
-            .map(move |&i| deps[i as usize])
+        let deps = self.deps();
+        self.deps_order().iter().map(move |&i| deps[i as usize])
     }
 
     /// All unique dependency hashes in the graph, in sorted order, in parallel.
     pub fn par_all_hashes(&self) -> impl IndexedParallelIterator<Item = Dep> + '_ {
-        let deps = self.borrow_deps();
-        self.borrow_deps_order()
-            .par_iter()
-            .map(move |&i| deps[i as usize])
+        let deps = self.deps();
+        self.deps_order().par_iter().map(move |&i| deps[i as usize])
     }
 
     /// Returns all hashes in internal node order. More efficient than `par_all_hashes`.
     pub fn par_all_hashes_in_physical_order(
         &self,
     ) -> impl IndexedParallelIterator<Item = Dep> + '_ {
-        self.borrow_deps().par_iter().copied()
+        self.deps().par_iter().copied()
     }
 }
 
@@ -305,13 +313,13 @@ impl DepGraphTrait for NewDepGraph {
         // It would be crazy to be asking about some random unknown index.
         // Once OldDepGraph is gone, make this infallible.
 
-        let id = HashListId(self.borrow_unshifted_edge_list_offset()[index as usize]);
+        let id = HashListId(self.unshifted_edge_list_offset()[index as usize]);
         Some(id)
     }
 
     fn hash_list_for_id(&self, id: HashListId) -> HashList<'_> {
-        let start = (id.0 as usize) << self.borrow_adjacency_list_alignment_shift();
-        let bytes = &self.borrow_adjacency_lists()[start..];
+        let start = (id.0 as usize) << self.adjacency_list_alignment_shift;
+        let bytes = &self.adjacency_lists()[start..];
         HashList::New(NewHashList::new(bytes))
     }
 
@@ -329,21 +337,15 @@ impl DepGraphTrait for NewDepGraph {
 }
 
 /// An memory-mapped dependency graph.
-#[ouroboros::self_referencing]
 pub struct OldDepGraph {
-    /// The file holding the storage for this graph. Boxed for ouroboros.
-    storage: Box<Mmap>,
+    /// The file holding the storage for this graph.
+    storage: Mmap,
 
-    #[borrows(storage)]
-    data: &'this [u8],
+    /// The byte range for the Indexer in `storage`.
+    indexer_range: Range<usize>,
 
-    #[borrows(storage)]
-    #[covariant]
-    indexer: Indexer<'this>,
-
-    #[borrows(storage)]
-    #[covariant]
-    lookup_table: LookupTable<'this>,
+    /// The byte range for the LookupTable in `storage`.
+    lookup_table_range: Range<usize>,
 }
 
 impl OldDepGraph {
@@ -376,24 +378,33 @@ impl OldDepGraph {
         let indexer_offset: usize = indexer_offset.try_into().unwrap();
         let lookup_table_offset: usize = lookup_table_offset.try_into().unwrap();
 
-        let indexer_bytes = byteutils::subslice(data, indexer_offset.., "indexer_bytes")?;
-        let num_hashes = Indexer::new(indexer_bytes)?.len();
+        let (indexer_range, num_hashes) = Indexer::find_mmap_byte_range(data, indexer_offset)?;
+        let lookup_table_range =
+            LookupTable::find_mmap_byte_range(data, lookup_table_offset, num_hashes)?;
 
-        let builder = OldDepGraphBuilder {
-            storage: Box::new(mmap),
-            data_builder: |mmap: &Mmap| mmap.as_ref(),
-            indexer_builder: |mmap: &Mmap| Indexer::new(&mmap.as_ref()[indexer_offset..]).unwrap(),
-            lookup_table_builder: |mmap: &Mmap| {
-                LookupTable::new(&mmap.as_ref()[lookup_table_offset..], num_hashes).unwrap()
-            },
+        let g = OldDepGraph {
+            indexer_range,
+            lookup_table_range,
+            storage: mmap,
         };
 
-        Ok(builder.build())
+        Ok(g)
+    }
+
+    fn indexer(&self) -> Indexer<'_> {
+        let hashes = bytemuck::cast_slice(&self.storage[self.indexer_range.clone()]);
+        Indexer { hashes }
+    }
+
+    fn lookup_table(&self) -> LookupTable<'_> {
+        let hash_list_offsets =
+            bytemuck::cast_slice(&self.storage[self.lookup_table_range.clone()]);
+        LookupTable { hash_list_offsets }
     }
 
     /// Return `true` iff the given hash list contains the index for the given hash.
     fn hash_list_contains(&self, hash_list: HashList<'_>, hash: Dep) -> bool {
-        if let Some(index) = self.borrow_indexer().find(hash.into()) {
+        if let Some(index) = self.indexer().find(hash.into()) {
             hash_list.has_index(index)
         } else {
             false
@@ -405,7 +416,7 @@ impl OldDepGraph {
         &'a self,
         hash_list: OldHashList<'a>,
     ) -> impl Iterator<Item = Dep> + ExactSizeIterator + FusedIterator + 'a {
-        let indexer = self.borrow_indexer();
+        let indexer = self.indexer();
         hash_list
             .indices
             .iter()
@@ -414,28 +425,26 @@ impl OldDepGraph {
 
     /// All unique dependency hashes in the graph.
     fn all_hashes(&self) -> impl DoubleEndedIterator<Item = Dep> + ExactSizeIterator + '_ {
-        self.borrow_indexer().hashes.iter().copied().map(Dep::new)
+        self.indexer().hashes.iter().copied().map(Dep::new)
     }
 
     /// All unique dependency hashes in the graph, in parallel.
     fn par_all_hashes(&self) -> impl IndexedParallelIterator<Item = Dep> + '_ {
-        self.borrow_indexer()
-            .hashes
-            .par_iter()
-            .copied()
-            .map(Dep::new)
+        self.indexer().hashes.par_iter().copied().map(Dep::new)
     }
 }
 
 impl DepGraphTrait for OldDepGraph {
     fn validate_hash_lists(&self) -> Result<(), String> {
-        let len: usize = self.borrow_indexer().len();
-        let lookup_table = self.borrow_lookup_table();
+        let len: usize = self.indexer().len();
+        let lookup_table = self.lookup_table();
+        let storage_bytes = &self.storage[..];
+
         for index in 0..len {
             match lookup_table.get(index as u32) {
                 Some(list_offset) => {
                     let data = byteutils::subslice(
-                        self.borrow_data(),
+                        storage_bytes,
                         list_offset as usize..,
                         "hash list data during validation",
                     )?;
@@ -465,18 +474,18 @@ impl DepGraphTrait for OldDepGraph {
     /// Unless you are interested in `HashList` identity, you want to call
     /// `hash_list_for` instead.
     fn hash_list_id_for_dep(&self, hash: Dep) -> Option<HashListId> {
-        let index = self.borrow_indexer().find(hash.into())?;
+        let index = self.indexer().find(hash.into())?;
         self.hash_list_id_for_index(index)
     }
 
     fn hash_list_id_for_index(&self, index: u32) -> Option<HashListId> {
-        Some(HashListId(self.borrow_lookup_table().get(index)?))
+        Some(HashListId(self.lookup_table().get(index)?))
     }
 
     /// Maps a `HashListId` to its `HashList`.
     fn hash_list_for_id(&self, id: HashListId) -> HashList<'_> {
         let list_offset = id.0;
-        HashList::Old(OldHashList::new(&self.borrow_data()[list_offset as usize..]).unwrap())
+        HashList::Old(OldHashList::new(&self.storage[list_offset as usize..]).unwrap())
     }
 
     /// Return whether the given dependent-to-dependency edge is in the graph.
@@ -488,7 +497,7 @@ impl DepGraphTrait for OldDepGraph {
     }
 
     fn contains(&self, dep: Dep) -> bool {
-        self.borrow_indexer().find(dep.into()).is_some()
+        self.indexer().find(dep.into()).is_some()
     }
 }
 
@@ -517,28 +526,37 @@ struct Indexer<'bytes> {
 }
 
 impl<'bytes> Indexer<'bytes> {
-    fn new(data: &'bytes [u8]) -> Result<Self, String> {
-        if data.len() < 8 {
+    /// Determine which byte range in the given block of bytes holds the `Indexer`.
+    fn find_mmap_byte_range(
+        data: &[u8],
+        start_byte_offset: usize,
+    ) -> Result<(Range<usize>, usize), String> {
+        if start_byte_offset % 8 != 0 {
+            return Err("indexer start offset misaligned".to_string());
+        }
+
+        let len_end = start_byte_offset + 8;
+        if data.len() < len_end {
             return Err("not enough bytes to read indexer".to_string());
         }
 
-        // Read in length
-        let length = byteutils::read_u64_ne(data);
-        if length > (1 << 32) - 1 {
+        // Read in table length.
+        let num_hashes = bytemuck::pod_read_unaligned::<u64>(&data[start_byte_offset..len_end]);
+        if num_hashes > (1 << 32) - 1 {
             return Err("indexer: length is too big".to_string());
         }
+        let num_hashes = num_hashes as usize;
 
-        // Read in u64 array
-        let length: usize = length as usize;
-        let indexer_data = byteutils::subslice(data, 8.., "indexer_data")?;
-        let indexer_data = byteutils::as_u64_slice(indexer_data)
-            .ok_or_else(|| "indexer: data is not properly aligned".to_string())?;
-        if indexer_data.len() < length {
+        // Verify that the u64 array is big enough.
+        let table_start_offset = len_end;
+        let table_end_offset = table_start_offset + num_hashes * 8;
+        if table_end_offset > data.len() {
             return Err("indexer: not enough hashes".to_string());
         }
 
-        let hashes = &indexer_data[..length];
-        Ok(Indexer { hashes })
+        let file_byte_range = table_start_offset..table_end_offset;
+
+        Ok((file_byte_range, num_hashes))
     }
 
     /// The number if hashes in the indexer
@@ -584,16 +602,23 @@ struct LookupTable<'bytes> {
 }
 
 impl<'bytes> LookupTable<'bytes> {
-    fn new(data: &'bytes [u8], len: usize) -> Result<Self, String> {
+    /// Determine which byte range in the given block of bytes holds the `LookupTable`.
+    fn find_mmap_byte_range(
+        data: &[u8],
+        start_byte_offset: usize,
+        num_hashes: usize,
+    ) -> Result<Range<usize>, String> {
         // Read in u32 array
-        let hash_list_offsets = byteutils::as_u32_slice(data)
-            .ok_or_else(|| "lookup table: data is not properly aligned".to_string())?;
-        if hash_list_offsets.len() < len {
+        if start_byte_offset % 4 != 0 {
+            return Err("lookup table: data is not properly aligned".to_string());
+        }
+
+        let end_byte_offset = start_byte_offset + num_hashes * 4;
+        if end_byte_offset > data.len() {
             return Err("lookup table: not enough pointers".to_string());
         }
 
-        let hash_list_offsets = &hash_list_offsets[..len];
-        Ok(LookupTable { hash_list_offsets })
+        Ok(start_byte_offset..end_byte_offset)
     }
 
     #[inline]

@@ -50,13 +50,12 @@ constexpr bool supported(ContextMask mask, AttrContext a) {
   X(AttrDeepInit,                 P,       "deep_init");            \
   X(AttrInterface,                C,       "interface");            \
   X(AttrNoExpandTrait,            C,       "no_expand_trait");      \
-  X(AttrAbstract,                 C|F|T,   "abstract");             \
+  X(AttrAbstract,                 C|F|T|K, "abstract");             \
   X(AttrNoOverride,               C|F,     "no_override");          \
   X(AttrNoOverrideRegular,        C,       "no_override_regular");  \
   X(AttrFinal,                    C|F|T,   "final");                \
   X(AttrSealed,                   C,       "sealed");               \
   X(AttrTrait,                    C|F|P,   "trait");                \
-  X(AttrUnique,                   C|F|M,   "unique");               \
   X(AttrBuiltin,                  C|F,     "builtin");              \
   X(AttrPersistent,               C|F|A|K|M, "persistent");         \
   X(AttrIsConst,                  C|P,     "is_const");             \
@@ -80,12 +79,12 @@ constexpr bool supported(ContextMask mask, AttrContext a) {
   X(AttrNoReifiedInit,            C,       "noreifiedinit");        \
   X(AttrIsMethCaller,             F,       "is_meth_caller");       \
   X(AttrIsClosureClass,           C,       "is_closure_class");     \
-  X(AttrEnumClass,                C,       "enum_class");
+  X(AttrEnumClass,                C,       "enum_class");           \
+  X(AttrVariadicParam,            F,       "variadic_param");
   /* */
 
   #define HHAS_TYPE_FLAGS                                   \
   X(Nullable,        "nullable");                           \
-  X(CaseType,        "case_type");                          \
   X(ExtendedHint,    "extended_hint");                      \
   X(TypeVar,         "type_var");                           \
   X(Soft,            "soft");                               \

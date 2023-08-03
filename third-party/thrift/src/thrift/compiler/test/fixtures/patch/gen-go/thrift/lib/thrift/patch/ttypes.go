@@ -10,10 +10,8 @@ import (
 	"sync"
 	"fmt"
 	thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
-	thrift0 "thrift/annotation/thrift"
-	scope1 "thrift/annotation/scope"
-	cpp2 "thrift/annotation/cpp"
-	standard3 "thrift/lib/thrift/standard"
+	standard0 "thrift/lib/thrift/standard"
+	id1 "thrift/lib/thrift/id"
 
 )
 
@@ -24,10 +22,8 @@ var _ = sync.Mutex{}
 var _ = bytes.Equal
 var _ = context.Background
 
-var _ = thrift0.GoUnusedProtection__
-var _ = scope1.GoUnusedProtection__
-var _ = cpp2.GoUnusedProtection__
-var _ = standard3.GoUnusedProtection__
+var _ = standard0.GoUnusedProtection__
+var _ = id1.GoUnusedProtection__
 var GoUnusedProtection__ int;
 
 //The meaning of the patch op field ids, in all properly formulated patch
@@ -37,6 +33,7 @@ var GoUnusedProtection__ int;
 //without any additional schema derived from IDL patch definitions.
 type PatchOp int64
 const (
+  PatchOp_Unspecified PatchOp = 0
   PatchOp_Assign PatchOp = 1
   PatchOp_Clear PatchOp = 2
   PatchOp_PatchPrior PatchOp = 3
@@ -46,10 +43,10 @@ const (
   PatchOp_Remove PatchOp = 7
   PatchOp_Add PatchOp = 8
   PatchOp_Put PatchOp = 9
-  PatchOp_Unspecified PatchOp = 0
 )
 
 var PatchOpToName = map[PatchOp]string {
+  PatchOp_Unspecified: "Unspecified",
   PatchOp_Assign: "Assign",
   PatchOp_Clear: "Clear",
   PatchOp_PatchPrior: "PatchPrior",
@@ -59,10 +56,10 @@ var PatchOpToName = map[PatchOp]string {
   PatchOp_Remove: "Remove",
   PatchOp_Add: "Add",
   PatchOp_Put: "Put",
-  PatchOp_Unspecified: "Unspecified",
 }
 
 var PatchOpToValue = map[string]PatchOp {
+  "Unspecified": PatchOp_Unspecified,
   "Assign": PatchOp_Assign,
   "Clear": PatchOp_Clear,
   "PatchPrior": PatchOp_PatchPrior,
@@ -72,10 +69,10 @@ var PatchOpToValue = map[string]PatchOp {
   "Remove": PatchOp_Remove,
   "Add": PatchOp_Add,
   "Put": PatchOp_Put,
-  "Unspecified": PatchOp_Unspecified,
 }
 
 var PatchOpNames = []string {
+  "Unspecified",
   "Assign",
   "Clear",
   "PatchPrior",
@@ -85,10 +82,10 @@ var PatchOpNames = []string {
   "Remove",
   "Add",
   "Put",
-  "Unspecified",
 }
 
 var PatchOpValues = []PatchOp {
+  PatchOp_Unspecified,
   PatchOp_Assign,
   PatchOp_Clear,
   PatchOp_PatchPrior,
@@ -98,7 +95,6 @@ var PatchOpValues = []PatchOp {
   PatchOp_Remove,
   PatchOp_Add,
   PatchOp_Put,
-  PatchOp_Unspecified,
 }
 
 func (p PatchOp) String() string {
@@ -117,12 +113,16 @@ func PatchOpFromString(s string) (PatchOp, error) {
 
 func PatchOpPtr(v PatchOp) *PatchOp { return &v }
 
-type ListPatchIndex = int32
+type FieldId = id1.FieldId
 
-func ListPatchIndexPtr(v ListPatchIndex) *ListPatchIndex { return &v }
+func FieldIdPtr(v FieldId) *FieldId { return &v }
 
-// An annotation that indicates a patch representation
-// should be generated for the associated definition.
+type FieldIdList = []int16
+
+func FieldIdListPtr(v FieldIdList) *FieldIdList { return &v }
+
+// An annotation that indicates a patch representation should be generated for
+// the associated definition.
 type GeneratePatch struct {
 }
 
@@ -2037,20 +2037,20 @@ func (p *StringPatch) String() string {
 //  - Prepend: Prepend to a given value.
 //  - Append: Append to a given value.
 type BinaryPatch struct {
-  Assign standard3.ByteBuffer `thrift:"assign,1,optional" db:"assign" json:"assign,omitempty"`
+  Assign standard0.ByteBuffer `thrift:"assign,1,optional" db:"assign" json:"assign,omitempty"`
   Clear bool `thrift:"clear,2" db:"clear" json:"clear"`
   // unused fields # 3 to 7
-  Prepend standard3.ByteBuffer `thrift:"prepend,8" db:"prepend" json:"prepend"`
-  Append standard3.ByteBuffer `thrift:"append,9" db:"append" json:"append"`
+  Prepend standard0.ByteBuffer `thrift:"prepend,8" db:"prepend" json:"prepend"`
+  Append standard0.ByteBuffer `thrift:"append,9" db:"append" json:"append"`
 }
 
 func NewBinaryPatch() *BinaryPatch {
   return &BinaryPatch{}
 }
 
-var BinaryPatch_Assign_DEFAULT standard3.ByteBuffer
+var BinaryPatch_Assign_DEFAULT standard0.ByteBuffer
 
-func (p *BinaryPatch) GetAssign() standard3.ByteBuffer {
+func (p *BinaryPatch) GetAssign() standard0.ByteBuffer {
   return p.Assign
 }
 
@@ -2058,11 +2058,11 @@ func (p *BinaryPatch) GetClear() bool {
   return p.Clear
 }
 
-func (p *BinaryPatch) GetPrepend() standard3.ByteBuffer {
+func (p *BinaryPatch) GetPrepend() standard0.ByteBuffer {
   return p.Prepend
 }
 
-func (p *BinaryPatch) GetAppend() standard3.ByteBuffer {
+func (p *BinaryPatch) GetAppend() standard0.ByteBuffer {
   return p.Append
 }
 func (p *BinaryPatch) IsSetAssign() bool {
@@ -2088,7 +2088,7 @@ func (p BinaryPatchBuilder) Emit() *BinaryPatch{
   }
 }
 
-func (b *BinaryPatchBuilder) Assign(assign standard3.ByteBuffer) *BinaryPatchBuilder {
+func (b *BinaryPatchBuilder) Assign(assign standard0.ByteBuffer) *BinaryPatchBuilder {
   b.obj.Assign = assign
   return b
 }
@@ -2098,17 +2098,17 @@ func (b *BinaryPatchBuilder) Clear(clear bool) *BinaryPatchBuilder {
   return b
 }
 
-func (b *BinaryPatchBuilder) Prepend(prepend standard3.ByteBuffer) *BinaryPatchBuilder {
+func (b *BinaryPatchBuilder) Prepend(prepend standard0.ByteBuffer) *BinaryPatchBuilder {
   b.obj.Prepend = prepend
   return b
 }
 
-func (b *BinaryPatchBuilder) Append(append standard3.ByteBuffer) *BinaryPatchBuilder {
+func (b *BinaryPatchBuilder) Append(append standard0.ByteBuffer) *BinaryPatchBuilder {
   b.obj.Append = append
   return b
 }
 
-func (b *BinaryPatch) SetAssign(assign standard3.ByteBuffer) *BinaryPatch {
+func (b *BinaryPatch) SetAssign(assign standard0.ByteBuffer) *BinaryPatch {
   b.Assign = assign
   return b
 }
@@ -2118,12 +2118,12 @@ func (b *BinaryPatch) SetClear(clear bool) *BinaryPatch {
   return b
 }
 
-func (b *BinaryPatch) SetPrepend(prepend standard3.ByteBuffer) *BinaryPatch {
+func (b *BinaryPatch) SetPrepend(prepend standard0.ByteBuffer) *BinaryPatch {
   b.Prepend = prepend
   return b
 }
 
-func (b *BinaryPatch) SetAppend(append standard3.ByteBuffer) *BinaryPatch {
+func (b *BinaryPatch) SetAppend(append standard0.ByteBuffer) *BinaryPatch {
   b.Append = append
   return b
 }
@@ -2176,7 +2176,7 @@ func (p *BinaryPatch)  ReadField1(iprot thrift.Protocol) error {
   if v, err := iprot.ReadBinary(); err != nil {
     return thrift.PrependError("error reading field 1: ", err)
   } else {
-    temp := standard3.ByteBuffer(v)
+    temp := standard0.ByteBuffer(v)
     p.Assign = temp
   }
   return nil
@@ -2195,7 +2195,7 @@ func (p *BinaryPatch)  ReadField8(iprot thrift.Protocol) error {
   if v, err := iprot.ReadBinary(); err != nil {
     return thrift.PrependError("error reading field 8: ", err)
   } else {
-    temp := standard3.ByteBuffer(v)
+    temp := standard0.ByteBuffer(v)
     p.Prepend = temp
   }
   return nil
@@ -2205,7 +2205,7 @@ func (p *BinaryPatch)  ReadField9(iprot thrift.Protocol) error {
   if v, err := iprot.ReadBinary(); err != nil {
     return thrift.PrependError("error reading field 9: ", err)
   } else {
-    temp := standard3.ByteBuffer(v)
+    temp := standard0.ByteBuffer(v)
     p.Append = temp
   }
   return nil

@@ -5,8 +5,7 @@ use std::io::Write;
 
 use anyhow::Result;
 use clap::Args;
-use facts_rust::Facts;
-use facts_rust::{self as facts};
+use facts::Facts;
 use relative_path::Prefix;
 use relative_path::RelativePath;
 use serde_json::json;
@@ -17,10 +16,6 @@ use serde_json::Value;
 pub(crate) struct Opts {
     #[command(flatten)]
     pub files: crate::FileOpts,
-
-    /// Exclude sha1sum from JSON results.
-    #[clap(long)]
-    pub nohash: bool,
 }
 
 /// Write a JSON object to stdout containing Facts for each input file.
@@ -53,11 +48,7 @@ pub(crate) fn extract_facts(
             continue;
         }
         let facts = Facts::from_decls(&parsed_file);
-        let json = if opts.nohash {
-            json!(facts)
-        } else {
-            facts.to_json_value(&facts::sha1(&text))
-        };
+        let json = json!(facts);
         file_to_facts.insert(path.to_str().unwrap().to_owned(), json);
     }
     if is_batch {

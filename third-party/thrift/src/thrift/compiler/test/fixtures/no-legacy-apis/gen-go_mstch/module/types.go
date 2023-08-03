@@ -6,11 +6,9 @@ package module // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    thrift0 "thrift/annotation/thrift"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = thrift0.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
@@ -174,7 +172,9 @@ if err != nil {
 }
 
 func (x *MyStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructAlias MyStruct
+    valueAlias := (*MyStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -278,9 +278,7 @@ type MyUnion struct {
 var _ thrift.Struct = &MyUnion{}
 
 func NewMyUnion() *MyUnion {
-    return (&MyUnion{}).
-        SetMyEnumNonCompat(0).
-        SetMyDataItemNonCompat(*NewMyStruct())
+    return (&MyUnion{})
 }
 
 func (x *MyUnion) GetMyEnumNonCompat() *MyEnum {
@@ -301,7 +299,7 @@ func (x *MyUnion) GetMyDataItemNonCompat() *MyStruct {
 
 func (x *MyUnion) GetMyDataItem() *MyStruct {
     if !x.IsSetMyDataItem() {
-        return NewMyStruct()
+        return nil
     }
 
     return x.MyDataItem
@@ -412,7 +410,9 @@ func (x *MyUnion) DefaultGetMyDataItem() *MyStruct {
 }
 
 func (x *MyUnion) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyUnionAlias MyUnion
+    valueAlias := (*MyUnionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *MyUnion) countSetFields() int {

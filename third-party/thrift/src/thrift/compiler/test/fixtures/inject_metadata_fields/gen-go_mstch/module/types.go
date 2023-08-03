@@ -6,12 +6,10 @@ package module // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    internals "thrift/annotation/internals"
     foo "foo"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = internals.GoUnusedProtection__
 var _ = foo.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
@@ -75,7 +73,9 @@ if err != nil {
 }
 
 func (x *Fields) String() string {
-    return fmt.Sprintf("%+v", x)
+    type FieldsAlias Fields
+    valueAlias := (*FieldsAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -214,7 +214,9 @@ if err != nil {
 }
 
 func (x *FieldsInjectedToEmptyStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type FieldsInjectedToEmptyStructAlias FieldsInjectedToEmptyStruct
+    valueAlias := (*FieldsInjectedToEmptyStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -399,7 +401,9 @@ if err != nil {
 }
 
 func (x *FieldsInjectedToStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type FieldsInjectedToStructAlias FieldsInjectedToStruct
+    valueAlias := (*FieldsInjectedToStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -717,7 +721,9 @@ var FieldsInjectedWithIncludedStruct_InjectedStructuredAnnotationField_DEFAULT =
 var FieldsInjectedWithIncludedStruct_InjectedUnstructuredAnnotationField_DEFAULT = NewFieldsInjectedWithIncludedStruct().GetInjectedUnstructuredAnnotationField()
 
 func (x *FieldsInjectedWithIncludedStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type FieldsInjectedWithIncludedStructAlias FieldsInjectedWithIncludedStruct
+    valueAlias := (*FieldsInjectedWithIncludedStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

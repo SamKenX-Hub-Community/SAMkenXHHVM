@@ -26,6 +26,7 @@
 
 #include <folly/Traits.h>
 #include <thrift/lib/cpp/Field.h>
+#include <thrift/lib/cpp/util/EnumUtils.h>
 #include <thrift/lib/cpp2/Adapt.h>
 #include <thrift/lib/cpp2/Thrift.h>
 #include <thrift/lib/cpp2/type/BaseType.h>
@@ -89,18 +90,12 @@ struct CppTag {
   using type = cpp_type<T, Tag>;
 };
 
-template <template <typename...> class T, typename VTag>
+template <template <typename...> class T, typename... ParamTags>
 using parameterized_type = folly::conditional_t<
-    is_concrete_v<VTag>,
-    ConcreteType<standard_template_t<T, VTag>, native_template_t<T, VTag>>,
-    AbstractType>;
-
-template <template <typename...> class T, typename KTag, typename VTag>
-using parameterized_kv_type = folly::conditional_t<
-    is_concrete_v<KTag> && is_concrete_v<VTag>,
+    (is_concrete_v<ParamTags> && ...),
     ConcreteType<
-        standard_template_t<T, KTag, VTag>,
-        native_template_t<T, KTag, VTag>>,
+        standard_template_t<T, ParamTags...>,
+        native_template_t<T, ParamTags...>>,
     AbstractType>;
 
 template <>
@@ -161,6 +156,11 @@ struct NativeTypes<binary_t> : ConcreteType<std::string> {};
 template <typename E>
 struct NativeTypes<enum_t<E>> : ConcreteType<E> {};
 
+template <typename T>
+struct InferTag<T, std::enable_if_t<util::is_thrift_enum_v<T>>> {
+  using type = type::enum_t<T>;
+};
+
 // Traits for structs.
 template <typename T>
 struct NativeTypes<struct_t<T>> : ConcreteType<T> {};
@@ -192,8 +192,8 @@ struct InferTag<std::set<T>> {
 
 // Traits for maps.
 template <typename KTag, typename VTag>
-struct NativeTypes<map<KTag, VTag>>
-    : parameterized_kv_type<std::map, KTag, VTag> {};
+struct NativeTypes<map<KTag, VTag>> : parameterized_type<std::map, KTag, VTag> {
+};
 template <typename K, typename V>
 struct InferTag<std::map<K, V>> {
   using type =

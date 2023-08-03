@@ -14,7 +14,7 @@ let recheck_naming ctx filename_l =
   List.iter filename_l ~f:(fun file ->
       Errors.ignore_ (fun () ->
           (* We only need to name to find references to locals *)
-          List.iter (Ast_provider.get_ast ctx file) ~f:(function
+          List.iter (Ast_provider.get_ast ctx file ~full:false) ~f:(function
               | Aast.Fun f ->
                 let _ = Naming.fun_def ctx f in
                 ()
@@ -32,7 +32,7 @@ let helper ctx acc filename_l =
         let { Tast_provider.Compute_tast.tast; _ } =
           Tast_provider.compute_tast_unquarantined ~ctx ~entry
         in
-        tast)
+        tast.Tast_with_dynamic.under_normal_assumptions)
   in
   let fun_calls = SymbolFunCallService.find_fun_calls ctx tasts in
   let symbol_types = SymbolTypeService.generate_types ctx tasts in

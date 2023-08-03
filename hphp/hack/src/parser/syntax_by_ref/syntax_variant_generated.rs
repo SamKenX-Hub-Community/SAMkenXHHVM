@@ -83,6 +83,7 @@ pub enum SyntaxVariant<'a, T, V> {
     MarkupSection(&'a MarkupSectionChildren<'a, T, V>),
     MarkupSuffix(&'a MarkupSuffixChildren<'a, T, V>),
     UnsetStatement(&'a UnsetStatementChildren<'a, T, V>),
+    DeclareLocalStatement(&'a DeclareLocalStatementChildren<'a, T, V>),
     UsingStatementBlockScoped(&'a UsingStatementBlockScopedChildren<'a, T, V>),
     UsingStatementFunctionScoped(&'a UsingStatementFunctionScopedChildren<'a, T, V>),
     WhileStatement(&'a WhileStatementChildren<'a, T, V>),
@@ -99,6 +100,8 @@ pub enum SyntaxVariant<'a, T, V> {
     SwitchFallthrough(&'a SwitchFallthroughChildren<'a, T, V>),
     CaseLabel(&'a CaseLabelChildren<'a, T, V>),
     DefaultLabel(&'a DefaultLabelChildren<'a, T, V>),
+    MatchStatement(&'a MatchStatementChildren<'a, T, V>),
+    MatchStatementArm(&'a MatchStatementArmChildren<'a, T, V>),
     ReturnStatement(&'a ReturnStatementChildren<'a, T, V>),
     YieldBreakStatement(&'a YieldBreakStatementChildren<'a, T, V>),
     ThrowStatement(&'a ThrowStatementChildren<'a, T, V>),
@@ -110,6 +113,9 @@ pub enum SyntaxVariant<'a, T, V> {
     AnonymousClass(&'a AnonymousClassChildren<'a, T, V>),
     AnonymousFunction(&'a AnonymousFunctionChildren<'a, T, V>),
     AnonymousFunctionUseClause(&'a AnonymousFunctionUseClauseChildren<'a, T, V>),
+    VariablePattern(&'a VariablePatternChildren<'a, T, V>),
+    ConstructorPattern(&'a ConstructorPatternChildren<'a, T, V>),
+    RefinementPattern(&'a RefinementPatternChildren<'a, T, V>),
     LambdaExpression(&'a LambdaExpressionChildren<'a, T, V>),
     LambdaSignature(&'a LambdaSignatureChildren<'a, T, V>),
     CastExpression(&'a CastExpressionChildren<'a, T, V>),
@@ -665,6 +671,16 @@ pub struct UnsetStatementChildren<'a, T, V> {
 }
 
 #[derive(Debug, Clone)]
+pub struct DeclareLocalStatementChildren<'a, T, V> {
+    pub keyword: Syntax<'a, T, V>,
+    pub variable: Syntax<'a, T, V>,
+    pub colon: Syntax<'a, T, V>,
+    pub type_: Syntax<'a, T, V>,
+    pub initializer: Syntax<'a, T, V>,
+    pub semicolon: Syntax<'a, T, V>,
+}
+
+#[derive(Debug, Clone)]
 pub struct UsingStatementBlockScopedChildren<'a, T, V> {
     pub await_keyword: Syntax<'a, T, V>,
     pub using_keyword: Syntax<'a, T, V>,
@@ -807,6 +823,24 @@ pub struct DefaultLabelChildren<'a, T, V> {
 }
 
 #[derive(Debug, Clone)]
+pub struct MatchStatementChildren<'a, T, V> {
+    pub keyword: Syntax<'a, T, V>,
+    pub left_paren: Syntax<'a, T, V>,
+    pub expression: Syntax<'a, T, V>,
+    pub right_paren: Syntax<'a, T, V>,
+    pub left_brace: Syntax<'a, T, V>,
+    pub arms: Syntax<'a, T, V>,
+    pub right_brace: Syntax<'a, T, V>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MatchStatementArmChildren<'a, T, V> {
+    pub pattern: Syntax<'a, T, V>,
+    pub arrow: Syntax<'a, T, V>,
+    pub body: Syntax<'a, T, V>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ReturnStatementChildren<'a, T, V> {
     pub keyword: Syntax<'a, T, V>,
     pub expression: Syntax<'a, T, V>,
@@ -893,6 +927,26 @@ pub struct AnonymousFunctionUseClauseChildren<'a, T, V> {
     pub left_paren: Syntax<'a, T, V>,
     pub variables: Syntax<'a, T, V>,
     pub right_paren: Syntax<'a, T, V>,
+}
+
+#[derive(Debug, Clone)]
+pub struct VariablePatternChildren<'a, T, V> {
+    pub variable: Syntax<'a, T, V>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConstructorPatternChildren<'a, T, V> {
+    pub constructor: Syntax<'a, T, V>,
+    pub left_paren: Syntax<'a, T, V>,
+    pub members: Syntax<'a, T, V>,
+    pub right_paren: Syntax<'a, T, V>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RefinementPatternChildren<'a, T, V> {
+    pub variable: Syntax<'a, T, V>,
+    pub colon: Syntax<'a, T, V>,
+    pub specifier: Syntax<'a, T, V>,
 }
 
 #[derive(Debug, Clone)]

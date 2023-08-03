@@ -84,17 +84,6 @@ let expand_path file =
       exit 2
     )
 
-let parse_ide_find_refs_arg arg =
-  let pair = Str.split (Str.regexp ":") arg in
-  try
-    match pair with
-    | [filename; pos] -> (filename, pos)
-    | _ -> raise Exit
-  with
-  | _ ->
-    Printf.eprintf "Invalid input\n";
-    raise Exit_status.(Exit_with Input_error)
-
 let parse_position_string ~(split_on : string) arg =
   let tpos = Str.split (Str.regexp split_on) arg in
   try
@@ -134,7 +123,6 @@ let connect ?(use_priority_pipe = false) args =
     max_errors = _;
     mode = _;
     output_json = _;
-    prefer_stdout = _;
     sort_results = _;
     stdin_name = _;
     desc = _;
@@ -276,8 +264,15 @@ let main_internal
     let%lwt results = rpc_with_retry args @@ Rpc.FIND_REFS action in
     ClientFindRefs.go results args.output_json;
     Lwt.return (Exit_status.No_error, Telemetry.create ())
-  | MODE_GEN_PREFETCH_DIR dirname ->
-    let%lwt (_, telemetry) = rpc args @@ Rpc.GEN_PREFETCH_DIR dirname in
+  | MODE_POPULATE_REMOTE_DECLS files ->
+    let files =
+      Option.map
+        files
+        ~f:
+          (List.map ~f:(fun path ->
+               Relative_path.create_detect_prefix (expand_path path)))
+    in
+    let%lwt (_, telemetry) = rpc args (Rpc.POPULATE_REMOTE_DECLS files) in
     Lwt.return (Exit_status.No_error, telemetry)
   | MODE_GO_TO_IMPL_CLASS class_name ->
     let%lwt results =
@@ -285,13 +280,6 @@ let main_internal
       @@ Rpc.GO_TO_IMPL (ServerCommandTypes.Find_refs.Class class_name)
     in
     ClientFindRefs.go results args.output_json;
-    Lwt.return (Exit_status.No_error, Telemetry.create ())
-  | MODE_GO_TO_IMPL_CLASS_REMOTE class_name ->
-    let results =
-      Glean_dependency_graph.go_to_implementation ~class_name ~globalrev:""
-    in
-    HashSet.iter results ~f:(fun cls -> Printf.printf "%s\n" cls);
-    Printf.printf "%d total results\n" (HashSet.length results);
     Lwt.return (Exit_status.No_error, Telemetry.create ())
   | MODE_GO_TO_IMPL_METHOD name ->
     let action =
@@ -311,17 +299,6 @@ let main_internal
     | _ ->
       Printf.eprintf "Invalid input\n";
       Lwt.return (Exit_status.Input_error, Telemetry.create ()))
-  | MODE_IDE_FIND_REFS arg ->
-    let (filename, pos) = parse_ide_find_refs_arg arg in
-    let (line, char) = parse_position_string ~split_on:"," pos in
-    let include_defs = true in
-    let labelled_file = ServerCommandTypes.LabelledFileName filename in
-    let%lwt results =
-      rpc_with_retry args
-      @@ Rpc.IDE_FIND_REFS (labelled_file, line, char, include_defs)
-    in
-    ClientFindRefs.go_ide results args.output_json;
-    Lwt.return (Exit_status.No_error, Telemetry.create ())
   | MODE_IDE_FIND_REFS_BY_SYMBOL arg ->
     let open ServerCommandTypes in
     let (symbol_name, action) = Find_refs.string_to_symbol_and_action_exn arg in
@@ -330,67 +307,30 @@ let main_internal
     in
     ClientFindRefs.go_ide results args.output_json;
     Lwt.return (Exit_status.No_error, Telemetry.create ())
-  | MODE_IDE_GO_TO_IMPL arg ->
-    let (filename, pos) = parse_ide_find_refs_arg arg in
-    let (line, char) = parse_position_string ~split_on:"," pos in
-    let labelled_file = ServerCommandTypes.LabelledFileName filename in
+  | MODE_IDE_GO_TO_IMPL_BY_SYMBOL arg ->
+    let open ServerCommandTypes in
+    let (symbol_name, action) = Find_refs.string_to_symbol_and_action_exn arg in
     let%lwt results =
-      rpc_with_retry args @@ Rpc.IDE_GO_TO_IMPL (labelled_file, line, char)
+      rpc_with_retry args @@ Rpc.IDE_GO_TO_IMPL_BY_SYMBOL (action, symbol_name)
     in
     ClientFindRefs.go_ide results args.output_json;
     Lwt.return (Exit_status.No_error, Telemetry.create ())
-  | MODE_IDE_HIGHLIGHT_REFS arg ->
-    let (line, char) = parse_position_string ~split_on:":" arg in
-    let content =
-      ServerCommandTypes.FileContent (Sys_utils.read_stdin_to_string ())
-    in
-    let%lwt (results, telemetry) =
-      rpc args @@ Rpc.IDE_HIGHLIGHT_REFS ("", content, line, char)
-    in
-    ClientHighlightRefs.go results ~output_json:args.output_json;
-    Lwt.return (Exit_status.No_error, telemetry)
   | MODE_DUMP_SYMBOL_INFO files ->
     let%lwt conn = connect args in
     let%lwt () = ClientSymbolInfo.go conn ~desc:args.desc files expand_path in
     Lwt.return (Exit_status.No_error, Telemetry.create ())
-  | MODE_RENAME_SOUND_DYNAMIC (ref_mode, name) ->
-    let conn () = connect args in
-    let%lwt result = ClientRename.go_sound_dynamic conn args ref_mode name in
-    let () = Printf.printf "%s" result in
-    Lwt.return (Exit_status.No_error, Telemetry.create ())
   | MODE_RENAME ((ref_mode : rename_mode), before, after) ->
     let conn () = connect args in
     let%lwt () =
-      ClientRename.go conn ~desc:args.desc args ref_mode before after
-    in
-    Lwt.return (Exit_status.No_error, Telemetry.create ())
-  | MODE_IDE_RENAME arg ->
-    let conn () = connect args in
-    let tpos = Str.split (Str.regexp ":") arg in
-    let (filename, line, char, new_name) =
-      try
-        match tpos with
-        | [filename; line; char; new_name] ->
-          let filename = expand_path filename in
-          (filename, int_of_string line, int_of_string char, new_name)
-        | _ -> raise Exit
-      with
-      | _ ->
-        Printf.eprintf "Invalid input\n";
-        raise Exit_status.(Exit_with Input_error)
-    in
-    let%lwt () =
-      ClientRename.go_ide conn ~desc:args.desc args filename line char new_name
+      ClientRename.go conn ~desc:args.desc args ref_mode ~before ~after
     in
     Lwt.return (Exit_status.No_error, Telemetry.create ())
   | MODE_IDE_RENAME_BY_SYMBOL arg ->
     let open ServerCommandTypes in
-    let (new_name, action, filename, symbol_definition) =
-      Rename.string_to_args arg
-    in
+    let (new_name, action, symbol_definition) = Rename.string_to_args arg in
     let%lwt results =
       rpc_with_retry args
-      @@ Rpc.IDE_RENAME_BY_SYMBOL (action, new_name, filename, symbol_definition)
+      @@ Rpc.IDE_RENAME_BY_SYMBOL (action, new_name, symbol_definition)
     in
     begin
       match results with
@@ -609,12 +549,15 @@ let main_internal
     let%lwt (responses, telemetry) = rpc args @@ Rpc.DEPS_OUT_BATCH positions in
     List.iter responses ~f:print_endline;
     Lwt.return (Exit_status.No_error, telemetry)
-  | MODE_AUTO_COMPLETE ->
-    let content = Sys_utils.read_stdin_to_string () in
-    let%lwt (results, telemetry) =
-      rpc args @@ Rpc.COMMANDLINE_AUTOCOMPLETE content
+  | MODE_XHP_AUTOCOMPLETE_SNIPPET cls ->
+    let%lwt (result, telemetry) =
+      rpc args @@ Rpc.XHP_AUTOCOMPLETE_SNIPPET cls
     in
-    ClientAutocomplete.go results args.output_json;
+    let _ =
+      match result with
+      | Some str -> print_endline str
+      | None -> print_endline "<null>"
+    in
     Lwt.return (Exit_status.No_error, telemetry)
   | MODE_OUTLINE
   | MODE_OUTLINE2 ->
@@ -714,8 +657,7 @@ let main_internal
        changes up until now; it has no guarantee that the typecheck will reflects our
        preceding call to Rpc.NO_PRECHECKED_FILES. *)
     let use_streaming =
-      (local_config.ServerLocalConfig.consume_streaming_errors
-      || local_config.ServerLocalConfig.ide_standalone)
+      local_config.ServerLocalConfig.consume_streaming_errors
       && (not args.output_json)
       && prechecked
     in
@@ -737,7 +679,7 @@ let main_internal
       let exit_status =
         ClientCheckStatus.go
           status
-          (args.output_json, args.prefer_stdout)
+          args.output_json
           args.from
           args.error_format
           args.max_errors
@@ -777,7 +719,7 @@ let main_internal
     let exit_status =
       ClientCheckStatus.go
         status
-        (args.output_json, args.prefer_stdout)
+        args.output_json
         args.from
         args.error_format
         args.max_errors
@@ -932,17 +874,6 @@ let main_internal
     else
       apply_patches patches;
     Lwt.return (Exit_status.No_error, telemetry)
-  | MODE_REWRITE_TYPE_PARAMS_TYPE files ->
-    let%lwt conn = connect args in
-    let%lwt (patches, telemetry) =
-      ClientConnect.rpc conn ~desc:args.desc
-      @@ Rpc.REWRITE_TYPE_PARAMS_TYPE files
-    in
-    if args.output_json then
-      print_patches_json patches
-    else
-      apply_patches patches;
-    Lwt.return (Exit_status.No_error, telemetry)
   | MODE_FORMAT (from, to_) ->
     let content = Sys_utils.read_stdin_to_string () in
     let%lwt (result, telemetry) = rpc args @@ Rpc.FORMAT (content, from, to_) in
@@ -1007,21 +938,6 @@ let main_internal
     ) else
       print_endline
         "Resumed the automatic triggering of full checks upon file changes.";
-    Lwt.return (Exit_status.No_error, telemetry)
-  | MODE_GLOBAL_INFERENCE (submode, files) ->
-    let%lwt conn = connect args in
-    let%lwt (results, telemetry) =
-      ClientConnect.rpc conn ~desc:args.desc
-      @@ Rpc.GLOBAL_INFERENCE (submode, files)
-    in
-    (match results with
-    | ServerGlobalInferenceTypes.RError error -> print_endline error
-    | ServerGlobalInferenceTypes.RRewrite patches ->
-      if args.output_json then
-        print_patches_json patches
-      else
-        apply_patches patches
-    | _ -> ());
     Lwt.return (Exit_status.No_error, telemetry)
   | MODE_VERBOSE verbose ->
     let%lwt ((), telemetry) = rpc args @@ Rpc.VERBOSE verbose in

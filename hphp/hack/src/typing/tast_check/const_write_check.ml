@@ -19,6 +19,7 @@ let check_static_const_prop tenv class_ (pos, id) =
   Option.iter scprop ~f:(fun ce ->
       if get_ce_const ce then
         Typing_error_utils.add_typing_error
+          ~env:tenv
           Typing_error.(primary @@ Primary.Mutating_const_property pos))
 
 (* Requires id to be a property *)
@@ -33,6 +34,7 @@ let check_const_prop env tenv class_ (pos, id) cty =
             Tast_env.is_sub_type env (Env.get_self_ty_exn env) cty)
         then
           Typing_error_utils.add_typing_error
+            ~env:tenv
             Typing_error.(primary @@ Primary.Mutating_const_property pos))
 
 let check_prop env c pid cty_opt =
@@ -95,14 +97,14 @@ let rec check_expr env ((_, _, e) : Tast.expr) =
         | _ -> seen
     in
     ignore (check_const_cty Typing_set.empty cty)
-  | Call ((_, _, Id (_, f)), _, el, None)
+  | Call { func = (_, _, Id (_, f)); args; unpacked_arg = None; _ }
     when String.equal f SN.PseudoFunctions.unset ->
     let rec check_unset_exp e =
       match e with
       | (_, _, Array_get (e, Some _)) -> check_unset_exp e
       | _ -> check_expr (Env.set_val_kind env Typing_defs.Lval) e
     in
-    List.iter el ~f:(fun (_, e) -> check_unset_exp e)
+    List.iter args ~f:(fun (_, e) -> check_unset_exp e)
   | _ -> ()
 
 let handler =

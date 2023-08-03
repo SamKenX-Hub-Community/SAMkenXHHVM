@@ -2,8 +2,11 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
+use std::sync::Arc;
+
 use ast_scope::Scope;
 use ast_scope::ScopeItem;
+use bstr::ByteSlice;
 use emit_pos::emit_pos_then;
 use env::emitter::Emitter;
 use env::Env;
@@ -28,8 +31,6 @@ use hhbc_string_utils::reified;
 use hhvm_types_ffi::ffi::Attr;
 use instruction_sequence::instr;
 use instruction_sequence::InstrSeq;
-use ocamlrep::rc::RcOc;
-use options::Options;
 use oxidized::ast;
 use oxidized::pos::Pos;
 
@@ -38,15 +39,12 @@ use crate::emit_body;
 use crate::emit_memoize_helpers;
 use crate::emit_param;
 
-pub fn is_interceptable(opts: &Options) -> bool {
-    opts.hhbc.jit_enable_rename_function && !opts.hhbc.repo_authoritative
-}
-
 pub(crate) fn get_attrs_for_fun<'a, 'arena, 'decl>(
     emitter: &mut Emitter<'arena, 'decl>,
     fd: &'a ast::FunDef,
     user_attrs: &'a [Attribute<'arena>],
     is_memoize_impl: bool,
+    has_variadic: bool,
 ) -> Attr {
     let f = &fd.fun;
     let is_systemlib = emitter.systemlib();
@@ -54,19 +52,23 @@ pub(crate) fn get_attrs_for_fun<'a, 'arena, 'decl>(
         is_systemlib || (hhbc::has_dynamically_callable(user_attrs) && !is_memoize_impl);
     let is_prov_skip_frame = hhbc::has_provenance_skip_frame(user_attrs);
     let is_meth_caller = hhbc::has_meth_caller(user_attrs);
+    let is_persistent = is_systemlib
+        && !emitter
+            .options()
+            .function_is_renamable(fd.name.1.as_bytes().as_bstr());
 
     let mut attrs = Attr::AttrNone;
+    attrs.add(Attr::AttrInterceptable);
+    attrs.set(Attr::AttrPersistent, is_persistent);
     attrs.set(Attr::AttrBuiltin, is_meth_caller | is_systemlib);
     attrs.set(Attr::AttrDynamicallyCallable, is_dyn_call);
-    attrs.set(Attr::AttrInterceptable, is_interceptable(emitter.options()));
     attrs.set(Attr::AttrIsFoldable, hhbc::has_foldable(user_attrs));
     attrs.set(Attr::AttrIsMethCaller, is_meth_caller);
     attrs.set(Attr::AttrNoInjection, hhbc::is_no_injection(user_attrs));
-    attrs.set(Attr::AttrPersistent, is_systemlib);
     attrs.set(Attr::AttrProvenanceSkipFrame, is_prov_skip_frame);
     attrs.set(Attr::AttrReadonlyReturn, f.readonly_ret.is_some());
-    attrs.set(Attr::AttrUnique, is_systemlib);
     attrs.set(Attr::AttrInternal, fd.internal);
+    attrs.set(Attr::AttrVariadicParam, has_variadic);
     attrs
 }
 
@@ -109,7 +111,7 @@ pub(crate) fn emit_wrapper_function<'a, 'arena, 'decl>(
         } else {
             None
         };
-    let mut env = Env::default(alloc, RcOc::clone(&fd.namespace)).with_scope(scope);
+    let mut env = Env::default(alloc, Arc::clone(&fd.namespace)).with_scope(scope);
     let (body_instrs, decl_vars) = make_memoize_function_code(
         emitter,
         &mut env,
@@ -135,7 +137,8 @@ pub(crate) fn emit_wrapper_function<'a, 'arena, 'decl>(
 
     let mut flags = FunctionFlags::empty();
     flags.set(FunctionFlags::ASYNC, f.fun_kind.is_fasync());
-    let attrs = get_attrs_for_fun(emitter, fd, &attributes, false);
+    let has_variadic = emit_param::has_variadic(&body.params);
+    let attrs = get_attrs_for_fun(emitter, fd, &attributes, false, has_variadic);
 
     Ok(Function {
         attributes: Slice::fill_iter(alloc, attributes.into_iter()),

@@ -13,6 +13,7 @@
 #include <folly/io/async/SSLContext.h>
 #include <folly/portability/OpenSSL.h>
 #include <folly/ssl/Init.h>
+#include <sodium.h>
 
 #include <openssl/bio.h>
 #include <fstream>
@@ -52,6 +53,22 @@ std::vector<folly::ssl::X509UniquePtr> FizzUtil::readChainFile(
   return certs;
 }
 
+folly::ssl::EvpPkeyUniquePtr FizzUtil::readPrivateKeyFromBuf(
+    folly::ByteRange privateKey,
+    const std::string& passwordFilename) {
+  std::shared_ptr<folly::PasswordInFile> pf;
+  if (!passwordFilename.empty()) {
+    pf = std::make_shared<folly::PasswordInFile>(passwordFilename);
+  }
+  try {
+    return FizzUtil::decryptPrivateKey(privateKey, pf.get());
+  } catch (std::runtime_error&) {
+    std::string pwFile = pf ? pf->describe().c_str() : "(none)";
+    throw std::runtime_error(
+        folly::sformat("failed to decrypt private key; pwFile: {}", pwFile));
+  }
+}
+
 folly::ssl::EvpPkeyUniquePtr FizzUtil::readPrivateKey(
     const std::string& filename,
     const std::shared_ptr<folly::PasswordInFile>& pf) {
@@ -60,7 +77,7 @@ folly::ssl::EvpPkeyUniquePtr FizzUtil::readPrivateKey(
   try {
     return FizzUtil::decryptPrivateKey(data, pf.get());
   } catch (std::runtime_error&) {
-    const char* pwFile = pf ? pf->describe().c_str() : "(none)";
+    std::string pwFile = pf ? pf->describe().c_str() : "(none)";
     auto ex = folly::sformat(
         "Failed to read private key from file: {}, password file: {}",
         filename,
@@ -81,6 +98,13 @@ folly::ssl::EvpPkeyUniquePtr FizzUtil::readPrivateKey(
 
 folly::ssl::EvpPkeyUniquePtr FizzUtil::decryptPrivateKey(
     const std::string& data,
+    folly::PasswordInFile* pf) {
+  folly::ByteRange keyBuf((folly::StringPiece(data)));
+  return FizzUtil::decryptPrivateKey(keyBuf, pf);
+}
+
+folly::ssl::EvpPkeyUniquePtr FizzUtil::decryptPrivateKey(
+    folly::ByteRange data,
     folly::PasswordInFile* pf) {
   folly::ssl::BioUniquePtr keyBio(BIO_new_mem_buf(
       const_cast<void*>( // needed by openssl 1.0.2d
@@ -106,40 +130,29 @@ folly::ssl::EvpPkeyUniquePtr FizzUtil::decryptPrivateKey(
   return pkey;
 }
 
-std::unique_ptr<KeyExchange> FizzUtil::createKeyExchange(
+std::unique_ptr<KeyExchange> FizzUtil::createKeyExchangeFromBuf(
     hpke::KEMId kemId,
-    const std::string& echPrivateKeyFile) {
+    folly::ByteRange privKey) {
   switch (kemId) {
     case hpke::KEMId::secp256r1: {
       auto kex = std::make_unique<OpenSSLECKeyExchange<P256>>();
-      kex->setPrivateKey(readPrivateKey(echPrivateKeyFile, ""));
+      kex->setPrivateKey(readPrivateKeyFromBuf(privKey, ""));
       return kex;
     }
     case hpke::KEMId::secp384r1: {
       auto kex = std::make_unique<OpenSSLECKeyExchange<P384>>();
-      kex->setPrivateKey(readPrivateKey(echPrivateKeyFile, ""));
+      kex->setPrivateKey(readPrivateKeyFromBuf(privKey, ""));
       return kex;
     }
     case hpke::KEMId::secp521r1: {
       auto kex = std::make_unique<OpenSSLECKeyExchange<P521>>();
-      kex->setPrivateKey(readPrivateKey(echPrivateKeyFile, ""));
+      kex->setPrivateKey(readPrivateKeyFromBuf(privKey, ""));
       return kex;
     }
     case hpke::KEMId::x25519: {
       auto kex = std::make_unique<X25519KeyExchange>();
-      std::string keyData;
-      std::ifstream infile(echPrivateKeyFile);
-
-      // Assume the first line is the private key in hex, the second line is the
-      // public key in hex.
-      std::string privKeyStr, pubKeyStr;
-      infile >> privKeyStr;
-      infile >> pubKeyStr;
-
-      kex->setKeyPair(
-          folly::IOBuf::copyBuffer(folly::unhexlify(privKeyStr)),
-          folly::IOBuf::copyBuffer(folly::unhexlify(pubKeyStr)));
-
+      kex->setPrivateKey(folly::IOBuf::copyBuffer(
+          folly::unhexlify(folly::StringPiece(privKey))));
       return kex;
     }
     default: {
@@ -162,4 +175,38 @@ std::vector<std::string> FizzUtil::getAlpnsFromNpnList(
   }
   return std::vector<std::string>(protoList->begin(), protoList->end());
 }
+
+/**
+ * Generates a curve25519 keypair encoded in hex.
+ * @return a tuple of keys: {publicKey, privateKey}
+ */
+[[maybe_unused]] std::tuple<std::string, std::string>
+FizzUtil::generateKeypairCurve25519() {
+  constexpr static size_t kCurve25519PubBytes = 32;
+  constexpr static size_t kCurve25519PrivBytes = 32;
+  using PrivKey = std::array<uint8_t, kCurve25519PubBytes>;
+  using PubKey = std::array<uint8_t, kCurve25519PrivBytes>;
+  static_assert(
+      PrivKey().size() == crypto_scalarmult_SCALARBYTES,
+      "Incorrect size of the private key");
+  static_assert(
+      PubKey().size() == crypto_scalarmult_BYTES,
+      "Incorrect size of the public key");
+  auto privKey = PrivKey();
+  auto pubKey = PubKey();
+  auto err = crypto_box_curve25519xsalsa20poly1305_keypair(
+      pubKey.data(), privKey.data());
+  if (err != 0) {
+    throw std::runtime_error(
+        folly::to<std::string>("Could not generate keys ", err));
+  }
+
+  std::string pubKeyHex =
+      folly::hexlify(std::string_view((char*)pubKey.data(), pubKey.size()));
+  std::string privKeyHex =
+      folly::hexlify(std::string_view((char*)privKey.data(), privKey.size()));
+
+  return std::make_tuple(pubKeyHex, privKeyHex);
+}
+
 } // namespace fizz

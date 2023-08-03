@@ -7,6 +7,7 @@ package module // [[[ program thrift source path ]]]
 import (
     "context"
     "fmt"
+    "sync"
 
 
     "thrift/lib/go/thrift"
@@ -17,6 +18,7 @@ import (
 var _ = context.Background
 var _ = fmt.Printf
 var _ = thrift.ZERO
+var _ = sync.Mutex{}
 
 
 
@@ -57,6 +59,7 @@ func (c *MyRootChannelClient) Open() error {
 // Deprecated: Use MyRootChannelClient instead.
 type MyRootClient struct {
     chClient *MyRootChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ MyRootClientInterface = &MyRootClient{}
@@ -141,7 +144,9 @@ func newReqMyRootDoRoot() *reqMyRootDoRoot {
 }
 
 func (x *reqMyRootDoRoot) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyRootDoRootAlias reqMyRootDoRoot
+    valueAlias := (*reqMyRootDoRootAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -221,7 +226,9 @@ func newRespMyRootDoRoot() *respMyRootDoRoot {
 }
 
 func (x *respMyRootDoRoot) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyRootDoRootAlias respMyRootDoRoot
+    valueAlias := (*respMyRootDoRootAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -363,7 +370,7 @@ func (p *procFuncMyRootDoRoot) Write(seqId int32, result thrift.WritableStruct, 
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("DoRoot", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("do_root", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -437,6 +444,7 @@ type MyNodeClient struct {
     // Inherited/extended service
     *MyRootClient
     chClient *MyNodeChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ MyNodeClientInterface = &MyNodeClient{}
@@ -522,7 +530,9 @@ func newReqMyNodeDoMid() *reqMyNodeDoMid {
 }
 
 func (x *reqMyNodeDoMid) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyNodeDoMidAlias reqMyNodeDoMid
+    valueAlias := (*reqMyNodeDoMidAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -602,7 +612,9 @@ func newRespMyNodeDoMid() *respMyNodeDoMid {
 }
 
 func (x *respMyNodeDoMid) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyNodeDoMidAlias respMyNodeDoMid
+    valueAlias := (*respMyNodeDoMidAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -719,7 +731,7 @@ func (p *procFuncMyNodeDoMid) Write(seqId int32, result thrift.WritableStruct, o
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("DoMid", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("do_mid", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -793,6 +805,7 @@ type MyLeafClient struct {
     // Inherited/extended service
     *MyNodeClient
     chClient *MyLeafChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ MyLeafClientInterface = &MyLeafClient{}
@@ -878,7 +891,9 @@ func newReqMyLeafDoLeaf() *reqMyLeafDoLeaf {
 }
 
 func (x *reqMyLeafDoLeaf) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyLeafDoLeafAlias reqMyLeafDoLeaf
+    valueAlias := (*reqMyLeafDoLeafAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -958,7 +973,9 @@ func newRespMyLeafDoLeaf() *respMyLeafDoLeaf {
 }
 
 func (x *respMyLeafDoLeaf) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyLeafDoLeafAlias respMyLeafDoLeaf
+    valueAlias := (*respMyLeafDoLeafAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1075,7 +1092,7 @@ func (p *procFuncMyLeafDoLeaf) Write(seqId int32, result thrift.WritableStruct, 
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("DoLeaf", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("do_leaf", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {

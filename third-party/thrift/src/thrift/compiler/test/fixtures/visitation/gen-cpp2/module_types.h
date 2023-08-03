@@ -1011,29 +1011,6 @@ template <> struct TEnumTraits<::test_cpp2::cpp_reflection::enum_with_special_na
 
 }} // apache::thrift
 
-namespace test_cpp2 { namespace cpp_reflection {
-
-using _enum1_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<enum1>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _enum1_EnumMapFactory::ValuesToNamesMapType _enum1_VALUES_TO_NAMES;
-#endif
-using _enum2_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<enum2>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _enum2_EnumMapFactory::ValuesToNamesMapType _enum2_VALUES_TO_NAMES;
-#endif
-using _enum3_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<enum3>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _enum3_EnumMapFactory::ValuesToNamesMapType _enum3_VALUES_TO_NAMES;
-#endif
-using _enum_with_special_names_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<enum_with_special_names>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _enum_with_special_names_EnumMapFactory::ValuesToNamesMapType _enum_with_special_names_VALUES_TO_NAMES;
-#endif
-}} // test_cpp2::cpp_reflection
 
 // END declare_enums
 // BEGIN forward_declare
@@ -2515,9 +2492,8 @@ class structA final  {
 
  public:
 
-  structA() :
-      __fbthrift_field_a() {
-  }
+  structA();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   structA(apache::thrift::FragileConstructor, ::std::int32_t a__arg, ::std::string b__arg);
@@ -2529,6 +2505,9 @@ class structA final  {
 
   structA& operator=(structA&&) noexcept;
   structA& operator=(const structA& src);
+
+  ~structA();
+
  private:
   ::std::int32_t __fbthrift_field_a;
  private:
@@ -7132,11 +7111,8 @@ class struct4 final  {
 
  public:
 
-  struct4() :
-      __fbthrift_field_field0(),
-      __fbthrift_field_field2(),
-      __fbthrift_field_field3(std::make_unique<::test_cpp2::cpp_reflection::structA>()) {
-  }
+  struct4();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   struct4(apache::thrift::FragileConstructor, ::std::int32_t field0__arg, ::std::string field1__arg, ::test_cpp2::cpp_reflection::enum1 field2__arg, ::std::unique_ptr<::test_cpp2::cpp_reflection::structA> field3__arg);
@@ -7147,6 +7123,9 @@ class struct4 final  {
 
   struct4& operator=(struct4&&) noexcept;
   struct4& operator=(const struct4& src);
+
+  ~struct4();
+
  private:
   ::std::int32_t __fbthrift_field_field0;
  private:
@@ -7800,8 +7779,8 @@ class struct_binary final  {
 
  public:
 
-  struct_binary() {
-  }
+  struct_binary();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   struct_binary(apache::thrift::FragileConstructor, ::std::string bi__arg);
@@ -7813,6 +7792,9 @@ class struct_binary final  {
 
   struct_binary& operator=(struct_binary&&) noexcept;
   struct_binary& operator=(const struct_binary& src);
+
+  ~struct_binary();
+
  private:
   ::std::string __fbthrift_field_bi;
  private:

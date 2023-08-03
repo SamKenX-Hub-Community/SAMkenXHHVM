@@ -1327,10 +1327,11 @@ fn print_hhbc(w: &mut dyn Write, ctx: &FuncContext<'_>, func: &Func<'_>, hhbc: &
 }
 
 fn print_hack_constant(w: &mut dyn Write, c: &HackConstant, strings: &StringInterner) -> Result {
-    let is_abstract = if c.is_abstract { "abstract" } else { "" };
+    let attr = FmtAttr(c.attrs, AttrContext::Constant);
+
     write!(
         w,
-        "constant [{is_abstract}] {name}",
+        "constant {attr} {name}",
         name = FmtIdentifierId(c.name.id, strings)
     )?;
 
@@ -1598,13 +1599,33 @@ fn print_member_op(
             if readonly != ReadonlyOp::Any {
                 write!(w, "{} ", FmtReadonly(readonly))?;
             }
-            let cls = operands.next().unwrap();
             let prop = operands.next().unwrap();
+            let cls = operands.next().unwrap();
             write!(
                 w,
                 "{}::{}",
                 FmtVid(func, cls, true, strings),
                 FmtVid(func, prop, verbose, strings)
+            )?;
+        }
+        BaseOp::BaseST {
+            mode,
+            readonly,
+            prop,
+            ..
+        } => {
+            if mode != MOpMode::None {
+                write!(w, "{} ", FmtMOpMode(mode))?;
+            }
+            if readonly != ReadonlyOp::Any {
+                write!(w, "{} ", FmtReadonly(readonly))?;
+            }
+            let cls = operands.next().unwrap();
+            write!(
+                w,
+                "{}::{}",
+                FmtVid(func, cls, true, strings),
+                FmtQuotedStringId(prop.id, strings)
             )?;
         }
     }
@@ -2144,17 +2165,20 @@ fn print_typedef(w: &mut dyn Write, typedef: &Typedef, strings: &StringInterner)
         attrs,
         loc,
         name,
-        type_info,
+        type_info_union,
         type_structure,
+        case_type,
     } = typedef;
 
     print_top_level_loc(w, Some(loc), strings)?;
 
     writeln!(
         w,
-        "typedef {name}: {ty} = {attributes}{ts} {attrs}",
+        "typedef {vis} {name}: {ty} = {attributes}{ts} {attrs}",
+        vis = if *case_type { "case_type" } else { "alias" },
         name = FmtIdentifierId(name.id, strings),
-        ty = FmtTypeInfo(type_info, strings),
+        ty = FmtSep::comma(type_info_union.iter(), |w, ti| FmtTypeInfo(ti, strings)
+            .fmt(w)),
         attributes = FmtSep::new("<", ",", "> ", attributes, |w, attribute| FmtAttribute(
             attribute, strings
         )

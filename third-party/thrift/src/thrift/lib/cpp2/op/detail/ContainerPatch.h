@@ -22,6 +22,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include <folly/Range.h>
 #include <folly/Utility.h>
 #include <thrift/lib/cpp/util/VarintUtils.h>
 #include <thrift/lib/cpp2/Adapter.h>
@@ -32,26 +33,11 @@ namespace thrift {
 namespace op {
 namespace detail {
 
-class ListPatchIndex
-    : public type::detail::EqWrap<ListPatchIndex, std::int32_t> {
- private:
-  using Base = type::detail::EqWrap<ListPatchIndex, std::int32_t>;
-
- public:
-  ListPatchIndex() = default;
-  explicit ListPatchIndex(size_t pos) : Base(util::toI32ZigZagOrdinal(pos)) {}
-  size_t position() const { return util::fromI32ZigZagOrdinal(toThrift()); }
-
- private:
-  template <class>
-  friend struct ::apache::thrift::InlineAdapter;
-  template <class>
-  friend struct ::std::hash;
-  using Base::Base;
-  using Base::empty;
-  using Base::reset;
-  using Base::toThrift;
-};
+// Replace with `std::views::single` in C++20
+template <class T>
+auto single(T&& t) {
+  return folly::Range{&t, 1};
+}
 
 template <typename C1, typename C2>
 void erase_all(C1& container, const C2& values) {
@@ -86,29 +72,11 @@ template <typename Patch>
 class ListPatch : public BaseContainerPatch<Patch, ListPatch<Patch>> {
   using Base = BaseContainerPatch<Patch, ListPatch>;
   using T = typename Base::value_type;
-  using VPMap = folly::remove_cvref_t<decltype(*std::declval<Patch>().patch())>;
-  using VP = typename VPMap::mapped_type;
 
  public:
   using Base::apply;
   using Base::Base;
   using Base::operator=;
-
-  /// Creates a new patch with appended list.
-  template <typename C = T>
-  static ListPatch createAppend(C&& values) {
-    ListPatch result;
-    *result.data_.append() = std::forward<C>(values);
-    return result;
-  }
-
-  /// Creates a new patch with prepended list.
-  template <typename C = T>
-  static ListPatch createPrepend(C&& values) {
-    ListPatch result;
-    *result.data_.prepend() = std::forward<C>(values);
-    return result;
-  }
 
   /// Appends a list.
   template <typename C = T>
@@ -148,47 +116,33 @@ class ListPatch : public BaseContainerPatch<Patch, ListPatch<Patch>> {
     prepend.insert(prepend.begin(), std::forward<U>(val));
   }
 
-  /// Removes an element.
-  template <typename U = typename T::value_type>
-  void erase(U&& val) {
-    if (hasAssign()) {
-      auto& assign = *data_.assign();
-      auto it = std::find(assign.begin(), assign.end(), val);
-      if (it != assign.end()) {
-        assign.erase(it);
-      }
-    }
-    data_.remove()->push_back(std::forward<U>(val));
-  }
-
-  /// Removes all elements in the list.
-  template <typename C = std::unordered_set<typename T::value_type>>
-  void remove(C&& entries) {
-    if (hasAssign()) {
-      auto& assign = *data_.assign();
-      remove_all_values(assign, entries);
-    }
-    data_.remove()->insert(
-        data_.remove()->end(), entries.begin(), entries.end());
-  }
-
-  /// Returns the patch that for the element in a given position.
-  FOLLY_NODISCARD VP& patchAt(size_t pos) {
-    if (*data_.clear()) {
-      folly::throw_exception<bad_patch_access>();
-    }
-
-    return data_.patch()->operator[](ListPatchIndex(pos));
-  }
-
+  /// @copybrief AssignPatch::customVisit
+  ///
+  /// Users should provide a visitor with the following methods
+  ///
+  ///     struct Visitor {
+  ///       void assign(const List&);
+  ///       void clear();
+  ///       void prepend(const List&);
+  ///       void append(const List&);
+  ///     }
+  ///
+  /// For example:
+  ///
+  ///     ListPatch<ListI32Patch> patch;
+  ///     patch.clear();
+  ///     patch.push_front(30);
+  ///
+  /// `patch.customVisit(v)` will invoke the following methods
+  ///
+  ///     v.clear();
+  ///     v.prepend({30});
   template <class Visitor>
   void customVisit(Visitor&& v) const {
     if (false) {
       // Test whether the required methods exist in Visitor
       v.assign(T{});
       v.clear();
-      v.patchIfSet(std::unordered_map<ListPatchIndex, VP>{});
-      v.remove(std::vector<typename T::value_type>{});
       v.prepend(T{});
       v.append(T{});
     }
@@ -197,8 +151,6 @@ class ListPatch : public BaseContainerPatch<Patch, ListPatch<Patch>> {
       return;
     }
 
-    v.patchIfSet(*data_.patch());
-    v.remove(*data_.remove());
     v.prepend(*data_.prepend());
     v.append(*data_.append());
   }
@@ -208,17 +160,6 @@ class ListPatch : public BaseContainerPatch<Patch, ListPatch<Patch>> {
       T& v;
       void assign(const T& t) { v = t; }
       void clear() { v.clear(); }
-      void patchIfSet(const VPMap& patches) {
-        for (const auto& ep : patches) {
-          auto idx = ep.first.position();
-          if (idx < v.size()) {
-            ep.second.apply(v[idx]);
-          }
-        }
-      }
-      void remove(const std::vector<typename T::value_type>& t) {
-        remove_all_values(v, t);
-      }
       void prepend(const T& t) { v.insert(v.begin(), t.begin(), t.end()); }
       void append(const T& t) { v.insert(v.end(), t.begin(), t.end()); }
     };
@@ -230,13 +171,6 @@ class ListPatch : public BaseContainerPatch<Patch, ListPatch<Patch>> {
   using Base::assignOr;
   using Base::data_;
   using Base::hasAssign;
-
-  // Needed for merge(...). We can consider making this a public API.
-  void patchIfSet(const VPMap& patches) {
-    for (const auto& ep : patches) {
-      patchAt(ep.first.position()).merge(ep.second);
-    }
-  }
 };
 
 /// Patch for a Thrift set.
@@ -257,22 +191,6 @@ class SetPatch : public BaseContainerPatch<Patch, SetPatch<Patch>> {
   using Base::Base;
   using Base::operator=;
 
-  /// Creates a new patch that adds keys.
-  template <typename C = T>
-  static SetPatch createAdd(C&& keys) {
-    SetPatch result;
-    *result.data_.add() = std::forward<C>(keys);
-    return result;
-  }
-
-  /// Creates a new patch that removes keys.
-  template <typename C = T>
-  static SetPatch createRemove(C&& keys) {
-    SetPatch result;
-    *result.data_.remove() = std::forward<C>(keys);
-    return result;
-  }
-
   /// Adds keys.
   template <typename C = T>
   void add(C&& keys) {
@@ -282,24 +200,12 @@ class SetPatch : public BaseContainerPatch<Patch, SetPatch<Patch>> {
   /// Emplaces the set.
   template <typename... Args>
   void emplace(Args&&... args) {
-    if (data_.assign().has_value()) {
-      data_.assign()->emplace(std::forward<Args>(args)...);
-      return;
-    }
-    auto result = data_.add()->emplace(std::forward<Args>(args)...);
-    if (result.second) {
-      data_.remove()->erase(*result.first);
-    }
+    insert({std::forward<Args>(args)...});
   }
   /// Adds a key.
   template <typename U = typename T::value_type>
   void insert(U&& val) {
-    if (data_.assign().has_value()) {
-      data_.assign()->insert(std::forward<U>(val));
-      return;
-    }
-    data_.remove()->erase(val);
-    data_.add()->insert(std::forward<U>(val));
+    add(single(std::forward<U>(val)));
   }
 
   /// Removes keys.
@@ -315,10 +221,30 @@ class SetPatch : public BaseContainerPatch<Patch, SetPatch<Patch>> {
   /// Remove a key.
   template <typename U = typename T::value_type>
   void erase(U&& val) {
-    assignOr(*data_.add()).erase(val);
-    assignOr(*data_.remove()).insert(std::forward<U>(val));
+    remove(single(std::forward<U>(val)));
   }
 
+  /// @copybrief AssignPatch::customVisit
+  ///
+  /// Users should provide a visitor with the following methods
+  ///
+  ///     struct Visitor {
+  ///       void assign(const Set&);
+  ///       void clear();
+  ///       void remove(const Set&);
+  ///       void add(const Set&);
+  ///     }
+  ///
+  /// For example:
+  ///
+  ///     SetPatch<SetI32Patch> patch;
+  ///     patch.remove({20, 30});
+  ///     patch.add({10, 20});
+  ///
+  /// `patch.customVisit(v)` will invoke the following methods
+  ///
+  ///     v.add({10, 20});
+  ///     v.remove({30});
   template <class Visitor>
   void customVisit(Visitor&& v) const {
     if (false) {
@@ -373,43 +299,37 @@ class MapPatch : public BaseContainerPatch<Patch, MapPatch<Patch>> {
   using Base::Base;
   using Base::operator=;
 
-  /// Creates a patch that inserts entries. Override entries if exists.
-  template <typename C = T>
-  static MapPatch createPut(C&& entries) {
-    MapPatch result;
-    *result.data_.put() = std::forward<C>(entries);
-    return result;
-  }
-
   /// Inserts entries. Override entries if exists.
   template <typename C = T>
   void put(C&& entries) {
     auto& field = assignOr(*data_.put());
-    auto& patchPrior = *data_.patchPrior();
     for (auto&& entry : entries) {
       auto key = std::forward<decltype(entry)>(entry).first;
       field.insert_or_assign(key, std::forward<decltype(entry)>(entry).second);
       data_.add()->erase(key);
       data_.remove()->erase(key);
-      patchPrior.erase(key);
+      data_.patchPrior()->erase(key);
+      data_.patch()->erase(key);
     }
   }
   /// Inserts entries. Override entries if exists.
   template <typename K, typename V>
   void insert_or_assign(K&& key, V&& value) {
-    assignOr(*data_.put()).insert_or_assign(key, std::forward<V>(value));
-    data_.add()->erase(key);
-    data_.remove()->erase(key);
-    data_.patchPrior()->erase(key);
+    put(single(
+        std::pair<K&&, V&&>(std::forward<K>(key), std::forward<V>(value))));
   }
 
-  /// Inserts entries. Ignore entries that already exists.
+  /// Inserts entries. Ignore entries that already exist.
   template <typename C = T>
   void add(C&& entries) {
-    auto& field = assignOr(*data_.add());
-    for (auto&& entry : entries) {
-      auto key = std::forward<decltype(entry)>(entry).first;
-      field.insert_or_assign(key, std::forward<decltype(entry)>(entry).second);
+    assignOr(*data_.add()).insert(entries.begin(), entries.end());
+    for (const auto& entry : entries) {
+      if (data_.remove()->erase(entry.first)) {
+        // If it was already removed, we should re-assign the entity.
+        auto& added = (*data_.add())[entry.first];
+        (*data_.patch())[entry.first] = std::move(added);
+        added = {};
+      }
     }
   }
 
@@ -422,6 +342,7 @@ class MapPatch : public BaseContainerPatch<Patch, MapPatch<Patch>> {
     for (auto&& key : keys) {
       field.erase(key);
       data_.remove()->insert(key);
+      data_.put()->erase(key);
       patchPrior.erase(key);
       patch.erase(key);
     }
@@ -430,15 +351,13 @@ class MapPatch : public BaseContainerPatch<Patch, MapPatch<Patch>> {
   /// Removes a key.
   template <typename K = typename T::key_type>
   void erase(K&& key) {
-    assignOr(*data_.add()).erase(key);
-    data_.remove()->insert(key);
-    data_.patchPrior()->erase(key);
-    data_.patch()->erase(key);
+    remove(single(std::forward<K>(key)));
   }
 
   /// Returns the patch that for the entry.
   template <typename K = typename T::key_type>
   FOLLY_NODISCARD VP& patchByKey(K&& key) {
+    ensurePatchable();
     if (data_.remove()->count(key)) {
       // We are going to delete key, thus patchByKey is no-op and we return a
       // dummy patch.
@@ -451,9 +370,33 @@ class MapPatch : public BaseContainerPatch<Patch, MapPatch<Patch>> {
   /// Ensures that key exists and patches the entry.
   template <typename K = typename T::key_type>
   FOLLY_NODISCARD VP& ensureAndPatchByKey(K&& key) {
-    return (data_.add().value()[key], data_.patch()->operator[](key));
+    add({{key, {}}});
+    return patchByKey(key);
   }
 
+  /// @copybrief AssignPatch::customVisit
+  ///
+  /// Users should provide a visitor with the following methods
+  ///
+  ///     struct Visitor {
+  ///       void assign(const Map&);
+  ///       void clear();
+  ///       void add(const Map&);
+  ///       void put(const Map&);
+  ///       void remove(const std::unordered_set<Key>&);
+  ///       void patchIfSet(const std::unordered_map<Key, ValuePatch>&);
+  ///     }
+  ///
+  /// For example:
+  ///
+  ///     MapPatch<MapI32StringPatch> patch;
+  ///     patch.add({{10, "10"}});
+  ///     patch.ensureAndPatchByKey(20).append("_");
+  ///
+  /// `patch.customVisit(v)` will invoke the following methods
+  ///
+  ///     v.add({{10, "10"}, {20, ""}});
+  ///     v.patchIfSet({{20, StringPatch::createAppend("_")}});
   template <class Visitor>
   void customVisit(Visitor&& v) const {
     if (false) {
@@ -527,8 +470,18 @@ class MapPatch : public BaseContainerPatch<Patch, MapPatch<Patch>> {
     }
   }
 
+  // If field has assign, we need to replace it with clear && add
+  void ensurePatchable() {
+    if (hasAssign()) {
+      data_.clear() = true;
+      data_.add() = std::move(*data_.assign());
+      data_.assign().reset();
+    }
+  }
+
   using Base::assignOr;
   using Base::data_;
+  using Base::hasAssign;
 
   VP dummy_;
 };
@@ -537,5 +490,3 @@ class MapPatch : public BaseContainerPatch<Patch, MapPatch<Patch>> {
 } // namespace op
 } // namespace thrift
 } // namespace apache
-
-FBTHRIFT_STD_HASH_WRAP_DATA(apache::thrift::op::detail::ListPatchIndex)

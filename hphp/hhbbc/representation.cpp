@@ -232,13 +232,17 @@ template <typename SerDe> void Module::serde(SerDe& sd) {
     (imports);
 }
 
+template <typename SerDe> void TypeAndValue::serde(SerDe& sd) {
+  sd(type)
+    (value);
+}
+
 template <typename SerDe> void TypeAlias::serde(SerDe& sd) {
   sd(srcInfo)
     (name)
-    (value)
     (attrs)
-    (type)
     (userAttrs)
+    (typeAndValueUnion)
     (typeStructure)
     (resolvedTypeStructure);
 
@@ -311,6 +315,9 @@ template void Constant::serde(BlobDecoder&);
 
 template void Module::serde(BlobEncoder&);
 template void Module::serde(BlobDecoder&);
+
+template void TypeAndValue::serde(BlobEncoder&);
+template void TypeAndValue::serde(BlobDecoder&);
 
 template void TypeAlias::serde(BlobEncoder&);
 template void TypeAlias::serde(BlobDecoder&);

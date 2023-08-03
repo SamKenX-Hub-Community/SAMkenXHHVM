@@ -2,7 +2,7 @@
     { fd_namespace =
       { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
         ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-        ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+        ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
       fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([3:10-11], "\\f");
       fd_fun =
       { f_span = [3:1-5:2]; f_readonly_this = None; f_annotation = (); 
@@ -38,6 +38,6 @@
                      }))))
             ]
           };
-        f_fun_kind = FSync; f_user_attributes = []; f_external = false; 
-        f_doc_comment = None };
+        f_fun_kind = FSync; f_user_attributes = [{ ua_name = ([3:10-11], "__SupportDynamicType"); ua_params = [] }]; 
+        f_external = false; f_doc_comment = None };
       fd_internal = false; fd_module = None; fd_tparams = []; fd_where_constraints = [] })

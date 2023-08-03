@@ -249,6 +249,11 @@ union SHA1Result {
   2: EdenError error;
 }
 
+union Blake3Result {
+  1: BinaryHash blake3;
+  2: EdenError error;
+}
+
 /**
  * Effectively a `struct timespec`
  */
@@ -294,11 +299,41 @@ union FileInformationOrError {
  */
 enum FileAttributes {
   NONE = 0,
+  /**
+   * Returns the SHA-1 hash of a file. Returns an error for symlinks and directories,
+   * and non-regular files.
+   */
   SHA1_HASH = 1,
+  /**
+   * Returns the size of a file. Returns an error for symlinks and directories.
+   */
   FILE_SIZE = 2,
+  /**
+   * Returns the type of a file or directory if it has a corresponding "source
+   * control type" that can be represented in a source control type.
+   */
   SOURCE_CONTROL_TYPE = 4,
+  /**
+   * Returns an opaque identifier that can be used to know when a file or directory
+   * (recursively) has changed.
+   *
+   * If the file or directory (recursively) has been locally written to, no object ID
+   * will be returned. In that case, the caller should physically compare or search
+   * the directory structure.
+   *
+   * Do not attempt to parse this identifier. It is subject to change at any moment.
+   */
+  OBJECT_ID = 8,
+
+  /**
+   * Returns the BLAKE3 hash of a file. Returns an error for symlinks and directories,
+   * and non-regular files.
+   */
+  BLAKE3_HASH = 16,
 /* NEXT_ATTR = 2^x */
 } (cpp2.enum_type = 'uint64_t')
+
+typedef unsigned64 RequestedAttributes
 
 /**
  * Subset of attributes for a single file returned by getAttributesFromFiles()
@@ -329,6 +364,11 @@ union Sha1OrError {
   2: EdenError error;
 }
 
+union Blake3OrError {
+  1: BinaryHash blake3;
+  2: EdenError error;
+}
+
 union SizeOrError {
   1: i64 size;
   2: EdenError error;
@@ -336,6 +376,16 @@ union SizeOrError {
 
 union SourceControlTypeOrError {
   1: SourceControlType sourceControlType;
+  2: EdenError error;
+}
+
+union ObjectIdOrError {
+  // If the path has been locally written to, it will have no object ID. Therefore,
+  // it's possible for `objectId` to be unset even if there is no error.
+  //
+  // Notably, if path refers to a directory, no object ID will be returned if any
+  // child file or directory has been written to.
+  1: ThriftObjectId objectId;
   2: EdenError error;
 }
 
@@ -350,6 +400,8 @@ struct FileAttributeDataV2 {
   1: optional Sha1OrError sha1;
   2: optional SizeOrError size;
   3: optional SourceControlTypeOrError sourceControlType;
+  4: optional ObjectIdOrError objectId;
+  5: optional Blake3OrError blake3;
 }
 
 /**
@@ -409,7 +461,7 @@ struct SyncBehavior {
 struct GetAttributesFromFilesParams {
   1: PathString mountPoint;
   2: list<PathString> paths;
-  3: unsigned64 requestedAttributes;
+  3: RequestedAttributes requestedAttributes;
   4: SyncBehavior sync;
 }
 
@@ -428,7 +480,7 @@ struct GetAttributesFromFilesResultV2 {
 struct ReaddirParams {
   1: PathString mountPoint;
   2: list<PathString> directoryPaths;
-  3: unsigned64 requestedAttributes;
+  3: RequestedAttributes requestedAttributes;
   4: SyncBehavior sync;
 }
 
@@ -1497,6 +1549,27 @@ struct EnsureMaterializedParams {
   5: SyncBehavior sync;
 }
 
+struct MatchFilesystemPathResult {
+  1: optional EdenError error;
+}
+
+struct MatchFileSystemResponse {
+  1: list<MatchFilesystemPathResult> results;
+}
+
+struct MatchFileSystemRequest {
+  1: MountId mountPoint;
+  2: list<PathString> paths;
+}
+
+struct ChangeOwnershipRequest {
+  1: PathString mountPoint;
+  2: i64 uid;
+  3: i64 gid;
+}
+
+struct ChangeOwnershipResponse {}
+
 service EdenService extends fb303_core.BaseService {
   list<MountInfo> listMounts() throws (1: EdenError ex);
   void mount(1: MountArgument info) throws (1: EdenError ex);
@@ -1587,6 +1660,24 @@ service EdenService extends fb303_core.BaseService {
    * these for more details.
    */
   list<SHA1Result> getSHA1(
+    1: PathString mountPoint,
+    2: list<PathString> paths,
+    3: SyncBehavior sync,
+  ) throws (1: EdenError ex);
+
+  /**
+   * For each path, returns an EdenError instead of the BLAKE3 if any of the
+   * following occur:
+   * - path is the empty string.
+   * - path identifies a non-existent file.
+   * - path identifies something that is not an ordinary file (e.g., symlink
+   *   or directory).
+   *
+   * Note: may return stale data if synchronizeWorkingCopy isn't called, and if
+   * the SyncBehavior specify a 0 timeout. see the documentation for both of
+   * these for more details.
+   */
+  list<Blake3Result> getBlake3(
     1: PathString mountPoint,
     2: list<PathString> paths,
     3: SyncBehavior sync,
@@ -1795,8 +1886,19 @@ service EdenService extends fb303_core.BaseService {
 
   /**
    * Chowns all files in the requested mount to the requested uid and gid
+   *
+   * DEPRECATED: Prefer using ChangeOwnership in new code.  Callers may still
+   * need to fall back to chown() if talking to an older edenfs daemon
+   * that does not support ChangeOwnership() yet.
    */
   void chown(1: PathString mountPoint, 2: i32 uid, 3: i32 gid);
+
+  /**
+   * Changes ownership all files in the requested mount to the requested uid and gid
+   */
+  ChangeOwnershipResponse changeOwnership(
+    1: ChangeOwnershipRequest request,
+  ) throws (1: EdenError ex);
 
   /**
    * Return the list of files that are different from the specified source
@@ -1838,6 +1940,15 @@ service EdenService extends fb303_core.BaseService {
     1: PathString mountPoint,
     2: ThriftRootId oldHash,
     3: ThriftRootId newHash,
+  ) throws (1: EdenError ex);
+
+  /**
+   * When eden doctor or another tool noticies that EdenFS is out of sync with
+   * the filesystem this API can be used to poke EdenFS into noticing the file
+   * change.
+   */
+  MatchFileSystemResponse matchFilesystem(
+    1: MatchFileSystemRequest params,
   ) throws (1: EdenError ex);
 
   //////// Administrative APIs ////////
@@ -1899,21 +2010,6 @@ service EdenService extends fb303_core.BaseService {
   ) throws (1: EdenError ex);
 
   /**
-   * DEPRECATED -- use debugGetBlob instead.
-   * TODO: Remove January 2023.
-   *
-   * Get the contents of a source control Blob.
-   *
-   * This can be used to confirm if eden's LocalStore contains information
-   * for the blob, and that the information is correct.
-   */
-  binary debugGetScmBlob(
-    1: PathString mountPoint,
-    2: ThriftObjectId id,
-    3: bool localStoreOnly,
-  ) throws (1: EdenError ex);
-
-  /**
    * Get the contents of a source control Blob.
    *
    * The origins field can control where to check for the blob. This will
@@ -1922,23 +2018,6 @@ service EdenService extends fb303_core.BaseService {
    */
   DebugGetScmBlobResponse debugGetBlob(
     1: DebugGetScmBlobRequest request,
-  ) throws (1: EdenError ex);
-
-  /**
-   * DEPRECATED -- use debugGetBlobMetadata instead.
-   * TODO: Remove Febuary 2023.
-   *
-   * Get the metadata about a source control Blob.
-   *
-   * This retrieves the metadata about a source control Blob.  This returns
-   * the size and contents SHA1 of the blob, which eden stores separately from
-   * the blob itself.  This can also be a useful alternative to
-   * debugGetScmBlob() when getting data about extremely large blobs.
-   */
-  ScmBlobMetadata debugGetScmBlobMetadata(
-    1: PathString mountPoint,
-    2: ThriftObjectId id,
-    3: bool localStoreOnly,
   ) throws (1: EdenError ex);
 
   /**

@@ -42,9 +42,11 @@
 #include "hphp/util/fixed-vector.h"
 #include "hphp/util/rds-local.h"
 
+#include <cstdint>
 #include <folly/AtomicHashMap.h>
 #include <folly/Bits.h>
 #include <folly/Format.h>
+#include <folly/Likely.h>
 
 #include <limits>
 #include <stack>
@@ -56,6 +58,55 @@ namespace HPHP::thrift {
 
 namespace {
 const StaticString SKIP_CHECKS_ATTR("ThriftDeprecatedSkipSerializerChecks");
+
+// Assumes that at least 10 bytes available in the input buffer
+static int64_t readVarintFast(const char **ptr) {
+  uint8_t byte = *((*ptr)++);
+  uint64_t result = (uint64_t)(byte & 0x7f);
+  if ((byte & 0x80) == 0) goto ret;
+  // Byte 2
+  byte = *((*ptr)++);
+  result = result | (uint64_t)(byte & 0x7f) << 7;
+  if ((byte & 0x80) == 0) goto ret;
+  // Byte 3
+  byte = *((*ptr)++);
+  result = result | (uint64_t)(byte & 0x7f) << 14;
+  if ((byte & 0x80) == 0) goto ret;
+  // Byte 4
+  byte = *((*ptr)++);
+  result = result | (uint64_t)(byte & 0x7f) << 21;
+  if ((byte & 0x80) == 0) goto ret;
+  // Byte 5
+  byte = *((*ptr)++);
+  result = result | (uint64_t)(byte & 0x7f) << 28;
+  if ((byte & 0x80) == 0) goto ret;
+  // Byte 6
+  byte = *((*ptr)++);
+  result = result | (uint64_t)(byte & 0x7f) << 35;
+  if ((byte & 0x80) == 0) goto ret;
+  // Byte 7
+  byte = *((*ptr)++);
+  result = result | (uint64_t)(byte & 0x7f) << 42;
+  if ((byte & 0x80) == 0) goto ret;
+  // Byte 8
+  byte = *((*ptr)++);
+  result = result | (uint64_t)(byte & 0x7f) << 49;
+  if ((byte & 0x80) == 0) goto ret;
+  // Byte 9
+  byte = *((*ptr)++);
+  result = result | (uint64_t)(byte & 0x7f) << 56;
+  if ((byte & 0x80) == 0) goto ret;
+  // Byte 10
+  byte = *((*ptr)++);
+  result = result | (uint64_t)(byte & 0x7f) << 63;
+  if ((byte & 0x80) == 0) goto ret;
+
+  thrift_error("Variable-length int over 10 bytes", ERR_INVALID_DATA);
+
+ret:
+  return result;
+}
+
 }
 
 const uint8_t VERSION_MASK = 0x1f;
@@ -825,7 +876,7 @@ struct CompactReader {
     Variant readField(const FieldSpec& spec, TType type, bool& hasTypeWrapper) {
       const auto thriftValue = readFieldInternal(spec, type, hasTypeWrapper);
       hasTypeWrapper = hasTypeWrapper || spec.isTypeWrapped;
-      if (spec.adapter) {
+      if (UNLIKELY(spec.adapter != nullptr)) {
         return transformToHackType(thriftValue, *spec.adapter);
       }
       return thriftValue;
@@ -998,6 +1049,30 @@ struct CompactReader {
       }
     }
 
+    void readIntegralMapFast(DictInit &arr, size_t size) {
+      const char *startPtr = transport.getBuffer();
+      const char *ptr = startPtr;
+      const char *endPtr = startPtr + transport.getBufferSize() - 20;
+      while ((ptr <= endPtr) && (size > 0)) {
+        // We definately should have enough data to read 2 VarInts
+        int64_t key = zigzagToI64(readVarintFast(&ptr));
+        int64_t value = zigzagToI64(readVarintFast(&ptr));
+        arr.set(key, value);
+        size--;
+      }
+      intptr_t skipLen = ptr - startPtr;
+      if (transport.skipNoAdvance(skipLen) != skipLen) {
+        thrift_error("Invalid skip value", ERR_INVALID_DATA);
+      }
+      // Finish tail using slow byte-by-byte path
+      while (size > 0) {
+        int64_t key = readI();
+        int64_t value = readI();
+        arr.set(key, value);
+        size--;
+      }
+    }
+
     Variant readMap(const FieldSpec& spec, bool& hasTypeWrapper) {
       TType keyType, valueType;
       uint32_t size;
@@ -1005,32 +1080,45 @@ struct CompactReader {
       hasTypeWrapper = hasTypeWrapper || spec.val().isTypeWrapped;
       if (s_harray.equal(spec.format)) {
         DictInit arr(size);
-        for (uint32_t i = 0; i < size; i++) {
-          switch (keyType) {
-            case TType::T_I08:
-            case TType::T_I16:
-            case TType::T_I32:
-            case TType::T_I64: {
-              int64_t key = readField(
-                spec.key(), keyType, hasTypeWrapper
-              ).toInt64();
-              Variant value = readField(spec.val(), valueType, hasTypeWrapper);
-              arr.set(key, value);
-              break;
+        switch (keyType) {
+          case TType::T_I08:
+          case TType::T_I16:
+          case TType::T_I32:
+          case TType::T_I64: {
+            if (
+                typeIsInt(valueType) &&
+                spec.key().adapter == nullptr &&
+                spec.val().adapter == nullptr
+                ) {
+              hasTypeWrapper = hasTypeWrapper || spec.key().isTypeWrapped;
+              readIntegralMapFast(arr, size);
+            } else {
+              for (uint32_t i = 0; i < size; i++) {
+                int64_t key = readField(
+                  spec.key(), keyType, hasTypeWrapper
+                ).toInt64();
+                Variant value = readField(spec.val(), valueType, hasTypeWrapper);
+                arr.set(key, value);
+              }
             }
-            case TType::T_STRING: {
+            break;
+          }
+          case TType::T_STRING: {
+            for (uint32_t i = 0; i < size; i++) {
               String key = readField(
                 spec.key(), keyType, hasTypeWrapper
               ).toString();
               Variant value = readField(spec.val(), valueType, hasTypeWrapper);
               arr.set(key, value);
-              break;
             }
-            default:
+            break;
+          }
+          default:
+            if (size > 0) {
               thrift_error(
                   "Unable to deserialize non int/string array keys",
                   ERR_INVALID_DATA);
-          }
+            }
         }
         readCollectionEnd();
         return arr.toVariant();
@@ -1172,24 +1260,50 @@ struct CompactReader {
     }
 
     uint64_t readVarint(void) {
-      uint64_t result = 0;
-      uint8_t shift = 0;
+      uint8_t byte = readUByte();
+      uint64_t result = (uint64_t)(byte & 0x7f);
+      if ((byte & 0x80) == 0) goto ret;
+      // Byte 2
+      byte = readUByte();
+      result = result | (uint64_t)(byte & 0x7f) << 7;
+      if ((byte & 0x80) == 0) goto ret;
+      // Byte 3
+      byte = readUByte();
+      result = result | (uint64_t)(byte & 0x7f) << 14;
+      if ((byte & 0x80) == 0) goto ret;
+      // Byte 4
+      byte = readUByte();
+      result = result | (uint64_t)(byte & 0x7f) << 21;
+      if ((byte & 0x80) == 0) goto ret;
+      // Byte 5
+      byte = readUByte();
+      result = result | (uint64_t)(byte & 0x7f) << 28;
+      if ((byte & 0x80) == 0) goto ret;
+      // Byte 6
+      byte = readUByte();
+      result = result | (uint64_t)(byte & 0x7f) << 35;
+      if ((byte & 0x80) == 0) goto ret;
+      // Byte 7
+      byte = readUByte();
+      result = result | (uint64_t)(byte & 0x7f) << 42;
+      if ((byte & 0x80) == 0) goto ret;
+      // Byte 8
+      byte = readUByte();
+      result = result | (uint64_t)(byte & 0x7f) << 49;
+      if ((byte & 0x80) == 0) goto ret;
+      // Byte 9
+      byte = readUByte();
+      result = result | (uint64_t)(byte & 0x7f) << 56;
+      if ((byte & 0x80) == 0) goto ret;
+      // Byte 10
+      byte = readUByte();
+      result = result | (uint64_t)(byte & 0x7f) << 63;
+      if ((byte & 0x80) == 0) goto ret;
 
-      while (true) {
-        uint8_t byte = readUByte();
-        result |= (uint64_t)(byte & 0x7f) << shift;
-        shift += 7;
+      thrift_error("Variable-length int over 10 bytes", ERR_INVALID_DATA);
 
-        if (!(byte & 0x80)) {
-          return result;
-        }
-
-        // Should never read more than 10 bytes, which is the max for a 64-bit
-        // int
-        if (shift >= 10 * 7) {
-          thrift_error("Variable-length int over 10 bytes", ERR_INVALID_DATA);
-        }
-      }
+    ret:
+      return result;
     }
 
     String readString(void) {

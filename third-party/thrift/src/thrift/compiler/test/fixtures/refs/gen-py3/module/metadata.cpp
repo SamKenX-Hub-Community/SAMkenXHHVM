@@ -14,6 +14,7 @@ namespace cpp2 {
   ::apache::thrift::detail::md::EnumMetadata<MyEnum>::gen(metadata);
   ::apache::thrift::detail::md::EnumMetadata<TypedEnum>::gen(metadata);
   ::apache::thrift::detail::md::StructMetadata<MyUnion>::gen(metadata);
+  ::apache::thrift::detail::md::StructMetadata<NonTriviallyDestructibleUnion>::gen(metadata);
   ::apache::thrift::detail::md::StructMetadata<MyField>::gen(metadata);
   ::apache::thrift::detail::md::StructMetadata<MyStruct>::gen(metadata);
   ::apache::thrift::detail::md::StructMetadata<StructWithUnion>::gen(metadata);
@@ -24,7 +25,9 @@ namespace cpp2 {
   ::apache::thrift::detail::md::StructMetadata<StructWithRef>::gen(metadata);
   ::apache::thrift::detail::md::StructMetadata<StructWithBox>::gen(metadata);
   ::apache::thrift::detail::md::StructMetadata<StructWithInternBox>::gen(metadata);
+  ::apache::thrift::detail::md::StructMetadata<StructWithTerseInternBox>::gen(metadata);
   ::apache::thrift::detail::md::StructMetadata<AdaptedStructWithInternBox>::gen(metadata);
+  ::apache::thrift::detail::md::StructMetadata<AdaptedStructWithTerseInternBox>::gen(metadata);
   ::apache::thrift::detail::md::StructMetadata<StructWithRefTypeUnique>::gen(metadata);
   ::apache::thrift::detail::md::StructMetadata<StructWithRefTypeShared>::gen(metadata);
   ::apache::thrift::detail::md::StructMetadata<StructWithRefTypeSharedConst>::gen(metadata);

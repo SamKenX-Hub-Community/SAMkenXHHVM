@@ -25,24 +25,87 @@ let get_all_locals env = env.lenv.per_cont_env
 (* Functions dealing with old style local environment *)
 (*****************************************************************************)
 
-let union env local1 local2 =
-  let ((ty1, pos1, eid1), (ty2, pos2, eid2)) = (local1, local2) in
+let union
+    env
+    ~join_pos
+    Typing_local_types.
+      {
+        ty = ty1;
+        defined = defined1;
+        bound_ty = bound_ty1;
+        pos = pos1;
+        eid = eid1;
+      }
+    Typing_local_types.
+      {
+        ty = ty2;
+        defined = defined2;
+        bound_ty = bound_ty2;
+        pos = pos2;
+        eid = eid2;
+      } =
+  let (env, ty) = Union.union ~approx_cancel_neg:true env ty1 ty2 in
+  let (env, bound_ty) =
+    match (bound_ty1, bound_ty2) with
+    | (None, None) -> (env, None)
+    | (Some ty, None)
+    | (None, Some ty) ->
+      (env, Some ty)
+    | (Some ty1, Some ty2) ->
+      let (env, ty) =
+        Typing_intersection.intersect
+          ~r:(Typing_defs_core.get_reason ty1)
+          env
+          ty1
+          ty2
+      in
+      (env, Some ty)
+  in
+  let pos =
+    if phys_equal ty ty1 || Pos.equal Pos.none pos2 then
+      pos1
+    else if phys_equal ty ty2 || Pos.equal Pos.none pos1 then
+      pos2
+    else
+      Pos.none
+  in
   let eid =
     if Ident.equal eid1 eid2 then
       eid1
     else
       Ident.tmp ()
   in
-  let (env, ty) = Union.union ~approx_cancel_neg:true env ty1 ty2 in
-  ( env,
-    ( ty,
-      (if phys_equal ty ty1 || Pos.equal Pos.none pos2 then
-        pos1
-      else if phys_equal ty ty2 || Pos.equal Pos.none pos1 then
-        pos2
-      else
-        Pos.none),
-      eid ) )
+  match bound_ty with
+  | None ->
+    Typing_local_types.
+      (env, { ty; defined = defined1 && defined2; bound_ty; pos; eid })
+  | Some bound_ty ->
+    let (env, err_opt) =
+      Typing_subtype.sub_type
+        env
+        ty
+        bound_ty
+        (Some (Typing_error.Reasons_callback.unify_error_at join_pos))
+    in
+    let ty =
+      match err_opt with
+      | None -> ty
+      | Some err ->
+        Typing_error_utils.add_typing_error ~env err;
+        (* If the new type or bound violates the old one, then we want to
+           check the remainder of the code with the type of the variable
+           set to the bound *)
+        bound_ty
+    in
+    Typing_local_types.
+      ( env,
+        {
+          ty;
+          defined = defined1 && defined2;
+          bound_ty = Some bound_ty;
+          pos;
+          eid;
+        } )
 
 let get_cont_option env cont =
   let local_types = get_all_locals env in
@@ -70,12 +133,12 @@ let restore_conts_from env fromlocals conts =
   in
   Env.env_with_locals env local_types
 
-let restore_and_merge_conts_from env fromlocals conts =
+let restore_and_merge_conts_from env ~join_pos fromlocals conts =
   let local_types = get_all_locals env in
   let (env, local_types) =
     LEnvOps.restore_and_merge_conts_from
       env
-      union
+      (union ~join_pos)
       local_types
       ~from:fromlocals
       conts
@@ -84,35 +147,37 @@ let restore_and_merge_conts_from env fromlocals conts =
 
 (* Merge all continuations in the provided list and update the 'next'
    * continuation with the result. *)
-let update_next_from_conts env cont_list =
+let update_next_from_conts env ~join_pos cont_list =
   let local_types = get_all_locals env in
   let (env, local_types) =
-    LEnvOps.update_next_from_conts env union local_types cont_list
+    LEnvOps.update_next_from_conts env (union ~join_pos) local_types cont_list
   in
   Env.env_with_locals env local_types
 
 (* After this call, the provided continuation will be the union of itself and
    * the next continuation *)
-let save_and_merge_next_in_cont env cont =
+let save_and_merge_next_in_cont env ~join_pos cont =
   let local_types = get_all_locals env in
   let (env, local_types) =
-    LEnvOps.save_and_merge_next_in_cont env union local_types cont
+    LEnvOps.save_and_merge_next_in_cont env (union ~join_pos) local_types cont
   in
   Env.env_with_locals env local_types
 
-let move_and_merge_next_in_cont env cont =
+let move_and_merge_next_in_cont env ~join_pos cont =
   let local_types = get_all_locals env in
   let (env, local_types) =
-    LEnvOps.move_and_merge_next_in_cont env union local_types cont
+    LEnvOps.move_and_merge_next_in_cont env (union ~join_pos) local_types cont
   in
   Env.env_with_locals env local_types
 
-let union_contextopts = LEnvOps.union_opts union
+let union_contextopts ~join_pos = LEnvOps.union_opts (union ~join_pos)
 
-let union_by_cont env lenv1 lenv2 =
+let union_by_cont env ~join_pos lenv1 lenv2 =
   let locals1 = lenv1.per_cont_env in
   let locals2 = lenv2.per_cont_env in
-  let (env, locals) = LEnvOps.union_by_cont env union locals1 locals2 in
+  let (env, locals) =
+    LEnvOps.union_by_cont env (union ~join_pos) locals1 locals2
+  in
   Env.env_with_locals env locals
 
 let join_fake lenv1 lenv2 =
@@ -125,10 +190,10 @@ let join_fake lenv1 lenv2 =
   | (Some c1, None) -> c1.LEnvC.fake_members
   | (None, Some c2) -> c2.LEnvC.fake_members
 
-let union_lenvs_ env parent_lenv lenv1 lenv2 =
+let union_lenvs_ env ~join_pos parent_lenv lenv1 lenv2 =
   let fake_members = join_fake lenv1 lenv2 in
   let local_using_vars = parent_lenv.local_using_vars in
-  let env = union_by_cont env lenv1 lenv2 in
+  let env = union_by_cont env ~join_pos lenv1 lenv2 in
   let lenv = { env.lenv with local_using_vars } in
   let per_cont_env =
     LEnvC.update_cont_entry C.Next lenv.per_cont_env (fun entry ->
@@ -146,16 +211,16 @@ let union_lenvs_ env parent_lenv lenv1 lenv2 =
  * when that is the case, their type becomes the union (least upper bound)
  * of the types it had in each branch.
  *)
-let union_lenvs env parent_lenv lenv1 lenv2 =
-  fst @@ union_lenvs_ env parent_lenv lenv1 lenv2
+let union_lenvs env ~join_pos parent_lenv lenv1 lenv2 =
+  fst @@ union_lenvs_ env ~join_pos parent_lenv lenv1 lenv2
 
-let rec union_lenv_list env parent_lenv = function
+let rec union_lenv_list env ~join_pos parent_lenv = function
   | []
   | [_] ->
     env
   | lenv1 :: lenv2 :: lenvlist ->
-    let (env, lenv) = union_lenvs_ env parent_lenv lenv1 lenv2 in
-    union_lenv_list env parent_lenv (lenv :: lenvlist)
+    let (env, lenv) = union_lenvs_ env ~join_pos parent_lenv lenv1 lenv2 in
+    union_lenv_list env ~join_pos parent_lenv (lenv :: lenvlist)
 
 let stash_and_do env conts f =
   let parent_locals = get_all_locals env in

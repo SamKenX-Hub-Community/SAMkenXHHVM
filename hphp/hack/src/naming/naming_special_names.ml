@@ -316,6 +316,8 @@ module UserAttributes = struct
 
   let uaNativeData = "__NativeData"
 
+  let uaEagerVMSync = "__EagerVMSync"
+
   let uaOutOnly = "__OutOnly"
 
   let uaAlwaysInline = "__ALWAYS_INLINE"
@@ -335,6 +337,10 @@ module UserAttributes = struct
   let uaSupportDynamicType = "__SupportDynamicType"
 
   let uaNoAutoDynamic = "__NoAutoDynamic"
+
+  let uaNoAutoLikes = "__NoAutoLikes"
+
+  let uaNoAutoBound = "__NoAutoBound"
 
   let uaRequireDynamic = "__RequireDynamic"
 
@@ -689,6 +695,19 @@ module UserAttributes = struct
               autocomplete = false;
               doc = "Locally disable implicit pessimisation.";
             } );
+          ( uaNoAutoLikes,
+            {
+              contexts =
+                [fn; mthd; staticProperty; instProperty; parameter; lambda];
+              autocomplete = false;
+              doc = "Locally disable addition of ~ types.";
+            } );
+          ( uaNoAutoBound,
+            {
+              contexts = [typeparam];
+              autocomplete = false;
+              doc = "Locally disable addition of supportdyn<mixed> bound.";
+            } );
           ( uaRequireDynamic,
             {
               contexts = [typeparam];
@@ -712,6 +731,14 @@ module UserAttributes = struct
               doc =
                 "Marks this global variable as safe from mutation."
                 ^ " This ensures the global_access_check does NOT raise errors/warnings from writing to this global variable.";
+            } );
+          ( uaModuleLevelTrait,
+            {
+              contexts = [cls];
+              autocomplete = false;
+              doc =
+                "Consider the trait to belong to the module where it is defined, "
+                ^ "rather than to the module of the class that uses it.";
             } );
           ( uaSoftInternal,
             {
@@ -770,6 +797,13 @@ module UserAttributes = struct
               doc =
                 "Declares a native function."
                 ^ " This declares the signature, the implementation will be in an HHVM extension (usually C++).";
+            } );
+          ( uaEagerVMSync,
+            {
+              contexts = [fn; mthd];
+              autocomplete = false;
+              doc =
+                "Declares that runtime will eagerly sync vm registers for this function.";
             } );
           ( uaOutOnly,
             {
@@ -1102,8 +1136,6 @@ module FB = struct
   let idx = "\\HH\\idx"
 
   let cTypeStructure = "\\HH\\TypeStructure"
-
-  let cIncorrectType = "\\HH\\INCORRECT_TYPE"
 end
 
 module HH = struct
@@ -1117,8 +1149,6 @@ module HH = struct
     let tTanyMarker = "\\HH\\FIXME\\TANY_MARKER"
 
     let tPoisonMarker = "\\HH\\FIXME\\POISON_MARKER"
-
-    let tSupportdynMarker = "\\HH\\FIXME\\SUPPORTDYN_MARKER"
   end
 end
 

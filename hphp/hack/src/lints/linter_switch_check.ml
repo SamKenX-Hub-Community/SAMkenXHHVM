@@ -16,11 +16,6 @@ module Typing = Typing_defs
 module Cls = Decl_provider.Class
 
 let ensure_valid_switch_case_value_types env scrutinee_ty casel =
-  let is_subtype ty_sub ty_super = Env.can_subtype env ty_sub ty_super in
-  let ty_num = MakeType.num Reason.Rnone in
-  let ty_arraykey = MakeType.arraykey Reason.Rnone in
-  let ty_mixed = MakeType.mixed Reason.Rnone in
-  let ty_traversable = MakeType.traversable Typing_reason.Rnone ty_mixed in
   (* Enum class label === only consider the label name. No type information
    * is enforced as they might not be available to the runtime in all
    * use cases.
@@ -34,18 +29,13 @@ let ensure_valid_switch_case_value_types env scrutinee_ty casel =
     | Tnewtype (name, [_; _], _) -> String.equal name SN.Classes.cEnumClassLabel
     | _ -> false
   in
-  let compatible_types ty1 ty2 =
-    (is_label ty1 || is_label ty2)
-    || (is_subtype ty1 ty_num && is_subtype ty2 ty_num)
-    || (is_subtype ty1 ty_arraykey && is_subtype ty2 ty_arraykey)
-    || is_subtype ty1 ty_traversable
-       && is_subtype ty2 ty_traversable
-       && (is_subtype ty1 ty2 || is_subtype ty2 ty1)
-    || (is_subtype ty1 ty2 && is_subtype ty2 ty1)
-  in
   let ensure_valid_switch_case_value_type ((case_value_ty, case_value_p, _), _)
       =
-    if not (compatible_types case_value_ty scrutinee_ty) then
+    let tenv = Tast_env.tast_env_as_typing_env env in
+    if
+      (not (is_label case_value_ty || is_label scrutinee_ty))
+      && Typing_subtype.is_type_disjoint tenv case_value_ty scrutinee_ty
+    then
       Lints_errors.invalid_switch_case_value_type
         case_value_p
         (lazy (Env.print_ty env case_value_ty))
@@ -53,7 +43,7 @@ let ensure_valid_switch_case_value_types env scrutinee_ty casel =
   in
   List.iter casel ~f:ensure_valid_switch_case_value_type
 
-let check_exhaustiveness_lint env pos ty hasdfl =
+let check_exhaustiveness_lint env pos ty has_default =
   let rec has_infinite_values ty =
     match Typing.get_node ty with
     | Typing.Tunion tyl -> List.exists tyl ~f:has_infinite_values
@@ -70,7 +60,12 @@ let check_exhaustiveness_lint env pos ty hasdfl =
     end
     | _ -> false
   in
-  if has_infinite_values ty && not hasdfl then
+  let under_dynamic_assumptions =
+    Tast.is_under_dynamic_assumptions @@ Env.get_check_status env
+  in
+  if
+    (not under_dynamic_assumptions) && has_infinite_values ty && not has_default
+  then
     Lints_errors.switch_nonexhaustive pos
 
 let handler =

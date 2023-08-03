@@ -495,6 +495,14 @@ struct
         unset_right_paren: t;
         unset_semicolon: t;
       }
+    | DeclareLocalStatement of {
+        declare_local_keyword: t;
+        declare_local_variable: t;
+        declare_local_colon: t;
+        declare_local_type: t;
+        declare_local_initializer: t;
+        declare_local_semicolon: t;
+      }
     | UsingStatementBlockScoped of {
         using_block_await_keyword: t;
         using_block_using_keyword: t;
@@ -605,6 +613,20 @@ struct
         default_keyword: t;
         default_colon: t;
       }
+    | MatchStatement of {
+        match_statement_keyword: t;
+        match_statement_left_paren: t;
+        match_statement_expression: t;
+        match_statement_right_paren: t;
+        match_statement_left_brace: t;
+        match_statement_arms: t;
+        match_statement_right_brace: t;
+      }
+    | MatchStatementArm of {
+        match_statement_arm_pattern: t;
+        match_statement_arm_arrow: t;
+        match_statement_arm_body: t;
+      }
     | ReturnStatement of {
         return_keyword: t;
         return_expression: t;
@@ -671,6 +693,18 @@ struct
         anonymous_use_left_paren: t;
         anonymous_use_variables: t;
         anonymous_use_right_paren: t;
+      }
+    | VariablePattern of { variable_pattern_variable: t }
+    | ConstructorPattern of {
+        constructor_pattern_constructor: t;
+        constructor_pattern_left_paren: t;
+        constructor_pattern_members: t;
+        constructor_pattern_right_paren: t;
+      }
+    | RefinementPattern of {
+        refinement_pattern_variable: t;
+        refinement_pattern_colon: t;
+        refinement_pattern_specifier: t;
       }
     | LambdaExpression of {
         lambda_attribute_spec: t;

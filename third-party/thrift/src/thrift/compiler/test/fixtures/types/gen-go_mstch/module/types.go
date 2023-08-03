@@ -7,14 +7,10 @@ import (
     "fmt"
 
     included "included"
-    cpp "thrift/annotation/cpp"
-    thrift0 "thrift/annotation/thrift"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
 var _ = included.GoUnusedProtection__
-var _ = cpp.GoUnusedProtection__
-var _ = thrift0.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
@@ -290,7 +286,9 @@ func NewEmptyStruct() *EmptyStruct {
 }
 
 func (x *EmptyStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type EmptyStructAlias EmptyStruct
+    valueAlias := (*EmptyStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -416,7 +414,9 @@ if err != nil {
 }
 
 func (x *DecoratedStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type DecoratedStructAlias DecoratedStruct
+    valueAlias := (*DecoratedStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -514,13 +514,13 @@ var _ thrift.Struct = &ContainerStruct{}
 
 func NewContainerStruct() *ContainerStruct {
     return (&ContainerStruct{}).
-        SetFieldANonCompat(make([]int32, 0)).
-        SetFieldBNonCompat(make([]int32, 0)).
-        SetFieldCNonCompat(make([]int32, 0)).
-        SetFieldDNonCompat(make([]int32, 0)).
-        SetFieldENonCompat(make([]int32, 0)).
-        SetFieldFNonCompat(make([]int32, 0)).
-        SetFieldGNonCompat(make(map[int32]string)).
+        SetFieldANonCompat(nil).
+        SetFieldBNonCompat(nil).
+        SetFieldCNonCompat(nil).
+        SetFieldDNonCompat(nil).
+        SetFieldENonCompat(nil).
+        SetFieldFNonCompat(nil).
+        SetFieldGNonCompat(nil).
         SetFieldHNonCompat(included.NewSomeMap())
 }
 
@@ -530,7 +530,7 @@ func (x *ContainerStruct) GetFieldANonCompat() []int32 {
 
 func (x *ContainerStruct) GetFieldA() []int32 {
     if !x.IsSetFieldA() {
-        return make([]int32, 0)
+        return nil
     }
 
     return x.FieldA
@@ -542,7 +542,7 @@ func (x *ContainerStruct) GetFieldBNonCompat() []int32 {
 
 func (x *ContainerStruct) GetFieldB() []int32 {
     if !x.IsSetFieldB() {
-        return make([]int32, 0)
+        return nil
     }
 
     return x.FieldB
@@ -554,7 +554,7 @@ func (x *ContainerStruct) GetFieldCNonCompat() []int32 {
 
 func (x *ContainerStruct) GetFieldC() []int32 {
     if !x.IsSetFieldC() {
-        return make([]int32, 0)
+        return nil
     }
 
     return x.FieldC
@@ -566,7 +566,7 @@ func (x *ContainerStruct) GetFieldDNonCompat() []int32 {
 
 func (x *ContainerStruct) GetFieldD() []int32 {
     if !x.IsSetFieldD() {
-        return make([]int32, 0)
+        return nil
     }
 
     return x.FieldD
@@ -578,7 +578,7 @@ func (x *ContainerStruct) GetFieldENonCompat() []int32 {
 
 func (x *ContainerStruct) GetFieldE() []int32 {
     if !x.IsSetFieldE() {
-        return make([]int32, 0)
+        return nil
     }
 
     return x.FieldE
@@ -590,7 +590,7 @@ func (x *ContainerStruct) GetFieldFNonCompat() []int32 {
 
 func (x *ContainerStruct) GetFieldF() []int32 {
     if !x.IsSetFieldF() {
-        return make([]int32, 0)
+        return nil
     }
 
     return x.FieldF
@@ -602,7 +602,7 @@ func (x *ContainerStruct) GetFieldGNonCompat() map[int32]string {
 
 func (x *ContainerStruct) GetFieldG() map[int32]string {
     if !x.IsSetFieldG() {
-        return make(map[int32]string)
+        return nil
     }
 
     return x.FieldG
@@ -1194,7 +1194,9 @@ if err != nil {
 }
 
 func (x *ContainerStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ContainerStructAlias ContainerStruct
+    valueAlias := (*ContainerStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1376,7 +1378,7 @@ var _ thrift.Struct = &CppTypeStruct{}
 
 func NewCppTypeStruct() *CppTypeStruct {
     return (&CppTypeStruct{}).
-        SetFieldANonCompat(make([]int32, 0))
+        SetFieldANonCompat(nil)
 }
 
 func (x *CppTypeStruct) GetFieldANonCompat() []int32 {
@@ -1385,7 +1387,7 @@ func (x *CppTypeStruct) GetFieldANonCompat() []int32 {
 
 func (x *CppTypeStruct) GetFieldA() []int32 {
     if !x.IsSetFieldA() {
-        return make([]int32, 0)
+        return nil
     }
 
     return x.FieldA
@@ -1465,7 +1467,9 @@ result := listResult
 }
 
 func (x *CppTypeStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type CppTypeStructAlias CppTypeStruct
+    valueAlias := (*CppTypeStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1604,7 +1608,9 @@ if err != nil {
 }
 
 func (x *VirtualStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type VirtualStructAlias VirtualStruct
+    valueAlias := (*VirtualStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1795,7 +1801,9 @@ result := MyForwardRefEnum(enumResult)
 }
 
 func (x *MyStructWithForwardRefEnum) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructWithForwardRefEnumAlias MyStructWithForwardRefEnum
+    valueAlias := (*MyStructWithForwardRefEnumAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1993,7 +2001,9 @@ if err != nil {
 }
 
 func (x *TrivialNumeric) String() string {
-    return fmt.Sprintf("%+v", x)
+    type TrivialNumericAlias TrivialNumeric
+    valueAlias := (*TrivialNumericAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2120,7 +2130,7 @@ func (x *TrivialNestedWithDefault) GetNNonCompat() *TrivialNumeric {
 
 func (x *TrivialNestedWithDefault) GetN() *TrivialNumeric {
     if !x.IsSetN() {
-        return NewTrivialNumeric()
+        return NewTrivialNestedWithDefault().N
     }
 
     return x.N
@@ -2219,7 +2229,9 @@ func (x *TrivialNestedWithDefault) DefaultGetN() *TrivialNumeric {
 }
 
 func (x *TrivialNestedWithDefault) String() string {
-    return fmt.Sprintf("%+v", x)
+    type TrivialNestedWithDefaultAlias TrivialNestedWithDefault
+    valueAlias := (*TrivialNestedWithDefaultAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2325,7 +2337,7 @@ var _ thrift.Struct = &ComplexString{}
 func NewComplexString() *ComplexString {
     return (&ComplexString{}).
         SetANonCompat("").
-        SetBNonCompat(make(map[string]int32))
+        SetBNonCompat(nil)
 }
 
 func (x *ComplexString) GetANonCompat() string {
@@ -2342,7 +2354,7 @@ func (x *ComplexString) GetBNonCompat() map[string]int32 {
 
 func (x *ComplexString) GetB() map[string]int32 {
     if !x.IsSetB() {
-        return make(map[string]int32)
+        return nil
     }
 
     return x.B
@@ -2475,7 +2487,9 @@ result := mapResult
 }
 
 func (x *ComplexString) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ComplexStringAlias ComplexString
+    valueAlias := (*ComplexStringAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2606,7 +2620,7 @@ func (x *ComplexNestedWithDefault) GetNNonCompat() *ComplexString {
 
 func (x *ComplexNestedWithDefault) GetN() *ComplexString {
     if !x.IsSetN() {
-        return NewComplexString()
+        return NewComplexNestedWithDefault().N
     }
 
     return x.N
@@ -2705,7 +2719,9 @@ func (x *ComplexNestedWithDefault) DefaultGetN() *ComplexString {
 }
 
 func (x *ComplexNestedWithDefault) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ComplexNestedWithDefaultAlias ComplexNestedWithDefault
+    valueAlias := (*ComplexNestedWithDefaultAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3043,7 +3059,9 @@ if err != nil {
 }
 
 func (x *MinPadding) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MinPaddingAlias MinPadding
+    valueAlias := (*MinPaddingAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3420,7 +3438,9 @@ if err != nil {
 }
 
 func (x *MinPaddingWithCustomType) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MinPaddingWithCustomTypeAlias MinPaddingWithCustomType
+    valueAlias := (*MinPaddingWithCustomTypeAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3602,7 +3622,7 @@ func (x *MyStruct) GetDataNonCompat() *MyDataItem {
 
 func (x *MyStruct) GetData() *MyDataItem {
     if !x.IsSetData() {
-        return NewMyDataItem()
+        return nil
     }
 
     return x.Data
@@ -3773,7 +3793,9 @@ func (x *MyStruct) DefaultGetData() *MyDataItem {
 }
 
 func (x *MyStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructAlias MyStruct
+    valueAlias := (*MyStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3905,7 +3927,9 @@ func NewMyDataItem() *MyDataItem {
 }
 
 func (x *MyDataItem) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyDataItemAlias MyDataItem
+    valueAlias := (*MyDataItemAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -4031,7 +4055,9 @@ if err != nil {
 }
 
 func (x *Renaming) String() string {
-    return fmt.Sprintf("%+v", x)
+    type RenamingAlias Renaming
+    valueAlias := (*RenamingAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -4184,7 +4210,7 @@ func (x *AnnotatedTypes) writeField1(p thrift.Protocol) error {  // BinaryField
         return nil
     }
 
-    if err := p.WriteFieldBegin("binary_field", thrift.BINARY, 1); err != nil {
+    if err := p.WriteFieldBegin("binary_field", thrift.STRING, 1); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -4242,7 +4268,9 @@ if err != nil {
 }
 
 func (x *AnnotatedTypes) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AnnotatedTypesAlias AnnotatedTypes
+    valueAlias := (*AnnotatedTypesAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -4355,7 +4383,7 @@ func (x *ForwardUsageRoot) GetForwardUsageStructNonCompat() *ForwardUsageStruct 
 
 func (x *ForwardUsageRoot) GetForwardUsageStruct() *ForwardUsageStruct {
     if !x.IsSetForwardUsageStruct() {
-        return NewForwardUsageStruct()
+        return nil
     }
 
     return x.ForwardUsageStruct
@@ -4367,7 +4395,7 @@ func (x *ForwardUsageRoot) GetForwardUsageByRefNonCompat() *ForwardUsageByRef {
 
 func (x *ForwardUsageRoot) GetForwardUsageByRef() *ForwardUsageByRef {
     if !x.IsSetForwardUsageByRef() {
-        return NewForwardUsageByRef()
+        return nil
     }
 
     return x.ForwardUsageByRef
@@ -4486,7 +4514,9 @@ func (x *ForwardUsageRoot) DefaultGetForwardUsageByRef() *ForwardUsageByRef {
 }
 
 func (x *ForwardUsageRoot) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ForwardUsageRootAlias ForwardUsageRoot
+    valueAlias := (*ForwardUsageRootAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -4598,7 +4628,7 @@ func (x *ForwardUsageStruct) GetFooNonCompat() *ForwardUsageRoot {
 
 func (x *ForwardUsageStruct) GetFoo() *ForwardUsageRoot {
     if !x.IsSetFoo() {
-        return NewForwardUsageRoot()
+        return nil
     }
 
     return x.Foo
@@ -4661,7 +4691,9 @@ func (x *ForwardUsageStruct) DefaultGetFoo() *ForwardUsageRoot {
 }
 
 func (x *ForwardUsageStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ForwardUsageStructAlias ForwardUsageStruct
+    valueAlias := (*ForwardUsageStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -4760,7 +4792,7 @@ func (x *ForwardUsageByRef) GetFooNonCompat() *ForwardUsageRoot {
 
 func (x *ForwardUsageByRef) GetFoo() *ForwardUsageRoot {
     if !x.IsSetFoo() {
-        return NewForwardUsageRoot()
+        return nil
     }
 
     return x.Foo
@@ -4823,7 +4855,9 @@ func (x *ForwardUsageByRef) DefaultGetFoo() *ForwardUsageRoot {
 }
 
 func (x *ForwardUsageByRef) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ForwardUsageByRefAlias ForwardUsageByRef
+    valueAlias := (*ForwardUsageByRefAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -4922,7 +4956,7 @@ func (x *IncompleteMap) GetFieldNonCompat() map[int32]*IncompleteMapDep {
 
 func (x *IncompleteMap) GetField() map[int32]*IncompleteMapDep {
     if !x.IsSetField() {
-        return make(map[int32]*IncompleteMapDep)
+        return nil
     }
 
     return x.Field
@@ -5020,7 +5054,9 @@ result := mapResult
 }
 
 func (x *IncompleteMap) String() string {
-    return fmt.Sprintf("%+v", x)
+    type IncompleteMapAlias IncompleteMap
+    valueAlias := (*IncompleteMapAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -5113,7 +5149,9 @@ func NewIncompleteMapDep() *IncompleteMapDep {
 }
 
 func (x *IncompleteMapDep) String() string {
-    return fmt.Sprintf("%+v", x)
+    type IncompleteMapDepAlias IncompleteMapDep
+    valueAlias := (*IncompleteMapDepAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -5199,7 +5237,7 @@ func (x *CompleteMap) GetFieldNonCompat() map[int32]*CompleteMapDep {
 
 func (x *CompleteMap) GetField() map[int32]*CompleteMapDep {
     if !x.IsSetField() {
-        return make(map[int32]*CompleteMapDep)
+        return nil
     }
 
     return x.Field
@@ -5297,7 +5335,9 @@ result := mapResult
 }
 
 func (x *CompleteMap) String() string {
-    return fmt.Sprintf("%+v", x)
+    type CompleteMapAlias CompleteMap
+    valueAlias := (*CompleteMapAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -5390,7 +5430,9 @@ func NewCompleteMapDep() *CompleteMapDep {
 }
 
 func (x *CompleteMapDep) String() string {
-    return fmt.Sprintf("%+v", x)
+    type CompleteMapDepAlias CompleteMapDep
+    valueAlias := (*CompleteMapDepAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -5476,7 +5518,7 @@ func (x *IncompleteList) GetFieldNonCompat() []*IncompleteListDep {
 
 func (x *IncompleteList) GetField() []*IncompleteListDep {
     if !x.IsSetField() {
-        return make([]*IncompleteListDep, 0)
+        return nil
     }
 
     return x.Field
@@ -5557,7 +5599,9 @@ result := listResult
 }
 
 func (x *IncompleteList) String() string {
-    return fmt.Sprintf("%+v", x)
+    type IncompleteListAlias IncompleteList
+    valueAlias := (*IncompleteListAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -5650,7 +5694,9 @@ func NewIncompleteListDep() *IncompleteListDep {
 }
 
 func (x *IncompleteListDep) String() string {
-    return fmt.Sprintf("%+v", x)
+    type IncompleteListDepAlias IncompleteListDep
+    valueAlias := (*IncompleteListDepAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -5736,7 +5782,7 @@ func (x *CompleteList) GetFieldNonCompat() []*CompleteListDep {
 
 func (x *CompleteList) GetField() []*CompleteListDep {
     if !x.IsSetField() {
-        return make([]*CompleteListDep, 0)
+        return nil
     }
 
     return x.Field
@@ -5817,7 +5863,9 @@ result := listResult
 }
 
 func (x *CompleteList) String() string {
-    return fmt.Sprintf("%+v", x)
+    type CompleteListAlias CompleteList
+    valueAlias := (*CompleteListAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -5910,7 +5958,9 @@ func NewCompleteListDep() *CompleteListDep {
 }
 
 func (x *CompleteListDep) String() string {
-    return fmt.Sprintf("%+v", x)
+    type CompleteListDepAlias CompleteListDep
+    valueAlias := (*CompleteListDepAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -5996,7 +6046,7 @@ func (x *AdaptedList) GetFieldNonCompat() []*AdaptedListDep {
 
 func (x *AdaptedList) GetField() []*AdaptedListDep {
     if !x.IsSetField() {
-        return make([]*AdaptedListDep, 0)
+        return nil
     }
 
     return x.Field
@@ -6077,7 +6127,9 @@ result := listResult
 }
 
 func (x *AdaptedList) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AdaptedListAlias AdaptedList
+    valueAlias := (*AdaptedListAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -6177,7 +6229,7 @@ func (x *AdaptedListDep) GetFieldNonCompat() *AdaptedList {
 
 func (x *AdaptedListDep) GetField() *AdaptedList {
     if !x.IsSetField() {
-        return NewAdaptedList()
+        return nil
     }
 
     return x.Field
@@ -6240,7 +6292,9 @@ func (x *AdaptedListDep) DefaultGetField() *AdaptedList {
 }
 
 func (x *AdaptedListDep) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AdaptedListDepAlias AdaptedListDep
+    valueAlias := (*AdaptedListDepAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -6339,7 +6393,7 @@ func (x *DependentAdaptedList) GetFieldNonCompat() []*DependentAdaptedListDep {
 
 func (x *DependentAdaptedList) GetField() []*DependentAdaptedListDep {
     if !x.IsSetField() {
-        return make([]*DependentAdaptedListDep, 0)
+        return nil
     }
 
     return x.Field
@@ -6420,7 +6474,9 @@ result := listResult
 }
 
 func (x *DependentAdaptedList) String() string {
-    return fmt.Sprintf("%+v", x)
+    type DependentAdaptedListAlias DependentAdaptedList
+    valueAlias := (*DependentAdaptedListAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -6573,7 +6629,9 @@ if err != nil {
 var DependentAdaptedListDep_Field_DEFAULT = NewDependentAdaptedListDep().GetField()
 
 func (x *DependentAdaptedListDep) String() string {
-    return fmt.Sprintf("%+v", x)
+    type DependentAdaptedListDepAlias DependentAdaptedListDep
+    valueAlias := (*DependentAdaptedListDepAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -6670,9 +6728,9 @@ var _ thrift.Struct = &AllocatorAware{}
 
 func NewAllocatorAware() *AllocatorAware {
     return (&AllocatorAware{}).
-        SetAaListNonCompat(make([]int32, 0)).
-        SetAaSetNonCompat(make([]int32, 0)).
-        SetAaMapNonCompat(make(map[int32]int32)).
+        SetAaListNonCompat(nil).
+        SetAaSetNonCompat(nil).
+        SetAaMapNonCompat(nil).
         SetAaStringNonCompat("").
         SetNotAContainerNonCompat(0).
         SetAaUniqueNonCompat(0).
@@ -6685,7 +6743,7 @@ func (x *AllocatorAware) GetAaListNonCompat() []int32 {
 
 func (x *AllocatorAware) GetAaList() []int32 {
     if !x.IsSetAaList() {
-        return make([]int32, 0)
+        return nil
     }
 
     return x.AaList
@@ -6697,7 +6755,7 @@ func (x *AllocatorAware) GetAaSetNonCompat() []int32 {
 
 func (x *AllocatorAware) GetAaSet() []int32 {
     if !x.IsSetAaSet() {
-        return make([]int32, 0)
+        return nil
     }
 
     return x.AaSet
@@ -6709,7 +6767,7 @@ func (x *AllocatorAware) GetAaMapNonCompat() map[int32]int32 {
 
 func (x *AllocatorAware) GetAaMap() map[int32]int32 {
     if !x.IsSetAaMap() {
-        return make(map[int32]int32)
+        return nil
     }
 
     return x.AaMap
@@ -7128,7 +7186,9 @@ if err != nil {
 }
 
 func (x *AllocatorAware) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AllocatorAwareAlias AllocatorAware
+    valueAlias := (*AllocatorAwareAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -7405,7 +7465,9 @@ if err != nil {
 var AllocatorAware2_BoxField_DEFAULT = NewAllocatorAware2().GetBoxField()
 
 func (x *AllocatorAware2) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AllocatorAware2Alias AllocatorAware2
+    valueAlias := (*AllocatorAware2Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -7651,7 +7713,9 @@ if err != nil {
 }
 
 func (x *TypedefStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type TypedefStructAlias TypedefStruct
+    valueAlias := (*TypedefStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -7816,7 +7880,9 @@ if err != nil {
 }
 
 func (x *StructWithDoubleUnderscores) String() string {
-    return fmt.Sprintf("%+v", x)
+    type StructWithDoubleUnderscoresAlias StructWithDoubleUnderscores
+    valueAlias := (*StructWithDoubleUnderscoresAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

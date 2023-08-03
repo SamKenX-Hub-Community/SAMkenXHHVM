@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::cpp2::MyEnum>::size;
+#endif
 folly::Range<::cpp2::MyEnum const*> const TEnumTraits<::cpp2::MyEnum>::values = folly::range(TEnumDataStorage<::cpp2::MyEnum>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::cpp2::MyEnum>::names = folly::range(TEnumDataStorage<::cpp2::MyEnum>::names);
 
@@ -28,14 +30,6 @@ bool TEnumTraits<::cpp2::MyEnum>::findValue(folly::StringPiece name, type* out) 
 
 }} // apache::thrift
 
-namespace cpp2 {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _MyEnum_EnumMapFactory::ValuesToNamesMapType _MyEnum_VALUES_TO_NAMES = _MyEnum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-} // cpp2
 
 namespace apache {
 namespace thrift {
@@ -70,6 +64,15 @@ const folly::StringPiece MyStructFloatFieldThrowExp::__fbthrift_get_class_name()
 
 MyStructFloatFieldThrowExp::MyStructFloatFieldThrowExp(const MyStructFloatFieldThrowExp&) = default;
 MyStructFloatFieldThrowExp& MyStructFloatFieldThrowExp::operator=(const MyStructFloatFieldThrowExp&) = default;
+MyStructFloatFieldThrowExp::MyStructFloatFieldThrowExp() :
+      __fbthrift_field_myLongField(),
+      __fbthrift_field_MyByteField(),
+      __fbthrift_field_myFloatField() {
+}
+
+
+MyStructFloatFieldThrowExp::~MyStructFloatFieldThrowExp() {}
+
 MyStructFloatFieldThrowExp::MyStructFloatFieldThrowExp(FOLLY_MAYBE_UNUSED MyStructFloatFieldThrowExp&& other) noexcept :
     __fbthrift_field_myLongField(std::move(other.__fbthrift_field_myLongField)),
     __fbthrift_field_MyByteField(std::move(other.__fbthrift_field_MyByteField)),
@@ -205,6 +208,13 @@ const folly::StringPiece MyStructMapFloatThrowExp::__fbthrift_get_class_name() {
 
 MyStructMapFloatThrowExp::MyStructMapFloatThrowExp(const MyStructMapFloatThrowExp&) = default;
 MyStructMapFloatThrowExp& MyStructMapFloatThrowExp::operator=(const MyStructMapFloatThrowExp&) = default;
+MyStructMapFloatThrowExp::MyStructMapFloatThrowExp() :
+      __fbthrift_field_myLongField() {
+}
+
+
+MyStructMapFloatThrowExp::~MyStructMapFloatThrowExp() {}
+
 MyStructMapFloatThrowExp::MyStructMapFloatThrowExp(FOLLY_MAYBE_UNUSED MyStructMapFloatThrowExp&& other) noexcept :
     __fbthrift_field_myLongField(std::move(other.__fbthrift_field_myLongField)),
     __fbthrift_field_mapListOfFloats(std::move(other.__fbthrift_field_mapListOfFloats)),
@@ -925,6 +935,14 @@ const folly::StringPiece SimpleStruct::__fbthrift_get_class_name() {
 
 SimpleStruct::SimpleStruct(const SimpleStruct&) = default;
 SimpleStruct& SimpleStruct::operator=(const SimpleStruct&) = default;
+SimpleStruct::SimpleStruct() :
+      __fbthrift_field_age(static_cast<::std::int64_t>(60)),
+      __fbthrift_field_name(apache::thrift::StringTraits<std::string>::fromStringLiteral("Batman")) {
+}
+
+
+SimpleStruct::~SimpleStruct() {}
+
 SimpleStruct::SimpleStruct(FOLLY_MAYBE_UNUSED SimpleStruct&& other) noexcept :
     __fbthrift_field_age(std::move(other.__fbthrift_field_age)),
     __fbthrift_field_name(std::move(other.__fbthrift_field_name)),
@@ -1047,7 +1065,7 @@ defaultStruct::defaultStruct() :
       __fbthrift_field_myDoubleDFset(static_cast<double>(99.7678)),
       __fbthrift_field_myDoubleDFZero(static_cast<double>(0)),
       __fbthrift_field_myDouble(),
-      __fbthrift_field_field3(std::initializer_list<std::pair<const ::std::int32_t, ::std::string>>{{static_cast<::std::int32_t>(15), apache::thrift::StringTraits<std::string>::fromStringLiteral("a_value")},
+      __fbthrift_field_field3(std::initializer_list<::std::map<::std::int32_t, ::std::string>::value_type>{{static_cast<::std::int32_t>(15), apache::thrift::StringTraits<std::string>::fromStringLiteral("a_value")},
   {static_cast<::std::int32_t>(2), apache::thrift::StringTraits<std::string>::fromStringLiteral("b_value")}}),
       __fbthrift_field_myList(std::initializer_list<::cpp2::MyEnum>{ ::cpp2::MyEnum::MyValue1,
    ::cpp2::MyEnum::MyValue1,
@@ -1061,19 +1079,19 @@ defaultStruct::defaultStruct() :
       __fbthrift_field_myUnion(::apache::thrift::detail::make_structured_constant<::cpp2::MyUnion>(::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::myEnum>( ::cpp2::MyEnum::MyValue2))),
       __fbthrift_field_listUnionDFset(std::initializer_list<::cpp2::MyUnion>{::apache::thrift::detail::make_structured_constant<::cpp2::MyUnion>(::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::myEnum>( ::cpp2::MyEnum::MyValue2)),
   ::apache::thrift::detail::make_structured_constant<::cpp2::MyUnion>(::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::intValue>(static_cast<::std::int32_t>(123)))}),
-      __fbthrift_field_mapNestlistStructDfSet(std::initializer_list<std::pair<const ::std::int32_t, ::std::vector<::cpp2::SimpleStruct>>>{{static_cast<::std::int32_t>(1), std::initializer_list<::cpp2::SimpleStruct>{::apache::thrift::detail::make_structured_constant<::cpp2::SimpleStruct>(::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::age>(static_cast<::std::int64_t>(40)), ::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::name>(apache::thrift::StringTraits<std::string>::fromStringLiteral("IronMan"))),
+      __fbthrift_field_mapNestlistStructDfSet(std::initializer_list<::std::map<::std::int32_t, ::std::vector<::cpp2::SimpleStruct>>::value_type>{{static_cast<::std::int32_t>(1), std::initializer_list<::cpp2::SimpleStruct>{::apache::thrift::detail::make_structured_constant<::cpp2::SimpleStruct>(::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::age>(static_cast<::std::int64_t>(40)), ::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::name>(apache::thrift::StringTraits<std::string>::fromStringLiteral("IronMan"))),
   ::apache::thrift::detail::make_structured_constant<::cpp2::SimpleStruct>(::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::age>(static_cast<::std::int64_t>(999)), ::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::name>(apache::thrift::StringTraits<std::string>::fromStringLiteral("Thanos")))}},
   {static_cast<::std::int32_t>(2), std::initializer_list<::cpp2::SimpleStruct>{::apache::thrift::detail::make_structured_constant<::cpp2::SimpleStruct>(::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::age>(static_cast<::std::int64_t>(28)), ::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::name>(apache::thrift::StringTraits<std::string>::fromStringLiteral("BatMan"))),
   ::apache::thrift::detail::make_structured_constant<::cpp2::SimpleStruct>(::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::age>(static_cast<::std::int64_t>(12)), ::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::name>(apache::thrift::StringTraits<std::string>::fromStringLiteral("Robin")))}},
   {static_cast<::std::int32_t>(5), std::initializer_list<::cpp2::SimpleStruct>{::apache::thrift::detail::make_structured_constant<::cpp2::SimpleStruct>(::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::age>(static_cast<::std::int64_t>(12)), ::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::name>(apache::thrift::StringTraits<std::string>::fromStringLiteral("RatMan"))),
   ::apache::thrift::detail::make_structured_constant<::cpp2::SimpleStruct>(::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::age>(static_cast<::std::int64_t>(6)), ::apache::thrift::detail::wrap_struct_argument<::apache::thrift::ident::name>(apache::thrift::StringTraits<std::string>::fromStringLiteral("Catman")))}}}),
-      __fbthrift_field_mapJavaTypeDFset(std::initializer_list<std::pair<const ::std::int64_t, ::std::string>>{{static_cast<::std::int64_t>(15), apache::thrift::StringTraits<std::string>::fromStringLiteral("a_value")},
+      __fbthrift_field_mapJavaTypeDFset(std::initializer_list<::std::map<::std::int64_t, ::std::string>::value_type>{{static_cast<::std::int64_t>(15), apache::thrift::StringTraits<std::string>::fromStringLiteral("a_value")},
   {static_cast<::std::int64_t>(2), apache::thrift::StringTraits<std::string>::fromStringLiteral("b_value")}}),
-      __fbthrift_field_enumMapDFset(std::initializer_list<std::pair<const ::std::string, ::std::map<::std::int32_t, ::cpp2::MyEnum>>>{{apache::thrift::StringTraits<std::string>::fromStringLiteral("SANDY BRIDGE"), std::initializer_list<std::pair<const ::std::int32_t, ::cpp2::MyEnum>>{{static_cast<::std::int32_t>(16),  ::cpp2::MyEnum::MyValue1},
+      __fbthrift_field_enumMapDFset(std::initializer_list<::std::map<::std::string, ::std::map<::std::int32_t, ::cpp2::MyEnum>>::value_type>{{apache::thrift::StringTraits<std::string>::fromStringLiteral("SANDY BRIDGE"), std::initializer_list<::std::map<::std::int32_t, ::cpp2::MyEnum>::value_type>{{static_cast<::std::int32_t>(16),  ::cpp2::MyEnum::MyValue1},
   {static_cast<::std::int32_t>(144),  ::cpp2::MyEnum::MyValue1}}},
-  {apache::thrift::StringTraits<std::string>::fromStringLiteral("IVY BRIDGE"), std::initializer_list<std::pair<const ::std::int32_t, ::cpp2::MyEnum>>{{static_cast<::std::int32_t>(32),  ::cpp2::MyEnum::MyValue2},
+  {apache::thrift::StringTraits<std::string>::fromStringLiteral("IVY BRIDGE"), std::initializer_list<::std::map<::std::int32_t, ::cpp2::MyEnum>::value_type>{{static_cast<::std::int32_t>(32),  ::cpp2::MyEnum::MyValue2},
   {static_cast<::std::int32_t>(144),  ::cpp2::MyEnum::MyValue2}}},
-  {apache::thrift::StringTraits<std::string>::fromStringLiteral("HASWELL"), std::initializer_list<std::pair<const ::std::int32_t, ::cpp2::MyEnum>>{{static_cast<::std::int32_t>(32),  ::cpp2::MyEnum::MyValue3},
+  {apache::thrift::StringTraits<std::string>::fromStringLiteral("HASWELL"), std::initializer_list<::std::map<::std::int32_t, ::cpp2::MyEnum>::value_type>{{static_cast<::std::int32_t>(32),  ::cpp2::MyEnum::MyValue3},
   {static_cast<::std::int32_t>(128),  ::cpp2::MyEnum::MyValue3},
   {static_cast<::std::int32_t>(256),  ::cpp2::MyEnum::MyValue3}}}}) {
 }
@@ -1850,7 +1868,9 @@ void TccStructTraits<::cpp2::MyUnion>::translateFieldName(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::cpp2::MyUnion::Type>::size;
+#endif
 folly::Range<::cpp2::MyUnion::Type const*> const TEnumTraits<::cpp2::MyUnion::Type>::values = folly::range(TEnumDataStorage<::cpp2::MyUnion::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::cpp2::MyUnion::Type>::names = folly::range(TEnumDataStorage<::cpp2::MyUnion::Type>::names);
 
@@ -2007,7 +2027,9 @@ void TccStructTraits<::cpp2::MyUnionFloatFieldThrowExp>::translateFieldName(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::cpp2::MyUnionFloatFieldThrowExp::Type>::size;
+#endif
 folly::Range<::cpp2::MyUnionFloatFieldThrowExp::Type const*> const TEnumTraits<::cpp2::MyUnionFloatFieldThrowExp::Type>::values = folly::range(TEnumDataStorage<::cpp2::MyUnionFloatFieldThrowExp::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::cpp2::MyUnionFloatFieldThrowExp::Type>::names = folly::range(TEnumDataStorage<::cpp2::MyUnionFloatFieldThrowExp::Type>::names);
 
@@ -2637,6 +2659,13 @@ const folly::StringPiece TypeRemapped::__fbthrift_get_class_name() {
 
 TypeRemapped::TypeRemapped(const TypeRemapped&) = default;
 TypeRemapped& TypeRemapped::operator=(const TypeRemapped&) = default;
+TypeRemapped::TypeRemapped() :
+      __fbthrift_field_BigInteger() {
+}
+
+
+TypeRemapped::~TypeRemapped() {}
+
 TypeRemapped::TypeRemapped(FOLLY_MAYBE_UNUSED TypeRemapped&& other) noexcept :
     __fbthrift_field_lsMap(std::move(other.__fbthrift_field_lsMap)),
     __fbthrift_field_ioMap(std::move(other.__fbthrift_field_ioMap)),

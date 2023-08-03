@@ -21,7 +21,8 @@ using Cert = folly::AsyncTransportCertificate;
 
 /**
  * This class is a wrapper around AsyncTransportWrapper to handle most app level
- * interactions so that the derived client and server classes
+ * interactions. The derived client and server classes utilize the protected
+ * methods.
  */
 class AsyncFizzBase : public folly::WriteChainAsyncTransportWrapper<
                           folly::AsyncTransportWrapper>,
@@ -478,6 +479,8 @@ class AsyncFizzBase : public folly::WriteChainAsyncTransportWrapper<
 
     void unlinkFromBase();
 
+    void fail(const folly::AsyncSocketException&);
+
     size_t getEntireChainBytesBuffered() {
       DCHECK(!next_);
       return entireChainBytesBuffered;
@@ -558,6 +561,7 @@ class AsyncFizzBase : public folly::WriteChainAsyncTransportWrapper<
   size_t readSizeHint_{0};
 
   QueuedWriteRequest* tailWriteRequest_{nullptr};
+  QueuedWriteRequest* immediatelyPendingWriteRequest_{nullptr};
 
   HandshakeTimeout handshakeTimeout_;
 

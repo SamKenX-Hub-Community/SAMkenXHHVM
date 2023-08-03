@@ -488,12 +488,17 @@ let remove_members_except_to_string sc =
    There are certainly opportunities for us to be cleverer about some kinds of
    changes, but any kind of cleverness in reducing fanout must be implemented
    with great care. *)
-let normalize sc =
+let normalize sc ~same_package =
+  let id sc = sc in
   sc
   |> remove_consistent_construct_attribute
-  |> remove_modules_if_public
   |> remove_members_except_to_string
   |> Decl_pos_utils.NormalizeSig.shallow_class
+  |>
+  if same_package then
+    remove_modules_if_public
+  else
+    id
 
 let type_name ty =
   let (_, (_, name), tparams) = Decl_utils.unwrap_class_type ty in
@@ -633,11 +638,10 @@ let diff_enum_types
 
 let diff_enum_type_options = diff_options ~diff:diff_enum_types
 
-let user_attribute_name_value
-    { Typing_defs.ua_name = (_, name); ua_classname_params } =
-  (name, ua_classname_params)
+let user_attribute_name_value { Typing_defs.ua_name = (_, name); ua_params } =
+  (name, ua_params)
 
-type string_list = string list [@@deriving eq]
+let equal_user_attr_params = [%derive.eq: Typing_defs.user_attribute_param list]
 
 let diff_class_shells (c1 : shallow_class) (c2 : shallow_class) :
     class_shell_change =
@@ -670,23 +674,33 @@ let diff_class_shells (c1 : shallow_class) (c2 : shallow_class) :
         c2.sc_user_attributes
         ~equal:Typing_defs.equal_user_attribute
         ~get_name_value:user_attribute_name_value
-        ~diff:(diff_of_equal equal_string_list);
+        ~diff:(diff_of_equal equal_user_attr_params);
     enum_type_change = diff_enum_type_options c1.sc_enum_type c2.sc_enum_type;
   }
 
-let diff_class (c1 : shallow_class) (c2 : shallow_class) : ClassDiff.t =
-  let class_shell1 = normalize c1 and class_shell2 = normalize c2 in
+let same_package
+    (info : PackageInfo.t) (c1 : shallow_class) (c2 : shallow_class) : bool =
+  let get_package_for_module info sc_module =
+    match sc_module with
+    | Some (_, name) -> PackageInfo.get_package_for_module info name
+    | None -> None
+  in
+  let p1 = get_package_for_module info c1.sc_module in
+  let p2 = get_package_for_module info c2.sc_module in
+  Option.equal Package.equal p1 p2
+
+let diff_class (info : PackageInfo.t) (c1 : shallow_class) (c2 : shallow_class)
+    : ClassDiff.t =
+  let same_package = same_package info c1 c2 in
+  let class_shell1 = normalize c1 ~same_package
+  and class_shell2 = normalize c2 ~same_package in
   if not (equal_shallow_class class_shell1 class_shell2) then
     Major_change
       (MajorChange.Modified (diff_class_shells class_shell1 class_shell2))
   else
     let mro_inputs_equal = mro_inputs_equal c1 c2 in
-    (* If the old and new classes were identical with positions normalized, but
-       mro_inputs_equal returns false, then we need to invalidate the MRO of
-       this class and its descendants because its positions have changed. *)
-    let mro_positions_changed = not mro_inputs_equal in
     let member_diff = diff_class_members c1 c2 in
     if mro_inputs_equal && ClassDiff.is_empty_member_diff member_diff then
       Unchanged
     else
-      Minor_change { mro_positions_changed; member_diff }
+      Minor_change member_diff

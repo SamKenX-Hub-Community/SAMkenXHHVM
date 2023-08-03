@@ -33,6 +33,10 @@ DEFINE_string(path,
               "/",
               "(HQClient) url-path to send the request to, "
               "or a comma separated list of paths to fetch in parallel");
+DEFINE_string(connect_to_address,
+              "",
+              "(HQClient) Override IP address to connect to instead of "
+              "resolving the host field");
 DEFINE_int32(connect_timeout, 2000, "(HQClient) connect timeout in ms");
 DEFINE_string(httpversion, "1.1", "HTTP version string");
 DEFINE_string(protocol, "", "HQ protocol version e.g. h3-29 or hq-fb-05");
@@ -54,6 +58,7 @@ DEFINE_bool(sequential,
             false,
             "Whether to make requests sequentially or in parallel when "
             "multiple paths are provided");
+DEFINE_uint32(gap_ms, 0, "Time between consecutive requests in milliseconds");
 DEFINE_string(congestion, "cubic", "newreno/cubic/bbr/none");
 DEFINE_int32(conn_flow_control, 1024 * 1024 * 10, "Connection flow control");
 DEFINE_int32(stream_flow_control, 256 * 1024, "Stream flow control");
@@ -101,10 +106,6 @@ DEFINE_bool(migrate_client,
 DEFINE_bool(use_inplace_write,
             false,
             "Transport use inplace packet build and socket writing");
-
-DEFINE_string(ccp_config,
-              "",
-              "Additional args to pass to ccp. Ccp disabled if empty string.");
 
 DEFINE_bool(send_knob_frame,
             false,
@@ -172,8 +173,13 @@ void initializeCommonSettings(HQToolParams& hqParams) {
     auto& clientParams = boost::get<HQToolClientParams>(hqParams.params);
     clientParams.host = FLAGS_host;
     clientParams.port = FLAGS_port;
-    clientParams.remoteAddress =
-        folly::SocketAddress(clientParams.host, clientParams.port, true);
+    if (FLAGS_connect_to_address.empty()) {
+      clientParams.remoteAddress =
+          folly::SocketAddress(clientParams.host, clientParams.port, true);
+    } else {
+      clientParams.remoteAddress = folly::SocketAddress(
+          FLAGS_connect_to_address, clientParams.port, false);
+    }
     if (!FLAGS_local_address.empty()) {
       clientParams.localAddress = folly::SocketAddress();
       clientParams.localAddress->setFromLocalIpPort(FLAGS_local_address);
@@ -224,7 +230,7 @@ void initializeTransportSettings(HQToolParams& hqUberParams) {
   hqParams.transportSettings.numGROBuffers_ = FLAGS_num_gro_buffers;
   hqParams.transportSettings.pacingEnabled = FLAGS_pacing;
   if (hqParams.transportSettings.pacingEnabled) {
-    hqParams.transportSettings.pacingTimerTickInterval =
+    hqParams.transportSettings.pacingTickInterval =
         std::chrono::microseconds(FLAGS_pacing_timer_tick_interval_us);
   }
   hqParams.transportSettings.batchingMode =
@@ -258,9 +264,6 @@ void initializeTransportSettings(HQToolParams& hqUberParams) {
   if (hqUberParams.mode == HQMode::CLIENT) {
     boost::get<HQToolClientParams>(hqUberParams.params).connectTimeout =
         std::chrono::milliseconds(FLAGS_connect_timeout);
-  } else {
-    boost::get<HQToolServerParams>(hqUberParams.params).ccpConfig =
-        FLAGS_ccp_config;
   }
   hqParams.sendKnobFrame = FLAGS_send_knob_frame;
   if (hqParams.sendKnobFrame) {
@@ -276,9 +279,8 @@ void initializeTransportSettings(HQToolParams& hqUberParams) {
 
   if (FLAGS_use_ack_receive_timestamps) {
     hqParams.transportSettings.maybeAckReceiveTimestampsConfigSentToPeer.assign(
-        {.max_receive_timestamps_per_ack =
-             FLAGS_max_ack_receive_timestamps_to_send,
-         .receive_timestamps_exponent = kDefaultReceiveTimestampsExponent});
+        {.maxReceiveTimestampsPerAck = FLAGS_max_ack_receive_timestamps_to_send,
+         .receiveTimestampsExponent = kDefaultReceiveTimestampsExponent});
   }
 } // initializeTransportSettings
 
@@ -317,6 +319,7 @@ void initializeHttpClientSettings(HQToolClientParams& hqParams) {
   hqParams.logResponse = FLAGS_log_response;
   hqParams.logResponseHeaders = FLAGS_log_response_headers;
   hqParams.sendRequestsSequentially = FLAGS_sequential;
+  hqParams.gapBetweenRequests = std::chrono::milliseconds(FLAGS_gap_ms);
 
   hqParams.earlyData = FLAGS_early_data;
   hqParams.migrateClient = FLAGS_migrate_client;

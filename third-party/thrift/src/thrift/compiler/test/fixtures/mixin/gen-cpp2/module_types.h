@@ -9,7 +9,6 @@
 #include <thrift/lib/cpp2/gen/module_types_h.h>
 
 
-#include "thrift/annotation/gen-cpp2/thrift_types.h"
 
 namespace apache {
 namespace thrift {
@@ -124,8 +123,8 @@ class Mixin1 final  {
 
  public:
 
-  Mixin1() {
-  }
+  Mixin1();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   Mixin1(apache::thrift::FragileConstructor, ::std::string field1__arg);
@@ -137,6 +136,9 @@ class Mixin1 final  {
 
   Mixin1& operator=(Mixin1&&) noexcept;
   Mixin1& operator=(const Mixin1& src);
+
+  ~Mixin1();
+
  private:
   ::std::string __fbthrift_field_field1;
  private:
@@ -277,8 +279,8 @@ class Mixin2 final  {
 
  public:
 
-  Mixin2() {
-  }
+  Mixin2();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   Mixin2(apache::thrift::FragileConstructor, ::cpp2::Mixin1 m1__arg, ::std::string field2__arg);
@@ -290,6 +292,9 @@ class Mixin2 final  {
 
   Mixin2& operator=(Mixin2&&) noexcept;
   Mixin2& operator=(const Mixin2& src);
+
+  ~Mixin2();
+
  private:
   ::cpp2::Mixin1 __fbthrift_field_m1;
  private:
@@ -488,8 +493,8 @@ class Mixin3Base final  {
 
  public:
 
-  Mixin3Base() {
-  }
+  Mixin3Base();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   Mixin3Base(apache::thrift::FragileConstructor, ::std::string field3__arg);
@@ -501,6 +506,9 @@ class Mixin3Base final  {
 
   Mixin3Base& operator=(Mixin3Base&&) noexcept;
   Mixin3Base& operator=(const Mixin3Base& src);
+
+  ~Mixin3Base();
+
  private:
   ::std::string __fbthrift_field_field3;
  private:
@@ -643,8 +651,8 @@ class Foo final  {
 
  public:
 
-  Foo() {
-  }
+  Foo();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   Foo(apache::thrift::FragileConstructor, ::std::string field4__arg, ::cpp2::Mixin2 m2__arg, ::cpp2::Mixin3 m3__arg);
@@ -656,6 +664,9 @@ class Foo final  {
 
   Foo& operator=(Foo&&) noexcept;
   Foo& operator=(const Foo& src);
+
+  ~Foo();
+
  private:
   ::std::string __fbthrift_field_field4;
  private:

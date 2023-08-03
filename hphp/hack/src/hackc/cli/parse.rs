@@ -3,28 +3,29 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 
+use std::collections::HashSet;
 use std::io::stdin;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use aast_parser::AastParser;
 use anyhow::Context;
 use anyhow::Result;
 use clap::builder::TypedValueParser;
 use clap::Args;
-use ocamlrep::rc::RcOc;
 use parser_core_types::indexed_source_text::IndexedSourceText;
 use parser_core_types::parser_env::ParserEnv;
 use parser_core_types::source_text::SourceText;
 use rayon::prelude::*;
 use relative_path::Prefix;
 use relative_path::RelativePath;
+use strum::Display;
+use strum::EnumString;
+use strum::EnumVariantNames;
 use strum::VariantNames;
-use strum_macros::Display;
-use strum_macros::EnumString;
-use strum_macros::EnumVariantNames;
 
 #[derive(Args, Clone, Debug)]
 pub struct BenchOpts {
@@ -58,7 +59,7 @@ pub fn run_bench_command(bench_opts: BenchOpts) -> Result<()> {
             let content = std::fs::read(&path)?;
             let env = ParserEnv::default();
             let filepath = RelativePath::make(Prefix::Dummy, path);
-            let source_text = SourceText::make(RcOc::new(filepath.clone()), &content);
+            let source_text = SourceText::make(Arc::new(filepath.clone()), &content);
             match bench_opts.parser {
                 ParserKind::PositionedWithFullTrivia => {
                     let stdout = std::io::stdout();
@@ -86,7 +87,7 @@ pub fn run_bench_command(bench_opts: BenchOpts) -> Result<()> {
                 ParserKind::Aast => {
                     let indexed_source_text = IndexedSourceText::new(source_text);
                     let env = aast_parser::rust_aast_parser_types::Env::default();
-                    let _ = AastParser::from_text(&env, &indexed_source_text);
+                    let _ = AastParser::from_text(&env, &indexed_source_text, HashSet::default());
                 }
             }
             Ok(())
@@ -115,7 +116,7 @@ fn parse(path: PathBuf, w: &mut impl Write, pretty: bool) -> Result<()> {
         ..Default::default()
     };
     let filepath = RelativePath::make(Prefix::Dummy, path);
-    let source_text = SourceText::make(RcOc::new(filepath), &source_text);
+    let source_text = SourceText::make(Arc::new(filepath), &source_text);
     let indexed_source = IndexedSourceText::new(source_text);
     let arena = bumpalo::Bump::new();
     let json = if pretty {

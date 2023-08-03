@@ -176,28 +176,6 @@ function subtypes(
 )[]: vec<string>;
 
 /**
- * Return all types which transitively extend, implement, or use the given
- * base type.
- *
- * The 'kind' and 'derive_kind' filters passed in determine which relationships
- * and types we look at while traversing the inheritance graph. So if you
- * filter traits out, we'll exclude classes which are only related because
- * they `use` a trait which `implements` the interface you passed in.
- *
- * The 'attributes' filters passed in will be applied to the final list of
- * transitive subtypes. So if you look for types with the `<<Oncalls('team')>>`
- * attribute, we'll only filter the final list of subtypes, instead of ignoring
- * all types that don't have the given attribute.
- *
- * Throws InvalidOperationException if Facts is not enabled.
- */
-<<__Native>>
-function transitive_subtypes(
-  /* classname<T> */ string $base_type,
-  /* ?DeriveFilters */ ?darray<string, dynamic> $filters = null,
-)[]: vec<(string, string, TypeKind)> /* vec<(classname<T>, string, TypeKind)> */;
-
-/**
  * Get all types which the given type extends, implements, or uses.
  *
  * Throws InvalidOperationException if Facts is not enabled.
@@ -249,6 +227,20 @@ function methods_with_attribute(
 <<__Native>>
 function files_with_attribute(
   /* classname<\HH\FileAttribute> */ string $attribute,
+)[]: vec<string>;
+
+/**
+ * Get all files matching the given filters.
+ * Only bool, int, string, dict, vec, and keyset are supported
+ * as value types to query for. Unsupported types will be
+ * coerced to null.
+ *
+ * Throws InvalidOperationException if Facts is not enabled.
+ */
+<<__Native>>
+function files_with_attribute_and_any_value(
+  /* classname<\HH\FileAttribute> */ string $attribute,
+  dynamic $value,
 )[]: vec<string>;
 
 /**
@@ -350,71 +342,5 @@ function file_attribute_parameters(
   string $file,
   /* classname<\HH\FileAttribute> */ string $attribute,
 )[]: vec<dynamic>;
-
-/**
- * Return all symbols defined in the repo, as a dict mapping each symbol
- * name to the path where the symbol lives in the repo.
- *
- * If a symbol is defined in more than one path, one of the paths defining the
- * symbol will be chosen in an unspecified manner.
- */
-<<__Native>>
-function all_modules()[]: dict<string, string>;
-<<__Native>>
-function all_types()[]: dict<classname<nonnull>, string>;
-<<__Native>>
-function all_functions()[]: dict<string, string>;
-<<__Native>>
-function all_constants()[]: dict<string, string>;
-<<__Native>>
-function all_type_aliases()[]: dict<string, string>;
-
-type AttributeData = shape(
-  'name' => string,
-  'args' => vec<?arraykey>,
-);
-
-type MethodData = shape(
-  'name' => string,
-  'attributes' => vec<AttributeData>,
-);
-
-type TypeData = shape(
-  'name' => string,
-  'kind' => TypeKind,
-  'flags' => int,
-  'baseTypes' => vec<string>,
-  'requireClass' => vec<string>,
-  'requireExtends' => vec<string>,
-  'requireImplements' => vec<string>,
-  'attributes' => vec<AttributeData>,
-  'methods' => vec<MethodData>,
-);
-
-type ModuleData = shape(
-  'name' => string,
-);
-
-type FileData = shape(
-  'modules' => vec<ModuleData>,
-  'types' => vec<TypeData>,
-  'functions' => vec<string>,
-  'constants' => vec<string>,
-  'attributes' => vec<AttributeData>,
-  'sha1sum' => string,
-);
-
-/**
- * For each path/hash pair in `$pathsAndHashes`, parse the file on the
- * filesystem, or lookup the file with the given SHA1 hash, and return a dict
- * mapping each path to its contents.
- *
- * Each given path should be relative to the given `$root`.
- */
-<<__Native>>
-function extract(
-  vec<(string, ?string)> $pathsAndHashes,
-  ?string $root = null,
-): dict<string, ?FileData>;
 
 } // namespace HH\Facts

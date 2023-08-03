@@ -43,6 +43,10 @@ let add_indirection_between () =
   [
     ("typing_defs_core", "ConstraintType", "ConstraintType_");
     ("aast_defs", "Hint", "Hint_");
+    ("patt_locl_ty", "PattLoclTy", "Shape");
+    ("patt_locl_ty", "PattLoclTy", "Params");
+    ("patt_locl_ty", "ShapeField", "PattLoclTy");
+    ("patt_error", "PattError", "Secondary");
   ]
   @
   match Configuration.mode () with
@@ -95,11 +99,12 @@ let indirection_types = SSet.of_list ["Vec"]
 
 (* When oxidizing by-reference, do not add a lifetime parameter to these builtins. *)
 let owned_builtins =
-  SSet.of_list (["Option"; "std::cell::RefCell"; "std::cell::Cell"] @ primitives)
+  SSet.of_list
+    (["Option"; "std::cell::RefCell"; "std::cell::Cell"; "Int64"] @ primitives)
 
 let is_owned_builtin = SSet.mem owned_builtins
 
-let rec core_type ?(seen_indirection = false) ct : Rust_type.t =
+let rec core_type ?(seen_indirection = false) (ct : core_type) : Rust_type.t =
   let (is_by_box, is_by_ref) =
     match Configuration.mode () with
     | Configuration.ByBox -> (true, false)
@@ -126,10 +131,14 @@ let rec core_type ?(seen_indirection = false) ct : Rust_type.t =
   | Ptyp_constr ({ txt = Lident "t_byte_string"; _ }, []) when is_by_ref ->
     rust_ref (lifetime "a") (rust_simple_type "bstr::BStr")
   | Ptyp_constr ({ txt = Ldot (Lident "Path", "t"); _ }, []) ->
+    (* Path.t *)
     if is_by_ref then
       rust_ref (lifetime "a") (rust_simple_type "std::path::Path")
     else
       rust_simple_type "std::path::PathBuf"
+  | Ptyp_constr ({ txt = Ldot (Lident "Hash", "hash_value"); _ }, []) ->
+    (* Hash.hash_value *)
+    rust_type "isize" [] []
   | Ptyp_constr (id, args) ->
     let id =
       match id.txt with
@@ -144,12 +153,13 @@ let rec core_type ?(seen_indirection = false) ct : Rust_type.t =
         | Configuration.ByBox -> "std::cell::RefCell"
       end
       | Ldot (Lident "Int64", "t") ->
-        raise (Skip_type_decl "cannot convert type Int64.t")
+        Output.add_extern_use "ocamlrep_caml_builtins::Int64";
+        "Int64"
       | id -> Convert_longident.longident_to_string id
     in
     let id =
       if String.equal id "T" then
-        self ()
+        convert_type_name @@ curr_module_name ()
       else
         id
     in
@@ -183,7 +193,7 @@ let rec core_type ?(seen_indirection = false) ct : Rust_type.t =
     let args = List.map args ~f:(core_type ~seen_indirection) in
 
     if should_add_rcoc id then
-      rust_type "ocamlrep::rc::RcOc" [] [rust_type id lifetime args]
+      rust_type "std::sync::Arc" [] [rust_type id lifetime args]
     (* Direct or indirect recursion *)
     else if should_add_indirection ~seen_indirection (rust_type id [] args) then
       match Configuration.mode () with
@@ -209,3 +219,7 @@ let rec core_type ?(seen_indirection = false) ct : Rust_type.t =
 
 and tuple ?(seen_indirection = false) types =
   List.map ~f:(core_type ~seen_indirection) types |> rust_type "()" []
+
+let core_type = core_type ~seen_indirection:false
+
+let is_primitive ty = is_primitive ty []

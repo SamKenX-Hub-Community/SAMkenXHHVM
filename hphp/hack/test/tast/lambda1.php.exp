@@ -2,7 +2,7 @@
     { fd_namespace =
       { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
         ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-        ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+        ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
       fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([2:10-22], "\\test_lambda1");
       fd_fun =
       { f_span = [2:1-7:2]; f_readonly_this = None; f_annotation = (); 
@@ -13,18 +13,18 @@
           [([3:3-14], (Expr ((string), [3:3-13], (Binop { bop = (Eq None); lhs = ((string), [3:3-5], (Lvar ([3:3-5], $s))); rhs = ((string), [3:8-13], (String "foo")) }))));
             ([4:3-42],
              (Expr
-                (((function((dynamic | ?(bool | float | resource | arraykey | HH\FormatString<nothing>)) $n): string)), [4:3-41],
+                (((function(~?(bool | float | resource | arraykey | HH\FormatString<nothing>) $n): string)), [4:3-41],
                  (Binop
-                    { bop = (Eq None); lhs = (((function((dynamic | ?(bool | float | resource | arraykey | HH\FormatString<nothing>)) $n): string)), [4:3-5], (Lvar ([4:3-5], $f)));
+                    { bop = (Eq None); lhs = (((function(~?(bool | float | resource | arraykey | HH\FormatString<nothing>) $n): string)), [4:3-5], (Lvar ([4:3-5], $f)));
                       rhs =
-                      (((function((dynamic | ?(bool | float | resource | arraykey | HH\FormatString<nothing>)) $n): string)), [4:8-41],
+                      (((function(~?(bool | float | resource | arraykey | HH\FormatString<nothing>) $n): string)), [4:8-41],
                        (Lfun (
                           { f_span = [4:8-41]; f_readonly_this = None; 
                             f_annotation = (); f_readonly_ret = None; 
                             f_ret = ((string), None);
                             f_params =
-                            [{ param_annotation = ((dynamic | ?(bool | float | resource | arraykey | HH\FormatString<nothing>)));
-                               param_type_hint = (((dynamic | ?(bool | float | resource | arraykey | HH\FormatString<nothing>))), None); 
+                            [{ param_annotation = (~?(bool | float | resource | arraykey | HH\FormatString<nothing>));
+                               param_type_hint = ((~?(bool | float | resource | arraykey | HH\FormatString<nothing>)), None); 
                                param_is_variadic = false; param_pos = [4:8-10]; 
                                param_name = "$n"; param_expr = None; 
                                param_readonly = None; param_callconv = Pnormal; 
@@ -41,8 +41,8 @@
                                                lhs =
                                                ((string), [4:24-31],
                                                 (Binop
-                                                   { bop = Dot; lhs = (((dynamic | ?(bool | float | resource | arraykey | HH\FormatString<nothing>))), [4:24-26], (Lvar ([4:24-26], $n)));
-                                                     rhs = ((string), [4:29-31], (Lvar ([4:29-31], $s))) }));
+                                                   { bop = Dot; lhs = ((~?(bool | float | resource | arraykey | HH\FormatString<nothing>)), [4:24-26], (Lvar ([4:24-26], $n)));
+                                                     rhs = ((~string), [4:29-31], (Lvar ([4:29-31], $s))) }));
                                                rhs = ((string), [4:34-38], (String "\\n")) })))))
                                 ]
                               };
@@ -57,8 +57,10 @@
                     { bop = (Eq None); lhs = ((string), [5:3-5], (Lvar ([5:3-5], $x)));
                       rhs =
                       ((string), [5:8-13],
-                       (Call ((((function((dynamic | ?(bool | float | resource | arraykey | HH\FormatString<nothing>)) $n): string)), [5:8-10], (Lvar ([5:8-10], $f))), 
-                          [], [(Pnormal, ((int), [5:11-12], (Int "4")))], None)))
+                       (Call
+                          { func = (((function(~?(bool | float | resource | arraykey | HH\FormatString<nothing>) $n): string)), [5:8-10], (Lvar ([5:8-10], $f))); 
+                            targs = []; args = [(Pnormal, ((int), [5:11-12], (Int "4")))]; 
+                            unpacked_arg = None }))
                       }))));
             ([6:3-18],
              (Expr
@@ -67,11 +69,13 @@
                     { bop = (Eq None); lhs = ((string), [6:3-5], (Lvar ([6:3-5], $y)));
                       rhs =
                       ((string), [6:8-17],
-                       (Call ((((function((dynamic | ?(bool | float | resource | arraykey | HH\FormatString<nothing>)) $n): string)), [6:8-10], (Lvar ([6:8-10], $f))), 
-                          [], [(Pnormal, ((string), [6:11-16], (String "bar")))], None)))
+                       (Call
+                          { func = (((function(~?(bool | float | resource | arraykey | HH\FormatString<nothing>) $n): string)), [6:8-10], (Lvar ([6:8-10], $f))); 
+                            targs = []; args = [(Pnormal, ((string), [6:11-16], (String "bar")))]; 
+                            unpacked_arg = None }))
                       }))))
             ]
           };
-        f_fun_kind = FSync; f_user_attributes = []; f_external = false; 
-        f_doc_comment = None };
+        f_fun_kind = FSync; f_user_attributes = [{ ua_name = ([2:10-22], "__SupportDynamicType"); ua_params = [] }]; 
+        f_external = false; f_doc_comment = None };
       fd_internal = false; fd_module = None; fd_tparams = []; fd_where_constraints = [] })

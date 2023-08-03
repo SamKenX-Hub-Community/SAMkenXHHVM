@@ -26,7 +26,7 @@
 
 #include "folly/Random.h"
 
-#ifdef FACEBOOK
+#ifdef HHVM_FACEBOOK
 #include "common/base/BuildInfo.h"
 #include "common/fbwhoami/FbWhoAmI.h"
 #endif
@@ -108,7 +108,7 @@ std::tuple<bool, size_t, size_t, size_t> shouldRun(folly::StringPiece url) {
 void setCommonFields(StructuredLogEntry& entry) {
   static auto const values = [&] {
     hphp_fast_string_map<std::string> v;
-#ifdef FACEBOOK
+#ifdef HHVM_FACEBOOK
     v["build_compiler"] = BuildInfo_kCompiler;
     v["build_mode"] = BuildInfo_kBuildMode;
     v["server_type"] = facebook::FbWhoAmI::getServerTypeArch();
@@ -139,7 +139,8 @@ std::unique_ptr<RequestImplFactory> s_factory;
 // Start a request, returning a new RequestState, or nullptr if we
 // determined we will not trace this request.
 RequestState* startRequestImpl(folly::StringPiece name,
-                               folly::StringPiece url) {
+                               folly::StringPiece url,
+                               folly::StringPiece group) {
   // Request should not be active:
   assertx(tl_active.isNull());
   auto const counts = shouldRun(url);
@@ -157,6 +158,7 @@ RequestState* startRequestImpl(folly::StringPiece name,
   active->m_perURLRequestCount = std::get<2>(counts);
   active->m_sampleRate = std::get<3>(counts);
   active->m_blocks.emplace_back();
+  active->m_requestGroup = group;
   auto& block = active->m_blocks.back();
   block.m_name = name.toString();
   block.m_start = Clock::now();
@@ -302,6 +304,10 @@ void stopRequest() {
 
     for (auto const& point : kv.second.m_points) {
       entry.setInt(point.first, point.second);
+    }
+
+    if (!active.m_requestGroup.empty()) {
+      entry.setStr("request_group", active.m_requestGroup);
     }
 
     // Add the fields which don't change and send the entry out.

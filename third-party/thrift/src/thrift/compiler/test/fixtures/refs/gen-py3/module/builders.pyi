@@ -10,8 +10,6 @@ import typing as _typing
 import folly.iobuf as _fbthrift_iobuf
 import thrift.py3.builder
 
-import facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
-import facebook.thrift.annotation.cpp.builders as _facebook_thrift_annotation_cpp_builders
 
 import module.types as _module_types
 
@@ -19,6 +17,12 @@ import module.types as _module_types
 class MyUnion_Builder(thrift.py3.builder.StructBuilder):
     anInteger: _typing.Optional[int]
     aString: _typing.Optional[str]
+
+    def __iter__(self) -> _typing.Iterator[_typing.Tuple[str, _typing.Any]]: ...
+
+
+class NonTriviallyDestructibleUnion_Builder(thrift.py3.builder.StructBuilder):
+    int_field: _typing.Optional[int]
 
     def __iter__(self) -> _typing.Iterator[_typing.Tuple[str, _typing.Any]]: ...
 
@@ -102,8 +106,13 @@ class StructWithBox_Builder(thrift.py3.builder.StructBuilder):
 class StructWithInternBox_Builder(thrift.py3.builder.StructBuilder):
     field1: _typing.Any
     field2: _typing.Any
-    field3: _typing.Any
-    field4: _typing.Any
+
+    def __iter__(self) -> _typing.Iterator[_typing.Tuple[str, _typing.Any]]: ...
+
+
+class StructWithTerseInternBox_Builder(thrift.py3.builder.StructBuilder):
+    field1: _typing.Any
+    field2: _typing.Any
 
     def __iter__(self) -> _typing.Iterator[_typing.Tuple[str, _typing.Any]]: ...
 
@@ -111,8 +120,13 @@ class StructWithInternBox_Builder(thrift.py3.builder.StructBuilder):
 class AdaptedStructWithInternBox_Builder(thrift.py3.builder.StructBuilder):
     field1: _typing.Any
     field2: _typing.Any
-    field3: _typing.Any
-    field4: _typing.Any
+
+    def __iter__(self) -> _typing.Iterator[_typing.Tuple[str, _typing.Any]]: ...
+
+
+class AdaptedStructWithTerseInternBox_Builder(thrift.py3.builder.StructBuilder):
+    field1: _typing.Any
+    field2: _typing.Any
 
     def __iter__(self) -> _typing.Iterator[_typing.Tuple[str, _typing.Any]]: ...
 

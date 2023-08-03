@@ -30,8 +30,9 @@ namespace py thrift.annotation.thrift
 struct Beta {}
 
 /**
- * Indicates a definition/feature should only be used with permission, may only
- * work in specific contexts, and may change in incompatible ways without notice.
+ * Indicates a definition/feature should only be used with permission, may
+ * only work in specific contexts, and may change in incompatible ways without
+ * notice.
  */
 @scope.Program
 @scope.Definition
@@ -60,7 +61,8 @@ struct Deprecated {
 }
 
 /**
- * Annotate a thrift structured or enum to indicate if ids or values should not be used.
+ * Annotate a thrift structured or enum to indicate if ids or values should not
+ * be used.
  *
  * For example, you may want to mark ids as deprecated, or these ids
  * might be reserved for other use cases or annotations.
@@ -85,23 +87,11 @@ struct ReserveIds {
    * Represents ranges of ids that cannot be used.
    *
    * Each (key: value) pair represents the half-open range `[key, value)`,
-   * where `key` is included and `value` is not. For example the map
-   * `{10: 15, 20: 30}` represents the union of id/value ranges `[10, 15)` and `[20, 30)`
+   * where `key` is included and `value` is not. For example, the map
+   * `{10: 15, 20: 30}` represents the union of id/value ranges `[10, 15)` and
+   * `[20, 30)`.
    */
   2: map<i32, i32> id_ranges;
-}
-
-/**
- * Indicates  a definition/feature will be removed in the next release.
- *
- * Pleased migrate off of all @Legacy as soon as possible.
- */
-// TODO(afuller): Add a linter to produce errors when annotated definitions
-// are used.
-@Deprecated // Legacy implies deprecated.
-@scope.Transitive
-struct Legacy {
-  1: string message;
 }
 
 /**
@@ -140,7 +130,7 @@ struct NoBeta {}
 struct Released {}
 
 /**
- * Disables @Legacy features.
+ * Disables legacy features.
  */
 // TODO(ytj): Everyone should be able to test without legacy features. Fix
 // compatibility with legacy reflection and move to @Beta.
@@ -153,8 +143,8 @@ struct NoLegacy {}
  * Disables @Deprecated features.
  *
  * Should only be enabled in `test` versions, as deprecated implies removing
- * the feature will break current usage (otherwise it would be @Legacy or
- * deleted)
+ * the feature will break current usage (otherwise it would be legacy or
+ * deleted).
  */
 @NoLegacy // Implies NoLegacy
 @Beta // Everyone should be able to test without deprecated features.
@@ -196,23 +186,6 @@ struct Box {}
 struct Mixin {}
 
 /**
- * Indicates that a boolean type **may** be 'packed' in memory.
- *
- * This allows an implementation to not allocate a full native 'bool' type, and
- * instead use a single 'isset' bit to store the value.
- *
- * All fields that use such a type **must** be 'terse'.
- */
-// TODO(afuller): Instead of using custom validators consider:
-// - Updating scope annotations to restrict to specific types (in this case bool)
-// - Updating field scope annotations to restrict to specific field types (in this case terse)
-// and/or allow @thrift.TerseWrites to be added to typedefs, and add it transitively to this annotation.
-@scope.Field // TODO(afuller): Validate field is terse and has a boolean type.
-@scope.Typedef // TODO(afuller): Validate the type is boolean.
-@Experimental // TODO(afuller): Pack and/or remove direct access to bool for such fields in all languages.
-struct Bit {}
-
-/**
  * Option to serialize thrift struct in ascending field id order.
  *
  * This can potentially make serialized data size smaller in compact protocol,
@@ -228,66 +201,6 @@ struct SerializeInFieldIdOrder {}
 @scope.Enum
 @Experimental // TODO: Support in C++, Python, Java.
 struct BitmaskEnum {}
-
-/**
- * Adds a default enum value (0), with the given name, if one is not
- * already defined.
- *
- * All v1+ enums must have an explicitly defined default value (0).
- * This annotation automatically adds such a value if not already present.
- */
-// TODO(afuller): Add validation which produces an error when a @NoLegacy enum
-// doesn't have a default value defined.
-// TODO(afuller): Consider updating code generators to use the same name
-// they use for empty/nil/null in unions, when a zero value is not specified.
-@scope.Enum
-@scope.Program
-@Beta
-struct GenDefaultEnumValue {
-  /**
-   * The name to use for the generated enum value.
-   *
-   * This intentionally does **not** use the most common 'zero' enum value name,
-   * 'Default', by default; as, defining a `Default = 0` enum value explicitly
-   * is a useful means of self-documenting that setting an explicit value is
-   * never required. In which case, it is part of the API, and should not be
-   * removed in favor of an implicitly generated value.
-   *
-   * On the other hand, 'Unspecified' clearly indicates that the requirements
-   * are not intrinsic to the enum. In which case, the relevant documentation
-   * should be consulted (e.g. the doc strings on the function or field).
-   */
-  1: string name = "Unspecified";
-}
-
-/**
- * Adds a typedef of {enum}Set that is sutable for storing a `packed` set of
- * values for the annotated enum.
- *
- * Any enum with this annotation must only have values between 1 and 32 inclusive.
- *
- * For example:
- *   @thrift.GenEnumSet
- *   enum Flag {
- *     Option1 = 1,
- *     ...
- *   }
- *
- * Generates the equivalent of:
- *   @cpp.Adapter("::apache::thrift::EnumSetAdapter<::ns::Flag>")
- *   ...
- *   typedef i32 FlagSet
- *
- * `FlagSet` can then be used like a normal typedef.
- */
-// TODO(afuller): Implement
-@scope.Enum
-@BitmaskEnum
-@scope.Transitive
-struct GenEnumSet {
-  /** If a custom name is not provided, `{EnumName}Set` is used. */
-  1: string name;
-}
 
 ////
 // Thrift version annotations.
@@ -307,7 +220,6 @@ struct v1 {}
  * released Thrift features.
  */
 @v1 // All v1 features.
-@GenDefaultEnumValue
 // @NoLegacy // Disables features that will be removed.
 @Beta // All uses of v1beta inherit `@Beta`.
 // @TerseWrite

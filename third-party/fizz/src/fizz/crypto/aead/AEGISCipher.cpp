@@ -7,116 +7,241 @@
  */
 
 #include <fizz/crypto/aead/AEGISCipher.h>
+#include <fizz/fizz-config.h>
+#if FIZZ_BUILD_AEGIS
+
+#include <fizz/crypto/aead/CryptoUtil.h>
 #include <folly/lang/CheckedMath.h>
-#include <sodium.h>
-#include <sodium/crypto_aead_aegis128l.h>
 #include <functional>
 
 namespace fizz {
 
+static_assert(
+    fizz::AEGISCipher::kMaxIVLength == fizz_aegis256_NPUBBYTES,
+    "Invalid AEGISCipher::kMaxIVLength");
+
 namespace {
 
 std::unique_ptr<folly::IOBuf> aegisEncrypt(
+    AEGISCipher::InitStateFn initstate,
+    AEGISCipher::AadUpdateFn aadUpdate,
+    AEGISCipher::AadFinalFn aadFinal,
+    AEGISCipher::EncryptUpdateFn encryptUpdate,
+    AEGISCipher::EncryptFinalFn encryptFinal,
     std::unique_ptr<folly::IOBuf>&& plaintext,
     const folly::IOBuf* associatedData,
     folly::ByteRange iv,
     folly::ByteRange key,
     size_t tagLen,
     size_t headroom) {
-  folly::ByteRange input = plaintext->coalesce();
+  AEGISCipher::AegisEVPCtx ctx;
+  if (initstate(key.data(), iv.data(), &ctx) != 0) {
+    throw std::runtime_error("Initiate encryption state error");
+  }
 
+  auto inputLength = plaintext->computeChainDataLength();
   std::unique_ptr<folly::IOBuf> output;
+  folly::IOBuf* input;
   // create enough to also fit the tag and headroom
   size_t totalSize{0};
-  if (!folly::checked_add<size_t>(&totalSize, headroom, input.size(), tagLen)) {
+  if (!folly::checked_add<size_t>(&totalSize, headroom, inputLength, tagLen)) {
     throw std::overflow_error("Output buffer size");
   }
   output = folly::IOBuf::create(totalSize);
   output->advance(headroom);
-  output->append(input.size() + tagLen);
+  output->append(inputLength + tagLen);
+  input = plaintext.get();
 
-  const unsigned char* ad;
-  unsigned long long adlen;
   if (associatedData) {
-    if (associatedData->isChained()) {
-      throw std::overflow_error("associated data is chained or null");
+    for (auto current : *associatedData) {
+      if (current.size() > std::numeric_limits<int>::max()) {
+        throw std::runtime_error("too much associated data");
+      }
+      if (aadUpdate(current.data(), current.size(), &ctx) != 0) {
+        throw std::runtime_error("Encryption aad update error");
+      }
     }
-    ad = associatedData->data();
-    adlen = associatedData->length();
-  } else {
-    ad = nullptr;
-    adlen = 0;
+    if (aadFinal(&ctx) != 0) {
+      throw std::runtime_error("Encryption aad final error");
+    }
   }
 
-  unsigned long long ciphertextLength;
-  int ret = crypto_aead_aegis128l_encrypt(
-      output->writableData(),
-      &ciphertextLength,
-      input.data(),
-      input.size(),
-      ad,
-      adlen,
-      nullptr,
-      iv.data(),
-      key.data());
-  if (ret != 0 || ciphertextLength != (input.size() + tagLen)) {
+  unsigned long long writtenlen = 0;
+  unsigned long long totalWritten = 0;
+  for (auto current : *input) {
+    if (current.size() > std::numeric_limits<int>::max()) {
+      throw std::runtime_error("too much plaintext data");
+    }
+    if (encryptUpdate(
+            output->writableData() + totalWritten,
+            &writtenlen,
+            current.data(),
+            current.size(),
+            &ctx) != 0) {
+      throw std::runtime_error("Encryption update error");
+    }
+    totalWritten += writtenlen;
+  }
+  if (encryptFinal(
+          output->writableData() + totalWritten,
+          &writtenlen,
+          output->writableData() + inputLength,
+          &ctx) != 0 ||
+      totalWritten + writtenlen != (inputLength + tagLen)) {
     throw std::runtime_error("Encryption error");
-  }
-  return output;
-}
-
-folly::Optional<std::unique_ptr<folly::IOBuf>> aegisDecrypt(
-    std::unique_ptr<folly::IOBuf>&& ciphertext,
-    const folly::IOBuf* associatedData,
-    folly::ByteRange iv,
-    size_t tagLen,
-    folly::ByteRange key) {
-  folly::ByteRange input = ciphertext->coalesce();
-
-  std::unique_ptr<folly::IOBuf> output;
-  output = folly::IOBuf::create(input.size() - tagLen);
-  output->append(input.size() - tagLen);
-
-  const unsigned char* ad;
-  unsigned long long adlen;
-  if (associatedData) {
-    if (associatedData->isChained()) {
-      throw std::overflow_error("associated data is chained or null");
-    }
-    ad = associatedData->data();
-    adlen = associatedData->length();
-  } else {
-    ad = nullptr;
-    adlen = 0;
-  }
-
-  unsigned long long decryptedLength;
-  if (crypto_aead_aegis128l_decrypt(
-          output->writableData(),
-          &decryptedLength,
-          nullptr,
-          input.data(),
-          input.size(),
-          ad,
-          adlen,
-          iv.data(),
-          key.data()) != 0) {
-    return folly::none;
   }
   return output;
 }
 
 } // namespace
 
-std::unique_ptr<Aead> AEGISCipher::makeCipher() {
-  return std::unique_ptr<Aead>(new AEGISCipher(
-      crypto_aead_aegis128l_KEYBYTES,
-      crypto_aead_aegis128l_NPUBBYTES,
-      crypto_aead_aegis128l_ABYTES));
+folly::Optional<std::unique_ptr<folly::IOBuf>> AEGISCipher::doDecrypt(
+    std::unique_ptr<folly::IOBuf>&& ciphertext,
+    const folly::IOBuf* associatedData,
+    folly::ByteRange iv,
+    folly::ByteRange key,
+    folly::MutableByteRange tagOut,
+    bool inPlace) const {
+  AegisEVPCtx ctx;
+  if (initstate_(key.data(), iv.data(), &ctx) != 0) {
+    throw std::runtime_error("Initiate encryption state error");
+  }
+
+  auto inputLength = ciphertext->computeChainDataLength();
+  folly::IOBuf* input;
+  std::unique_ptr<folly::IOBuf> output;
+  if (!inPlace) {
+    output = folly::IOBuf::create(inputLength);
+    output->append(inputLength);
+    input = ciphertext.get();
+  } else {
+    output = std::move(ciphertext);
+    input = output.get();
+  }
+
+  if (associatedData) {
+    for (auto current : *associatedData) {
+      if (current.size() > std::numeric_limits<int>::max()) {
+        throw std::runtime_error("too much associated data");
+      }
+      if (aadUpdate_(current.data(), current.size(), &ctx) != 0) {
+        throw std::runtime_error("Decryption aad update error");
+      }
+    }
+    if (aadFinal_(&ctx) != 0) {
+      throw std::runtime_error("Decryption aad final error");
+    }
+  }
+  struct Impl {
+    const AEGISCipher& self;
+    AEGISCipher::AegisEVPCtx& ctx;
+    const unsigned char* expectedTag{nullptr};
+
+    Impl(const AEGISCipher& s, AegisEVPCtx& c) : self(s), ctx(c) {}
+    bool decryptUpdate(
+        uint8_t* plain,
+        const uint8_t* cipher,
+        size_t len,
+        int* outLen) {
+      unsigned long long tempOutLen;
+      auto ret = self.decryptUpdate_(plain, &tempOutLen, cipher, len, &ctx);
+      *outLen = static_cast<int>(tempOutLen);
+      return ret == 0;
+    }
+    bool setExpectedTag(int /*tagSize*/, const unsigned char* tag) {
+      this->expectedTag = tag;
+      return true;
+    }
+    bool decryptFinal(unsigned char* outm, int* outLen) {
+      unsigned long long tempOutLen;
+      auto ret = self.decryptFinal_(outm, &tempOutLen, expectedTag, &ctx);
+      *outLen = static_cast<int>(tempOutLen);
+      return ret == 0;
+    }
+  };
+
+  bool decrypted;
+  if (stateSize_ == AEGISCipher::kAEGIS28LStateSize) {
+    decrypted = decFuncBlocks<AEGISCipher::kAEGIS28LStateSize>(
+        Impl(*this, ctx), *input, *output, tagOut);
+  } else if (stateSize_ == AEGISCipher::kAEGIS256StateSize) {
+    decrypted = decFuncBlocks<AEGISCipher::kAEGIS256StateSize>(
+        Impl(*this, ctx), *input, *output, tagOut);
+  } else {
+    throw std::runtime_error("Unsupported AEGIS state size");
+  }
+  if (!decrypted) {
+    return folly::none;
+  }
+  return output;
 }
 
-AEGISCipher::AEGISCipher(size_t keyLength, size_t ivLength, size_t tagLength)
-    : keyLength_(keyLength), ivLength_(ivLength), tagLength_(tagLength) {}
+AEGISCipher::AEGISCipher(
+    InitStateFn init,
+    AadUpdateFn aadUpdate,
+    AadFinalFn addFinal,
+    EncryptUpdateFn encryptUpdate,
+    EncryptFinalFn encryptFinal,
+    DecryptUpdateFn decryptUpdate,
+    DecryptFinalFn decryptFinal,
+    size_t keyLength,
+    size_t ivLength,
+    size_t tagLength,
+    size_t stateSize)
+    : initstate_(init),
+      aadUpdate_(aadUpdate),
+      aadFinal_(addFinal),
+      encryptUpdate_(encryptUpdate),
+      encryptFinal_(encryptFinal),
+      decryptUpdate_(decryptUpdate),
+      decryptFinal_(decryptFinal),
+      keyLength_(keyLength),
+      ivLength_(ivLength),
+      tagLength_(tagLength),
+      stateSize_(stateSize) {
+  static int dummy = []() -> int {
+    // The application should be doing this, sodium_init is safe to call
+    // multiple times, and `fizz_aegis*_pick_best_implementation` relies on
+    // sodium's cpu feature vector being populated (which is done in init)
+    if (sodium_init() == -1) {
+      throw std::runtime_error("failed to initialize libsodium");
+    }
+    (void)fizz_aegis128l_pick_best_implementation();
+    (void)fizz_aegis256_pick_best_implementation();
+    return 0;
+  }();
+  (void)dummy;
+}
+
+std::unique_ptr<Aead> AEGISCipher::make128L() {
+  return std::unique_ptr<Aead>(new AEGISCipher(
+      aegis128l_init_state,
+      aegis128l_aad_update,
+      aegis128l_aad_final,
+      aegis128l_encrypt_update,
+      aegis128l_encrypt_final,
+      aegis128l_decrypt_update,
+      aegis128l_decrypt_final,
+      fizz_aegis128l_KEYBYTES,
+      fizz_aegis128l_NPUBBYTES,
+      fizz_aegis128l_ABYTES,
+      kAEGIS28LStateSize));
+}
+
+std::unique_ptr<Aead> AEGISCipher::make256() {
+  return std::unique_ptr<Aead>(new AEGISCipher(
+      aegis256_init_state,
+      aegis256_aad_update,
+      aegis256_aad_final,
+      aegis256_encrypt_update,
+      aegis256_encrypt_final,
+      aegis256_decrypt_update,
+      aegis256_decrypt_final,
+      fizz_aegis256_KEYBYTES,
+      fizz_aegis256_NPUBBYTES,
+      fizz_aegis256_ABYTES,
+      kAEGIS256StateSize));
+}
 
 void AEGISCipher::setKey(TrafficKey trafficKey) {
   trafficKey.key->coalesce();
@@ -145,7 +270,8 @@ std::unique_ptr<folly::IOBuf> AEGISCipher::encrypt(
     const folly::IOBuf* associatedData,
     uint64_t seqNum,
     Aead::AeadOptions options) const {
-  auto iv = createIV(seqNum);
+  auto iv = ::fizz::createIV<AEGISCipher::kMaxIVLength>(
+      seqNum, ivLength_, trafficIvKey_);
   return encrypt(
       std::move(plaintext),
       associatedData,
@@ -159,6 +285,11 @@ std::unique_ptr<folly::IOBuf> AEGISCipher::encrypt(
     folly::ByteRange nonce,
     Aead::AeadOptions /*options*/) const {
   return aegisEncrypt(
+      initstate_,
+      aadUpdate_,
+      aadFinal_,
+      encryptUpdate_,
+      encryptFinal_,
       std::move(plaintext),
       associatedData,
       nonce,
@@ -180,7 +311,8 @@ folly::Optional<std::unique_ptr<folly::IOBuf>> AEGISCipher::tryDecrypt(
     const folly::IOBuf* associatedData,
     uint64_t seqNum,
     Aead::AeadOptions options) const {
-  auto iv = createIV(seqNum);
+  auto iv = ::fizz::createIV<AEGISCipher::kMaxIVLength>(
+      seqNum, ivLength_, trafficIvKey_);
   return tryDecrypt(
       std::move(ciphertext),
       associatedData,
@@ -192,24 +324,51 @@ folly::Optional<std::unique_ptr<folly::IOBuf>> AEGISCipher::tryDecrypt(
     std::unique_ptr<folly::IOBuf>&& ciphertext,
     const folly::IOBuf* associatedData,
     folly::ByteRange nonce,
-    Aead::AeadOptions /*options*/) const {
-  return aegisDecrypt(
-      std::move(ciphertext), associatedData, nonce, tagLength_, trafficKeyKey_);
+    Aead::AeadOptions options) const {
+  if (tagLength_ > ciphertext->computeChainDataLength()) {
+    return folly::none;
+  }
+
+  auto inPlace =
+      (!ciphertext->isShared() ||
+       options.bufferOpt != Aead::BufferOption::RespectSharedPolicy);
+
+  if (!inPlace && options.allocOpt == Aead::AllocationOption::Deny) {
+    throw std::runtime_error("Unable to decrypt (no-alloc requires in-place)");
+  }
+
+  // Set up the tag buffer now
+  const auto& lastBuf = ciphertext->prev();
+  folly::MutableByteRange tagOut;
+  std::array<uint8_t, kTagLength> tag;
+  if (lastBuf->length() >= tagLength_) {
+    // We can directly carve out this buffer from the last IOBuf
+    // Adjust buffer sizes
+    lastBuf->trimEnd(tagLength_);
+
+    tagOut = {lastBuf->writableTail(), tagLength_};
+  } else {
+    // Tag is fragmented so we need to copy it out.
+    if (options.allocOpt == Aead::AllocationOption::Deny) {
+      throw std::runtime_error(
+          "Unable to decrypt (tag is fragmented and no allocation allowed)");
+    }
+    // buffer to copy the tag into when we decrypt
+    tagOut = {tag.data(), tagLength_};
+    trimBytes(*ciphertext, tagOut);
+  }
+  return doDecrypt(
+      std::move(ciphertext),
+      associatedData,
+      nonce,
+      trafficKeyKey_,
+      tagOut,
+      inPlace);
 }
 
 size_t AEGISCipher::getCipherOverhead() const {
   return tagLength_;
 }
-
-std::array<uint8_t, AEGISCipher::kMaxIVLength> AEGISCipher::createIV(
-    uint64_t seqNum) const {
-  std::array<uint8_t, kMaxIVLength> iv;
-  uint64_t bigEndianSeqNum = folly::Endian::big(seqNum);
-  const size_t prefixLength = ivLength_ - sizeof(uint64_t);
-  memset(iv.data(), 0, prefixLength);
-  memcpy(iv.data() + prefixLength, &bigEndianSeqNum, sizeof(uint64_t));
-  folly::MutableByteRange mutableIv{iv.data(), ivLength_};
-  XOR(trafficIvKey_, mutableIv);
-  return iv;
-}
 } // namespace fizz
+
+#endif

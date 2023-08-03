@@ -27,7 +27,7 @@
 #include "hphp/runtime/base/vm-worker.h"
 
 #include "hphp/runtime/ext/extension-registry.h"
-#include "hphp/runtime/ext/std/ext_std_closure.h"
+#include "hphp/runtime/ext/core/ext_core_closure.h"
 
 #include "hphp/runtime/vm/class.h"
 #include "hphp/runtime/vm/func.h"
@@ -459,7 +459,7 @@ std::unique_ptr<ProfTransRec> read_prof_trans_rec(ProfDataDeserializer& ser) {
 bool write_seen_type(ProfDataSerializer& ser, const NamedType* ne) {
   if (!ne) return false;
   if (auto const cls = ne->clsList()) {
-    if (!(cls->attrs() & AttrUnique)) return false;
+    if (!(cls->attrs() & AttrPersistent)) return false;
     auto const filepath = cls->preClass()->unit()->origFilepath();
     if (!filepath || filepath->empty()) return false;
     if (!ser.present(cls)) {
@@ -543,9 +543,11 @@ Class* read_class_internal(ProfDataDeserializer& ser) {
 const TypeAlias* read_typealias_internal(ProfDataDeserializer& ser) {
   const Id id = read_raw<Id>(ser);
   auto const unit = read_unit(ser);
-  auto const has_class = read_raw<bool>(ser);
-  if (has_class) {
-    read_class(ser);
+
+  auto sz = read_raw<uint32_t>(ser);
+  while (sz--) {
+    auto const has_class = read_raw<bool>(ser);
+    if (has_class) read_class(ser);
   }
   auto const td = unit->lookupTypeAliasId(id);
   return TypeAlias::def(td);
@@ -1565,11 +1567,14 @@ void write_typealias(ProfDataSerializer& ser, const TypeAlias* td) {
   write_raw(ser, tdId);
   write_unit(ser, td->unit());
 
-  if (td->klass) {
-    write_raw(ser, true);
-    write_class(ser, td->klass);
-  } else {
-    write_raw(ser, false);
+  write_raw(ser, safe_cast<uint32_t>(td->unionSize));
+  for (auto const& [_, klass] : td->typeAndClassUnion()) {
+    if (klass) {
+      write_raw(ser, true);
+      write_class(ser, klass);
+    } else {
+      write_raw(ser, false);
+    }
   }
 }
 
@@ -1819,8 +1824,6 @@ std::string serializeProfData(const std::string& filename) {
     }
     write_container(ser, Class::serializeLazyAPCClasses(), write_class);
 
-    serializeSharedProfiles(ser);
-
     write_target_profiles(ser);
 
     // We've written everything directly referenced by the profile
@@ -1974,8 +1977,6 @@ std::string deserializeProfData(const std::string& filename,
       read_container(ser, [&] { list.push_back(read_class(ser)); });
       Class::deserializeLazyAPCClasses(list);
     }
-
-    deserializeSharedProfiles(ser);
 
     read_target_profiles(ser);
 

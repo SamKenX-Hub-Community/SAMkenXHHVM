@@ -598,12 +598,28 @@ AsyncSocket::ByteEventHelper::processCmsg(
     //       has wrapped, we detect it, and go back one position.
     const uint64_t bytesPerOffsetWrap =
         static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1;
+
+    // We adjust the byte stream offset by
+    // `rawBytesWrittenWhenByteEventsEnabled` to align it with the raw byte
+    // offset maintained by AsyncSocket. If the aligned bytes stream offset is
+    // negative, it means that the byte event is for a byte sent before we
+    // enabled byte events and we can discard the event.
+    if (completeState.byteOffsetKernel + rawBytesWrittenWhenByteEventsEnabled <
+        0) {
+      return folly::none;
+    }
     size_t byteOffset = rawBytesWritten -
         (rawBytesWritten % bytesPerOffsetWrap) +
-        completeState.byteOffsetKernel + rawBytesWrittenWhenByteEventsEnabled;
+        completeState.byteOffsetKernel +
+        (size_t)rawBytesWrittenWhenByteEventsEnabled;
     if (byteOffset > rawBytesWritten) {
       // kernel's uint32_t var wrapped around; go back one wrap
-      CHECK_GE(byteOffset, bytesPerOffsetWrap);
+      CHECK_GE(byteOffset, bytesPerOffsetWrap)
+          << "rawBytesWritten=" << rawBytesWritten
+          << " completeState.byteOffsetKernel="
+          << completeState.byteOffsetKernel
+          << " rawBytesWrittenWhenByteEventsEnabled="
+          << rawBytesWrittenWhenByteEventsEnabled;
       byteOffset = byteOffset - bytesPerOffsetWrap;
     }
 
@@ -652,7 +668,8 @@ AsyncSocket::AsyncSocket()
     : eventBase_(nullptr),
       writeTimeout_(this, nullptr),
       ioHandler_(this, nullptr),
-      immediateReadHandler_(this) {
+      immediateReadHandler_(this),
+      observerContainer_(this) {
   VLOG(5) << "new AsyncSocket()";
   init();
 }
@@ -661,7 +678,8 @@ AsyncSocket::AsyncSocket(EventBase* evb)
     : eventBase_(evb),
       writeTimeout_(this, evb),
       ioHandler_(this, evb),
-      immediateReadHandler_(this) {
+      immediateReadHandler_(this),
+      observerContainer_(this) {
   VLOG(5) << "new AsyncSocket(" << this << ", evb=" << evb << ")";
   init();
 }
@@ -699,7 +717,8 @@ AsyncSocket::AsyncSocket(
       eventBase_(evb),
       writeTimeout_(this, evb),
       ioHandler_(this, evb, fd),
-      immediateReadHandler_(this) {
+      immediateReadHandler_(this),
+      observerContainer_(this) {
   VLOG(5) << "new AsyncSocket(" << this << ", evb=" << evb << ", fd=" << fd
           << ", zeroCopyBufId=" << zeroCopyBufId << ")";
   init();
@@ -710,7 +729,7 @@ AsyncSocket::AsyncSocket(
 AsyncSocket::AsyncSocket(AsyncSocket* oldAsyncSocket)
     : zeroCopyBufId_(oldAsyncSocket->getZeroCopyBufId()),
       state_(oldAsyncSocket->state_),
-      fd_(oldAsyncSocket->detachNetworkSocket()),
+      fd_(oldAsyncSocket->getNetworkSocket()),
       addr_(oldAsyncSocket->addr_),
       eventBase_(oldAsyncSocket->getEventBase()),
       writeTimeout_(this, eventBase_),
@@ -720,7 +739,12 @@ AsyncSocket::AsyncSocket(AsyncSocket* oldAsyncSocket)
       rawBytesWritten_(oldAsyncSocket->rawBytesWritten_),
       preReceivedData_(std::move(oldAsyncSocket->preReceivedData_)),
       tfoInfo_(std::move(oldAsyncSocket->tfoInfo_)),
-      byteEventHelper_(std::move(oldAsyncSocket->byteEventHelper_)) {
+      byteEventHelper_(std::move(oldAsyncSocket->byteEventHelper_)),
+      observerContainer_(this, std::move(oldAsyncSocket->observerContainer_)) {
+  // delay detaching network socket until observers moved to prevent spurious
+  // detachFd and close notifications
+  oldAsyncSocket->detachNetworkSocket();
+
   VLOG(5) << "move AsyncSocket(" << oldAsyncSocket << "->" << this
           << ", evb=" << eventBase_ << ", fd=" << fd_
           << ", zeroCopyBufId=" << zeroCopyBufId_ << ")";
@@ -731,11 +755,10 @@ AsyncSocket::AsyncSocket(AsyncSocket* oldAsyncSocket)
   // inform lifecycle observers to give them an opportunity to unsubscribe from
   // events for the old socket and subscribe to the new socket; we do not move
   // the subscription ourselves
+
+  // legacy observer support
   for (const auto& cb : oldAsyncSocket->lifecycleObservers_) {
-    // only available for observers derived from AsyncSocket::LifecycleObserver
-    if (auto dCb = dynamic_cast<AsyncSocket::LifecycleObserver*>(cb)) {
-      dCb->move(oldAsyncSocket, this);
-    }
+    cb->move(oldAsyncSocket, this);
   }
 }
 
@@ -788,12 +811,17 @@ NetworkSocket AsyncSocket::detachNetworkSocket() {
   VLOG(6) << "AsyncSocket::detachFd(this=" << this << ", fd=" << fd_
           << ", evb=" << eventBase_ << ", state=" << state_
           << ", events=" << std::hex << eventFlags_ << ")";
+  // legacy observer support
   for (const auto& cb : lifecycleObservers_) {
-    // only available for observers derived from AsyncSocket::LifecycleObserver
-    if (auto dCb = dynamic_cast<AsyncSocket::LifecycleObserver*>(cb)) {
-      dCb->fdDetach(this);
-    }
+    cb->fdDetach(this);
   }
+
+  // folly::ObserverContainer observer support
+  if (auto list = getAsyncSocketObserverContainer()) {
+    list->invokeInterfaceMethodAllObservers(
+        [](auto observer, auto observed) { observer->fdDetach(observed); });
+  }
+
   // Extract the fd, and set fd_ to -1 first, so closeNow() won't
   // actually close the descriptor.
   if (const auto socketSet = wShutdownSocketSet_.lock()) {
@@ -1545,26 +1573,118 @@ void AsyncSocket::enableByteEvents() {
          folly::netops::SOF_TIMESTAMPING_RAW_HARDWARE |
          folly::netops::SOF_TIMESTAMPING_OPT_TX_SWHW);
     socklen_t len = sizeof(flags);
-    const auto ret =
-        setSockOptVirtual(SOL_SOCKET, SO_TIMESTAMPING, &flags, len);
+
+    size_t byteEventsEnabledMaxAttempts = 0;
     int setSockOptErrno = errno;
-    if (ret == 0) {
-      byteEventHelper_->byteEventsEnabled = true;
-      byteEventHelper_->rawBytesWrittenWhenByteEventsEnabled =
-          getRawBytesWritten();
-      for (const auto& observer : lifecycleObservers_) {
-        if (observer->getConfig().byteEvents) {
-          observer->byteEventsEnabled(this);
-        }
+
+    // When enabling byte events, the kernel resets the offset it uses for
+    // timestamps to 0 (see discussion in ByteEventHelper::processCmsg). By
+    // keeping track of the AsyncSocket raw byte offset when byte events were
+    // enabled, we can align the kernel and AsyncSocket byte offsets for future
+    // byte events.
+    //
+    // However, the kernel offset tracks the last unacknowledged byte, not the
+    // last written byte. This prevents us from aligning AsyncSocket's raw byte
+    // offset with the kernel offset in two scenarios:
+    //
+    // (1) If the kernel is still sending (packetizing) the bytes written before
+    //     enabling byte events, then the kernel offset is reset before all
+    //     bytes written to the kernel by AsyncSocket are sent.
+    //
+    // (2) If there are unacknowledged bytes in the TCP send buffer, because the
+    //     kernel offset tracks the last unacknowledged byte, not the last
+    //     written byte, the offset will end up being off.
+    //
+    // There is already a fix in the Linux kernel to reset the kernel offset
+    // according to write_seq (written bytes) instead of snd_una (unacknowledged
+    // bytes) [1].
+    //
+    // For kernels without this patch, we adopt the following solution:
+    //
+    // (1) We record the number of sent bytes and unacknowledged bytes before
+    //     and after enabling byte events. If they change, we disable and
+    //     re-enable. We repeat the process for a fixed number of times or until
+    //     the numbers before and after do not change. This fix is meant to
+    //     ensure that we can record the number of unacknowledged bytes at the
+    //     moment when we reset the kernel's timestamp offset.
+    //
+    // (2) We adjust the AsyncSocket byte offset when byte events were enabled
+    //     by the number of unacknowledged bytes at that point. Per (1) above,
+    //     we know that we captured the number of unacknowledged bytes when the
+    //     kernel's timestamp offset was reset, and thus can confidently adjust
+    //     offsets reported by the kernel going forward.
+    //
+    // [1]
+    // https://github.com/torvalds/linux/commit/b534dc46c8ae0165b1b2509be24dbea4fa9c4011
+
+    while (byteEventsEnabledMaxAttempts++ < SO_MAX_ATTEMPTS_ENABLE_BYTEEVENTS) {
+      folly::TcpInfo::LookupOptions options = {};
+      options.getMemInfo = true;
+      const auto expectTInfoBefore = getTcpInfo(options);
+      const auto ret =
+          setSockOptVirtual(SOL_SOCKET, SO_TIMESTAMPING, &flags, len);
+      const auto expectTInfoAfter = getTcpInfo(options);
+
+      if (ret != 0) {
+        throw AsyncSocketException(
+            AsyncSocketException::INTERNAL_ERROR,
+            withAddr("failed to enable byte events: setsockopt failed"),
+            setSockOptErrno);
       }
-      return;
+
+      if (!expectTInfoBefore.hasValue() || !expectTInfoAfter.hasValue()) {
+        throw AsyncSocketException(
+            AsyncSocketException::INTERNAL_ERROR,
+            withAddr("failed to enable byte events: getTcpInfo failed"),
+            setSockOptErrno);
+      }
+
+      const auto tInfoBefore = expectTInfoBefore.value();
+      const auto tInfoAfter = expectTInfoAfter.value();
+
+      if (tInfoBefore.bytesSent() != tInfoAfter.bytesSent() ||
+          tInfoBefore.sendBufInUseBytes() != tInfoAfter.sendBufInUseBytes() ||
+          !tInfoAfter.sendBufInUseBytes().has_value()) {
+        const uint32_t disableFlag = 0;
+        const auto disableReturnValue = setSockOptVirtual(
+            SOL_SOCKET, SO_TIMESTAMPING, &disableFlag, sizeof(disableFlag));
+        if (disableReturnValue != 0) {
+          throw AsyncSocketException(
+              AsyncSocketException::INTERNAL_ERROR,
+              withAddr(
+                  "error when enabling byte events: "
+                  "failed to disable byte events after byte sent counters not matching"),
+              setSockOptErrno);
+        }
+      } else {
+        const auto rawBytesWritten = getRawBytesWritten();
+        const auto bytesNotAcknowledged =
+            tInfoAfter.sendBufInUseBytes().value();
+
+        byteEventHelper_->byteEventsEnabled = true;
+        // it is possible for rawBytesWrittenWhenByteEventsEnabled to be
+        // negative if bytes were written to the underlying socket before
+        // this AsyncSocket was constructed
+        byteEventHelper_->rawBytesWrittenWhenByteEventsEnabled =
+            rawBytesWritten - bytesNotAcknowledged;
+
+        for (const auto& observer : lifecycleObservers_) {
+          if (observer->getConfig().byteEvents) {
+            observer->byteEventsEnabled(this);
+          }
+        }
+        return;
+      }
     }
 
-    // failed
-    throw AsyncSocketException(
-        AsyncSocketException::INTERNAL_ERROR,
-        withAddr("failed to enable byte events: setsockopt failed"),
-        setSockOptErrno);
+    if (byteEventsEnabledMaxAttempts > SO_MAX_ATTEMPTS_ENABLE_BYTEEVENTS) {
+      throw AsyncSocketException(
+          AsyncSocketException::INTERNAL_ERROR,
+          withAddr(
+              "failed to enable byte events: "
+              "could not account for bytes in flight in kernel byte offset"),
+          setSockOptErrno);
+    }
 #endif // FOLLY_HAVE_SO_TIMESTAMPING
     // unsupported by platform
     throw AsyncSocketException(
@@ -2118,8 +2238,17 @@ void AsyncSocket::attachEventBase(EventBase* eventBase) {
   if (evbChangeCb_) {
     evbChangeCb_->evbAttached(this);
   }
+
+  // legacy observer support
   for (const auto& cb : lifecycleObservers_) {
     cb->evbAttach(this, eventBase_);
+  }
+
+  // folly::ObserverContainer observer support
+  if (auto list = getAsyncSocketObserverContainer()) {
+    list->invokeInterfaceMethodAllObservers([&](auto observer, auto observed) {
+      observer->evbAttach(observed, eventBase_);
+    });
   }
 }
 
@@ -2143,8 +2272,18 @@ void AsyncSocket::detachEventBase() {
   if (evbChangeCb_) {
     evbChangeCb_->evbDetached(this);
   }
+
+  // legacy observer support
   for (const auto& cb : lifecycleObservers_) {
     cb->evbDetach(this, existingEvb);
+  }
+
+  // folly::ObserverContainer observer support
+  if (auto list = getAsyncSocketObserverContainer()) {
+    list->invokeInterfaceMethodAllObservers(
+        [existingEvb](auto observer, auto observed) {
+          observer->evbDetach(observed, existingEvb);
+        });
   }
 }
 
@@ -2729,8 +2868,16 @@ bool AsyncSocket::processZeroCopyWriteInProgress() noexcept {
   return idZeroCopyBufPtrMap_.empty();
 }
 
+folly::Expected<folly::TcpInfo, std::errc> AsyncSocket::getTcpInfo(
+    TcpInfo::LookupOptions options) {
+  if (NetworkSocket() == fd_) {
+    return folly::makeUnexpected(std::errc::invalid_argument);
+  }
+  return tcpInfoDispatcher_->initFromFd(fd_, options);
+}
+
 void AsyncSocket::addLifecycleObserver(
-    AsyncTransport::LifecycleObserver* observer) {
+    AsyncSocket::LegacyLifecycleObserver* observer) {
   if (eventBase_) {
     eventBase_->dcheckIsInEventBaseThread();
   }
@@ -2756,7 +2903,7 @@ void AsyncSocket::addLifecycleObserver(
 }
 
 bool AsyncSocket::removeLifecycleObserver(
-    AsyncTransport::LifecycleObserver* observer) {
+    AsyncSocket::LegacyLifecycleObserver* observer) {
   auto& observers = lifecycleObservers_;
   auto it = std::find(observers.begin(), observers.end(), observer);
   if (it == observers.end()) {
@@ -2767,12 +2914,12 @@ bool AsyncSocket::removeLifecycleObserver(
   return true;
 }
 
-std::vector<AsyncTransport::LifecycleObserver*>
+std::vector<AsyncSocket::LegacyLifecycleObserver*>
 AsyncSocket::getLifecycleObservers() const {
   if (eventBase_) {
     eventBase_->dcheckIsInEventBaseThread();
   }
-  return std::vector<AsyncTransport::LifecycleObserver*>(
+  return std::vector<AsyncSocket::LegacyLifecycleObserver*>(
       lifecycleObservers_.begin(), lifecycleObservers_.end());
 }
 
@@ -3453,10 +3600,16 @@ void AsyncSocket::handleNetworkSocketAttached() {
   VLOG(6) << "AsyncSocket::attachFd(this=" << this << ", fd=" << fd_
           << ", evb=" << eventBase_ << " , state=" << state_
           << ", events=" << std::hex << eventFlags_ << ")";
+
+  // legacy observer support
   for (const auto& cb : lifecycleObservers_) {
-    if (auto dCb = dynamic_cast<AsyncSocket::LifecycleObserver*>(cb)) {
-      dCb->fdAttach(this);
-    }
+    cb->fdAttach(this);
+  }
+
+  // folly::ObserverContainer observer support
+  if (auto list = getAsyncSocketObserverContainer()) {
+    list->invokeInterfaceMethodAllObservers(
+        [](auto observer, auto observed) { observer->fdAttach(observed); });
   }
 
   if (const auto shutdownSocketSet = wShutdownSocketSet_.lock()) {
@@ -3476,77 +3629,50 @@ AsyncSocket::WriteResult AsyncSocket::sendSocketMessage(
     WriteFlags flags,
     WriteRequestTag writeTag) {
   // lambda to gather and merge PrewriteRequests from observers
-  auto mergePrewriteRequests = [this,
-                                vec,
-                                count,
-                                flags,
-                                maybeVecTotalBytes =
-                                    folly::Optional<size_t>()]() mutable {
-    AsyncTransport::LifecycleObserver::PrewriteRequest mergedRequest = {};
-    if (lifecycleObservers_.empty()) {
-      return mergedRequest;
-    }
-
-    // determine total number of bytes in vec, reuse once determined
-    if (!maybeVecTotalBytes.has_value()) {
-      maybeVecTotalBytes = 0;
-      for (size_t i = 0; i < count; ++i) {
-        maybeVecTotalBytes.value() += vec[i].iov_len;
-      }
-    }
-    auto& vecTotalBytes = maybeVecTotalBytes.value();
-
-    const auto startOffset = getRawBytesWritten();
-    const auto endOffset = getRawBytesWritten() + vecTotalBytes - 1;
-    const AsyncTransport::LifecycleObserver::PrewriteState prewriteState = [&] {
-      AsyncTransport::LifecycleObserver::PrewriteState state = {};
-      state.startOffset = startOffset;
-      state.endOffset = endOffset;
-      state.writeFlags = flags;
-      state.ts = std::chrono::steady_clock::now();
-      return state;
-    }();
-    for (const auto& observer : lifecycleObservers_) {
-      if (!observer->getConfig().prewrite) {
-        continue;
-      }
-
-      const auto request = observer->prewrite(this, prewriteState);
-
-      mergedRequest.writeFlagsToAdd |= request.writeFlagsToAdd;
-      if (request.maybeOffsetToSplitWrite.has_value()) {
-        CHECK_GE(endOffset, request.maybeOffsetToSplitWrite.value());
-        if (
-            // case 1: offset not set in merged request
-            !mergedRequest.maybeOffsetToSplitWrite.has_value() ||
-            // case 2: offset in merged request > offset in current request
-            mergedRequest.maybeOffsetToSplitWrite >
-                request.maybeOffsetToSplitWrite) {
-          mergedRequest.maybeOffsetToSplitWrite =
-              request.maybeOffsetToSplitWrite; // update
-          mergedRequest.writeFlagsToAddAtOffset =
-              request.writeFlagsToAddAtOffset; // reset
-        } else if (
-            // case 3: offset in merged request == offset in current request
-            request.maybeOffsetToSplitWrite ==
-            mergedRequest.maybeOffsetToSplitWrite) {
-          mergedRequest.writeFlagsToAddAtOffset |=
-              request.writeFlagsToAddAtOffset; // merge
+  auto gatherAndMergePrewriteRequests =
+      [this,
+       vec,
+       count,
+       flags,
+       maybeVecTotalBytes = folly::Optional<size_t>()]() mutable {
+        AsyncSocketObserverInterface::PrewriteRequest mergedRequest = {};
+        if (lifecycleObservers_.empty()) {
+          return mergedRequest;
         }
-        // case 4: offset in merged request < offset in current request
-        // (do nothing)
-      }
-    }
 
-    // if maybeOffsetToSplitWrite points to end of the vector, remove the
-    // split
-    if (mergedRequest.maybeOffsetToSplitWrite.has_value() && // explicit
-        mergedRequest.maybeOffsetToSplitWrite == endOffset) {
-      mergedRequest.maybeOffsetToSplitWrite.reset(); // no split needed
-    }
+        // determine total number of bytes in vec, reuse once determined
+        if (!maybeVecTotalBytes.has_value()) {
+          maybeVecTotalBytes = 0;
+          for (size_t i = 0; i < count; ++i) {
+            maybeVecTotalBytes.value() += vec[i].iov_len;
+          }
+        }
+        auto& vecTotalBytes = maybeVecTotalBytes.value();
 
-    return mergedRequest;
-  };
+        // build our PrewriteState
+        const auto startOffset = getRawBytesWritten();
+        const auto endOffset = getRawBytesWritten() + vecTotalBytes - 1;
+        const AsyncSocketObserverInterface::PrewriteState prewriteState = [&] {
+          AsyncSocketObserverInterface::PrewriteState state = {};
+          state.startOffset = startOffset;
+          state.endOffset = endOffset;
+          state.writeFlags = flags;
+          state.ts = std::chrono::steady_clock::now();
+          return state;
+        }();
+
+        // enable observers to add PrewriteRequests to container
+        AsyncSocketObserverInterface::PrewriteRequestContainer
+            prewriteRequestContainer(prewriteState);
+        for (const auto& observer : lifecycleObservers_) {
+          if (!observer->getConfig().prewrite) {
+            continue;
+          }
+          observer->prewrite(this, prewriteState, prewriteRequestContainer);
+        }
+
+        return prewriteRequestContainer.getMergedRequest();
+      };
 
   // lambda to prepare and send a message, and handle byte events
   // parameters have L at the end to prevent shadowing warning from gcc
@@ -3617,7 +3743,7 @@ AsyncSocket::WriteResult AsyncSocket::sendSocketMessage(
   };
 
   // get PrewriteRequests (if any), merge flags with write flags
-  const auto prewriteRequest = mergePrewriteRequests();
+  const auto prewriteRequest = gatherAndMergePrewriteRequests();
   auto mergedFlags = flags | prewriteRequest.writeFlagsToAdd |
       prewriteRequest.writeFlagsToAddAtOffset;
 
@@ -4036,11 +4162,18 @@ void AsyncSocket::invalidState(ConnectCallback* callback) {
       "connect() called with socket in invalid state");
   connectEndTime_ = std::chrono::steady_clock::now();
   if ((state_ == StateEnum::CONNECTING) || (state_ == StateEnum::ERROR)) {
+    // legacy observer support
     for (const auto& cb : lifecycleObservers_) {
-      if (auto observer = dynamic_cast<AsyncSocket::LifecycleObserver*>(cb)) {
-        // inform any lifecycle observes that the connection failed
-        observer->connectError(this, ex);
-      }
+      // inform any lifecycle observes that the connection failed
+      cb->connectError(this, ex);
+    }
+
+    // folly::ObserverContainer observer support
+    if (auto list = getAsyncSocketObserverContainer()) {
+      list->invokeInterfaceMethodAllObservers(
+          [ex](auto observer, auto observed) {
+            observer->connectError(observed, ex);
+          });
     }
   }
   if (state_ == StateEnum::CLOSED || state_ == StateEnum::ERROR) {
@@ -4091,8 +4224,18 @@ void AsyncSocket::invokeConnectErr(const AsyncSocketException& ex) {
     // ESTABLISHED} (!?) and a bunch of other places that are not what this
     // call back wants. This seems like a bug but work around here while we
     // explore it independently
+
+    // legacy observer support
     for (const auto& cb : lifecycleObservers_) {
       cb->connectError(this, ex);
+    }
+
+    // folly::ObserverContainer observer support
+    if (auto list = getAsyncSocketObserverContainer()) {
+      list->invokeInterfaceMethodAllObservers(
+          [ex](auto observer, auto observed) {
+            observer->connectError(observed, ex);
+          });
     }
   }
   if (connectCallback_) {
@@ -4107,10 +4250,20 @@ void AsyncSocket::invokeConnectSuccess() {
           << "): connect success invoked";
   connectEndTime_ = std::chrono::steady_clock::now();
   bool enableByteEventsForObserver = false;
+
+  // legacy observer support
   for (const auto& cb : lifecycleObservers_) {
     cb->connectSuccess(this);
     enableByteEventsForObserver |= ((cb->getConfig().byteEvents) ? 1 : 0);
   }
+
+  // folly::ObserverContainer observer support
+  if (auto list = getAsyncSocketObserverContainer()) {
+    list->invokeInterfaceMethodAllObservers([](auto observer, auto observed) {
+      observer->connectSuccess(observed);
+    });
+  }
+
   if (enableByteEventsForObserver) {
     enableByteEvents();
   }
@@ -4124,8 +4277,16 @@ void AsyncSocket::invokeConnectSuccess() {
 void AsyncSocket::invokeConnectAttempt() {
   VLOG(5) << "AsyncSocket(this=" << this << ", fd=" << fd_
           << "): connect attempt";
+  // legacy observer support
   for (const auto& cb : lifecycleObservers_) {
     cb->connectAttempt(this);
+  }
+
+  // folly::ObserverContainer observer support
+  if (auto list = getAsyncSocketObserverContainer()) {
+    list->invokeInterfaceMethodAllObservers([](auto observer, auto observed) {
+      observer->connectAttempt(observed);
+    });
   }
 }
 
@@ -4172,9 +4333,17 @@ void AsyncSocket::invalidState(WriteCallback* callback) {
 }
 
 void AsyncSocket::doClose() {
+  // legacy observer support
   for (const auto& cb : lifecycleObservers_) {
     cb->close(this);
   }
+
+  // folly::ObserverContainer support
+  if (auto list = getAsyncSocketObserverContainer()) {
+    list->invokeInterfaceMethodAllObservers(
+        [](auto observer, auto observed) { observer->close(observed); });
+  }
+
   if (fd_ == NetworkSocket()) {
     return;
   }

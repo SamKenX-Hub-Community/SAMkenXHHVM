@@ -9,8 +9,6 @@
 #include <thrift/lib/cpp2/gen/module_types_h.h>
 
 
-#include "thrift/annotation/gen-py3cpp/cpp_types.h"
-#include "thrift/annotation/gen-py3cpp/python_types.h"
 
 namespace apache {
 namespace thrift {
@@ -281,24 +279,6 @@ template <> struct TEnumTraits<::py3::simple::Flags> {
 
 }} // apache::thrift
 
-namespace py3 { namespace simple {
-
-using _AnEnum_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<AnEnum>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _AnEnum_EnumMapFactory::ValuesToNamesMapType _AnEnum_VALUES_TO_NAMES;
-#endif
-using _AnEnumRenamed_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<AnEnumRenamed>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _AnEnumRenamed_EnumMapFactory::ValuesToNamesMapType _AnEnumRenamed_VALUES_TO_NAMES;
-#endif
-using _Flags_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<Flags>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _Flags_EnumMapFactory::ValuesToNamesMapType _Flags_VALUES_TO_NAMES;
-#endif
-}} // py3::simple
 
 // END declare_enums
 // BEGIN forward_declare
@@ -1306,8 +1286,8 @@ class OptionalRefStruct final  {
 
  public:
 
-  OptionalRefStruct() {
-  }
+  OptionalRefStruct();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   OptionalRefStruct(apache::thrift::FragileConstructor, ::py3::simple::IOBufPtr optional_blob__arg);
@@ -1318,6 +1298,9 @@ class OptionalRefStruct final  {
 
   OptionalRefStruct& operator=(OptionalRefStruct&&) noexcept;
   OptionalRefStruct& operator=(const OptionalRefStruct& src);
+
+  ~OptionalRefStruct();
+
  private:
   ::py3::simple::IOBufPtr __fbthrift_field_optional_blob;
  private:
@@ -1461,9 +1444,8 @@ class HiddenTypeFieldsStruct final  {
 
  public:
 
-  HiddenTypeFieldsStruct() {
-    ::apache::thrift::adapt_detail::construct<Adapter, 1>(__fbthrift_field_field1, *this);
-  }
+  HiddenTypeFieldsStruct();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   HiddenTypeFieldsStruct(apache::thrift::FragileConstructor, ::py3::simple::AdaptedTypeDef field1__arg, ::std::vector<::py3::simple::AdaptedTypeDef> field2__arg, ::std::unordered_map<::std::int32_t, ::py3::simple::AdaptedTypeDef> field3__arg);
@@ -1474,6 +1456,9 @@ class HiddenTypeFieldsStruct final  {
 
   HiddenTypeFieldsStruct& operator=(HiddenTypeFieldsStruct&&) noexcept;
   HiddenTypeFieldsStruct& operator=(const HiddenTypeFieldsStruct& src);
+
+  ~HiddenTypeFieldsStruct();
+
  private:
   ::py3::simple::AdaptedTypeDef __fbthrift_field_field1;
  private:

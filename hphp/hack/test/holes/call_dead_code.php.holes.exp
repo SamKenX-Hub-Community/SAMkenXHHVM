@@ -2,7 +2,7 @@
     { fd_namespace =
       { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
         ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-        ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+        ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
       fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([3:10-13], "\\foo");
       fd_fun =
       { f_span = [3:1-30]; f_readonly_this = None; f_annotation = (); 
@@ -14,14 +14,14 @@
            param_user_attributes = []; param_visibility = None }
           ];
         f_ctxs = None; f_unsafe_ctxs = None; f_body = { fb_ast = [([Pos.none], Noop)] }; 
-        f_fun_kind = FSync; f_user_attributes = []; f_external = false; 
-        f_doc_comment = None };
+        f_fun_kind = FSync; f_user_attributes = [{ ua_name = ([3:10-13], "__SupportDynamicType"); ua_params = [] }]; 
+        f_external = false; f_doc_comment = None };
       fd_internal = false; fd_module = None; fd_tparams = []; fd_where_constraints = [] });
   (Fun
      { fd_namespace =
        { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
          ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-         ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+         ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
        fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([5:10-24], "\\call_dead_code");
        fd_fun =
        { f_span = [5:1-15:2]; f_readonly_this = None; f_annotation = (); 
@@ -36,24 +36,31 @@
                    ([10:5-13],
                     (Expr
                        ((void), [10:5-12],
-                        (Call ((((function(int $x): void)), [10:5-8], (Id ([10:5-8], "\\foo"))), 
-                           [], [(Pnormal, ((string), [10:9-11], (Hole (((string), [10:9-11], (Lvar ([10:9-11], $x))), (string), (int), Typing))))], None)))))
+                        (Call
+                           { func = (((function(int $x): void)), [10:5-8], (Id ([10:5-8], "\\foo"))); 
+                             targs = []; args = [(Pnormal, ((string), [10:9-11], (Hole (((string), [10:9-11], (Lvar ([10:9-11], $x))), (string), (int), Typing))))]; 
+                             unpacked_arg = None }))))
                    ],
                  [([12:5-19], (Expr ((string), [12:5-18], (Binop { bop = (Eq None); lhs = ((string), [12:5-7], (Lvar ([12:5-7], $x))); rhs = ((string), [12:10-18], (String "string")) }))));
                    ([13:5-13],
-                    (Expr ((void), [13:5-12], (Call ((((function(int $x): void)), [13:5-8], (Id ([13:5-8], "\\foo"))), [], [(Pnormal, ((nothing), [13:9-11], (Lvar ([13:9-11], $x))))], None)))))
+                    (Expr
+                       ((void), [13:5-12],
+                        (Call
+                           { func = (((function(int $x): void)), [13:5-8], (Id ([13:5-8], "\\foo"))); 
+                             targs = []; args = [(Pnormal, ((nothing), [13:9-11], (Lvar ([13:9-11], $x))))]; 
+                             unpacked_arg = None }))))
                    ]
                  )))
              ]
            };
-         f_fun_kind = FSync; f_user_attributes = []; f_external = false; 
-         f_doc_comment = None };
+         f_fun_kind = FSync; f_user_attributes = [{ ua_name = ([5:10-24], "__SupportDynamicType"); ua_params = [] }]; 
+         f_external = false; f_doc_comment = None };
        fd_internal = false; fd_module = None; fd_tparams = []; fd_where_constraints = [] });
   (Fun
      { fd_namespace =
        { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
          ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-         ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+         ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
        fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([17:10-29], "\\call_dead_code_cast");
        fd_fun =
        { f_span = [17:1-27:2]; f_readonly_this = None; f_annotation = (); 
@@ -67,20 +74,28 @@
                  [([20:5-19], (Expr ((string), [20:5-18], (Binop { bop = (Eq None); lhs = ((string), [20:5-7], (Lvar ([20:5-7], $x))); rhs = ((string), [20:10-18], (String "string")) }))));
                    ([22:5-48],
                     (Expr
-                       ((void), [22:5-47],
-                        (Call ((((function(int $x): void)), [22:5-8], (Id ([22:5-8], "\\foo"))), 
-                           [],
-                           [(Pnormal,
-                             ((int), [22:9-46], (Hole (((string), [22:43-45], (Lvar ([22:43-45], $x))), (string), (int), (UnsafeCast [([22:31-37], (Hprim Tstring)); ([22:38-41], (Hprim Tint))])))))],
-                           None)))))
+                       ((~void), [22:5-47],
+                        (Call
+                           { func = (((function(int $x): void)), [22:5-8], (Id ([22:5-8], "\\foo"))); 
+                             targs = [];
+                             args =
+                             [(Pnormal,
+                               ((~int), [22:9-46], (Hole (((string), [22:43-45], (Lvar ([22:43-45], $x))), (string), (int), (UnsafeCast [([22:31-37], (Hprim Tstring)); ([22:38-41], (Hprim Tint))])))))
+                               ];
+                             unpacked_arg = None }))))
                    ],
                  [([24:5-19], (Expr ((string), [24:5-18], (Binop { bop = (Eq None); lhs = ((string), [24:5-7], (Lvar ([24:5-7], $x))); rhs = ((string), [24:10-18], (String "string")) }))));
                    ([25:5-13],
-                    (Expr ((void), [25:5-12], (Call ((((function(int $x): void)), [25:5-8], (Id ([25:5-8], "\\foo"))), [], [(Pnormal, ((nothing), [25:9-11], (Lvar ([25:9-11], $x))))], None)))))
+                    (Expr
+                       ((void), [25:5-12],
+                        (Call
+                           { func = (((function(int $x): void)), [25:5-8], (Id ([25:5-8], "\\foo"))); 
+                             targs = []; args = [(Pnormal, ((nothing), [25:9-11], (Lvar ([25:9-11], $x))))]; 
+                             unpacked_arg = None }))))
                    ]
                  )))
              ]
            };
-         f_fun_kind = FSync; f_user_attributes = []; f_external = false; 
-         f_doc_comment = None };
+         f_fun_kind = FSync; f_user_attributes = [{ ua_name = ([17:10-29], "__SupportDynamicType"); ua_params = [] }]; 
+         f_external = false; f_doc_comment = None };
        fd_internal = false; fd_module = None; fd_tparams = []; fd_where_constraints = [] })

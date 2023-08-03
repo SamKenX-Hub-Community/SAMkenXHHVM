@@ -73,16 +73,6 @@ struct WorkItem {
     , ctx(ctx)
   {}
 
-  bool operator<(const WorkItem& o) const {
-    return type < o.type ? true :
-           o.type < type ? false :
-           ctx < o.ctx;
-  }
-
-  bool operator==(const WorkItem& o) const {
-    return type == o.type && ctx == o.ctx;
-  }
-
   WorkType type;
   Context ctx;
 };
@@ -147,13 +137,13 @@ std::vector<Context> all_unit_contexts(const Index& index,
     u,
     [&] (const php::Class& c) {
       for (auto const& m : c.methods) {
-        ret.emplace_back(Context { &u, m.get(), &c });
+        ret.emplace_back(Context { u.filename, m.get(), &c });
       }
     }
   );
   index.for_each_unit_func(
     u,
-    [&] (const php::Func& f) { ret.emplace_back(Context { &u, &f }); }
+    [&] (const php::Func& f) { ret.emplace_back(Context { u.filename, &f }); }
   );
   return ret;
 }
@@ -169,16 +159,25 @@ std::vector<Context> const_pass_contexts(const Index& index) {
   std::vector<Context> ret;
   for (auto const& c : index.program().classes) {
     for (auto const& m : c->methods) {
-      if (is_86init_func(*m)) {
-        ret.emplace_back(
-          Context {
-            index.lookup_class_unit(*c),
-            m.get(),
-            c.get()
-          }
-        );
-      }
+      if (!is_86init_func(*m)) continue;
+      ret.emplace_back(
+        Context {
+          c->unit,
+          m.get(),
+          c.get()
+        }
+      );
     }
+  }
+  for (auto const& f : index.program().funcs) {
+    if (!Constant::nameFromFuncName(f->name)) continue;
+    ret.emplace_back(
+      Context {
+        f->unit,
+        f.get(),
+        nullptr
+      }
+    );
   }
   return ret;
 }
@@ -204,25 +203,24 @@ std::vector<WorkItem> initial_work(const Index& index,
       // with a class context are analyzed as part of that context.
       continue;
     }
-    auto const unit = index.lookup_class_unit(*c);
     if (is_used_trait(*c)) {
       for (auto const& f : c->methods) {
         ret.emplace_back(
           WorkType::Func,
-          Context { unit, f.get(), f->cls }
+          Context { c->unit, f.get(), f->cls }
         );
       }
     } else {
       ret.emplace_back(
         WorkType::Class,
-        Context { unit, nullptr, c.get() }
+        Context { c->unit, nullptr, c.get() }
       );
     }
   }
   for (auto const& f : program.funcs) {
     ret.emplace_back(
       WorkType::Func,
-      Context { index.lookup_func_unit(*f), f.get() }
+      Context { f->unit, f.get() }
     );
   }
   return ret;
@@ -238,7 +236,7 @@ WorkItem work_item_for(const DependencyContext& d,
               !is_used_trait(*cls));
       return WorkItem {
         WorkType::Class,
-        Context { index.lookup_class_unit(*cls), nullptr, cls }
+        Context { cls->unit, nullptr, cls }
       };
     }
     case DependencyContextType::Func: {
@@ -251,7 +249,7 @@ WorkItem work_item_for(const DependencyContext& d,
               is_used_trait(*cls));
       return WorkItem {
         WorkType::Func,
-        Context { index.lookup_func_unit(*func), func, cls }
+        Context { func->unit, func, cls }
       };
     }
     case DependencyContextType::Prop:
@@ -336,8 +334,8 @@ void analyze_iteratively(Index& index, AnalyzeMode mode) {
     ++round;
     trace_time update_time("updating");
 
-    auto update_func = [&] (FuncAnalysisResult& fa,
-                            DependencyContextSet& deps) {
+    auto const update_func = [&] (FuncAnalysisResult& fa,
+                                  DependencyContextSet& deps) {
       SCOPE_ASSERT_DETAIL("update_func") {
         return "Updating Func: " + show(fa.ctx);
       };
@@ -354,9 +352,12 @@ void analyze_iteratively(Index& index, AnalyzeMode mode) {
         );
       }
 
-      if (fa.resolvedConstants.size()) {
-        index.refine_class_constants(fa.ctx, fa.resolvedConstants, deps);
+      if (auto const l = fa.resolvedInitializers.left()) {
+        index.refine_class_constants(fa.ctx, *l, deps);
+      } else if (auto const r = fa.resolvedInitializers.right()) {
+        index.update_prop_initial_values(fa.ctx, *r, deps);
       }
+
       for (auto const& [cls, vars] : fa.closureUseTypes) {
         assertx(is_closure(*cls));
         if (index.refine_closure_use_vars(cls, vars)) {
@@ -367,14 +368,14 @@ void analyze_iteratively(Index& index, AnalyzeMode mode) {
             cls->name
           );
           auto const ctx =
-            Context { index.lookup_func_unit(*func), func, cls };
+            Context { func->unit, func, cls };
           deps.insert(index.dependency_context(ctx));
         }
       }
     };
 
-    auto update_class = [&] (ClassAnalysis& ca,
-                             DependencyContextSet& deps) {
+    auto const update_class = [&] (ClassAnalysis& ca,
+                                   DependencyContextSet& deps) {
       {
         SCOPE_ASSERT_DETAIL("update_class") {
           return "Updating Class: " + show(ca.ctx);
@@ -383,9 +384,7 @@ void analyze_iteratively(Index& index, AnalyzeMode mode) {
                                    ca.privateProperties);
         index.refine_private_statics(ca.ctx.cls,
                                      ca.privateStatics);
-        index.refine_bad_initial_prop_values(ca.ctx.cls,
-                                             ca.badPropInitialValues,
-                                             deps);
+        index.update_prop_initial_values(ca.ctx, ca.resolvedProps, deps);
       }
       for (auto& fa : ca.methods)  update_func(fa, deps);
       for (auto& fa : ca.closures) update_func(fa, deps);
@@ -686,14 +685,14 @@ WholeProgramInput::make(std::unique_ptr<UnitEmitter> ue) {
     [&] (KeyI::UnresolvedTypes& u,
          const TypeConstraint& tc,
          const php::Class* cls = nullptr,
-         const CompactVector<TypeConstraint>* ubs = nullptr) {
+         const TypeIntersectionConstraint* ubs = nullptr) {
     // Skip names which match the current class name. We don't need to
     // report these as it's implicit.
     if (tc.isUnresolved() && (!cls || !cls->name->isame(tc.typeName()))) {
       u.emplace(tc.typeName());
     }
     if (!ubs) return;
-    for (auto const& ub : *ubs) {
+    for (auto const& ub : ubs->m_constraints) {
       if (ub.isUnresolved() && (!cls || !cls->name->isame(ub.typeName()))) {
         u.emplace(ub.typeName());
       }
@@ -723,9 +722,8 @@ WholeProgramInput::make(std::unique_ptr<UnitEmitter> ue) {
       info.typeMappings.emplace_back(
         TypeMapping{
           typeAlias->name,
-          typeAlias->value,
           nullptr,
-          typeAlias->type,
+          typeAlias->typeAndValueUnion,
           typeAlias->nullable,
         }
       );
@@ -758,9 +756,8 @@ WholeProgramInput::make(std::unique_ptr<UnitEmitter> ue) {
       typeMapping.emplace(
         TypeMapping{
           c->name,
-          tc.typeName(),
           c->name,
-          type,
+          {php::TypeAndValue{type, tc.typeName()}},
           false
         }
       );
@@ -976,8 +973,6 @@ void whole_program(WholeProgramInput inputs,
   // property types until after the constant pass, to try to get
   // better initial values.
   index.preresolve_type_structures();
-  index.init_public_static_prop_types();
-  index.preinit_bad_initial_prop_values();
   index.use_class_dependencies(true);
   analyze_iteratively(index, AnalyzeMode::NormalPass);
   auto cleanup_for_final = std::thread([&] { index.cleanup_for_final(); });

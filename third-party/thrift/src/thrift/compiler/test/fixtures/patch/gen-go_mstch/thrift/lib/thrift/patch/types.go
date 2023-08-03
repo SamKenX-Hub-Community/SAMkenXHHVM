@@ -6,40 +6,37 @@ package patch // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    thrift0 "thrift/annotation/thrift"
-    scope "thrift/annotation/scope"
-    cpp "thrift/annotation/cpp"
     standard "thrift/lib/thrift/standard"
+    id "thrift/lib/thrift/id"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = thrift0.GoUnusedProtection__
-var _ = scope.GoUnusedProtection__
-var _ = cpp.GoUnusedProtection__
 var _ = standard.GoUnusedProtection__
+var _ = id.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
 var _ = thrift.ZERO
 
 
-type ListPatchIndex = int32
+type FieldId = id.FieldId
 
-func NewListPatchIndex() ListPatchIndex {
-  return 0
+func NewFieldId() FieldId {
+  return id.NewFieldId()
 }
 
-func WriteListPatchIndex(item ListPatchIndex, p thrift.Protocol) error {
-  if err := p.WriteI32(item); err != nil {
+func WriteFieldId(item FieldId, p thrift.Protocol) error {
+  err := id.WriteFieldId(item, p)
+if err != nil {
     return err
 }
   return nil
 }
 
-func ReadListPatchIndex(p thrift.Protocol) (ListPatchIndex, error) {
-  var decodeResult ListPatchIndex
+func ReadFieldId(p thrift.Protocol) (FieldId, error) {
+  var decodeResult FieldId
   decodeErr := func() error {
-    result, err := p.ReadI32()
+    result, err := id.ReadFieldId(p)
 if err != nil {
     return err
 }
@@ -49,9 +46,65 @@ if err != nil {
   return decodeResult, decodeErr
 }
 
+type FieldIdList = []int16
+
+func NewFieldIdList() FieldIdList {
+  return nil
+}
+
+func WriteFieldIdList(item FieldIdList, p thrift.Protocol) error {
+  if err := p.WriteListBegin(thrift.I16, len(item)); err != nil {
+    return thrift.PrependError("error writing list begin: ", err)
+}
+for _, v := range item {
+    {
+        item := v
+        if err := p.WriteI16(item); err != nil {
+    return err
+}
+    }
+}
+if err := p.WriteListEnd(); err != nil {
+    return thrift.PrependError("error writing list end: ", err)
+}
+  return nil
+}
+
+func ReadFieldIdList(p thrift.Protocol) (FieldIdList, error) {
+  var decodeResult FieldIdList
+  decodeErr := func() error {
+    _ /* elemType */, size, err := p.ReadListBegin()
+if err != nil {
+    return thrift.PrependError("error reading list begin: ", err)
+}
+
+listResult := make([]int16, 0, size)
+for i := 0; i < size; i++ {
+    var elem int16
+    {
+        result, err := p.ReadI16()
+if err != nil {
+    return err
+}
+        elem = result
+    }
+    listResult = append(listResult, elem)
+}
+
+if err := p.ReadListEnd(); err != nil {
+    return thrift.PrependError("error reading list end: ", err)
+}
+result := listResult
+    decodeResult = result
+    return nil
+  }()
+  return decodeResult, decodeErr
+}
+
 type PatchOp int32
 
 const (
+    PatchOp_Unspecified PatchOp = 0
     PatchOp_Assign PatchOp = 1
     PatchOp_Clear PatchOp = 2
     PatchOp_PatchPrior PatchOp = 3
@@ -61,12 +114,12 @@ const (
     PatchOp_Remove PatchOp = 7
     PatchOp_Add PatchOp = 8
     PatchOp_Put PatchOp = 9
-    PatchOp_Unspecified PatchOp = 0
 )
 
 // Enum value maps for PatchOp
 var (
     PatchOpToName = map[PatchOp]string {
+        PatchOp_Unspecified: "Unspecified",
         PatchOp_Assign: "Assign",
         PatchOp_Clear: "Clear",
         PatchOp_PatchPrior: "PatchPrior",
@@ -76,10 +129,10 @@ var (
         PatchOp_Remove: "Remove",
         PatchOp_Add: "Add",
         PatchOp_Put: "Put",
-        PatchOp_Unspecified: "Unspecified",
     }
 
     PatchOpToValue = map[string]PatchOp {
+        "Unspecified": PatchOp_Unspecified,
         "Assign": PatchOp_Assign,
         "Clear": PatchOp_Clear,
         "PatchPrior": PatchOp_PatchPrior,
@@ -89,10 +142,10 @@ var (
         "Remove": PatchOp_Remove,
         "Add": PatchOp_Add,
         "Put": PatchOp_Put,
-        "Unspecified": PatchOp_Unspecified,
     }
 
     PatchOpNames = []string{
+        "Unspecified",
         "Assign",
         "Clear",
         "PatchPrior",
@@ -102,10 +155,10 @@ var (
         "Remove",
         "Add",
         "Put",
-        "Unspecified",
     }
 
     PatchOpValues = []PatchOp{
+        PatchOp_Unspecified,
         PatchOp_Assign,
         PatchOp_Clear,
         PatchOp_PatchPrior,
@@ -115,7 +168,6 @@ var (
         PatchOp_Remove,
         PatchOp_Add,
         PatchOp_Put,
-        PatchOp_Unspecified,
     }
 )
 
@@ -154,7 +206,9 @@ func NewGeneratePatch() *GeneratePatch {
 }
 
 func (x *GeneratePatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type GeneratePatchAlias GeneratePatch
+    valueAlias := (*GeneratePatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -234,7 +288,9 @@ func NewAssignOnlyPatch() *AssignOnlyPatch {
 }
 
 func (x *AssignOnlyPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AssignOnlyPatchAlias AssignOnlyPatch
+    valueAlias := (*AssignOnlyPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -466,7 +522,9 @@ if err != nil {
 var BoolPatch_Assign_DEFAULT = NewBoolPatch().GetAssign()
 
 func (x *BoolPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type BoolPatchAlias BoolPatch
+    valueAlias := (*BoolPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -739,7 +797,9 @@ if err != nil {
 var BytePatch_Assign_DEFAULT = NewBytePatch().GetAssign()
 
 func (x *BytePatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type BytePatchAlias BytePatch
+    valueAlias := (*BytePatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1010,7 +1070,9 @@ if err != nil {
 var I16Patch_Assign_DEFAULT = NewI16Patch().GetAssign()
 
 func (x *I16Patch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type I16PatchAlias I16Patch
+    valueAlias := (*I16PatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1281,7 +1343,9 @@ if err != nil {
 var I32Patch_Assign_DEFAULT = NewI32Patch().GetAssign()
 
 func (x *I32Patch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type I32PatchAlias I32Patch
+    valueAlias := (*I32PatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1552,7 +1616,9 @@ if err != nil {
 var I64Patch_Assign_DEFAULT = NewI64Patch().GetAssign()
 
 func (x *I64Patch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type I64PatchAlias I64Patch
+    valueAlias := (*I64PatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1823,7 +1889,9 @@ if err != nil {
 var FloatPatch_Assign_DEFAULT = NewFloatPatch().GetAssign()
 
 func (x *FloatPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type FloatPatchAlias FloatPatch
+    valueAlias := (*FloatPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2094,7 +2162,9 @@ if err != nil {
 var DoublePatch_Assign_DEFAULT = NewDoublePatch().GetAssign()
 
 func (x *DoublePatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type DoublePatchAlias DoublePatch
+    valueAlias := (*DoublePatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2411,7 +2481,9 @@ if err != nil {
 var StringPatch_Assign_DEFAULT = NewStringPatch().GetAssign()
 
 func (x *StringPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type StringPatchAlias StringPatch
+    valueAlias := (*StringPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2650,7 +2722,7 @@ func (x *BinaryPatch) writeField1(p thrift.Protocol) error {  // Assign
         return nil
     }
 
-    if err := p.WriteFieldBegin("assign", thrift.BINARY, 1); err != nil {
+    if err := p.WriteFieldBegin("assign", thrift.STRING, 1); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -2687,7 +2759,7 @@ func (x *BinaryPatch) writeField8(p thrift.Protocol) error {  // Prepend
         return nil
     }
 
-    if err := p.WriteFieldBegin("prepend", thrift.BINARY, 8); err != nil {
+    if err := p.WriteFieldBegin("prepend", thrift.STRING, 8); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -2708,7 +2780,7 @@ func (x *BinaryPatch) writeField9(p thrift.Protocol) error {  // Append
         return nil
     }
 
-    if err := p.WriteFieldBegin("append", thrift.BINARY, 9); err != nil {
+    if err := p.WriteFieldBegin("append", thrift.STRING, 9); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -2765,7 +2837,9 @@ if err != nil {
 }
 
 func (x *BinaryPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type BinaryPatchAlias BinaryPatch
+    valueAlias := (*BinaryPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

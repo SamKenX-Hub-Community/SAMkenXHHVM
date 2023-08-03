@@ -244,6 +244,7 @@ add_library(
   server/Cpp2Connection.cpp
   server/Cpp2Worker.cpp
   server/CPUConcurrencyController.cpp
+  server/IOUringUtil.cpp
   server/LoggingEvent.cpp
   server/LoggingEventHelper.cpp
   server/MonitoringMethodNames.cpp
@@ -270,14 +271,16 @@ add_library(
   server/ThriftServerConfig.cpp
   server/TMConcurrencyController.cpp
   server/peeking/TLSHelper.cpp
+  transport/core/RequestStateMachine.cpp
   transport/core/RpcMetadataUtil.cpp
   transport/core/RpcMetadataPlugins.cpp
   transport/core/ThriftClient.cpp
   transport/core/ThriftClientCallback.cpp
   transport/core/ThriftRequest.cpp
-  transport/rocket/FdSocketMetadata.cpp
+  transport/rocket/FdSocket.cpp
   transport/rocket/PayloadUtils.cpp
   transport/rocket/Types.cpp
+  transport/rocket/Compression.cpp
   transport/rocket/client/RequestContext.cpp
   transport/rocket/client/RequestContextQueue.cpp
   transport/rocket/client/RocketClient.cpp
@@ -312,6 +315,7 @@ add_dependencies(
   thrifttyperep
   thrifttype
   thriftanyrep
+  mvfst::mvfst_server_async_tran
 )
 target_link_libraries(
   thriftcpp2
@@ -325,6 +329,7 @@ target_link_libraries(
     thrifttyperep
     thrifttype
     thriftanyrep
+    mvfst::mvfst_server_async_tran
 )
 
 # Install includes

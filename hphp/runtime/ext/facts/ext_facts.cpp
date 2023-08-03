@@ -77,16 +77,7 @@ namespace HPHP {
 namespace Facts {
 namespace {
 
-// SQLFacts version number representing the DB's schema.  This number is
-// determined randomly, but should match the number in the SQL Facts
-// implementation.  We use this when we make a change that invalidates
-// the cache, such as adding a new table which would otherwise be
-// unpopulated without a cache rebuild.
-constexpr size_t kSchemaVersion = 1916337637;
-
-constexpr std::string_view kEUIDPlaceholder = "%{euid}";
-constexpr std::string_view kSchemaPlaceholder = "%{schema}";
-constexpr std::chrono::seconds kDefaultExpirationTime{30 * 60};
+constexpr std::chrono::seconds kDefaultIdleSec{30 * 60};
 constexpr int32_t kDefaultWatchmanRetries = 0;
 
 struct RepoOptionsParseExc : public std::runtime_error {
@@ -100,53 +91,6 @@ struct RepoOptionsParseExc : public std::runtime_error {
  */
 fs::path getRepoRoot(const RepoOptions& options) {
   return options.dir();
-}
-
-std::string getCacheBreakerSchemaHash(
-    std::string_view root,
-    const RepoOptions& opts) {
-  std::string optsHash = RO::EvalIncludeReopOptionsInFactsCacheBreaker
-      ? opts.flags().cacheKeySha1().toString()
-      : opts.flags().getFactsCacheBreaker();
-  XLOG(INFO) << "Native Facts DB cache breaker:"
-             << "\n Version: " << kSchemaVersion << "\n Root: " << root
-             << "\n RepoOpts hash: " << optsHash;
-  std::string rootHash = string_sha1(root);
-  optsHash.resize(10);
-  rootHash.resize(10);
-  return folly::to<std::string>(kSchemaVersion, '_', optsHash, '_', rootHash);
-}
-
-fs::path getDBPath(const RepoOptions& repoOptions) {
-  always_assert(!RuntimeOption::AutoloadDBPath.empty());
-  std::string pathTemplate{RuntimeOption::AutoloadDBPath};
-
-  {
-    size_t idx = pathTemplate.find(kEUIDPlaceholder);
-    if (idx != std::string::npos) {
-      pathTemplate.replace(
-          idx, kEUIDPlaceholder.size(), folly::to<std::string>(geteuid()));
-    }
-  }
-
-  auto root = getRepoRoot(repoOptions);
-
-  {
-    size_t idx = pathTemplate.find(kSchemaPlaceholder);
-    if (idx != std::string::npos) {
-      pathTemplate.replace(
-          idx,
-          kSchemaPlaceholder.size(),
-          getCacheBreakerSchemaHash(root.native(), repoOptions));
-    }
-  }
-
-  fs::path dbPath = pathTemplate;
-  if (dbPath.is_relative()) {
-    dbPath = root / dbPath;
-  }
-
-  return fs::absolute(dbPath);
 }
 
 ::gid_t getGroup() {
@@ -184,10 +128,7 @@ bool hasWatchedFileExtension(const std::filesystem::path& path) {
   return ext == ".php" || ext == ".hck" || ext == ".inc";
 }
 
-SQLiteKey getDBKey(
-    const fs::path& root,
-    const folly::dynamic& queryExpr,
-    const RepoOptions& repoOptions) {
+SQLiteKey getDBKey(const fs::path& root, const RepoOptions& repoOptions) {
   assertx(root.is_absolute());
 
   auto trustedDBPath = [&]() -> fs::path {
@@ -214,14 +155,15 @@ SQLiteKey getDBKey(
   if (!trustedDBPath.empty()) {
     return SQLiteKey::readOnly(std::move(trustedDBPath));
   }
+  auto const dbPath = repoOptions.autoloadDB();
+  always_assert(!dbPath.empty());
   // Create a DB with the given permissions if none exists
   if (RuntimeOption::AutoloadDBCanCreate) {
     ::gid_t gid = getGroup();
-    return SQLiteKey::readWriteCreate(
-        getDBPath(repoOptions), gid, getDBPerms());
+    return SQLiteKey::readWriteCreate(dbPath, gid, getDBPerms());
   }
   // Use an existing DB and throw if it doesn't exist
-  return SQLiteKey::readWrite(getDBPath(repoOptions));
+  return SQLiteKey::readWrite(dbPath);
 }
 
 // Convenience wrapper for std::string_view
@@ -230,13 +172,17 @@ inline strhash_t hash_string_view_cs(std::string_view s) {
 }
 
 /**
- * List of options making a WatchmanAutoloadMap unique
+ * List of options making a SqliteAutoloadMap unique
  */
-struct WatchmanAutoloadMapKey {
-  static WatchmanAutoloadMapKey get(const RepoOptions& repoOptions) {
+struct SqliteAutoloadMapKey {
+  static SqliteAutoloadMapKey get(const RepoOptions& repoOptions) {
     auto root = getRepoRoot(repoOptions);
 
     auto queryExpr = [&]() -> folly::dynamic {
+      auto const cached = repoOptions.flags().autoloadQueryObj();
+      if (cached.isObject())
+        return cached;
+
       auto queryStr = repoOptions.flags().autoloadQuery();
       if (queryStr.empty()) {
         return {};
@@ -251,16 +197,16 @@ struct WatchmanAutoloadMapKey {
       }
     }();
 
-    auto dbKey = getDBKey(root, queryExpr, repoOptions);
+    auto dbKey = getDBKey(root, repoOptions);
 
-    return WatchmanAutoloadMapKey{
+    return SqliteAutoloadMapKey{
         .m_root = std::move(root),
         .m_queryExpr = std::move(queryExpr),
         .m_indexedMethodAttrs = repoOptions.flags().indexedMethodAttributes(),
         .m_dbKey = std::move(dbKey)};
   }
 
-  bool operator==(const WatchmanAutoloadMapKey& rhs) const noexcept {
+  bool operator==(const SqliteAutoloadMapKey& rhs) const noexcept {
     return m_root == rhs.m_root && m_queryExpr == rhs.m_queryExpr &&
         m_indexedMethodAttrs == rhs.m_indexedMethodAttrs &&
         m_dbKey == rhs.m_dbKey;
@@ -277,7 +223,7 @@ struct WatchmanAutoloadMapKey {
     indexedMethodAttrString += '}';
 
     return folly::sformat(
-        "WatchmanAutoloadMapKey({}, {}, {}, {})",
+        "SqliteAutoloadMapKey({}, {}, {}, {})",
         m_root.native(),
         folly::toJson(m_queryExpr),
         indexedMethodAttrString,
@@ -299,149 +245,14 @@ struct WatchmanAutoloadMapKey {
   SQLiteKey m_dbKey;
 };
 
-// Code to coerce a FileFacts into a userspace shape.
-
-#define X(str) const StaticString s_##str{#str};
-// Attribute
-X(name)
-X(args)
-
-// MethodDetails
-X(attributes)
-
-// TypeDetails
-X(kind)
-X(flags)
-X(baseTypes)
-X(requireClass)
-X(requireExtends)
-X(requireImplements)
-X(methods)
-
-// FileFacts
-X(types)
-X(functions)
-X(constants)
-X(modules)
-X(sha1sum)
-#undef X
-
-template <typename T>
-Array makeVec(const std::vector<T>& types) {
-  VecInit ret{types.size()};
-  for (auto const& type : types) {
-    ret.append(type);
-  }
-  return ret.toArray();
-}
-
-Array makeVec(const std::vector<folly::dynamic>& args) {
-  VecInit ret{args.size()};
-  for (auto const& arg : args) {
-    ret.append(Variant::fromDynamic(arg));
-  }
-  return ret.toArray();
-}
-
-Array makeShape(const Attribute& attr) {
-  return make_dict_array(
-      StrNR{s_name},
-      String{std::string_view{attr.m_name}},
-      StrNR{s_args},
-      makeVec(attr.m_args));
-}
-
-Array makeVec(const std::vector<Attribute>& attrs) {
-  VecInit ret{attrs.size()};
-  for (auto const& attr : attrs) {
-    ret.append(makeShape(attr));
-  }
-  return ret.toArray();
-}
-
-Array makeShape(const MethodDetails& method) {
-  size_t retSize = 2;
-  DictInit ret{retSize};
-  ret.set(StrNR{s_name}, method.m_name);
-  ret.set(StrNR{s_attributes}, makeVec(method.m_attributes));
-  return ret.toArray();
-}
-
-Array makeVec(const std::vector<MethodDetails>& methods) {
-  VecInit ret{methods.size()};
-  for (auto const& method : methods) {
-    ret.append(makeShape(method));
-  }
-  return ret.toArray();
-}
-
-Array makeShape(const TypeDetails& type) {
-  size_t retSize = 9;
-  DictInit ret{retSize};
-  ret.set(StrNR{s_name}, type.m_name);
-  ret.set(StrNR{s_kind}, String{toString(type.m_kind)});
-  ret.set(StrNR{s_flags}, type.m_flags);
-  ret.set(StrNR{s_baseTypes}, makeVec(type.m_baseTypes));
-  ret.set(StrNR{s_attributes}, makeVec(type.m_attributes));
-  ret.set(StrNR{s_requireClass}, makeVec(type.m_requireClass));
-  ret.set(StrNR{s_requireExtends}, makeVec(type.m_requireExtends));
-  ret.set(StrNR{s_requireImplements}, makeVec(type.m_requireImplements));
-  ret.set(StrNR{s_methods}, makeVec(type.m_methods));
-  return ret.toArray();
-}
-
-Array makeVec(const std::vector<TypeDetails>& types) {
-  VecInit ret{types.size()};
-  for (auto const& type : types) {
-    ret.append(makeShape(type));
-  }
-  return ret.toArray();
-}
-
-Array makeShape(const ModuleDetails& modules) {
-  size_t retSize = 1;
-  DictInit ret{retSize};
-  ret.set(StrNR{s_name}, modules.m_name);
-  return ret.toArray();
-}
-
-Array makeVec(const std::vector<ModuleDetails>& modules) {
-  VecInit ret{modules.size()};
-  for (auto const& module : modules) {
-    ret.append(makeShape(module));
-  }
-  return ret.toArray();
-}
-
-Array makeShape(const FileFacts& facts) {
-  return make_dict_array(
-      StrNR{s_types},
-      makeVec(facts.m_types),
-
-      StrNR{s_functions},
-      makeVec(facts.m_functions),
-
-      StrNR{s_constants},
-      makeVec(facts.m_constants),
-
-      StrNR{s_modules},
-      makeVec(facts.m_modules),
-
-      StrNR{s_attributes},
-      makeVec(facts.m_attributes),
-
-      StrNR{s_sha1sum},
-      String{facts.m_sha1hex});
-}
-
 } // namespace
 } // namespace Facts
 } // namespace HPHP
 
 namespace std {
 template <>
-struct hash<HPHP::Facts::WatchmanAutoloadMapKey> {
-  size_t operator()(const HPHP::Facts::WatchmanAutoloadMapKey& k) const {
+struct hash<HPHP::Facts::SqliteAutoloadMapKey> {
+  size_t operator()(const HPHP::Facts::SqliteAutoloadMapKey& k) const {
     return static_cast<size_t>(k.hash());
   }
 };
@@ -453,24 +264,23 @@ namespace {
 
 /**
  * Sent to AutoloadHandler so AutoloadHandler can create
- * WatchmanAutoloadMaps across the open-source / FB-only boundary.
+ * SqliteAutoloadMaps across the open-source / FB-only boundary.
  */
-struct WatchmanAutoloadMapFactory final : public FactsFactory {
-  WatchmanAutoloadMapFactory() = default;
-  WatchmanAutoloadMapFactory(const WatchmanAutoloadMapFactory&) = delete;
-  WatchmanAutoloadMapFactory(WatchmanAutoloadMapFactory&&) = delete;
-  WatchmanAutoloadMapFactory& operator=(const WatchmanAutoloadMapFactory&) =
-      delete;
-  WatchmanAutoloadMapFactory& operator=(WatchmanAutoloadMapFactory&&) = delete;
-  ~WatchmanAutoloadMapFactory() override = default;
+struct SqliteAutoloadMapFactory final : public FactsFactory {
+  SqliteAutoloadMapFactory() = default;
+  SqliteAutoloadMapFactory(const SqliteAutoloadMapFactory&) = delete;
+  SqliteAutoloadMapFactory(SqliteAutoloadMapFactory&&) = delete;
+  SqliteAutoloadMapFactory& operator=(const SqliteAutoloadMapFactory&) = delete;
+  SqliteAutoloadMapFactory& operator=(SqliteAutoloadMapFactory&&) = delete;
+  ~SqliteAutoloadMapFactory() override = default;
 
   FactsStore* getForOptions(const RepoOptions& options) override;
 
   /**
    * Delete AutoloadMaps which haven't been accessed in the last
-   * `expirationTime` seconds.
+   * `idleSec` seconds.
    */
-  void garbageCollectUnusedAutoloadMaps(std::chrono::seconds expirationTime);
+  void garbageCollectUnusedAutoloadMaps(std::chrono::seconds idleSec);
 
  private:
   std::mutex m_mutex;
@@ -478,25 +288,21 @@ struct WatchmanAutoloadMapFactory final : public FactsFactory {
   /**
    * Map from root to AutoloadMap
    */
-  hphp_hash_map<WatchmanAutoloadMapKey, std::shared_ptr<FactsStore>> m_maps;
+  hphp_hash_map<SqliteAutoloadMapKey, std::shared_ptr<FactsStore>> m_maps;
 
   /**
    * Map from root to time we last accessed the AutoloadMap
    */
   hphp_hash_map<
-      WatchmanAutoloadMapKey,
+      SqliteAutoloadMapKey,
       std::chrono::time_point<std::chrono::steady_clock>>
       m_lastUsed;
 };
 
-struct Facts final : Extension {
-  Facts() : Extension("facts", "1.0", NO_ONCALL_YET) {}
+struct FactsExtension final : Extension {
+  FactsExtension() : Extension("facts", "1.0", "hphp_hphpi") {}
 
   void moduleLoad(const IniSetting::Map& ini, Hdf config) override {
-    if (!RuntimeOption::AutoloadEnabled) {
-      return;
-    }
-
     // Why are we using TRACE/Logger in moduleLoad instead of XLOG?  Because of
     // the HHVM startup process and where moduleLoad happens within it, we can't
     // initialize any async handlers until moduleInit() otherwise HHVM
@@ -506,16 +312,11 @@ struct Facts final : Extension {
     m_data = FactsData{};
 
     // An AutoloadMap may be freed after this many seconds since its last use
-    m_data->m_expirationTime = std::chrono::seconds{Config::GetInt64(
-        ini,
-        config,
-        "Autoload.MapIdleGCTimeSeconds",
-        kDefaultExpirationTime.count())};
-    if (m_data->m_expirationTime != kDefaultExpirationTime) {
+    m_data->m_idleSec = std::chrono::seconds{Config::GetInt64(
+        ini, config, "Autoload.MapIdleGCTimeSeconds", kDefaultIdleSec.count())};
+    if (m_data->m_idleSec != kDefaultIdleSec) {
       FTRACE(
-          3,
-          "Autoload.MapIdleGCTimeSeconds = {}\n",
-          m_data->m_expirationTime.count());
+          3, "Autoload.MapIdleGCTimeSeconds = {}\n", m_data->m_idleSec.count());
     }
 
     if (!RO::WatchmanDefaultSocket.empty()) {
@@ -540,7 +341,7 @@ struct Facts final : Extension {
   }
 
   std::chrono::seconds getExpirationTime() const {
-    return m_data->m_expirationTime;
+    return m_data->m_idleSec;
   }
 
   const WatchmanWatcherOpts& getWatchmanWatcherOpts() const {
@@ -551,14 +352,14 @@ struct Facts final : Extension {
   // Add new members to this struct instead of the top level so we can be sure
   // your new member is destroyed at the right time.
   struct FactsData {
-    std::chrono::seconds m_expirationTime{30 * 60};
-    std::unique_ptr<WatchmanAutoloadMapFactory> m_mapFactory;
+    std::chrono::seconds m_idleSec{kDefaultIdleSec};
+    std::unique_ptr<SqliteAutoloadMapFactory> m_mapFactory;
     WatchmanWatcherOpts m_watchmanWatcherOpts;
   };
   Optional<FactsData> m_data;
 } s_ext;
 
-std::shared_ptr<Watcher> make_watcher(const WatchmanAutoloadMapKey& mapKey) {
+std::shared_ptr<Watcher> make_watcher(const SqliteAutoloadMapKey& mapKey) {
   if (mapKey.m_queryExpr.isObject()) {
     // Pass the query expression to Watchman to watch the directory
     return make_watchman_watcher(
@@ -587,11 +388,11 @@ std::shared_ptr<Watcher> make_watcher(const WatchmanAutoloadMapKey& mapKey) {
   }
 }
 
-FactsStore* WatchmanAutoloadMapFactory::getForOptions(
+FactsStore* SqliteAutoloadMapFactory::getForOptions(
     const RepoOptions& options) {
-  auto mapKey = [&]() -> Optional<WatchmanAutoloadMapKey> {
+  auto mapKey = [&]() -> Optional<SqliteAutoloadMapKey> {
     try {
-      auto mk = WatchmanAutoloadMapKey::get(options);
+      auto mk = SqliteAutoloadMapKey::get(options);
       return {std::move(mk)};
     } catch (const RepoOptionsParseExc& e) {
       XLOG(ERR) << e.what();
@@ -608,7 +409,7 @@ FactsStore* WatchmanAutoloadMapFactory::getForOptions(
   // Mark the fact that we've accessed the map
   m_lastUsed.insert_or_assign(*mapKey, std::chrono::steady_clock::now());
 
-  // Try to return a corresponding WatchmanAutoloadMap
+  // Try to return a corresponding SqliteAutoloadMap
   auto const it = m_maps.find(*mapKey);
   if (it != m_maps.end()) {
     return it->second.get();
@@ -619,12 +420,12 @@ FactsStore* WatchmanAutoloadMapFactory::getForOptions(
   Treadmill::enqueue(
       [this] { garbageCollectUnusedAutoloadMaps(s_ext.getExpirationTime()); });
 
-  AutoloadDB::Handle dbHandle =
+  AutoloadDB::Opener dbOpener =
       [dbKey = mapKey->m_dbKey]() -> std::shared_ptr<AutoloadDB> {
     return SQLiteAutoloadDB::get(dbKey);
   };
 
-  if (mapKey->m_dbKey.m_writable == SQLite::OpenMode::ReadOnly) {
+  if (mapKey->m_dbKey.m_mode == SQLite::OpenMode::ReadOnly) {
     XLOGF(
         DBG0,
         "Loading {} from trusted Autoload DB at {}",
@@ -635,7 +436,7 @@ FactsStore* WatchmanAutoloadMapFactory::getForOptions(
             {*mapKey,
              make_trusted_facts(
                  mapKey->m_root,
-                 std::move(dbHandle),
+                 std::move(dbOpener),
                  mapKey->m_indexedMethodAttrs)})
         .first->second.get();
   }
@@ -645,12 +446,16 @@ FactsStore* WatchmanAutoloadMapFactory::getForOptions(
     updateSuppressionPath = {
         std::filesystem::path{RuntimeOption::AutoloadUpdateSuppressionPath}};
   }
+
+  // Prefetch a FactsDB if we don't have one, while guarded by m_mutex
+  prefetchDb(mapKey->m_root, mapKey->m_dbKey);
+
   return m_maps
       .insert(
           {*mapKey,
            make_watcher_facts(
                mapKey->m_root,
-               std::move(dbHandle),
+               std::move(dbOpener),
                make_watcher(*mapKey),
                RuntimeOption::ServerExecutionMode(),
                std::move(updateSuppressionPath),
@@ -658,15 +463,15 @@ FactsStore* WatchmanAutoloadMapFactory::getForOptions(
       .first->second.get();
 }
 
-void WatchmanAutoloadMapFactory::garbageCollectUnusedAutoloadMaps(
-    std::chrono::seconds expirationTime) {
+void SqliteAutoloadMapFactory::garbageCollectUnusedAutoloadMaps(
+    std::chrono::seconds idleSec) {
   auto mapsToRemove = [&]() -> std::vector<std::shared_ptr<FactsStore>> {
     std::unique_lock g{m_mutex};
 
     // If a map was last used before this time, remove it
-    auto deadline = std::chrono::steady_clock::now() - expirationTime;
+    auto deadline = std::chrono::steady_clock::now() - idleSec;
 
-    std::vector<WatchmanAutoloadMapKey> keysToRemove;
+    std::vector<SqliteAutoloadMapKey> keysToRemove;
     for (auto const& [mapKey, _] : m_maps) {
       auto lastUsedIt = m_lastUsed.find(mapKey);
       if (lastUsedIt == m_lastUsed.end() || lastUsedIt->second < deadline) {
@@ -677,7 +482,7 @@ void WatchmanAutoloadMapFactory::garbageCollectUnusedAutoloadMaps(
     std::vector<std::shared_ptr<FactsStore>> maps;
     maps.reserve(keysToRemove.size());
     for (auto const& mapKey : keysToRemove) {
-      XLOG(INFO) << "Evicting WatchmanAutoloadMap: " << mapKey.toString();
+      XLOG(INFO) << "Evicting SqliteAutoloadMap: " << mapKey.toString();
       auto it = m_maps.find(mapKey);
       if (it != m_maps.end()) {
         maps.push_back(std::move(it->second));
@@ -705,6 +510,42 @@ FactsStore& getFactsOrThrow() {
         "if native Facts is enabled for the current request.");
   }
   return *facts;
+}
+
+// Only bool, int, double, string, and Hack arrays are supported.
+folly::dynamic dynamicFromVariant(const Variant& v) {
+  if (v.isBoolean()) {
+    return v.getBoolean();
+  }
+  if (v.isInteger()) {
+    return v.getInt64();
+  }
+  if (v.isDouble()) {
+    return v.getDouble();
+  }
+  if (v.isString()) {
+    return v.getStringData()->toCppString();
+  }
+  if (v.isDict()) {
+    folly::dynamic ret = folly::dynamic::object;
+    ret.resize(v.getArrayData()->size());
+    IterateKV(v.getArrayData(), [&](TypedValue k, TypedValue v) {
+      ret[dynamicFromVariant(Variant::wrap(k))] =
+          dynamicFromVariant(Variant::wrap(v));
+    });
+    return ret;
+  }
+  if (v.isArray()) {
+    folly::dynamic ret = folly::dynamic::array;
+    ret.resize(v.getArrayData()->size());
+    uint64_t i;
+    IterateV(v.getArrayData(), [&](TypedValue v) {
+      ret[i] = dynamicFromVariant(Variant::wrap(v));
+      i++;
+    });
+    return ret;
+  }
+  return nullptr;
 }
 
 } // namespace
@@ -745,8 +586,8 @@ Variant HHVM_FUNCTION(facts_db_path, const String& rootStr) {
   auto const& repoOptions = RepoOptions::forFile(optionPath.native().c_str());
 
   try {
-    return Variant{Facts::WatchmanAutoloadMapKey::get(repoOptions)
-                       .m_dbKey.m_path.native()};
+    return Variant{
+        Facts::SqliteAutoloadMapKey::get(repoOptions).m_dbKey.m_path.native()};
   } catch (const Facts::RepoOptionsParseExc& e) {
     throw_invalid_operation_exception(makeStaticString(e.what()));
   }
@@ -856,13 +697,6 @@ Array HHVM_FUNCTION(
 }
 
 Array HHVM_FUNCTION(
-    facts_transitive_subtypes,
-    const String& baseType,
-    const Variant& filters) {
-  return Facts::getFactsOrThrow().getTransitiveDerivedTypes(baseType, filters);
-}
-
-Array HHVM_FUNCTION(
     facts_supertypes,
     const String& derivedType,
     const Variant& filters) {
@@ -883,6 +717,14 @@ Array HHVM_FUNCTION(facts_methods_with_attribute, const String& attr) {
 
 Array HHVM_FUNCTION(facts_files_with_attribute, const String& attr) {
   return Facts::getFactsOrThrow().getFilesWithAttribute(attr);
+}
+
+Array HHVM_FUNCTION(
+    facts_files_with_attribute_and_any_value,
+    const String& attr,
+    const Variant& value) {
+  return Facts::getFactsOrThrow().getFilesWithAttributeAndAnyValue(
+      attr, Facts::dynamicFromVariant(value));
 }
 
 Array HHVM_FUNCTION(facts_type_attributes, const String& type) {
@@ -933,93 +775,9 @@ Array HHVM_FUNCTION(
   return Facts::getFactsOrThrow().getFileAttrArgs(file, attr);
 }
 
-Array HHVM_FUNCTION(facts_all_types) {
-  return Facts::getFactsOrThrow().getAllTypes();
-}
-Array HHVM_FUNCTION(facts_all_functions) {
-  return Facts::getFactsOrThrow().getAllFunctions();
-}
-Array HHVM_FUNCTION(facts_all_constants) {
-  return Facts::getFactsOrThrow().getAllConstants();
-}
-Array HHVM_FUNCTION(facts_all_type_aliases) {
-  return Facts::getFactsOrThrow().getAllTypeAliases();
-}
-Array HHVM_FUNCTION(facts_all_modules) {
-  return Facts::getFactsOrThrow().getAllModules();
-}
-
-Array HHVM_FUNCTION(
-    facts_extract,
-    const Array& alteredPathsAndHashesArr,
-    const Variant& maybeRoot) {
-  // Get the root of the repository
-  auto root = [&]() -> fs::path {
-    if (maybeRoot.isString()) {
-      return {std::string{maybeRoot.toStrNR().get()->slice()}};
-    }
-    auto* repoOptions = g_context->getRepoOptionsForRequest();
-    if (!repoOptions || repoOptions->path().empty()) {
-      SystemLib::throwInvalidOperationExceptionObject(
-          "Could not find a root directory for the current request");
-    }
-    return Facts::getRepoRoot(*repoOptions);
-  }();
-
-  // Coerce the given vec<(string, string)> into C++ paths and hashes
-  std::vector<Facts::PathAndOptionalHash> alteredPathsAndHashes;
-  alteredPathsAndHashes.reserve(alteredPathsAndHashesArr.size());
-  std::vector<String> alteredPathStrs;
-  alteredPathStrs.reserve(alteredPathsAndHashesArr.size());
-  IterateV(alteredPathsAndHashesArr.get(), [&](TypedValue v) {
-    Facts::PathAndOptionalHash pathAndHash;
-    if (UNLIKELY(!tvIsArrayLike(v))) {
-      SystemLib::throwTypeAssertionExceptionObject(
-          "HH\\Facts\\extract expects vec<(string, ?string)>");
-    }
-    size_t i = 0;
-    IterateV(v.m_data.parr, [&](TypedValue pathOrHash) {
-      if (i == 0) {
-        if (UNLIKELY(!tvIsString(pathOrHash))) {
-          SystemLib::throwTypeAssertionExceptionObject(
-              "HH\\Facts\\extract expects vec<(string, ?string)>");
-        }
-        alteredPathStrs.push_back(String::attach(pathOrHash.m_data.pstr));
-        pathAndHash.m_path = {std::string{pathOrHash.m_data.pstr->slice()}};
-      } else if (i == 1) {
-        if (tvIsString(pathOrHash)) {
-          pathAndHash.m_hash = {std::string{pathOrHash.m_data.pstr->slice()}};
-        } else if (!tvIsNull(pathOrHash)) {
-          SystemLib::throwTypeAssertionExceptionObject(
-              "HH\\Facts\\extract expects vec<(string, ?string)>");
-        }
-      }
-      ++i;
-    });
-    alteredPathsAndHashes.push_back(std::move(pathAndHash));
-  });
-
-  // Extract facts
-  auto alteredPathFacts = Facts::facts_from_paths(root, alteredPathsAndHashes);
-
-  // Convert extracted Facts to HHVM userspace objects
-  DictInit factsArr{alteredPathsAndHashes.size()};
-  for (int64_t i = 0; i < alteredPathFacts.size(); ++i) {
-    auto const& facts = alteredPathFacts[i];
-    if (LIKELY(facts.hasValue())) {
-      factsArr.set(
-          std::move(alteredPathStrs[i]), tvReturn(Facts::makeShape(*facts)));
-    } else {
-      // Set the path's facts to null on failure. This is likely a parse error.
-      factsArr.set(std::move(alteredPathStrs[i]), Variant{});
-    }
-  }
-  return factsArr.toArray();
-}
-
 namespace Facts {
 
-void Facts::moduleInit() {
+void FactsExtension::moduleInit() {
   // This, unfortunately, cannot be done in moduleLoad() due to the fact
   // that certain async loggers may create a new thread.  HHVM will throw
   // if any threads have been created during the moduleLoad() step.
@@ -1060,8 +818,6 @@ void Facts::moduleInit() {
   HHVM_NAMED_FE(HH\\Facts\\is_abstract, HHVM_FN(facts_is_abstract));
   HHVM_NAMED_FE(HH\\Facts\\is_final, HHVM_FN(facts_is_final));
   HHVM_NAMED_FE(HH\\Facts\\subtypes, HHVM_FN(facts_subtypes));
-  HHVM_NAMED_FE(
-      HH\\Facts\\transitive_subtypes, HHVM_FN(facts_transitive_subtypes));
   HHVM_NAMED_FE(HH\\Facts\\supertypes, HHVM_FN(facts_supertypes));
   HHVM_NAMED_FE(
       HH\\Facts\\types_with_attribute, HHVM_FN(facts_types_with_attribute));
@@ -1072,6 +828,9 @@ void Facts::moduleInit() {
       HH\\Facts\\methods_with_attribute, HHVM_FN(facts_methods_with_attribute));
   HHVM_NAMED_FE(
       HH\\Facts\\files_with_attribute, HHVM_FN(facts_files_with_attribute));
+  HHVM_NAMED_FE(
+      HH\\Facts\\files_with_attribute_and_any_value,
+      HHVM_FN(facts_files_with_attribute_and_any_value));
   HHVM_NAMED_FE(HH\\Facts\\type_attributes, HHVM_FN(facts_type_attributes));
   HHVM_NAMED_FE(
       HH\\Facts\\type_alias_attributes, HHVM_FN(facts_type_alias_attributes));
@@ -1089,19 +848,8 @@ void Facts::moduleInit() {
   HHVM_NAMED_FE(
       HH\\Facts\\file_attribute_parameters,
       HHVM_FN(facts_file_attribute_parameters));
-  HHVM_NAMED_FE(HH\\Facts\\all_types, HHVM_FN(facts_all_types));
-  HHVM_NAMED_FE(HH\\Facts\\all_functions, HHVM_FN(facts_all_functions));
-  HHVM_NAMED_FE(HH\\Facts\\all_constants, HHVM_FN(facts_all_constants));
-  HHVM_NAMED_FE(HH\\Facts\\all_type_aliases, HHVM_FN(facts_all_type_aliases));
-  HHVM_NAMED_FE(HH\\Facts\\all_modules, HHVM_FN(facts_all_modules));
-  HHVM_NAMED_FE(HH\\Facts\\extract, HHVM_FN(facts_extract));
-  loadSystemlib();
 
-  if (!RuntimeOption::AutoloadEnabled) {
-    XLOG(INFO)
-        << "Autoload.Enabled is not true, not enabling native autoloader.";
-    return;
-  }
+  loadSystemlib();
 
   if (RuntimeOption::AutoloadDBPath.empty()) {
     XLOG(ERR) << "Autoload.DB.Path was empty, not enabling native autoloader.";
@@ -1116,7 +864,7 @@ void Facts::moduleInit() {
     XLOG(INFO) << "watchman.socket.root was not provided.";
   }
 
-  m_data->m_mapFactory = std::make_unique<WatchmanAutoloadMapFactory>();
+  m_data->m_mapFactory = std::make_unique<SqliteAutoloadMapFactory>();
   FactsFactory::setInstance(m_data->m_mapFactory.get());
 }
 

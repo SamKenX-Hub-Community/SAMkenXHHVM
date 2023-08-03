@@ -271,12 +271,13 @@ impl Pass for ElabHintThisPass {
 #[cfg(test)]
 mod tests {
 
+    use std::sync::Arc;
+
     use file_info::Mode;
     use nast::Id;
     use nast::Pos;
     use nast::UserAttribute;
     use nast::UserAttributes;
-    use ocamlrep::rc::RcOc;
     use oxidized::namespace_env;
     use oxidized::s_map::SMap;
 
@@ -313,13 +314,12 @@ mod tests {
             methods: Default::default(),
             xhp_children: Default::default(),
             xhp_attrs: Default::default(),
-            namespace: RcOc::new(namespace_env::Env {
+            namespace: Arc::new(namespace_env::Env {
                 ns_uses: SMap::default(),
                 class_uses: SMap::default(),
                 fun_uses: SMap::default(),
                 const_uses: SMap::default(),
                 name: None,
-                auto_ns_map: vec![],
                 is_codegen: false,
                 disable_xhp_element_mangling: false,
             }),

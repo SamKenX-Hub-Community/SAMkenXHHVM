@@ -158,7 +158,9 @@ enum class CipherSuite : uint16_t {
   TLS_AES_256_GCM_SHA384 = 0x1302,
   TLS_CHACHA20_POLY1305_SHA256 = 0x1303,
   // experimental cipher suites
-  TLS_AES_128_OCB_SHA256_EXPERIMENTAL = 0xFF01
+  TLS_AES_128_OCB_SHA256_EXPERIMENTAL = 0xFF01,
+  TLS_AEGIS_128L_SHA256_EXPERIMENTAL = 0xFF02,
+  TLS_AEGIS_256_SHA384_EXPERIMENTAL = 0xFF03,
 };
 
 std::string toString(CipherSuite);
@@ -344,6 +346,13 @@ enum class NamedGroup : uint16_t {
   secp521r1 = 25,
   x25519 = 29,
 
+  /**
+   * x25519 and secp256r1 hybrids with NIST Round 3 version of Kyber, see
+   * https://datatracker.ietf.org/doc/draft-tls-westerbaan-xyber768d00/02/
+   */
+  x25519_kyber768_draft00 = 25497,
+  secp256r1_kyber768_draft00 = 25498,
+
   // experimental
   /**
    * Hybrid of secp521r1 and x25519. TLS Supported Group 510 is reserved for
@@ -357,18 +366,6 @@ enum class NamedGroup : uint16_t {
    * https://github.com/open-quantum-safe/boringssl/blob/master/include/openssl/ssl.h#L2406
    */
   secp384r1_bikel3 = 12091,
-
-  /**
-   * cecpq2 is used by Chrome. see https://www.chromium.org/cecpq2/ and
-   * https://github.com/open-quantum-safe/boringssl/blob/master/include/openssl/ssl.h#L2392
-   */
-  /**
-   * TODO: this is NOT a real cecpq2: we used x25519+ntru_hrss701 while cecpq2
-   * is x25519+ntru_hrss. Use cecpq2 just for test purposes and would change to
-   * the correct implementation in future. CECPQ = Combined Elliptic-Curve and
-   * Post-Quantum
-   */
-  cecpq2 = 16696,
 
   // Standardized algorithms. See
   // https://datatracker.ietf.org/doc/html/draft-ietf-tls-hybrid-design-05#section-5
@@ -386,16 +383,10 @@ enum class NamedGroup : uint16_t {
   secp256r1_kyber512 = 12090,
 
   /**
-   * Performance test only. Purely rely on unverified post-quantum crypto may
+   * Performance test only. Purely relying on unverified post-quantum crypto may
    * cause security flaws.
    */
   kyber512 = 511,
-
-  /**
-   * Experimental ID. Private use, see
-   * https://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#tls-parameters-8
-   */
-  x25519_kyber768 = 65024,
 
   /**
    * Experimental ID, see

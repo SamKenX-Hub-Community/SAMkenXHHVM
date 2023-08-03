@@ -9,20 +9,14 @@
 open Hh_prelude
 open Shallow_decl_defs
 
-let err_not_found (file : Relative_path.t) (name : string) : 'a =
-  let err_str =
-    Printf.sprintf "%s not found in %s" name (Relative_path.to_absolute file)
-  in
-  raise (Decl_defs.Decl_not_found err_str)
-
 let direct_decl_parse ctx filename name =
   match Direct_decl_utils.direct_decl_parse ctx filename with
-  | None -> err_not_found filename name
+  | None -> Decl_defs.raise_decl_not_found (Some filename) name
   | Some parsed_file -> parsed_file.Direct_decl_utils.pfh_decls
 
 let direct_decl_parse_and_cache ctx filename name =
   match Direct_decl_utils.direct_decl_parse_and_cache ctx filename with
-  | None -> err_not_found filename name
+  | None -> Decl_defs.raise_decl_not_found (Some filename) name
   | Some parsed_file -> parsed_file.Direct_decl_utils.pfh_decls
 
 let fetch_remote_old_decl_flag (ctx : Provider_context.t) =
@@ -117,20 +111,13 @@ let get_batch (ctx : Provider_context.t) (names : SSet.t) :
 let fetch_missing_old_classes_remotely ctx ~during_init old_classes =
   if fetch_remote_old_decls ctx ~during_init then
     let missing_old_classes =
-      SMap.fold
-        (fun cid decl_opt missing_classes ->
-          if Option.is_none decl_opt then
-            cid :: missing_classes
-          else
-            missing_classes)
-        old_classes
-        []
+      SMap.filter (fun _key -> Option.is_none) old_classes |> SMap.keys
     in
     let remote_old_classes =
       Remote_old_decl_client.fetch_old_decls ~ctx missing_old_classes
     in
-    SMap.union old_classes remote_old_classes ~combine:(fun _ decl _ ->
-        Some decl)
+    SMap.union old_classes remote_old_classes ~combine:(fun _key decl1 decl2 ->
+        Some (Option.first_some decl1 decl2))
   else
     old_classes
 

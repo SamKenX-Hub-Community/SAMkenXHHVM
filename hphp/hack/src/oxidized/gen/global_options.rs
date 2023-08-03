@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<edc4c01d5b9dc561eeb8d6a12aaf577b>>
+// @generated SignedSource<<a0fcee90c67679d74f1c9f5aa06c3639>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -87,15 +87,8 @@ pub struct GlobalOptions {
     pub tco_num_local_workers: Option<isize>,
     pub tco_max_typechecker_worker_memory_mb: Option<isize>,
     pub tco_defer_class_declaration_threshold: Option<isize>,
-    pub tco_prefetch_deferred_files: bool,
-    pub tco_remote_type_check_threshold: isize,
-    pub tco_remote_type_check: bool,
-    pub tco_remote_worker_key: Option<String>,
-    pub tco_remote_check_id: Option<String>,
-    pub tco_num_remote_workers: isize,
     pub tco_locl_cache_capacity: isize,
     pub tco_locl_cache_node_threshold: isize,
-    pub so_remote_version_specifier: Option<String>,
     pub so_naming_sqlite_path: Option<String>,
     pub po_auto_namespace_map: Vec<(String, String)>,
     pub po_codegen: bool,
@@ -128,13 +121,11 @@ pub struct GlobalOptions {
     pub tco_check_xhp_attribute: bool,
     pub tco_check_redundant_generics: bool,
     pub tco_disallow_unresolved_type_variables: bool,
+    pub tco_custom_error_config: custom_error_config::CustomErrorConfig,
     pub po_enable_class_level_where_clauses: bool,
     pub po_disable_legacy_soft_typehints: bool,
     pub po_allowed_decl_fixme_codes: i_set::ISet,
     pub po_allow_new_attribute_syntax: bool,
-    pub tco_global_inference: bool,
-    pub tco_gi_reinfer_types: Vec<String>,
-    pub tco_ordered_solving: bool,
     pub tco_const_static_props: bool,
     pub po_disable_legacy_attribute_syntax: bool,
     pub tco_const_attribute: bool,
@@ -144,9 +135,6 @@ pub struct GlobalOptions {
     pub po_abstract_static_props: bool,
     pub po_parser_errors_only: bool,
     pub tco_check_attribute_locations: bool,
-    pub glean_service: String,
-    pub glean_hostname: String,
-    pub glean_port: isize,
     pub glean_reponame: String,
     pub symbol_write_ownership: bool,
     pub symbol_write_root_path: String,
@@ -167,12 +155,14 @@ pub struct GlobalOptions {
     pub po_disable_xhp_element_mangling: bool,
     pub po_disable_xhp_children_declarations: bool,
     pub po_disable_hh_ignore_error: isize,
+    pub po_keep_user_attributes: bool,
     pub tco_is_systemlib: bool,
     pub tco_higher_kinded_types: bool,
     pub tco_method_call_inference: bool,
     pub tco_report_pos_from_reason: bool,
     pub tco_typecheck_sample_rate: f64,
     pub tco_enable_sound_dynamic: bool,
+    pub tco_pessimise_builtins: bool,
     pub tco_enable_no_auto_dynamic: bool,
     pub tco_skip_check_under_dynamic: bool,
     pub tco_ifc_enabled: Vec<String>,
@@ -208,8 +198,10 @@ pub struct GlobalOptions {
     pub tco_populate_dead_unsafe_cast_heap: bool,
     pub po_disallow_static_constants_in_default_func_args: bool,
     pub tco_load_hack_64_distc_saved_state: bool,
-    pub tco_ide_should_use_hack_64_distc: bool,
-    pub tco_tast_under_dynamic: bool,
     pub tco_rust_elab: bool,
-    pub tco_ide_load_naming_table_on_disk: bool,
+    pub dump_tast_hashes: bool,
+    pub tco_autocomplete_mode: bool,
+    pub tco_package_info: package_info::PackageInfo,
+    pub po_unwrap_concurrent: bool,
+    pub tco_log_exhaustivity_check: bool,
 }

@@ -26,6 +26,10 @@
 #include "hphp/runtime/base/types.h"
 #include "hphp/runtime/base/user-attributes.h"
 
+#include "hphp/util/tiny-vector.h"
+
+#include <folly/Range.h>
+
 namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -36,12 +40,29 @@ struct Unit;
 
 ///////////////////////////////////////////////////////////////////////////////
 
+struct TypeAndValue {
+  AnnotType type;
+  LowStringPtr value;
+
+  template<class SerDe> void serde(SerDe& sd) {
+    sd(type)(value);
+  }
+};
+
+using TypeAndValueUnion = TinyVector<TypeAndValue>;
+
 /*
- * This is the runtime representation of a type alias.  Type aliases are only
- * allowed when HipHop extensions are enabled.
+ * This is the runtime representation of a type alias.
  *
- * The `type' field is Object whenever the type alias is basically just a
- * name. At runtime we still might resolve this name to another type alias,
+ * `types` and `values` fields are vectors because case types are comprised of
+ * union of multiple types.
+ *
+ * When `caseType` field is not set, these vectors are guarenteed to be of
+ * size 1;
+ *
+ * The `typeAndValueUnion[0]' field is Object whenever the type alias is
+ * basically just a name.
+ * At runtime we still might resolve this name to another type alias,
  * becoming a type alias for some other type or something in that request.
  *
  * For the per-request struct, see TypeAlias below.
@@ -49,13 +70,12 @@ struct Unit;
 struct PreTypeAlias {
   Unit* unit;
   LowStringPtr name;
-  LowStringPtr value;
   Attr attrs;
-  AnnotType type;
+  TypeAndValueUnion typeAndValueUnion;
   int line0;
   int line1;
   bool nullable;  // null is allowed; for ?Foo aliases
-  bool case_type;
+  bool caseType;
   UserAttributeMap userAttrs;
   Array typeStructure;
   // If !isNull(), contains m_typeStructure in post-resolved form from
@@ -80,14 +100,16 @@ struct PreTypeAlias {
  * hints for a type alias at runtime.
  */
 struct TypeAlias {
+  struct TypeAndClass {
+    TypeAndClass(AnnotType type_, LowPtr<Class> klass_)
+      : type(type_)
+      , klass(klass_)
+      {}
+    TypeAndClass& operator=(const TypeAndClass&) = default;
 
-  /////////////////////////////////////////////////////////////////////////////
-  // Static constructors.
-
-  static TypeAlias Invalid(const PreTypeAlias* alias);
-  static TypeAlias From(const PreTypeAlias* alias);
-  static TypeAlias From(TypeAlias req, const PreTypeAlias* alias);
-
+    AnnotType type;
+    LowPtr<Class> klass;
+  };
 
   /////////////////////////////////////////////////////////////////////////////
   // Comparison.
@@ -98,15 +120,15 @@ struct TypeAlias {
 
   /////////////////////////////////////////////////////////////////////////////
   // Data members.
-
-  // The aliased type.
-  AnnotType type{AnnotType::NoReturn};
+  // The aliased type and Class; class is nullptr if type != Object
+  // Since this struct is stored in RDS, this member needs to have trivial
+  // ctor/dtor hence cannot use TinyVector
+  TypeAndClass* typeAndClassUnionArr;
+  size_t unionSize;
   // Overrides `type' if the alias is invalid (e.g., for a nonexistent class).
   bool invalid{false};
   // For option types, like ?Foo.
   bool nullable{false};
-  // Aliased Class; nullptr if type != Object.
-  LowPtr<Class> klass{nullptr};
 
   explicit TypeAlias(const PreTypeAlias* preTypeAlias)
     : m_preTypeAlias(preTypeAlias)
@@ -119,6 +141,9 @@ struct TypeAlias {
   const Array& typeStructure() const { return m_preTypeAlias->typeStructure; }
   const Array& resolvedTypeStructureRaw() const {
     return m_preTypeAlias->resolvedTypeStructure;
+  }
+  folly::Range<const TypeAndClass*> typeAndClassUnion() const {
+    return folly::range(typeAndClassUnionArr, typeAndClassUnionArr + unionSize);
   }
 
   // Return the type-structure, possibly as a logging array

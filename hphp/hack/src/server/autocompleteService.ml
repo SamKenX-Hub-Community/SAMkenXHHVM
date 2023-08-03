@@ -13,6 +13,7 @@ open Typing_defs_core
 open Utils
 open String_utils
 open SearchUtils
+open SearchTypes
 include AutocompleteTypes
 open Tast
 module Phase = Typing_phase
@@ -41,7 +42,7 @@ let autocomplete_is_complete : bool ref = ref true
  * Take the results, look them up, and add file position information.
  *)
 let add_position_to_results
-    (ctx : Provider_context.t) (raw_results : SearchUtils.si_results) :
+    (ctx : Provider_context.t) (raw_results : SearchTypes.si_item list) :
     SearchUtils.result =
   SearchUtils.(
     List.filter_map raw_results ~f:(fun r ->
@@ -59,6 +60,40 @@ let strip_suffix s =
     s
     ~pos:0
     ~len:(String.length s - AutocompleteTypes.autocomplete_token_length)
+
+let strip_supportdyn_decl ty =
+  match Typing_defs.get_node ty with
+  | Tapply ((_, n), [ty])
+    when String.equal n Naming_special_names.Classes.cSupportDyn ->
+    ty
+  | _ -> ty
+
+let strip_like_decl ty =
+  match get_node ty with
+  | Tlike ty -> ty
+  | _ -> ty
+
+(* We strip off ~ from types before matching on the underlying structure of the type.
+ * Note that we only do this for matching, not pretty-printing of types, as we
+ * want to retain ~ when showing types in suggestions
+ *)
+let expand_and_strip_dynamic env ty =
+  let (_, ty) = Tast_env.expand_type env ty in
+  let ty =
+    Typing_utils.strip_dynamic (Tast_env.tast_env_as_typing_env env) ty
+  in
+  Tast_env.expand_type env ty
+
+let expand_and_strip_supportdyn env ty =
+  let (env, ty) = expand_and_strip_dynamic env ty in
+  let (_, _, ty) =
+    Typing_utils.strip_supportdyn (Tast_env.tast_env_as_typing_env env) ty
+  in
+  ty
+
+let expand_and_strip_dynamic env ty =
+  let (_, ty) = expand_and_strip_dynamic env ty in
+  ty
 
 let matches_auto_complete_suffix x =
   String.length x >= AutocompleteTypes.autocomplete_token_length
@@ -186,7 +221,7 @@ let snippet_for_params (params : 'a Typing_defs.fun_param list) : string =
   in
   String.concat ~sep:", " param_templates
 
-let insert_text_for_xhp_req_attrs tag attrs has_children =
+let get_snippet_for_xhp_req_attrs tag attrs has_children =
   let content =
     if List.length attrs > 0 then
       let attr_content =
@@ -198,17 +233,36 @@ let insert_text_for_xhp_req_attrs tag attrs has_children =
     else
       tag
   in
-  let content =
-    if has_children then
-      Format.sprintf "%s>$0</%s>" content tag
-    else
-      content ^ " />"
-  in
+  if has_children then
+    Format.sprintf "%s>$0</%s>" content tag
+  else
+    content ^ " />"
+
+let insert_text_for_xhp_req_attrs tag attrs has_children =
+  let content = get_snippet_for_xhp_req_attrs tag attrs has_children in
   let insert_type = List.length attrs > 0 && has_children in
   if insert_type then
     InsertAsSnippet { snippet = content; fallback = tag }
   else
     InsertLiterally content
+
+let get_snippet_for_xhp_classname cls ctx env =
+  (* This is used to check if the class exists or not *)
+  let class_ = Decl_provider.get_class ctx cls in
+  match class_ with
+  | None -> None
+  | Some class_ ->
+    if Cls.is_xhp class_ then
+      let cls = Utils.add_ns cls in
+      let attrs = get_class_req_attrs env ctx cls None in
+      let has_children = not (get_class_is_child_empty ctx cls) in
+      Option.some
+        (get_snippet_for_xhp_req_attrs
+           (Utils.strip_both_ns cls)
+           attrs
+           has_children)
+    else
+      None
 
 (* If we're autocompleting a call (function or method), insert a
    template for the arguments as well as function name. *)
@@ -232,12 +286,15 @@ let insert_text_for_fun_call
       else
         arity_min ft
     in
-    let params = List.take ft.ft_params arity in
-    let snippet =
-      Printf.sprintf "%s(%s)" fun_name (snippet_for_params params)
-    in
     let fallback = Printf.sprintf "%s()" fun_name in
-    InsertAsSnippet { snippet; fallback }
+    if arity = 0 then
+      InsertLiterally fallback
+    else
+      let params = List.take ft.ft_params arity in
+      let snippet =
+        Printf.sprintf "%s(%s)" fun_name (snippet_for_params params)
+      in
+      InsertAsSnippet { snippet; fallback }
 
 let insert_text_for_ty
     env
@@ -250,6 +307,8 @@ let insert_text_for_ty
     | DeclTy decl_ty ->
       Tast_env.localize_no_subst env ~ignore_errors:true decl_ty
   in
+  (* Functions that support dynamic will be wrapped by supportdyn<_> *)
+  let ty = expand_and_strip_supportdyn env ty in
   match Typing_defs.get_node ty with
   | Tfun ft -> insert_text_for_fun_call env autocomplete_context label ft
   | _ -> InsertLiterally label
@@ -324,6 +383,8 @@ let autocomplete_member ~is_static autocomplete_context env class_ cid id =
     in
 
     let add kind (name, ty) =
+      (* Functions that support dynamic will be wrapped by supportdyn<_> *)
+      let ty = strip_supportdyn_decl ty in
       let res_detail =
         match Typing_defs.get_node ty with
         | Tfun _ ->
@@ -366,7 +427,7 @@ let autocomplete_member ~is_static autocomplete_context env class_ cid id =
            class_
            cid
            (Cls.smethods class_ |> sort))
-        ~f:(add SearchUtils.SI_ClassMethod);
+        ~f:(add SearchTypes.SI_ClassMethod);
       List.iter
         (get_class_elt_types
            ~is_method:false
@@ -374,11 +435,11 @@ let autocomplete_member ~is_static autocomplete_context env class_ cid id =
            class_
            cid
            (Cls.sprops class_ |> sort))
-        ~f:(add SearchUtils.SI_Property);
+        ~f:(add SearchTypes.SI_Property);
       List.iter
         (Cls.consts class_ |> sort)
         ~f:(fun (name, cc) ->
-          add SearchUtils.SI_ClassConstant (name, cc.cc_type))
+          add SearchTypes.SI_ClassConstant (name, cc.cc_type))
     );
     if (not is_static) || parent_receiver then (
       List.iter
@@ -388,7 +449,7 @@ let autocomplete_member ~is_static autocomplete_context env class_ cid id =
            class_
            cid
            (Cls.methods class_ |> sort))
-        ~f:(add SearchUtils.SI_ClassMethod);
+        ~f:(add SearchTypes.SI_ClassMethod);
       List.iter
         (get_class_elt_types
            ~is_method:false
@@ -396,7 +457,7 @@ let autocomplete_member ~is_static autocomplete_context env class_ cid id =
            class_
            cid
            (Cls.props class_ |> sort))
-        ~f:(add SearchUtils.SI_Property)
+        ~f:(add SearchTypes.SI_Property)
     );
     (* Only complete __construct() when we see parent::, as we don't
        allow __construct to be called as e.g. $foo->__construct(). *)
@@ -413,7 +474,7 @@ let autocomplete_member ~is_static autocomplete_context env class_ cid id =
            class_
            cid
            (Option.to_list constructor))
-        ~f:(add SearchUtils.SI_ClassMethod)
+        ~f:(add SearchTypes.SI_ClassMethod)
   )
 
 (*
@@ -441,7 +502,7 @@ let autocomplete_xhp_attributes env class_ cid id attrs =
                (fun key -> String.equal (":" ^ key) name)
                existing_attr_names)
         then
-          let kind = SearchUtils.SI_Property in
+          let kind = SearchTypes.SI_Property in
           let res_detail = Tast_env.print_decl_ty env ty in
           let ty = Phase.decl ty in
           let complete =
@@ -468,14 +529,15 @@ let autocomplete_xhp_bool_value attr_ty id_id env =
         | Tprim Tbool -> true
         | _ -> false
       in
+      let ty = expand_and_strip_dynamic env ty in
       let (_, ty_) = Typing_defs_core.deref ty in
       match ty_ with
-      | Toption ty -> is_bool (get_node ty)
+      | Toption ty -> is_bool (get_node (expand_and_strip_dynamic env ty))
       | _ -> is_bool ty_
     in
 
     if is_bool_or_bool_option attr_ty then (
-      let kind = SearchUtils.SI_Literal in
+      let kind = SearchTypes.SI_Literal in
       let ty = Phase.locl attr_ty in
       let complete =
         {
@@ -531,7 +593,7 @@ let autocomplete_xhp_enum_attribute_value attr_name ty id_id env cls =
         | Ast_defs.XEV_String value -> "\"" ^ value ^ "\""
       in
       let name = suggestion xev in
-      let kind = SearchUtils.SI_Enum in
+      let kind = SearchTypes.SI_Enum in
       let ty = Phase.locl ty in
       let complete =
         {
@@ -567,16 +629,19 @@ let autocomplete_xhp_enum_attribute_value attr_name ty id_id env cls =
 *)
 let autocomplete_xhp_enum_class_value attr_ty id_id env =
   if is_auto_complete (snd id_id) then begin
-    let get_class_name ty : string option =
-      let get_name : type phase. phase Typing_defs.ty_ -> _ = function
-        | Tnewtype (name, _, _) -> Some name
-        | Tapply ((_, name), _) -> Some name
-        | _ -> None
-      in
-      let (_, ty_) = Typing_defs_core.deref ty in
-      match ty_ with
-      | Toption ty -> get_name (get_node ty)
-      | _ -> get_name ty_
+    let rec get_class_name_decl ty : string option =
+      let ty = strip_like_decl ty in
+      match get_node ty with
+      | Toption ty -> get_class_name_decl ty
+      | Tapply ((_, name), _) -> Some name
+      | _ -> None
+    in
+    let rec get_class_name ty : string option =
+      let ty = expand_and_strip_dynamic env ty in
+      match get_node ty with
+      | Toption ty -> get_class_name ty
+      | Tnewtype (name, _, _) -> Some name
+      | _ -> None
     in
 
     let get_enum_constants (class_decl : Decl_provider.class_decl) :
@@ -588,7 +653,7 @@ let autocomplete_xhp_enum_class_value attr_ty id_id env =
       in
       all_consts
       |> List.filter ~f:(fun (_, class_const) ->
-             is_correct_class (get_class_name class_const.cc_type))
+             is_correct_class (get_class_name_decl class_const.cc_type))
     in
 
     let attr_type_name = get_class_name attr_ty in
@@ -607,7 +672,7 @@ let autocomplete_xhp_enum_class_value attr_ty id_id env =
            |> List.iter ~f:(fun (const_name, ty) ->
                   let dty = Phase.decl ty.cc_type in
                   let name = Utils.strip_ns class_name ^ "::" ^ const_name in
-                  let kind = SearchUtils.SI_Enum in
+                  let kind = SearchTypes.SI_Enum in
                   let res_base_class = Option.map ~f:Cls.name enum_class in
 
                   let complete =
@@ -682,7 +747,9 @@ let fresh_expand_env
 (** Does Hack function [f] accept [arg_ty] as its first argument? *)
 let fun_accepts_first_arg (env : Tast_env.env) (f : fun_elt) (arg_ty : locl_ty)
     : bool =
-  match Typing_defs.get_node f.fe_type with
+  (* Functions that support dynamic will be wrapped by supportdyn<_> *)
+  let ty = strip_supportdyn_decl f.fe_type in
+  match Typing_defs.get_node ty with
   | Tfun ft ->
     let params = ft.ft_params in
     (match List.hd params with
@@ -697,7 +764,10 @@ let fun_accepts_first_arg (env : Tast_env.env) (f : fun_elt) (arg_ty : locl_ty)
            we've probably violated a where constraint and shouldn't consider
            this function to be compatible. *)
         false
-      | _ -> Tast_env.can_subtype env arg_ty first_param)
+      | _ ->
+        let arg_ty = expand_and_strip_dynamic env arg_ty in
+        let first_param = expand_and_strip_dynamic env first_param in
+        Tast_env.can_subtype env arg_ty first_param)
     | _ -> false)
   | _ -> false
 
@@ -712,7 +782,8 @@ let compatible_fun_decls
       | _ -> None)
 
 (** Is [ty] a value type where we want to allow -> to complete to a HSL function? *)
-let is_fake_arrow_ty (ty : locl_ty) : bool =
+let is_fake_arrow_ty (env : Tast_env.env) (ty : locl_ty) : bool =
+  let ty = expand_and_strip_dynamic env ty in
   let (_, ty_) = Typing_defs_core.deref ty in
   match ty_ with
   | Tclass ((_, name), _, _) ->
@@ -740,7 +811,7 @@ let autocomplete_hack_fake_arrow
   in
 
   let (recv_ty, recv_pos, _) = recv in
-  if is_fake_arrow_ty recv_ty && is_auto_complete (snd prop_name) then
+  if is_fake_arrow_ty env recv_ty && is_auto_complete (snd prop_name) then
     let recv_start_pos = Pos.shrink_to_start recv_pos in
 
     let fake_arrow_funs =
@@ -774,10 +845,12 @@ let autocomplete_hack_fake_arrow
           | _ -> []
         in
         let params = List.drop required_params 1 in
-        let snippet =
+        let res_insert_text =
           match params with
-          | [] -> ")"
-          | params -> Printf.sprintf ", %s)" (snippet_for_params params)
+          | [] -> InsertLiterally ")"
+          | params ->
+            let snippet = Printf.sprintf ", %s)" (snippet_for_params params) in
+            InsertAsSnippet { snippet; fallback = ")" }
         in
 
         let complete =
@@ -787,7 +860,7 @@ let autocomplete_hack_fake_arrow
             res_replace_pos = replace_pos;
             res_base_class = None;
             res_detail = Tast_env.print_decl_ty env fun_decl.fe_type;
-            res_insert_text = InsertAsSnippet { snippet; fallback = ")" };
+            res_insert_text;
             (* VS Code uses filter text to decide which items match the current
                prefix. However, "C\contains" does not start with "->", so VS
                Code would normally ignore this completion item.
@@ -843,7 +916,11 @@ let compatible_enum_class_consts env cls (expected_ty : locl_ty option) =
           Tast_env.localize_no_subst env ~ignore_errors:true cc.cc_type
         in
         match expected_ty with
-        | Some expected_ty -> Tast_env.is_sub_type env cc_ty expected_ty
+        | Some expected_ty ->
+          Tast_env.is_sub_type
+            env
+            cc_ty
+            (Typing_make_type.locl_like Reason.Rnone expected_ty)
         | None -> true)
   in
 
@@ -862,8 +939,8 @@ let compatible_enum_class_consts env cls (expected_ty : locl_ty option) =
    MemberOf<SomeEnum, X> -> X
    Y -> Y *)
 let unwrap_enum_memberof (ty : Typing_defs.decl_ty) : Typing_defs.decl_ty =
-  let (_, ty_) = Typing_defs_core.deref ty in
-  match ty_ with
+  let ty = strip_like_decl ty in
+  match get_node ty with
   | Tapply ((_, name), [_; arg])
     when String.equal name Naming_special_names.Classes.cMemberOf ->
     arg
@@ -878,7 +955,7 @@ let autocomplete_enum_class_label env opt_cname pos_labelname expected_ty =
           Tast_env.print_decl_ty env (unwrap_enum_memberof cc.cc_type)
         in
         let ty = Phase.decl cc.cc_type in
-        let kind = SearchUtils.SI_ClassConstant in
+        let kind = SearchTypes.SI_ClassConstant in
         let complete =
           {
             res_decl_pos = get_pos_for env ty;
@@ -913,6 +990,7 @@ let rec zip_truncate (xs : 'a list) (ys : 'b list) : ('a * 'b) list =
  *)
 let autocomplete_enum_class_label_call env f args =
   let suggest_members_from_ty env ty pos_labelname expected_ty =
+    let ty = expand_and_strip_dynamic env ty in
     match get_node ty with
     | Tclass ((p, enum_name), _, _) when Tast_env.is_enum_class env enum_name ->
       autocomplete_enum_class_label
@@ -926,12 +1004,16 @@ let autocomplete_enum_class_label_call env f args =
     String.equal Naming_special_names.Classes.cEnumClassLabel name
   in
   let (fty, _, _) = f in
+  (* Functions that support dynamic will be wrapped by supportdyn<_> *)
+  let fty = expand_and_strip_supportdyn env fty in
   match get_node fty with
   | Tfun { ft_params; _ } ->
     let ty_args = zip_truncate args ft_params in
     List.iter
       ~f:(fun (arg, arg_ty) ->
-        match (arg, get_node arg_ty.fp_type.et_type) with
+        match
+          (arg, get_node (expand_and_strip_dynamic env arg_ty.fp_type.et_type))
+        with
         | ( (_, (_, p, Aast.EnumClassLabel (None, n))),
             Typing_defs.Tnewtype (ty_name, [enum_ty; member_ty], _) )
           when is_enum_class_label_ty_name ty_name && is_auto_complete n ->
@@ -949,6 +1031,7 @@ let typeconst_class_name (typeconst : typeconst_type) : string option =
   in
   match decl_ty with
   | Some decl_ty ->
+    let decl_ty = strip_like_decl decl_ty in
     let (_, ty_) = Typing_defs_core.deref decl_ty in
     (match ty_ with
     | Tapply ((_, name), _) -> Some name
@@ -1264,7 +1347,7 @@ let autocomplete_enum_case env (expr : Tast.expr) (cases : Tast.case list) =
       match e with
       | (_, _, Aast.Id (pos, id)) when is_auto_complete id ->
         let (recv_ty, _, _) = expr in
-        let (_, ty) = Tast_env.expand_type env recv_ty in
+        let ty = expand_and_strip_dynamic env recv_ty in
         let (_, ty_) = Typing_defs_core.deref ty in
         let replace_pos = replace_pos_of_id (pos, id) in
         (match ty_ with
@@ -1296,7 +1379,7 @@ let autocomplete_enum_value_in_call env (ft : Typing_defs.locl_fun_type) args :
     ~f:(fun (arg, expected_ty) ->
       match arg with
       | (_, _, Aast.Id (pos, id)) when matches_auto_complete_suffix id ->
-        let (_, ty) = Tast_env.expand_type env expected_ty.fp_type.et_type in
+        let ty = expand_and_strip_dynamic env expected_ty.fp_type.et_type in
         let (_, ty_) = Typing_defs_core.deref ty in
         let replace_pos = replace_pos_of_id (pos, id) in
 
@@ -1312,7 +1395,7 @@ let autocomplete_enum_value_in_call env (ft : Typing_defs.locl_fun_type) args :
         | _ -> ())
       | (_, _, Aast.Class_const ((_, _, Aast.CI _name), (pos, id)))
         when matches_auto_complete_suffix id ->
-        let (_, ty) = Tast_env.expand_type env expected_ty.fp_type.et_type in
+        let ty = expand_and_strip_dynamic env expected_ty.fp_type.et_type in
         let (_, ty_) = Typing_defs_core.deref ty in
         let replace_pos = replace_pos_of_id (pos, id) in
 
@@ -1350,9 +1433,9 @@ let builtin_type_hints =
 let find_global_results
     ~(env : Tast_env.env)
     ~(id : Pos.t * string)
-    ~(completion_type : SearchUtils.autocomplete_type option)
+    ~(completion_type : SearchTypes.autocomplete_type)
     ~(autocomplete_context : AutocompleteTypes.legacy_autocomplete_context)
-    ~(sienv : SearchUtils.si_env)
+    ~(sienv_ref : SearchUtils.si_env ref)
     ~(pctx : Provider_context.t) : unit =
   (* First step: Check obvious cases where autocomplete is not warranted.   *)
   (*                                                                        *)
@@ -1399,19 +1482,24 @@ let find_global_results
     let absolute_none = Pos.none |> Pos.to_absolute in
     let kind_filter =
       match completion_type with
-      | Some Acnew -> Some SI_Class
-      | Some Actrait_only -> Some SI_Trait
-      | _ -> None
+      | Acnew -> Some SI_Class
+      | Actrait_only -> Some SI_Trait
+      | Acid
+      | Actype
+      | Ac_workspace_symbol ->
+        None
     in
 
-    let results =
+    let (results, is_complete) =
       SymbolIndex.find_matching_symbols
-        ~sienv
+        ~sienv_ref
         ~query_text
         ~max_results
         ~kind_filter
         ~context:completion_type
     in
+    autocomplete_is_complete :=
+      SearchTypes.equal_si_complete is_complete SearchTypes.Complete;
     (* Looking up a function signature using Tast_env.get_fun consumes ~67KB
      * and can cause complex typechecking which can take from 2-100 milliseconds
      * per result.  When tested in summer 2019 it was possible to load 1.4GB of data
@@ -1425,7 +1513,9 @@ let find_global_results
         let (res_label, res_fullname) = (r.si_name, r.si_fullname) in
         (* Only load func details if the flag sie_resolve_signatures is true *)
         let (res_detail, res_insert_text) =
-          if sienv.sie_resolve_signatures && equal_si_kind r.si_kind SI_Function
+          if
+            !sienv_ref.sie_resolve_signatures
+            && equal_si_kind r.si_kind SI_Function
           then
             let fixed_name = ns ^ r.si_name in
             match Tast_env.get_fun tast_env fixed_name with
@@ -1444,7 +1534,7 @@ let find_global_results
         in
         (* Only load exact positions if specially requested *)
         let res_decl_pos =
-          if sienv.sie_resolve_positions then
+          if !sienv_ref.sie_resolve_positions then
             let fixed_name = ns ^ r.si_name in
             match Tast_env.get_fun tast_env fixed_name with
             | None -> absolute_none
@@ -1472,12 +1562,15 @@ let find_global_results
           }
         in
         add_res complete);
-    autocomplete_is_complete := List.length !autocomplete_items < max_results;
 
     (* Add any builtins that match *)
     match completion_type with
-    | Some Actype
-    | None ->
+    | Acid
+    | Actrait_only
+    | Ac_workspace_symbol
+    | Acnew ->
+      ()
+    | Actype ->
       builtin_type_hints
       |> List.filter ~f:(fun (_, name) ->
              String.is_prefix name ~prefix:query_text)
@@ -1498,25 +1591,24 @@ let find_global_results
                  res_filter_text = None;
                  res_additional_edits = [];
                })
-    | _ -> ()
 
 let complete_xhp_tag
     ~(id : Pos.t * string)
     ~(does_autocomplete_snippet : bool)
-    ~(sienv : SearchUtils.si_env)
+    ~(sienv_ref : SearchUtils.si_env ref)
     ~(pctx : Provider_context.t) : unit =
   let tast_env = Tast_env.empty pctx in
   let query_text = strip_suffix (snd id) in
   let query_text = Utils.strip_ns query_text in
   auto_complete_for_global := query_text;
   let absolute_none = Pos.none |> Pos.to_absolute in
-  let results =
+  let (results, _is_complete) =
     SymbolIndex.find_matching_symbols
-      ~sienv
+      ~sienv_ref
       ~query_text
       ~max_results
       ~kind_filter:None
-      ~context:(Some Acid)
+      ~context:Acid
   in
   List.iter results ~f:(fun r ->
       let (res_label, res_fullname) =
@@ -1637,7 +1729,7 @@ let compute_complete_local env ctx tast =
 
   Local_id.Map.iter
     (fun id ty ->
-      let kind = SearchUtils.SI_LocalVariable in
+      let kind = SearchTypes.SI_LocalVariable in
       let name = Local_id.get_name id in
       if String.is_prefix name ~prefix:id_prefix then
         let complete =
@@ -1663,22 +1755,22 @@ let compute_complete_local env ctx tast =
 let visitor
     (ctx : Provider_context.t)
     (autocomplete_context : legacy_autocomplete_context)
-    (sienv : si_env)
+    (sienv_ref : si_env ref)
     (naming_table : Naming_table.t)
     (toplevel_tast : Tast.def list) =
   object (self)
     inherit Tast_visitor.iter as super
 
     method complete_global
-        (env : Tast_env.env) (id : sid) (ac_type : autocomplete_type) : unit =
+        (env : Tast_env.env) (id : sid) (completion_type : autocomplete_type)
+        : unit =
       if is_auto_complete (snd id) then
-        let completion_type = Some ac_type in
         find_global_results
           ~env
           ~id
           ~completion_type
           ~autocomplete_context
-          ~sienv
+          ~sienv_ref
           ~pctx:ctx
 
     method complete_id env (id : Ast_defs.id) : unit =
@@ -1699,9 +1791,10 @@ let visitor
       self#complete_id env id;
       super#on_Id env id
 
-    method! on_Call env f targs args unpack_arg =
-      autocomplete_enum_class_label_call env f args;
-      super#on_Call env f targs args unpack_arg
+    method! on_Call env call =
+      let Aast.{ func; args; _ } = call in
+      autocomplete_enum_class_label_call env func args;
+      super#on_Call env call
 
     method! on_New env ((_, _, cid_) as cid) el unpacked_element =
       (match cid_ with
@@ -1750,7 +1843,7 @@ let visitor
       (match expr with
       | (_, _, Aast.Array_get (arr, Some (_, pos, key))) ->
         let ty = get_type arr in
-        let (_, ty) = Tast_env.expand_type env ty in
+        let ty = expand_and_strip_dynamic env ty in
         begin
           match get_node ty with
           | Tshape (_, _, fields) ->
@@ -1789,7 +1882,9 @@ let visitor
             | _ -> ())
           | _ -> ()
         end
-      | (_, _, Aast.Call ((recv_ty, _, _), _, args, _)) ->
+      | (_, _, Aast.(Call { func = (recv_ty, _, _); args; _ })) ->
+        (* Functions that support dynamic will be wrapped by supportdyn<_> *)
+        let recv_ty = expand_and_strip_supportdyn env recv_ty in
         (match deref recv_ty with
         | (_r, Tfun ft) ->
           autocomplete_shape_literal_in_call env ft args;
@@ -1812,7 +1907,7 @@ let visitor
         complete_xhp_tag
           ~id:sid
           ~does_autocomplete_snippet:(List.length attrs <= 0)
-          ~sienv
+          ~sienv_ref
           ~pctx:ctx;
 
       let cid = Aast.CI sid in
@@ -2237,7 +2332,7 @@ let go_ctx
     ~(ctx : Provider_context.t)
     ~(entry : Provider_context.entry)
     ~(autocomplete_context : AutocompleteTypes.legacy_autocomplete_context)
-    ~(sienv : SearchUtils.si_env)
+    ~(sienv_ref : SearchUtils.si_env ref)
     ~(naming_table : Naming_table.t) =
   reset ();
 
@@ -2248,7 +2343,8 @@ let go_ctx
   let { Tast_provider.Compute_tast.tast; _ } =
     Tast_provider.compute_tast_quarantined ~ctx ~entry
   in
-  (visitor ctx autocomplete_context sienv naming_table tast)#go ctx tast;
+  let tast = tast.Tast_with_dynamic.under_normal_assumptions in
+  (visitor ctx autocomplete_context sienv_ref naming_table tast)#go ctx tast;
 
   Errors.ignore_ (fun () ->
       let start_time = Unix.gettimeofday () in
@@ -2260,12 +2356,11 @@ let go_ctx
         }
       in
       SymbolIndexCore.log_symbol_index_search
-        ~sienv
+        ~sienv:!sienv_ref
         ~start_time
         ~query_text:!auto_complete_for_global
         ~max_results
         ~kind_filter:None
         ~results:(List.length results.With_complete_flag.value)
-        ~context:None
         ~caller:"AutocompleteService.go";
       results)

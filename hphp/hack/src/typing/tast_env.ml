@@ -47,7 +47,7 @@ let print_ty_with_identity env phase_ty sym_occurrence sym_definition =
     let ((env, ty_err_opt), ty) =
       Typing_phase.localize_no_subst env ~ignore_errors:true ty
     in
-    Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
+    Option.iter ty_err_opt ~f:(Typing_error_utils.add_typing_error ~env);
     Typing_print.full_with_identity env ty sym_occurrence sym_definition
   | Typing_defs.LoclTy ty ->
     Typing_print.full_with_identity env ty sym_occurrence sym_definition
@@ -92,6 +92,8 @@ let get_tcopt = Typing_env.get_tcopt
 let get_ctx = Typing_env.get_ctx
 
 let expand_type = Typing_env.expand_type
+
+let strip_dynamic = Typing_utils.strip_dynamic
 
 let set_static = Typing_env.set_static
 
@@ -158,7 +160,8 @@ let get_class_ids env ty =
 
 let non_null = Typing_solver.non_null
 
-let get_concrete_supertypes = Typing_utils.get_concrete_supertypes
+let get_concrete_supertypes =
+  Typing_utils.get_concrete_supertypes ~include_case_types:false
 
 let is_visible = Typing_visibility.is_visible
 
@@ -168,14 +171,20 @@ let hint_to_ty env = Decl_hint.hint env.Typing_env_types.decl_env
 
 let localize env ety_env dty =
   let ((env, ty_err_opt), lty) = Typing_phase.localize ~ety_env env dty in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
+  (env, lty)
+
+let localize_hint_for_refinement env h =
+  let ((env, _ty_err_opt), lty) =
+    Typing_phase.localize_hint_for_refinement env h
+  in
   (env, lty)
 
 let localize_no_subst env ~ignore_errors dty =
   let ((env, ty_err_opt), lty) =
     Typing_phase.localize_no_subst env ~ignore_errors dty
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
   (env, lty)
 
 let get_upper_bounds = Typing_env.get_upper_bounds
@@ -198,11 +207,14 @@ let assert_subtype p reason env ty_have ty_expect on_error =
   let (env, ty_err_opt) =
     Typing_ops.sub_type p reason env ty_have ty_expect on_error
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
   env
 
 let is_sub_type env ty_sub ty_super =
   Typing_subtype.is_sub_type env ty_sub ty_super
+
+let is_dynamic_aware_sub_type env ty_sub ty_super =
+  Typing_subtype.is_dynamic_aware_sub_type env ty_sub ty_super
 
 let can_subtype env ty_sub ty_super =
   Typing_subtype.can_sub_type env ty_sub ty_super
@@ -213,11 +225,11 @@ let is_sub_type_for_union env ty_sub ty_super =
 let referenced_typeconsts env root ids =
   let root = hint_to_ty env root in
   let ety_env = Typing_defs.empty_expand_env in
-  let (env, ty_err_opt) =
+  let (tcs, ty_err_opt) =
     Typing_taccess.referenced_typeconsts env ety_env (root, ids)
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
-  env
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
+  tcs
 
 let empty ctx = Typing_env_types.empty ctx Relative_path.default ~droot:None
 
@@ -364,3 +376,5 @@ let fill_in_pos_filename_if_in_current_decl =
 let is_hhi = Typing_env.is_hhi
 
 let get_check_status env = env.Typing_env_types.checked
+
+let get_current_decl_and_file = Typing_env.get_current_decl_and_file

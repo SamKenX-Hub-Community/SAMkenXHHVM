@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<155a1cebe197f96eb522d2d8ea9dd62e>>
+// @generated SignedSource<<ba21efeda98faf3c4f8ea31dd4ed1126>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -93,7 +93,6 @@ pub struct TyvarInfo {
     /// Where was the type variable introduced? (e.g. generic method invocation,
     /// new object construction)
     pub tyvar_pos: pos::Pos,
-    pub global_reason: Option<reason::Reason>,
     pub eager_solve_failed: bool,
     pub solving_info: SolvingInfo,
 }
@@ -123,46 +122,4 @@ pub struct TypingInferenceEnv {
     pub tyvars_stack: Vec<(pos::Pos, Vec<Identifier>)>,
     pub subtype_prop: t_l::SubtypeProp,
     pub tyvar_occurrences: typing_tyvar_occurrences::TypingTyvarOccurrences,
-    pub allow_solve_globals: bool,
 }
-
-#[derive(
-    Clone,
-    Debug,
-    Deserialize,
-    Eq,
-    FromOcamlRep,
-    Hash,
-    NoPosHash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Serialize,
-    ToOcamlRep
-)]
-#[repr(C)]
-pub struct GlobalTyvarInfo {
-    pub tyvar_reason: reason::Reason,
-    pub solving_info_g: SolvingInfo,
-}
-
-pub type GlobalTvenv = i_map::IMap<GlobalTyvarInfo>;
-
-pub type TGlobal = GlobalTvenv;
-
-#[derive(
-    Clone,
-    Debug,
-    Deserialize,
-    Eq,
-    FromOcamlRep,
-    Hash,
-    NoPosHash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Serialize,
-    ToOcamlRep
-)]
-#[repr(C)]
-pub struct TGlobalWithPos(pub pos::Pos, pub TGlobal);

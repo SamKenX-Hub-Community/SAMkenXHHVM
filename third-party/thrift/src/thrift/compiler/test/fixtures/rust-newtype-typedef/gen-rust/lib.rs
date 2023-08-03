@@ -7,13 +7,10 @@
 pub use self::errors::*;
 pub use self::types::*;
 
-pub mod types;
+pub use :: as types;
+pub mod errors;
 
-/// Error return types.
-pub mod errors {
-}
-
-mod r#impl {
+pub(crate) mod r#impl {
     use ref_cast::RefCast;
 
     #[derive(RefCast)]

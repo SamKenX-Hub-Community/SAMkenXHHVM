@@ -1,0 +1,31 @@
+(*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the "hack" directory of this source tree.
+ *
+ *)
+open Hh_prelude
+
+let find ~entry ~(range : Lsp.range) ctx : Code_action_types.Refactor.t list =
+  if Lsp_helpers.lsp_range_is_selection range then
+    let source_text = Ast_provider.compute_source_text ~entry in
+    let path = entry.Provider_context.path in
+    let selection =
+      let line_to_offset line =
+        Full_fidelity_source_text.position_to_offset source_text (line, 0)
+      in
+      Lsp_helpers.lsp_range_to_pos ~line_to_offset path range
+    in
+    match Extract_method_traverse.find_candidate ~selection ~entry ctx with
+    | Some candidate ->
+      let refactor =
+        Extract_method_to_refactor.of_candidate ~source_text ~path candidate
+      in
+      let refactors_from_plugins : Code_action_types.Refactor.t list =
+        Extract_method_plugins.find ~selection ~entry ctx candidate
+      in
+      refactors_from_plugins @ [refactor]
+    | None -> []
+  else
+    []

@@ -73,6 +73,11 @@ class ServerBootstrap {
     return this;
   }
 
+  ServerBootstrap* useZeroCopy(bool zc) {
+    socketConfig.useZeroCopy = zc;
+    return this;
+  }
+
   /*
    * BACKWARDS COMPATIBILITY - an acceptor factory can be set.  Your
    * Acceptor is responsible for managing the connection pool.
@@ -102,7 +107,7 @@ class ServerBootstrap {
    * @param io_group - io executor to use for IO threads.
    */
   ServerBootstrap* group(
-      std::shared_ptr<folly::IOThreadPoolExecutor> io_group) {
+      std::shared_ptr<folly::IOThreadPoolExecutorBase> io_group) {
     return group(nullptr, io_group);
   }
 
@@ -116,8 +121,8 @@ class ServerBootstrap {
    * @param io_group - io executor to use for IO threads.
    */
   ServerBootstrap* group(
-      std::shared_ptr<folly::IOThreadPoolExecutor> accept_group,
-      std::shared_ptr<folly::IOThreadPoolExecutor> io_group) {
+      std::shared_ptr<folly::IOThreadPoolExecutorBase> accept_group,
+      std::shared_ptr<folly::IOThreadPoolExecutorBase> io_group) {
     if (!accept_group) {
       accept_group = std::make_shared<folly::IOThreadPoolExecutor>(
           1, std::make_shared<folly::NamedThreadFactory>("Acceptor Thread"));
@@ -176,7 +181,7 @@ class ServerBootstrap {
         accConfig_.maxNumPendingConnectionsPerWorker);
 
     folly::via(acceptor_group_.get(), [&] {
-      if (useZeroCopy_) {
+      if (socketConfig.useZeroCopy) {
         socket->setZeroCopy(true);
       }
       socket->attachEventBase(folly::EventBaseManager::get()->getEventBase());
@@ -317,7 +322,7 @@ class ServerBootstrap {
     return sharedSSLContextManager_;
   }
 
-  std::shared_ptr<folly::IOThreadPoolExecutor> getIOGroup() const {
+  std::shared_ptr<folly::IOThreadPoolExecutorBase> getIOGroup() const {
     return io_group_;
   }
 
@@ -346,7 +351,7 @@ class ServerBootstrap {
       folly::NetworkSocket fd,
       const folly::SocketAddress& clientAddr,
       folly::AsyncServerSocket::AcceptCallback::AcceptInfo info,
-      folly::AsyncTransport::LifecycleObserver* observer) {
+      folly::AsyncSocket::LegacyLifecycleObserver* observer) {
     workerFactory_->forRandomWorker([&](Acceptor* acceptor) {
       acceptor->getEventBase()->runInEventBaseThread(
           [=] { acceptor->acceptConnection(fd, clientAddr, info, observer); });
@@ -354,8 +359,8 @@ class ServerBootstrap {
   }
 
  private:
-  std::shared_ptr<folly::IOThreadPoolExecutor> acceptor_group_;
-  std::shared_ptr<folly::IOThreadPoolExecutor> io_group_;
+  std::shared_ptr<folly::IOThreadPoolExecutorBase> acceptor_group_;
+  std::shared_ptr<folly::IOThreadPoolExecutorBase> io_group_;
   std::shared_ptr<SharedSSLContextManager> sharedSSLContextManager_;
 
   std::shared_ptr<ServerWorkerPool> workerFactory_;
@@ -377,7 +382,6 @@ class ServerBootstrap {
   std::unique_ptr<folly::Baton<>> stopBaton_{
       std::make_unique<folly::Baton<>>()};
   bool stopped_{false};
-  bool useZeroCopy_{false};
   bool useSharedSSLContextManager_{false};
 };
 

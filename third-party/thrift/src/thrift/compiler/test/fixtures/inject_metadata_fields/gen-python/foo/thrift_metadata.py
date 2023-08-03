@@ -10,8 +10,6 @@ from __future__ import annotations
 import apache.thrift.metadata.thrift_types as _fbthrift_metadata
 
 
-import facebook.thrift.annotation.thrift.thrift_metadata
-
 # TODO (ffrancet): This general pattern can be optimized by using tuples and dicts
 # instead of re-generating thrift structs
 def _fbthrift_gen_metadata_struct_Fields(metadata_struct: _fbthrift_metadata.ThriftMetadata) -> _fbthrift_metadata.ThriftMetadata:
@@ -26,6 +24,7 @@ def _fbthrift_gen_metadata_struct_Fields(metadata_struct: _fbthrift_metadata.Thr
             _fbthrift_metadata.ThriftConstStruct(type=_fbthrift_metadata.ThriftStructType(name="thrift.Box"), fields= {  }),
         ]),
         _fbthrift_metadata.ThriftField(id=102, type=_fbthrift_metadata.ThriftType(t_primitive=_fbthrift_metadata.ThriftPrimitiveType.THRIFT_STRING_TYPE), name="injected_unstructured_annotation_field", is_optional=False, structured_annotations=[
+            _fbthrift_metadata.ThriftConstStruct(type=_fbthrift_metadata.ThriftStructType(name="thrift.Box"), fields= {  }),
         ]),
     ]
     struct_dict = dict(metadata_struct.structs)

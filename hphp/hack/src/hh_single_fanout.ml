@@ -105,10 +105,7 @@ let get_symbols_for_deps
 
 let compute_fanout ctx options (old_and_new_defs : Naming_table.defs_per_file) :
     Typing_deps.DepSet.t =
-  let {
-    Decl_redecl_service.fanout = { Decl_redecl_service.to_recheck; changed };
-    _;
-  } =
+  let { Decl_redecl_service.fanout = { Fanout.to_recheck; changed }; _ } =
     Decl_redecl_service.redo_type_decl
       ctx
       ~during_init:false
@@ -256,11 +253,11 @@ let make_naming_table
   naming_table
 
 (** Type check given files. Create the dependency graph as a side effect. *)
-let type_check_make_depgraph
-    ctx options (defs_per_file : FileInfo.t Relative_path.Map.t) : unit =
-  Relative_path.Map.iter defs_per_file ~f:(fun file fileinfo ->
-      let (_ : Tast.def list * Errors.t) =
-        Typing_check_utils.type_file ctx file fileinfo
+let type_check_make_depgraph ctx options (files : Relative_path.t list) : unit =
+  List.iter files ~f:(fun file ->
+      let full_ast = Ast_provider.get_ast ctx file ~full:true in
+      let (_ : Errors.t * Tast.by_names) =
+        Typing_check_job.calc_errors_and_tast ctx file ~full_ast
       in
       ());
   if options.debug then Typing_deps.dump_current_edge_buffer_in_memory_mode ();
@@ -275,7 +272,7 @@ let process_pre_changes ctx options (files : Relative_path.t list) :
   (* TODO builtins and hhi stuff *)
   let defs_per_file = parse_defs ctx files in
   let naming_table = make_naming_table ctx options defs_per_file in
-  type_check_make_depgraph ctx options defs_per_file;
+  type_check_make_depgraph ctx options files;
   naming_table
 
 (** Process changed files by making those files available in the typechecker as a side effect

@@ -209,7 +209,7 @@ public:
   void write(const char* s, int len);
   void write(const char*);
 
-  void writeStdout(const char* s, int len);
+  void writeStdout(const char* s, int len, bool skipHooks = false);
   size_t getStdoutBytesWritten() const;
 
   /**
@@ -608,6 +608,7 @@ public:
     m_evaledFiles;
   req::vector<const StringData*> m_evaledFilesOrder;
   req::fast_set<Unit*> m_touchedUnits;
+  Array m_visitedFiles;
   int m_lambdaCounter;
   using VMStateVec = req::TinyVector<VMState, 32>;
   VMStateVec m_nestedVMs;
@@ -634,6 +635,18 @@ public:
   bool m_executingSetprofileCallback;
   req::fast_set<String,
                 hphp_string_hash, hphp_string_isame> m_setprofileFunctions;
+public:
+  enum class InternalEventHook: uint8_t {
+    Call = 0,
+    Return = 1,
+    Resume = 2,
+    Suspend = 3,
+    Unwind = 4,
+  };
+  using InternalEventHookCallbackType = void(*)(const ActRec*,
+                                                InternalEventHook);
+  InternalEventHookCallbackType m_internalEventHookCallback{nullptr};
+
 public:
   TypedValue m_headerCallback;
   bool m_headerCallbackDone{false}; // used to prevent infinite loops

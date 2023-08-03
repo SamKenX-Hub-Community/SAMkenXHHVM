@@ -17,6 +17,7 @@
 #include <thrift/lib/cpp/util/THttpParser.h>
 
 #include <thrift/lib/cpp/transport/TTransportException.h>
+#include <thrift/lib/cpp2/Flags.h>
 
 #include <fmt/core.h>
 #include <folly/Conv.h>
@@ -26,6 +27,8 @@
 #include <cassert>
 #include <cstdlib>
 #include <sstream>
+
+THRIFT_FLAG_DEFINE_bool(disable_newlines_in_http_headers, false);
 
 namespace apache {
 namespace thrift {
@@ -383,12 +386,11 @@ bool THttpClientParser::isConnectClosedByServer() {
 
 unique_ptr<IOBuf> THttpClientParser::constructHeader(unique_ptr<IOBuf> buf) {
   folly::F14NodeMap<std::string, std::string> empty;
-  return constructHeader(std::move(buf), empty, empty, &empty);
+  return constructHeader(std::move(buf), empty, &empty);
 }
 
 unique_ptr<IOBuf> THttpClientParser::constructHeader(
     unique_ptr<IOBuf> buf,
-    const folly::F14NodeMap<std::string, std::string>& persistentWriteHeaders,
     const folly::F14NodeMap<std::string, std::string>& writeHeaders,
     const folly::F14NodeMap<std::string, std::string>* extraWriteHeaders) {
   IOBufQueue queue;
@@ -411,7 +413,6 @@ unique_ptr<IOBuf> THttpClientParser::constructHeader(
   queue.append(contentLen);
   queue.append(CRLF);
 
-  THttpClientParser::appendHeadersToQueue(queue, persistentWriteHeaders);
   THttpClientParser::appendHeadersToQueue(queue, writeHeaders);
   if (extraWriteHeaders) {
     THttpClientParser::appendHeadersToQueue(queue, *extraWriteHeaders);
@@ -428,6 +429,15 @@ void THttpClientParser::appendHeadersToQueue(
     folly::IOBufQueue& queue,
     const folly::F14NodeMap<std::string, std::string>& headersToAppend) {
   for (const auto& headerToAppend : headersToAppend) {
+    if (THRIFT_FLAG(disable_newlines_in_http_headers)) {
+      if (headerToAppend.first.find(CRLF) != std::string::npos ||
+          headerToAppend.second.find(CRLF) != std::string::npos) {
+        throw TTransportException(fmt::format(
+            "HTTP Headers cannot contain \\r\\n. Header: {}:{}",
+            folly::cEscape<std::string>(headerToAppend.first),
+            folly::cEscape<std::string>(headerToAppend.second)));
+      }
+    }
     queue.append(headerToAppend.first);
     queue.append(": ");
     queue.append(headerToAppend.second);

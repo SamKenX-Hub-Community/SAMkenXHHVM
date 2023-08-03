@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <pwd.h>
 #include <stdio.h>
+#include <time.h>
 #include <algorithm>
 #include <vector>
 
@@ -63,10 +64,6 @@ namespace HPHP {
 // Linux: /tmp
 // MacOS: /var/tmp
 const StaticString s_DEFAULT_TEMP_DIR(P_tmpdir);
-
-///////////////////////////////////////////////////////////////////////////////
-
-void StandardExtension::requestInitOptions() {}
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -143,6 +140,18 @@ static Array HHVM_FUNCTION(get_included_files) {
     vai.append(Variant{const_cast<StringData*>(file)});
   }
   return vai.toArray();
+}
+
+static void HHVM_FUNCTION(record_visited_files) {
+  if (g_context->m_visitedFiles.isNull()) {
+    g_context->m_visitedFiles = ArrayData::CreateKeyset();
+  }
+}
+
+static Array HHVM_FUNCTION(get_visited_files) {
+  return g_context->m_visitedFiles.isNull()
+     ? empty_keyset()
+     : g_context->m_visitedFiles;
 }
 
 static Variant HHVM_FUNCTION(getenv, const String& varname) {
@@ -1125,6 +1134,8 @@ void StandardExtension::initOptions() {
   HHVM_FE(restore_include_path);
   HHVM_FE(set_include_path);
   HHVM_FE(get_included_files);
+  HHVM_FE(record_visited_files);
+  HHVM_FE(get_visited_files);
   HHVM_FE(getenv);
   HHVM_FE(getlastmod);
   HHVM_FE(getmygid);
@@ -1162,6 +1173,19 @@ void StandardExtension::initOptions() {
   HHVM_FE(set_pre_timeout_handler);
   HHVM_FE(sys_get_temp_dir);
   HHVM_FE(version_compare);
+
+#ifdef CLOCK_REALTIME
+  HHVM_RC_INT_SAME(CLOCK_REALTIME);
+#endif
+#ifdef CLOCK_MONOTONIC
+  HHVM_RC_INT_SAME(CLOCK_MONOTONIC);
+#endif
+#ifdef CLOCK_PROCESS_CPUTIME_ID
+  HHVM_RC_INT_SAME(CLOCK_PROCESS_CPUTIME_ID);
+#endif
+#ifdef CLOCK_THREAD_CPUTIME_ID
+  HHVM_RC_INT_SAME(CLOCK_THREAD_CPUTIME_ID);
+#endif
 
   loadSystemlib("std_options");
 }

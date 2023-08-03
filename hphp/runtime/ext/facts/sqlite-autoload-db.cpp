@@ -221,6 +221,11 @@ void createSchema(SQLiteTxn& txn) {
 void rebuildIndices(SQLiteTxn& txn) {
   // Basically copied wholesale from FlibAutoloadMapSQL.php in WWW.
 
+  // all_paths
+  txn.exec(
+      "CREATE INDEX IF NOT EXISTS all_paths__path"
+      " ON all_paths (path)");
+
   // type_details
   txn.exec(
       "CREATE INDEX IF NOT EXISTS type_details__name"
@@ -300,6 +305,24 @@ TypeKind toTypeKind(const std::string_view kind) {
   } else {
     return TypeKind::Unknown;
   }
+}
+
+inline std::string_view typeKindToSlice(TypeKind kind) {
+  switch (kind) {
+    case TypeKind::Class:
+      return kTypeKindClass;
+    case TypeKind::Enum:
+      return kTypeKindEnum;
+    case TypeKind::Interface:
+      return kTypeKindInterface;
+    case TypeKind::Trait:
+      return kTypeKindTrait;
+    case TypeKind::TypeAlias:
+      return kTypeKindTypeAlias;
+    case TypeKind::Unknown:
+      return "";
+  }
+  not_reached();
 }
 
 struct PathStmts {
@@ -518,11 +541,17 @@ struct FileStmts {
         m_getFilesWithAttribute{
             db.prepare("SELECT path from all_paths"
                        " JOIN file_attributes USING (pathid)"
-                       " WHERE attribute_name = @attribute_name")} {}
+                       " WHERE attribute_name = @attribute_name")},
+        m_getFilesWithAttributeAndAnyValue{
+            db.prepare("SELECT path FROM all_paths"
+                       " JOIN file_attributes USING (pathid)"
+                       " WHERE attribute_name = @attribute_name"
+                       " AND attribute_value = @attribute_value")} {}
   SQLiteStmt m_insertFileAttribute;
   SQLiteStmt m_getFileAttributes;
   SQLiteStmt m_getFileAttributeArgs;
   SQLiteStmt m_getFilesWithAttribute;
+  SQLiteStmt m_getFilesWithAttributeAndAnyValue;
 };
 
 struct FunctionStmts {
@@ -630,15 +659,15 @@ struct SQLiteAutoloadDBImpl final : public SQLiteAutoloadDB {
     assertx(dbData.m_path.is_absolute());
     auto db = [&]() {
       try {
-        return SQLite::connect(dbData.m_path.native(), dbData.m_writable);
+        return SQLite::connect(dbData.m_path.native(), dbData.m_mode);
       } catch (SQLiteExc& e) {
-        auto mode = (dbData.m_writable == SQLite::OpenMode::ReadWriteCreate)
+        auto mode = (dbData.m_mode == SQLite::OpenMode::ReadWriteCreate)
             ? "open or create"
             : "open";
 
         auto exception_str = folly::sformat(
             "Couldn't {} native Facts DB.\n"
-#ifdef FACEBOOK
+#ifdef HHVM_FACEBOOK
             "You may be able to fix this by running 'arc reset facts'\n"
 #endif
             "Key: {} Reason: {}\n",
@@ -650,7 +679,7 @@ struct SQLiteAutoloadDBImpl final : public SQLiteAutoloadDB {
       }
     }();
 
-    switch (dbData.m_writable) {
+    switch (dbData.m_mode) {
       case SQLite::OpenMode::ReadOnly:
       case SQLite::OpenMode::ReadWrite:
         break;
@@ -759,7 +788,7 @@ struct SQLiteAutoloadDBImpl final : public SQLiteAutoloadDB {
     auto query = m_txn.query(m_typeStmts.m_insertDetails);
     query.bindString("@name", type);
     query.bindString("@path", path.native());
-    query.bindString("@kind_of", toString(kind));
+    query.bindString("@kind_of", typeKindToSlice(kind));
     query.bindInt("@flags", flags);
     XLOGF(DBG9, "Running {}", query.sql());
     query.step();
@@ -1056,6 +1085,21 @@ struct SQLiteAutoloadDBImpl final : public SQLiteAutoloadDB {
     return results;
   }
 
+  std::vector<fs::path> getFilesWithAttributeAndAnyValue(
+      const std::string_view attributeName,
+      const folly::dynamic& attributeValue) override {
+    auto query = m_txn.query(m_fileStmts.m_getFilesWithAttributeAndAnyValue);
+    std::string jsonValue = folly::toJson(attributeValue);
+    query.bindString("@attribute_name", attributeName);
+    query.bindString("@attribute_value", jsonValue);
+    std::vector<fs::path> results;
+    XLOGF(DBG9, "Running {}", query.sql());
+    for (query.step(); query.row(); query.step()) {
+      results.push_back(fs::path{std::string{query.getString(0)}});
+    }
+    return results;
+  }
+
   std::vector<folly::dynamic> getTypeAttributeArgs(
       const std::string_view type,
       const std::string_view path,
@@ -1242,66 +1286,6 @@ struct SQLiteAutoloadDBImpl final : public SQLiteAutoloadDB {
           return PathAndHash{
               .m_path = {std::string{q.getString(0)}},
               .m_hash = std::string{q.getString(1)}};
-        }};
-  }
-
-  MultiResult<SymbolPath> getAllTypePaths() override {
-    auto query = m_txn.query(m_typeStmts.m_getAll);
-    XLOGF(DBG9, "Running {}", query.sql());
-    return MultiResult<SymbolPath>{
-        [q = std::move(query)]() mutable -> Optional<SymbolPath> {
-          q.step();
-          if (!q.row()) {
-            return {};
-          }
-          return SymbolPath{
-              .m_symbol = std::string{q.getString(0)},
-              .m_path = {std::string{q.getString(1)}}};
-        }};
-  }
-
-  MultiResult<SymbolPath> getAllFunctionPaths() override {
-    auto query = m_txn.query(m_functionStmts.m_getAll);
-    XLOGF(DBG9, "Running {}", query.sql());
-    return MultiResult<SymbolPath>{
-        [q = std::move(query)]() mutable -> Optional<SymbolPath> {
-          q.step();
-          if (!q.row()) {
-            return {};
-          }
-          return SymbolPath{
-              .m_symbol = std::string{q.getString(0)},
-              .m_path = {std::string{q.getString(1)}}};
-        }};
-  }
-
-  MultiResult<SymbolPath> getAllConstantPaths() override {
-    auto query = m_txn.query(m_constantStmts.m_getAll);
-    XLOGF(DBG9, "Running {}", query.sql());
-    return MultiResult<SymbolPath>{
-        [q = std::move(query)]() mutable -> Optional<SymbolPath> {
-          q.step();
-          if (!q.row()) {
-            return {};
-          }
-          return SymbolPath{
-              .m_symbol = std::string{q.getString(0)},
-              .m_path = {std::string{q.getString(1)}}};
-        }};
-  }
-
-  MultiResult<SymbolPath> getAllModulePaths() override {
-    auto query = m_txn.query(m_moduleStmts.m_getAll);
-    XLOGF(DBG9, "Running {}", query.sql());
-    return MultiResult<SymbolPath>{
-        [q = std::move(query)]() mutable -> Optional<SymbolPath> {
-          q.step();
-          if (!q.row()) {
-            return {};
-          }
-          return SymbolPath{
-              .m_symbol = std::string{q.getString(0)},
-              .m_path = {std::string{q.getString(1)}}};
         }};
   }
 

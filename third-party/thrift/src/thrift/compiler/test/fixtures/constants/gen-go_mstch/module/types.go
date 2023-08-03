@@ -97,7 +97,7 @@ if err != nil {
 type MyMapIdentifier = map[string]string
 
 func NewMyMapIdentifier() MyMapIdentifier {
-  return make(map[string]string)
+  return nil
 }
 
 func WriteMyMapIdentifier(item MyMapIdentifier, p thrift.Protocol) error {
@@ -624,7 +624,9 @@ var Internship_Compensation_DEFAULT = NewInternship().GetCompensation()
 var Internship_School_DEFAULT = NewInternship().GetSchool()
 
 func (x *Internship) String() string {
-    return fmt.Sprintf("%+v", x)
+    type InternshipAlias Internship
+    valueAlias := (*InternshipAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -861,7 +863,9 @@ if err != nil {
 }
 
 func (x *Range) String() string {
-    return fmt.Sprintf("%+v", x)
+    type RangeAlias Range
+    valueAlias := (*RangeAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1059,7 +1063,9 @@ if err != nil {
 }
 
 func (x *Struct1) String() string {
-    return fmt.Sprintf("%+v", x)
+    type Struct1Alias Struct1
+    valueAlias := (*Struct1Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1169,7 +1175,7 @@ func NewStruct2() *Struct2 {
         SetANonCompat(0).
         SetBNonCompat("").
         SetCNonCompat(*NewStruct1()).
-        SetDNonCompat(make([]int32, 0))
+        SetDNonCompat(nil)
 }
 
 func (x *Struct2) GetANonCompat() int32 {
@@ -1194,7 +1200,7 @@ func (x *Struct2) GetCNonCompat() *Struct1 {
 
 func (x *Struct2) GetC() *Struct1 {
     if !x.IsSetC() {
-        return NewStruct1()
+        return nil
     }
 
     return x.C
@@ -1206,7 +1212,7 @@ func (x *Struct2) GetDNonCompat() []int32 {
 
 func (x *Struct2) GetD() []int32 {
     if !x.IsSetD() {
-        return make([]int32, 0)
+        return nil
     }
 
     return x.D
@@ -1414,7 +1420,9 @@ func (x *Struct2) DefaultGetC() *Struct1 {
 }
 
 func (x *Struct2) String() string {
-    return fmt.Sprintf("%+v", x)
+    type Struct2Alias Struct2
+    valueAlias := (*Struct2Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1573,7 +1581,7 @@ func (x *Struct3) GetCNonCompat() *Struct2 {
 
 func (x *Struct3) GetC() *Struct2 {
     if !x.IsSetC() {
-        return NewStruct2()
+        return nil
     }
 
     return x.C
@@ -1708,7 +1716,9 @@ func (x *Struct3) DefaultGetC() *Struct2 {
 }
 
 func (x *Struct3) String() string {
-    return fmt.Sprintf("%+v", x)
+    type Struct3Alias Struct3
+    valueAlias := (*Struct3Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1994,7 +2004,9 @@ var Struct4_B_DEFAULT = NewStruct4().GetB()
 var Struct4_C_DEFAULT = NewStruct4().GetC()
 
 func (x *Struct4) String() string {
-    return fmt.Sprintf("%+v", x)
+    type Struct4Alias Struct4
+    valueAlias := (*Struct4Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2111,9 +2123,7 @@ type Union1 struct {
 var _ thrift.Struct = &Union1{}
 
 func NewUnion1() *Union1 {
-    return (&Union1{}).
-        SetINonCompat(0).
-        SetDNonCompat(0.0)
+    return (&Union1{})
 }
 
 func (x *Union1) GetINonCompat() *int32 {
@@ -2235,7 +2245,9 @@ var Union1_I_DEFAULT = NewUnion1().GetI()
 var Union1_D_DEFAULT = NewUnion1().GetD()
 
 func (x *Union1) String() string {
-    return fmt.Sprintf("%+v", x)
+    type Union1Alias Union1
+    valueAlias := (*Union1Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *Union1) countSetFields() int {
@@ -2359,11 +2371,7 @@ type Union2 struct {
 var _ thrift.Struct = &Union2{}
 
 func NewUnion2() *Union2 {
-    return (&Union2{}).
-        SetINonCompat(0).
-        SetDNonCompat(0.0).
-        SetSNonCompat(*NewStruct1()).
-        SetUNonCompat(*NewUnion1())
+    return (&Union2{})
 }
 
 func (x *Union2) GetINonCompat() *int32 {
@@ -2396,7 +2404,7 @@ func (x *Union2) GetSNonCompat() *Struct1 {
 
 func (x *Union2) GetS() *Struct1 {
     if !x.IsSetS() {
-        return NewStruct1()
+        return nil
     }
 
     return x.S
@@ -2408,7 +2416,7 @@ func (x *Union2) GetUNonCompat() *Union1 {
 
 func (x *Union2) GetU() *Union1 {
     if !x.IsSetU() {
-        return NewUnion1()
+        return nil
     }
 
     return x.U
@@ -2621,7 +2629,9 @@ func (x *Union2) DefaultGetU() *Union1 {
 }
 
 func (x *Union2) String() string {
-    return fmt.Sprintf("%+v", x)
+    type Union2Alias Union2
+    valueAlias := (*Union2Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *Union2) countSetFields() int {

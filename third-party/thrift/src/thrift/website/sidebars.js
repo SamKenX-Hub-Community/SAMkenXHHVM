@@ -87,39 +87,6 @@ module.exports = {
     },
     {
       type: 'category',
-      label: 'Specification',
-      link: {
-        type: 'doc',
-        id: 'spec/index'
-      },
-      items: [
-        {
-          type: 'category',
-          label: 'Protocols',
-          link: {
-            type: 'doc',
-            id: 'spec/protocol/index',
-          },
-          items: [
-            "spec/protocol/channel",
-            "spec/protocol/data",
-            {
-              type: 'category',
-              label: 'Interface Protocol',
-              link: {
-                type: 'doc',
-                id: 'spec/protocol/interface/index'
-              },
-              items: [
-                "spec/protocol/interface/rocket"
-              ],
-            }
-          ]
-        },
-      ]
-    },
-    {
-      type: 'category',
       label: 'Features',
       link: {
         type: 'doc',
@@ -131,7 +98,17 @@ module.exports = {
         // affecting their URLs.
 
         // Released features:
-        'fb/features/serialization',
+        {
+          type: 'category',
+          label: 'Serialization',
+          link: {
+            type: 'doc',
+            id: "features/serialization/index",
+          },
+          items: [
+            'features/serialization/protocols'
+          ]
+        },
         'features/operators',
         'features/universal-name',
         {
@@ -332,6 +309,18 @@ module.exports = {
         'fb/server/flavors-of-main',
         'fb/server/components',
         'fb/server/transport',
+        {
+          type: 'category',
+          label: 'Interface Protocol',
+          link: {
+            type: 'doc',
+            id: 'fb/server/interface/index'
+          },
+          items: [
+            "fb/server/interface/rocket"
+          ],
+        },
+        'fb/server/channels',
         'fb/server/threading-models',
         'fb/server/thrift-server-features',
         'fb/server/async-handling',
@@ -356,7 +345,17 @@ module.exports = {
             id: 'fb/server/overload-protection/index',
           },
           items: [
-            'fb/server/overload-protection/cpuconcurrencycontroller',
+            {
+              type: 'category',
+              label: 'CPUConcurrencyController',
+              link: {
+                type: 'doc',
+                id: 'fb/server/overload-protection/cpuconcurrencycontroller/index',
+              },
+              items: [
+                'fb/server/overload-protection/cpuconcurrencycontroller/rollout',
+              ]
+            },
             'fb/server/overload-protection/adaptive-concurrency',
             'fb/server/overload-protection/queue-timeout'
           ]

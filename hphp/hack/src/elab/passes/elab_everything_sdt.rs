@@ -20,6 +20,7 @@ use nast::ParamKind;
 use nast::Pos;
 use nast::Tparam;
 use nast::Typedef;
+use nast::TypedefVisibility;
 use nast::UserAttribute;
 use nast::UserAttributes;
 
@@ -30,6 +31,7 @@ pub struct ElabEverythingSdtPass {
     in_is_as: bool,
     in_enum_class: bool,
     under_no_auto_dynamic: bool,
+    under_no_auto_likes: bool,
 }
 
 impl ElabEverythingSdtPass {
@@ -42,6 +44,18 @@ fn no_auto_dynamic(user_attributes: &UserAttributes) -> bool {
     user_attributes
         .iter()
         .any(|ua| ua.name.name() == sn::user_attributes::NO_AUTO_DYNAMIC)
+}
+
+fn no_auto_likes(user_attributes: &UserAttributes) -> bool {
+    user_attributes
+        .iter()
+        .any(|ua| ua.name.name() == sn::user_attributes::NO_AUTO_LIKES)
+}
+
+fn no_auto_bound(user_attributes: &UserAttributes) -> bool {
+    user_attributes
+        .iter()
+        .any(|ua| ua.name.name() == sn::user_attributes::NO_AUTO_BOUND)
 }
 
 fn wrap_like(hint: Hint) -> Hint {
@@ -89,6 +103,7 @@ fn add_support_dynamic_type_attribute_mut(pos: Pos, user_attributes: &mut UserAt
 impl Pass for ElabEverythingSdtPass {
     fn on_ty_fun_def_top_down(&mut self, _env: &Env, fd: &mut FunDef) -> ControlFlow<()> {
         self.under_no_auto_dynamic = no_auto_dynamic(&fd.fun.user_attributes);
+        self.under_no_auto_likes = no_auto_likes(&fd.fun.user_attributes);
         Continue(())
     }
 
@@ -100,6 +115,7 @@ impl Pass for ElabEverythingSdtPass {
 
     fn on_ty_method__top_down(&mut self, _env: &Env, method: &mut Method_) -> ControlFlow<()> {
         self.under_no_auto_dynamic |= no_auto_dynamic(&method.user_attributes);
+        self.under_no_auto_likes = no_auto_likes(&method.user_attributes);
         Continue(())
     }
 
@@ -110,6 +126,7 @@ impl Pass for ElabEverythingSdtPass {
 
     fn on_ty_typedef_top_down(&mut self, _env: &Env, typedef: &mut Typedef) -> ControlFlow<()> {
         self.under_no_auto_dynamic = no_auto_dynamic(&typedef.user_attributes);
+        self.under_no_auto_likes = no_auto_likes(&typedef.user_attributes);
         Continue(())
     }
 
@@ -131,7 +148,7 @@ impl Pass for ElabEverythingSdtPass {
                 wrap_supportdyn_mut(hint);
             }
             // Return types and inout parameter types are pessimised.
-            Hint(_, box Hint_::Hfun(hint_fun)) => {
+            Hint(_, box Hint_::Hfun(hint_fun)) if !self.under_no_auto_likes => {
                 for (p, ty) in std::iter::zip(&hint_fun.param_info, &mut hint_fun.param_tys) {
                     if matches!(
                         p,
@@ -155,6 +172,7 @@ impl Pass for ElabEverythingSdtPass {
 
     fn on_ty_fun_def_bottom_up(&mut self, env: &Env, fd: &mut FunDef) -> ControlFlow<()> {
         self.under_no_auto_dynamic = no_auto_dynamic(&fd.fun.user_attributes);
+        self.under_no_auto_likes = no_auto_likes(&fd.fun.user_attributes);
         if !self.implicit_sdt(env) {
             return Continue(());
         }
@@ -165,7 +183,7 @@ impl Pass for ElabEverythingSdtPass {
     }
 
     fn on_ty_tparam_bottom_up(&mut self, env: &Env, tp: &mut Tparam) -> ControlFlow<()> {
-        if !self.implicit_sdt(env) {
+        if !self.implicit_sdt(env) || no_auto_bound(&tp.user_attributes) {
             return Continue(());
         }
 
@@ -237,14 +255,15 @@ impl Pass for ElabEverythingSdtPass {
 
     fn on_ty_typedef_bottom_up(&mut self, env: &Env, td: &mut Typedef) -> ControlFlow<()> {
         self.under_no_auto_dynamic = no_auto_dynamic(&td.user_attributes);
+        self.under_no_auto_likes = no_auto_likes(&td.user_attributes);
         if !self.implicit_sdt(env) {
             return Continue(());
         }
 
-        // If there isn't an "as constraint", produce a
+        // If there isn't an "as constraint", and this is not just a type alias, produce a
         // `Happly(\\HH\\supportdyn, Hmixed)` and write it into
         // `td.as_constraint` in-place.
-        if td.as_constraint.is_none() {
+        if td.as_constraint.is_none() && td.vis != TypedefVisibility::Transparent {
             let pos = td.name.pos().clone();
             td.as_constraint = Some(wrap_supportdyn(Hint(pos, Box::new(Hint_::Hmixed))));
         }

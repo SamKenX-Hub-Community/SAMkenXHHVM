@@ -117,6 +117,11 @@ let (add_constraint_ref : add_constraint ref) =
 
 let add_constraint x = !add_constraint_ref x
 
+let (can_sub_type_ref : is_sub_type_type ref) =
+  ref (not_implemented "can_sub_type_ref")
+
+let can_sub_type x = !can_sub_type_ref x
+
 type expand_typeconst =
   expand_env ->
   env ->
@@ -415,7 +420,12 @@ let wrap_union_inter_ty_in_var env r ty =
  * (For example, function foo<Tu as Tv, Tv as Tu>(...))
  * Also breaks apart intersections.
  *****************************************************************************)
-let get_concrete_supertypes ?(expand_supportdyn = true) ~abstract_enum env ty =
+let get_concrete_supertypes
+    ?(expand_supportdyn = true)
+    ?(include_case_types = false)
+    ~abstract_enum
+    env
+    ty =
   let rec iter seen env acc tyl =
     match tyl with
     | [] -> (env, acc)
@@ -429,9 +439,16 @@ let get_concrete_supertypes ?(expand_supportdyn = true) ~abstract_enum env ty =
              && Env.is_enum env cid ->
         iter seen env acc tyl
       (* Don't expand enums or newtype; just return the type itself *)
-      | Tnewtype (n, _, ty)
+      | Tnewtype (n, _, as_ty)
         when expand_supportdyn || not (String.equal n SN.Classes.cSupportDyn) ->
-        iter seen env (TySet.add ty acc) tyl
+        let acc = TySet.add as_ty acc in
+        let acc =
+          if include_case_types then
+            TySet.add ty acc
+          else
+            acc
+        in
+        iter seen env acc tyl
       | Tdependent (_, ty) -> iter seen env (TySet.add ty acc) tyl
       | Tgeneric (n, targs) ->
         if SSet.mem n seen then
@@ -529,7 +546,7 @@ let run_on_intersection_array_key_value_res env ~f tyl =
   (env, res, arr_errs, key_errs, val_errs)
 
 let rec strip_supportdyn env ty =
-  let (env, ty) = Typing_env.expand_type env ty in
+  let (env, ty) = Env.expand_type env ty in
   match get_node ty with
   | Tnewtype (name, [tyarg], _) when String.equal name SN.Classes.cSupportDyn ->
     let (_, env, ty) = strip_supportdyn env tyarg in
@@ -628,13 +645,6 @@ let shape_field_name_with_ty_err env (_, p, field) =
     in
     (None, Some (Typing_error.shape err))
 
-let shape_field_name env field =
-  let (res, error) = shape_field_name_with_ty_err env field in
-  (match error with
-  | Some error -> Typing_error_utils.add_typing_error error
-  | None -> ());
-  res
-
 (*****************************************************************************)
 (* Class types *)
 (*****************************************************************************)
@@ -703,7 +713,7 @@ let collect_enum_class_upper_bounds env name =
    *)
   let rec collect seen ok result name =
     let upper_bounds = Env.get_upper_bounds env name [] in
-    Typing_set.fold
+    TySet.fold
       (fun lty (seen, ok, result) ->
         match get_node lty with
         | Tclass ((_, name), _, _) when Env.is_enum_class env name ->
@@ -746,11 +756,14 @@ let is_sub_class_refl env c_sub c_super =
 
 let class_has_no_params env c =
   match Env.get_class env c with
-  | Some cls -> List.is_empty (Decl_provider.Class.tparams cls)
+  | Some cls -> List.is_empty (Cls.tparams cls)
   | None -> false
 
-(* Is super_id an ancestor of sub_id, including through requires steps? *)
-let rec has_ancestor_including_req env cls super_id =
+(* Is super_id an ancestor of sub_id, including through requires steps?
+ * Maintain a visited set to catch cycles (these are rejected in folding but
+ * the definitions survive).
+ *)
+let rec has_ancestor_including_req ~visited env cls super_id =
   Cls.has_ancestor cls super_id
   ||
   let kind = Cls.kind cls in
@@ -761,43 +774,54 @@ let rec has_ancestor_including_req env cls super_id =
      List.exists bounds ~f:(fun ty ->
          match get_node ty with
          | Tapply ((_, name), _) ->
-           has_ancestor_including_req_refl env name super_id
+           has_ancestor_including_req_refl ~visited env name super_id
          | _ -> false))
 
-and has_ancestor_including_req_refl env sub_id super_id =
-  String.equal sub_id super_id
-  ||
-  match Env.get_class env sub_id with
-  | None -> false
-  | Some cls -> has_ancestor_including_req env cls super_id
+and has_ancestor_including_req_refl ~visited env sub_id super_id =
+  (not (SSet.mem sub_id visited))
+  && (String.equal sub_id super_id
+     ||
+     match Env.get_class env sub_id with
+     | None -> false
+     | Some cls ->
+       has_ancestor_including_req
+         ~visited:(SSet.add sub_id visited)
+         env
+         cls
+         super_id)
+
+let has_ancestor_including_req = has_ancestor_including_req ~visited:SSet.empty
+
+let has_ancestor_including_req_refl =
+  has_ancestor_including_req_refl ~visited:SSet.empty
+
+(* search through tyl, and any unions directly-recursively contained in tyl,
+   and return those that satisfy f, and those that do not, separately.*)
+let rec partition_union ~f tyl =
+  match tyl with
+  | [] -> ([], [])
+  | t :: tyl ->
+    let (dyns, nondyns) = partition_union ~f tyl in
+    if f t then
+      (t :: dyns, nondyns)
+    else (
+      match get_node t with
+      | Tunion tyl ->
+        (match strip_union ~f tyl with
+        | Some (sub_dyns, sub_nondyns) ->
+          (sub_dyns @ dyns, MakeType.union (get_reason t) sub_nondyns :: nondyns)
+        | None -> (dyns, t :: nondyns))
+      | _ -> (dyns, t :: nondyns)
+    )
+
+and strip_union tyl ~f =
+  let (dyns, nondyns) = partition_union ~f tyl in
+  match (dyns, nondyns) with
+  | ([], _) -> None
+  | (_, _) -> Some (dyns, nondyns)
 
 let rec try_strip_dynamic_from_union _env tyl =
-  (* search through tyl, and any unions directly-recursively contained in tyl,
-     and return those that satisfy f, and those that do not, separately.*)
-  let rec partition_union tyl ~f =
-    match tyl with
-    | [] -> ([], [])
-    | t :: tyl ->
-      let (dyns, nondyns) = partition_union tyl ~f in
-      if f t then
-        (t :: dyns, nondyns)
-      else (
-        match get_node t with
-        | Tunion tyl ->
-          (match strip_union tyl with
-          | Some (sub_dyns, sub_nondyns) ->
-            ( sub_dyns @ dyns,
-              Typing_make_type.union (get_reason t) sub_nondyns :: nondyns )
-          | None -> (dyns, t :: nondyns))
-        | _ -> (dyns, t :: nondyns)
-      )
-  and strip_union tyl =
-    let (dyns, nondyns) = partition_union tyl ~f:Typing_defs.is_dynamic in
-    match (dyns, nondyns) with
-    | ([], _) -> None
-    | (_, _) -> Some (dyns, nondyns)
-  in
-  match strip_union tyl with
+  match strip_union ~f:Typing_defs.is_dynamic tyl with
   | None -> None
   | Some (_, tyl) -> Some tyl
 
@@ -807,7 +831,7 @@ and try_strip_dynamic env ty =
   | Tunion tyl ->
     (match try_strip_dynamic_from_union env tyl with
     | None -> None
-    | Some tyl -> Some (Typing_make_type.union (get_reason ty) tyl))
+    | Some tyl -> Some (MakeType.union (get_reason ty) tyl))
   | _ -> None
 
 and strip_dynamic env ty =
@@ -831,26 +855,24 @@ let rec make_supportdyn r env ty =
     if is_supportdyn env ty then
       (env, ty)
     else
-      (env, Typing_make_type.supportdyn r ty)
+      (env, MakeType.supportdyn r ty)
 
 let simple_make_supportdyn r env ty =
   let (env, ty) = Env.expand_type env ty in
   ( env,
     match get_node ty with
-    | Tnewtype (n, _, _)
-      when String.equal n Naming_special_names.Classes.cSupportDyn ->
-      ty
-    | _ -> Typing_make_type.supportdyn r ty )
+    | Tnewtype (n, _, _) when String.equal n SN.Classes.cSupportDyn -> ty
+    | _ -> MakeType.supportdyn r ty )
 
 let make_supportdyn_decl_type p r ty =
-  mk (r, Tapply ((p, Naming_special_names.Classes.cSupportDyn), [ty]))
+  mk (r, Tapply ((p, SN.Classes.cSupportDyn), [ty]))
 
 let make_like env ty =
   if Typing_defs.is_dynamic ty || Option.is_some (try_strip_dynamic env ty) then
     ty
   else
     let r = get_reason ty in
-    Typing_make_type.locl_like r ty
+    MakeType.locl_like r ty
 
 let make_like_if_enforced env ety =
   match ety.et_enforced with
@@ -906,19 +928,18 @@ let rec recompose_like_type env orig_ty =
     | (env, Some ((ty1, ty2), [ty_sub])) ->
       let (env, ty_union1) = union env ty1 ty_sub in
       let (env, ty_union2) = union env ty2 ty_sub in
-      (env, Typing_make_type.intersection (get_reason ty) [ty_union1; ty_union2])
+      (env, MakeType.intersection (get_reason ty) [ty_union1; ty_union2])
     | (env, _) ->
       (match try_strip_dynamic env ty with
       | None -> (env, ty)
       | Some ty1 ->
         let (env, ty2) = recompose_like_type env ty1 in
-        (env, Typing_make_type.locl_like (get_reason ty) ty2)))
+        (env, MakeType.locl_like (get_reason ty) ty2)))
   | Tfun ft ->
     let (env, et_type) = recompose_like_type env ft.ft_ret.et_type in
     let ft_ret = { ft.ft_ret with et_type } in
     (env, mk (get_reason ty, Tfun { ft with ft_ret }))
-  | Tnewtype (n, _, ty1)
-    when String.equal n Naming_special_names.Classes.cSupportDyn ->
+  | Tnewtype (n, _, ty1) when String.equal n SN.Classes.cSupportDyn ->
     let (env, ty1) = recompose_like_type env ty1 in
     simple_make_supportdyn (get_reason ty) env ty1
   | _ -> (env, orig_ty)

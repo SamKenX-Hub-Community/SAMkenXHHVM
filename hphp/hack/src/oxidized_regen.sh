@@ -43,8 +43,19 @@ summary "Write oxidized/gen/"
   hphp/hack/src/annotated_ast/aast_defs.ml                                    \
   hphp/hack/src/annotated_ast/namespace_env.ml                                \
   hphp/hack/src/ast/ast_defs.ml                                               \
+  hphp/hack/src/custom_error/custom_error.ml                                  \
+  hphp/hack/src/custom_error/custom_error_config.ml                           \
+  hphp/hack/src/custom_error/error_message.ml                                 \
+  hphp/hack/src/custom_error/patt_binding_ty.ml                               \
+  hphp/hack/src/custom_error/patt_error.ml                                    \
+  hphp/hack/src/custom_error/patt_locl_ty.ml                                  \
+  hphp/hack/src/custom_error/patt_name.ml                                     \
+  hphp/hack/src/custom_error/patt_string.ml                                   \
+  hphp/hack/src/custom_error/patt_var.ml                                      \
+  hphp/hack/src/custom_error/validation_err.ml                                \
   hphp/hack/src/decl/decl_defs.ml                                             \
   hphp/hack/src/decl/pos/pos_or_decl.ml                                       \
+  hphp/hack/src/decl/shallow_decl_defs.ml                                     \
   hphp/hack/src/errors/user_error.ml                                          \
   hphp/hack/src/errors/errors.ml                                              \
   hphp/hack/src/errors/error_codes.ml                                         \
@@ -60,9 +71,13 @@ summary "Write oxidized/gen/"
   hphp/hack/src/options/parserOptions.ml                                      \
   hphp/hack/src/options/saved_state_rollouts.ml                               \
   hphp/hack/src/options/typecheckerOptions.ml                                 \
+  hphp/hack/src/package/package.ml                                            \
+  hphp/hack/src/package/packageInfo.ml                                        \
   hphp/hack/src/parser/full_fidelity_parser_env.ml                            \
   hphp/hack/src/search/utils/searchTypes.ml                                   \
+  hphp/hack/src/typing/service/tast_hashes.ml                                 \
   hphp/hack/src/typing/tast.ml                                                \
+  hphp/hack/src/typing/tast_with_dynamic.ml                                                \
   hphp/hack/src/typing/type_parameter_env.ml                                  \
   hphp/hack/src/typing/typing_defs_core.ml                                    \
   hphp/hack/src/typing/typing_defs.ml                                         \
@@ -138,6 +153,16 @@ summary "Write oxidized_by_ref/gen/"
   hphp/hack/src/annotated_ast/aast_defs.ml                                    \
   hphp/hack/src/annotated_ast/namespace_env.ml                                \
   hphp/hack/src/ast/ast_defs.ml                                               \
+  hphp/hack/src/custom_error/custom_error.ml                                  \
+  hphp/hack/src/custom_error/custom_error_config.ml                           \
+  hphp/hack/src/custom_error/error_message.ml                                 \
+  hphp/hack/src/custom_error/patt_binding_ty.ml                               \
+  hphp/hack/src/custom_error/patt_error.ml                                    \
+  hphp/hack/src/custom_error/patt_locl_ty.ml                                  \
+  hphp/hack/src/custom_error/patt_name.ml                                     \
+  hphp/hack/src/custom_error/patt_string.ml                                   \
+  hphp/hack/src/custom_error/patt_var.ml                                      \
+  hphp/hack/src/custom_error/validation_err.ml                                \
   hphp/hack/src/decl/decl_defs.ml                                             \
   hphp/hack/src/decl/pos/pos_or_decl.ml                                       \
   hphp/hack/src/decl/shallow_decl_defs.ml                                     \
@@ -145,6 +170,8 @@ summary "Write oxidized_by_ref/gen/"
   hphp/hack/src/naming/naming_types.ml                                        \
   hphp/hack/src/naming/nast.ml                                                \
   hphp/hack/src/options/saved_state_rollouts.ml                               \
+  hphp/hack/src/package/package.ml                                            \
+  hphp/hack/src/package/packageInfo.ml                                        \
   hphp/hack/src/parser/scoured_comments.ml                                    \
   hphp/hack/src/typing/typing_defs_core.ml                                    \
   hphp/hack/src/typing/typing_defs.ml                                         \

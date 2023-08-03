@@ -91,7 +91,13 @@ void raiseModuleBoundaryViolation(const Class* ctx,
 void raiseModuleBoundaryViolation(const Class* cls,
                                   const StringData* callerModule);
 
-void raiseModulePropertyViolation(const Class* cls, const StringData* prop, const StringData* callerModule, bool is_static);
+void raiseModulePropertyViolation(const Class* cls,
+                                  const StringData* prop,
+                                  const StringData* callerModule,
+                                  bool is_static);
+
+void raiseDeploymentBoundaryViolation(const Func* callee);
+void raiseDeploymentBoundaryViolation(const Class* cls);
 
 void raiseImplicitContextStateInvalidDispatch(const Func*);
 

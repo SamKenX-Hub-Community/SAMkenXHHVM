@@ -107,6 +107,43 @@ let parse_range_opt (json : json option) : range option =
   else
     Some (parse_range_exn json)
 
+(************************************************************************)
+
+let print_error (e : Error.t) : json =
+  let open Hh_json in
+  let data =
+    match e.Error.data with
+    | None -> []
+    | Some data -> [("data", data)]
+  in
+  let entries =
+    ("code", int_ (Error.code_to_enum e.Error.code))
+    :: ("message", string_ e.Error.message)
+    :: data
+  in
+  JSON_Object entries
+
+let error_to_log_string (e : Error.t) : string =
+  let data =
+    Option.value_map e.Error.data ~f:Hh_json.json_to_multiline ~default:""
+  in
+  Printf.sprintf
+    "%s [%s]\n%s"
+    e.Error.message
+    (Error.show_code e.Error.code)
+    data
+
+let parse_error (error : json) : Error.t =
+  let json = Some error in
+  let code =
+    Jget.int_exn json "code"
+    |> Error.code_of_enum
+    |> Option.value ~default:Error.UnknownErrorCode
+  in
+  let message = Jget.string_exn json "message" in
+  let data = Jget.val_opt json "data" in
+  { Error.code; message; data }
+
 let parse_textDocumentIdentifier (json : json option) : TextDocumentIdentifier.t
     =
   TextDocumentIdentifier.{ uri = Jget.string_exn json "uri" |> uri_of_string }
@@ -377,6 +414,54 @@ let print_signatureHelp (r : SignatureHelp.result) : json =
 
 (************************************************************************)
 
+let parse_typeHierarchy (params : json option) : TypeHierarchy.params =
+  parse_textDocumentPositionParams params
+
+let print_typeHierarchy (r : TypeHierarchy.result) : json =
+  TypeHierarchy.(
+    let print_member_entry (entry : TypeHierarchy.memberEntry) =
+      Hh_json.JSON_Object
+        [
+          ("name", Hh_json.string_ entry.name);
+          ("snippet", Hh_json.string_ entry.snippet);
+          ("uri", JSON_String (string_of_uri entry.uri));
+          ("range", print_range entry.range);
+          ("kind", Hh_json.int_ (memberKind_to_enum entry.kind));
+          ("origin", Hh_json.string_ entry.origin);
+        ]
+    in
+    let print_ancestor_entry (entry : TypeHierarchy.ancestorEntry) =
+      match entry with
+      | AncestorName name -> Hh_json.string_ name
+      | AncestorDetails entry ->
+        Hh_json.JSON_Object
+          [
+            ("name", Hh_json.string_ entry.name);
+            ("uri", JSON_String (string_of_uri entry.uri));
+            ("range", print_range entry.range);
+            ("kind", Hh_json.int_ (entryKind_to_enum entry.kind));
+          ]
+    in
+    let print_hierarchy_entry (entry : TypeHierarchy.hierarchyEntry) =
+      Hh_json.JSON_Object
+        [
+          ("name", Hh_json.string_ entry.name);
+          ("uri", JSON_String (string_of_uri entry.uri));
+          ("range", print_range entry.range);
+          ("kind", Hh_json.int_ (entryKind_to_enum entry.kind));
+          ( "ancestors",
+            Hh_json.JSON_Array
+              (List.map ~f:print_ancestor_entry entry.ancestors) );
+          ( "members",
+            Hh_json.JSON_Array (List.map ~f:print_member_entry entry.members) );
+        ]
+    in
+    match r with
+    | None -> Hh_json.JSON_Object []
+    | Some r -> print_hierarchy_entry r)
+
+(************************************************************************)
+
 let parse_codeLensResolve (params : json option) : CodeLensResolve.params =
   parse_codeLens params
 
@@ -514,30 +599,61 @@ let parse_kinds jsons : CodeActionKind.t list =
   List.map ~f:parse_kind jsons |> List.filter_opt
 
 let parse_codeActionRequest (j : json option) : CodeActionRequest.params =
-  CodeActionRequest.(
-    let parse_context c : CodeActionRequest.codeActionContext =
+  let parse_context c : CodeActionRequest.codeActionContext =
+    CodeActionRequest.
       {
         diagnostics =
           Jget.array_exn c "diagnostics" |> List.map ~f:parse_diagnostic;
         only = Jget.array_opt c "only" |> Option.map ~f:parse_kinds;
       }
-    in
+  in
+  CodeActionRequest.
     {
       textDocument =
         Jget.obj_exn j "textDocument" |> parse_textDocumentIdentifier;
       range = Jget.obj_exn j "range" |> parse_range_exn;
       context = Jget.obj_exn j "context" |> parse_context;
-    })
+    }
+
+let parse_codeActionResolveRequest (j : json option) :
+    CodeActionResolveRequest.params =
+  let data = Jget.obj_exn j "data" |> parse_codeActionRequest in
+  let title = Jget.string_exn j "title" in
+  CodeActionResolveRequest.{ data; title }
 
 (************************************************************************)
 
-let print_codeAction (c : CodeAction.t) : json =
+let print_codeAction
+    (c : 'a CodeAction.t)
+    ~(unresolved_to_code_action_request : 'a -> CodeActionRequest.params) : json
+    =
   CodeAction.(
-    let (edit, command) =
+    let (edit, command, data) =
       match c.action with
-      | EditOnly e -> (Some e, None)
-      | CommandOnly c -> (None, Some c)
-      | BothEditThenCommand (e, c) -> (Some e, Some c)
+      | EditOnly e -> (Some e, None, None)
+      | CommandOnly c -> (None, Some c, None)
+      | BothEditThenCommand (e, c) -> (Some e, Some c, None)
+      | UnresolvedEdit e ->
+        (None, None, Some (unresolved_to_code_action_request e))
+    in
+    let print_params CodeActionRequest.{ textDocument; range; context } =
+      Hh_json.JSON_Object
+        [
+          ( "textDocument",
+            Hh_json.JSON_Object
+              [
+                ( "uri",
+                  JSON_String
+                    (string_of_uri textDocument.TextDocumentIdentifier.uri) );
+              ] );
+          ("range", print_range range);
+          ( "context",
+            Hh_json.JSON_Object
+              [
+                ( "diagnostics",
+                  print_diagnostic_list context.CodeActionRequest.diagnostics );
+              ] );
+        ]
     in
     Jprint.object_opt
       [
@@ -546,15 +662,33 @@ let print_codeAction (c : CodeAction.t) : json =
         ("diagnostics", Some (print_diagnostic_list c.diagnostics));
         ("edit", Option.map edit ~f:print_documentRename);
         ("command", Option.map command ~f:print_command);
+        ("data", Option.map data ~f:print_params);
       ])
 
-let print_codeActionResult (c : CodeAction.result) : json =
+let print_codeActionResult
+    (c : CodeAction.result) (p : CodeActionRequest.params) : json =
   CodeAction.(
     let print_command_or_action = function
       | Command c -> print_command c
-      | Action c -> print_codeAction c
+      | Action c ->
+        print_codeAction c ~unresolved_to_code_action_request:(Fn.const p)
     in
     JSON_Array (List.map c ~f:print_command_or_action))
+
+let print_codeActionResolveResult (c : CodeActionResolve.result) : json =
+  let open CodeAction in
+  let print_command_or_action = function
+    | Command c -> print_command c
+    | Action c ->
+      let unresolved_to_code_action_request :
+          CodeAction.resolved_marker -> CodeActionRequest.params = function
+        | _ -> .
+      in
+      print_codeAction c ~unresolved_to_code_action_request
+  in
+  match c with
+  | Ok command_or_action -> print_command_or_action command_or_action
+  | Error err -> print_error err
 
 (************************************************************************)
 
@@ -973,6 +1107,8 @@ let parse_initialize (params : json option) : Initialize.params =
           Jget.float_d json "namingTableSavedStateTestDelay" ~default:0.0;
         delayUntilDoneInit =
           Jget.bool_d json "delayUntilDoneInit" ~default:false;
+        skipLspServerOnTypeFormatting =
+          Jget.bool_d json "skipLspServerOnTypeFormatting" ~default:false;
       }
     and parse_capabilities json =
       {
@@ -980,6 +1116,8 @@ let parse_initialize (params : json option) : Initialize.params =
         textDocument = Jget.obj_opt json "textDocument" |> parse_textDocument;
         window = Jget.obj_opt json "window" |> parse_window;
         telemetry = Jget.obj_opt json "telemetry" |> parse_telemetry;
+        client_experimental =
+          Jget.obj_opt json "experimental" |> parse_client_experimental;
       }
     and parse_workspace json =
       {
@@ -1055,6 +1193,9 @@ let parse_initialize (params : json option) : Initialize.params =
         connectionStatus =
           Jget.obj_opt json "connectionStatus" |> Option.is_some;
       }
+    and parse_client_experimental json =
+      ClientExperimentalCapabilities.
+        { snippetTextEdit = Jget.bool_d json "snippetTextEdit" ~default:false }
     in
     parse_initialize params)
 
@@ -1093,9 +1234,11 @@ let print_initialize (r : Initialize.result) : json =
                 Option.map cap.completionProvider ~f:(fun comp ->
                     JSON_Object
                       [
-                        ("resolveProvider", JSON_Bool comp.resolveProvider);
+                        ( "resolveProvider",
+                          JSON_Bool comp.CompletionOptions.resolveProvider );
                         ( "triggerCharacters",
-                          Jprint.string_array comp.completion_triggerCharacters
+                          Jprint.string_array
+                            comp.CompletionOptions.completion_triggerCharacters
                         );
                       ]) );
               ( "signatureHelpProvider",
@@ -1115,7 +1258,14 @@ let print_initialize (r : Initialize.result) : json =
                 Some (JSON_Bool cap.documentSymbolProvider) );
               ( "workspaceSymbolProvider",
                 Some (JSON_Bool cap.workspaceSymbolProvider) );
-              ("codeActionProvider", Some (JSON_Bool cap.codeActionProvider));
+              ( "codeActionProvider",
+                Option.map cap.codeActionProvider ~f:(fun provider ->
+                    JSON_Object
+                      [
+                        ( "resolveProvider",
+                          JSON_Bool provider.CodeActionOptions.resolveProvider
+                        );
+                      ]) );
               ( "codeLensProvider",
                 Option.map cap.codeLensProvider ~f:(fun codelens ->
                     JSON_Object
@@ -1151,6 +1301,17 @@ let print_initialize (r : Initialize.result) : json =
               ( "implementationProvider",
                 Some (JSON_Bool cap.implementationProvider) );
               ("rageProvider", Some (JSON_Bool cap.rageProviderFB));
+              ( "experimental",
+                Option.map
+                  cap.server_experimental
+                  ~f:(fun experimental_capabilities ->
+                    JSON_Object
+                      [
+                        ( "snippetTextEdit",
+                          JSON_Bool
+                            experimental_capabilities
+                              .ServerExperimentalCapabilities.snippetTextEdit );
+                      ]) );
             ] );
       ])
 
@@ -1209,43 +1370,6 @@ let parse_didChangeWatchedFiles (json : Hh_json.json option) :
   { DidChangeWatchedFiles.changes }
 
 (************************************************************************)
-
-let print_error (e : Error.t) : json =
-  let open Hh_json in
-  let data =
-    match e.Error.data with
-    | None -> []
-    | Some data -> [("data", data)]
-  in
-  let entries =
-    ("code", int_ (Error.code_to_enum e.Error.code))
-    :: ("message", string_ e.Error.message)
-    :: data
-  in
-  JSON_Object entries
-
-let error_to_log_string (e : Error.t) : string =
-  let data =
-    Option.value_map e.Error.data ~f:Hh_json.json_to_multiline ~default:""
-  in
-  Printf.sprintf
-    "%s [%s]\n%s"
-    e.Error.message
-    (Error.show_code e.Error.code)
-    data
-
-let parse_error (error : json) : Error.t =
-  let json = Some error in
-  let code =
-    Jget.int_exn json "code"
-    |> Error.code_of_enum
-    |> Option.value ~default:Error.UnknownErrorCode
-  in
-  let message = Jget.string_exn json "message" in
-  let data = Jget.val_opt json "data" in
-  { Error.code; message; data }
-
-(************************************************************************)
 (* universal parser+printer                                             *)
 (************************************************************************)
 
@@ -1262,6 +1386,8 @@ let get_uri_opt (m : lsp_message) : Lsp.documentUri option =
     Some p.TextDocumentPositionParams.textDocument.uri
   | RequestMessage (_, CodeActionRequest p) ->
     Some p.CodeActionRequest.textDocument.uri
+  | RequestMessage (_, CodeActionResolveRequest p) ->
+    Some p.CodeActionResolveRequest.data.CodeActionRequest.textDocument.uri
   | RequestMessage (_, CompletionRequest p) ->
     Some p.Completion.loc.TextDocumentPositionParams.textDocument.uri
   | RequestMessage (_, DocumentSymbolRequest p) ->
@@ -1287,6 +1413,8 @@ let get_uri_opt (m : lsp_message) : Lsp.documentUri option =
     Some p.DocumentOnTypeFormatting.textDocument.uri
   | RequestMessage (_, RenameRequest p) -> Some p.Rename.textDocument.uri
   | RequestMessage (_, SignatureHelpRequest p) ->
+    Some p.TextDocumentPositionParams.textDocument.uri
+  | RequestMessage (_, TypeHierarchyRequest p) ->
     Some p.TextDocumentPositionParams.textDocument.uri
   | NotificationMessage (PublishDiagnosticsNotification p) ->
     Some p.PublishDiagnostics.uri
@@ -1340,6 +1468,7 @@ let request_name_to_string (request : lsp_request) : string =
   | CodeLensResolveRequest _ -> "codeLens/resolve"
   | HoverRequest _ -> "textDocument/hover"
   | CodeActionRequest _ -> "textDocument/codeAction"
+  | CodeActionResolveRequest _ -> "codeAction/resolve"
   | CompletionRequest _ -> "textDocument/completion"
   | CompletionItemResolveRequest _ -> "completionItem/resolve"
   | DefinitionRequest _ -> "textDocument/definition"
@@ -1359,6 +1488,7 @@ let request_name_to_string (request : lsp_request) : string =
   | RenameRequest _ -> "textDocument/rename"
   | DocumentCodeLensRequest _ -> "textDocument/codeLens"
   | SignatureHelpRequest _ -> "textDocument/signatureHelp"
+  | TypeHierarchyRequest _ -> "textDocument/typeHierarchy"
   | HackTestStartServerRequestFB -> "$test/startHhServer"
   | HackTestStopServerRequestFB -> "$test/stopHhServer"
   | HackTestShutdownServerlessRequestFB -> "$test/shutdownServerlessIde"
@@ -1374,6 +1504,7 @@ let result_name_to_string (result : lsp_result) : string =
   | CodeLensResolveResult _ -> "codeLens/resolve"
   | HoverResult _ -> "textDocument/hover"
   | CodeActionResult _ -> "textDocument/codeAction"
+  | CodeActionResolveResult _ -> "codeAction/resolve"
   | CompletionResult _ -> "textDocument/completion"
   | CompletionItemResolveResult _ -> "completionItem/resolve"
   | DefinitionResult _ -> "textDocument/definition"
@@ -1393,6 +1524,7 @@ let result_name_to_string (result : lsp_result) : string =
   | RenameResult _ -> "textDocument/rename"
   | DocumentCodeLensResult _ -> "textDocument/codeLens"
   | SignatureHelpResult _ -> "textDocument/signatureHelp"
+  | TypeHierarchyResult _ -> "textDocument/typeHierarchy"
   | HackTestStartServerResultFB -> "$test/startHhServer"
   | HackTestStopServerResultFB -> "$test/stopHhServer"
   | HackTestShutdownServerlessResultFB -> "$test/shutdownServerlessIde"
@@ -1457,6 +1589,8 @@ let parse_lsp_request (method_ : string) (params : json option) : lsp_request =
   | "textDocument/hover" -> HoverRequest (parse_hover params)
   | "textDocument/codeAction" ->
     CodeActionRequest (parse_codeActionRequest params)
+  | "codeAction/resolve" ->
+    CodeActionResolveRequest (parse_codeActionResolveRequest params)
   | "textDocument/completion" -> CompletionRequest (parse_completion params)
   | "completionItem/resolve" ->
     CompletionItemResolveRequest (parse_completionItem params)
@@ -1488,6 +1622,8 @@ let parse_lsp_request (method_ : string) (params : json option) : lsp_request =
     DocumentOnTypeFormattingRequest (parse_documentOnTypeFormatting params)
   | "textDocument/signatureHelp" ->
     SignatureHelpRequest (parse_signatureHelp params)
+  | "textDocument/typeHierarchy" ->
+    TypeHierarchyRequest (parse_typeHierarchy params)
   | "textDocument/codeLens" ->
     DocumentCodeLensRequest (parse_documentCodeLens params)
   | "telemetry/rage" -> RageRequestFB
@@ -1537,6 +1673,7 @@ let parse_lsp_result (request : lsp_request) (result : json) : lsp_result =
   | CodeLensResolveRequest _
   | HoverRequest _
   | CodeActionRequest _
+  | CodeActionResolveRequest _
   | CompletionRequest _
   | CompletionItemResolveRequest _
   | DefinitionRequest _
@@ -1556,6 +1693,7 @@ let parse_lsp_result (request : lsp_request) (result : json) : lsp_result =
   | RenameRequest _
   | DocumentCodeLensRequest _
   | SignatureHelpRequest _
+  | TypeHierarchyRequest _
   | HackTestStartServerRequestFB
   | HackTestStopServerRequestFB
   | HackTestShutdownServerlessRequestFB
@@ -1608,6 +1746,7 @@ let print_lsp_request (id : lsp_id) (request : lsp_request) : json =
     | ShutdownRequest
     | HoverRequest _
     | CodeActionRequest _
+    | CodeActionResolveRequest _
     | CodeLensResolveRequest _
     | CompletionRequest _
     | CompletionItemResolveRequest _
@@ -1628,6 +1767,7 @@ let print_lsp_request (id : lsp_id) (request : lsp_request) : json =
     | RenameRequest _
     | DocumentCodeLensRequest _
     | SignatureHelpRequest _
+    | TypeHierarchyRequest _
     | HackTestStartServerRequestFB
     | HackTestStopServerRequestFB
     | HackTestShutdownServerlessRequestFB
@@ -1651,7 +1791,8 @@ let print_lsp_response (id : lsp_id) (result : lsp_result) : json =
     | ShutdownResult -> print_shutdown ()
     | CodeLensResolveResult r -> print_codeLensResolve r
     | HoverResult r -> print_hover r
-    | CodeActionResult r -> print_codeActionResult r
+    | CodeActionResult (r, p) -> print_codeActionResult r p
+    | CodeActionResolveResult r -> print_codeActionResolveResult r
     | CompletionResult r -> print_completion r
     | CompletionItemResolveResult r -> print_completionItem r
     | DefinitionResult r -> print_definition_locations r
@@ -1673,6 +1814,7 @@ let print_lsp_response (id : lsp_id) (result : lsp_result) : json =
     | RenameResult r -> print_documentRename r
     | DocumentCodeLensResult r -> print_documentCodeLens r
     | SignatureHelpResult r -> print_signatureHelp r
+    | TypeHierarchyResult r -> print_typeHierarchy r
     | HackTestStartServerResultFB -> JSON_Null
     | HackTestStopServerResultFB -> JSON_Null
     | HackTestShutdownServerlessResultFB -> JSON_Null

@@ -114,6 +114,7 @@ namespace Trace {
       TM(fixup)         \
       TM(fr)            \
       TM(funcorder)     \
+      TM(gallium)       \
       TM(gc)            \
       TM(hackc_translate) \
       TM(heapgraph)     \
@@ -217,7 +218,6 @@ namespace Trace {
       TM(xls)           \
       TM(xls_stats)     \
       TM(clisrv)        \
-      TM(factparse)     \
       TM(bccache)       \
       TM(idx)           \
       /* Stress categories, to exercise rare paths */ \

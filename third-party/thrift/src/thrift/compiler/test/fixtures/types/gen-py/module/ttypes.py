@@ -13,8 +13,6 @@ from thrift.protocol.TProtocol import TProtocolException
 
 
 import included.ttypes
-import thrift.annotation.cpp.ttypes
-import thrift.annotation.thrift.ttypes
 
 
 import pprint
@@ -4497,9 +4495,6 @@ ForwardUsageRoot.thrift_spec = (
 ForwardUsageRoot.thrift_struct_annotations = {
 }
 ForwardUsageRoot.thrift_field_annotations = {
-  2: {
-    "cpp.ref": "true",
-  },
 }
 
 def ForwardUsageRoot__init__(self, ForwardUsageStruct=None, ForwardUsageByRef=None,):
@@ -4525,9 +4520,6 @@ ForwardUsageStruct.thrift_spec = (
 ForwardUsageStruct.thrift_struct_annotations = {
 }
 ForwardUsageStruct.thrift_field_annotations = {
-  1: {
-    "cpp.ref": "true",
-  },
 }
 
 def ForwardUsageStruct__init__(self, foo=None,):
@@ -4551,9 +4543,6 @@ ForwardUsageByRef.thrift_spec = (
 ForwardUsageByRef.thrift_struct_annotations = {
 }
 ForwardUsageByRef.thrift_field_annotations = {
-  1: {
-    "cpp.ref": "true",
-  },
 }
 
 def ForwardUsageByRef__init__(self, foo=None,):

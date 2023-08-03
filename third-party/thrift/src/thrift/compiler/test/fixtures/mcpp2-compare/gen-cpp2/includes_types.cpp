@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::a::different::ns::AnEnum>::size;
+#endif
 folly::Range<::a::different::ns::AnEnum const*> const TEnumTraits<::a::different::ns::AnEnum>::values = folly::range(TEnumDataStorage<::a::different::ns::AnEnum>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::a::different::ns::AnEnum>::names = folly::range(TEnumDataStorage<::a::different::ns::AnEnum>::names);
 
@@ -28,14 +30,6 @@ bool TEnumTraits<::a::different::ns::AnEnum>::findValue(folly::StringPiece name,
 
 }} // apache::thrift
 
-namespace a { namespace different { namespace ns {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _AnEnum_EnumMapFactory::ValuesToNamesMapType _AnEnum_VALUES_TO_NAMES = _AnEnum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // a::different::ns
 
 namespace apache {
 namespace thrift {
@@ -160,6 +154,13 @@ const folly::StringPiece AStructB::__fbthrift_get_class_name() {
 
 AStructB::AStructB(const AStructB&) = default;
 AStructB& AStructB::operator=(const AStructB&) = default;
+AStructB::AStructB() :
+      __fbthrift_field_FieldA(std::make_shared<::a::different::ns::AStruct>()) {
+}
+
+
+AStructB::~AStructB() {}
+
 AStructB::AStructB(FOLLY_MAYBE_UNUSED AStructB&& other) noexcept :
     __fbthrift_field_FieldA(std::move(other.__fbthrift_field_FieldA)) {
 }

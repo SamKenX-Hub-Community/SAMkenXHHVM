@@ -435,7 +435,7 @@ bool EventBase::loopMain(int flags, bool ignoreKeepAlive) {
       maxLatencyLoopTime_.addSample(loop_time, busy);
 
       if (observer_) {
-        if (observerSampleCount_++ == observer_->getSampleRate()) {
+        if (++observerSampleCount_ >= observer_->getSampleRate()) {
           observerSampleCount_ = 0;
           observer_->loopSample(busy.count(), idle.count());
         }
@@ -838,8 +838,8 @@ bool EventBase::scheduleTimeout(
   dcheckIsInEventBaseThread();
   // Set up the timeval and add the event
   struct timeval tv;
-  tv.tv_sec = long(timeout.count() / 1000LL);
-  tv.tv_usec = long((timeout.count() % 1000LL) * 1000LL);
+  tv.tv_sec = to_narrow(timeout.count() / 1000LL);
+  tv.tv_usec = to_narrow((timeout.count() % 1000LL) * 1000LL);
 
   auto* ev = obj->getEvent();
 
@@ -873,6 +873,10 @@ void EventBase::setName(const std::string& name) {
 const std::string& EventBase::getName() {
   dcheckIsInEventBaseThread();
   return name_;
+}
+
+std::thread::id EventBase::getLoopThreadId() {
+  return loopThread_.load(std::memory_order_relaxed);
 }
 
 void EventBase::scheduleAt(Func&& fn, TimePoint const& timeout) {
@@ -962,7 +966,5 @@ bool EventBase::OnDestructionCallback::cancel() {
     return wasScheduled;
   });
 }
-
-constexpr std::chrono::milliseconds EventBase::SmoothLoopTime::buffer_interval_;
 
 } // namespace folly

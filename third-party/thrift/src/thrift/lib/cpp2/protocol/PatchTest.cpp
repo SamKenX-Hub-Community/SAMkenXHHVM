@@ -406,46 +406,6 @@ TEST_F(PatchTest, List) {
     expectNoop(patchObj);
   }
 
-  // PatchPrior
-  {
-    auto elementPatchValue = asValueStruct<type::binary_t>("best");
-    Value fieldPatchValue;
-    fieldPatchValue.objectValue_ref() =
-        makePatch(op::PatchOp::Put, elementPatchValue);
-    Value listElementPatch;
-    int32_t zigZag = apache::thrift::util::i32ToZigzag(
-        static_cast<int32_t>(type::toOrdinal(0)));
-    listElementPatch.mapValue_ref()
-        .ensure()[asValueStruct<type::i32_t>(zigZag)] = fieldPatchValue;
-    auto patchObj = makePatch(op::PatchOp::PatchPrior, listElementPatch);
-    auto patched = *applyContainerPatch(patchObj, value).listValue_ref();
-    EXPECT_EQ(
-        std::vector<Value>{asValueStruct<type::binary_t>("testbest")}, patched);
-    // It is a map mask as Patch can't distinguish between list and map.
-    {
-      auto masks = extractMaskViewFromPatch(patchObj);
-      EXPECT_EQ(masks.read, masks.write);
-      auto mask = masks.read.includes_map_ref().value();
-      EXPECT_EQ(mask.size(), 1);
-      EXPECT_EQ(((Value*)mask.begin()->first)->as_i32(), zigZag);
-      EXPECT_EQ(mask.begin()->second, allMask());
-    }
-    {
-      auto masks = extractMaskFromPatch(patchObj);
-      EXPECT_EQ(masks.read, masks.write);
-      auto mask = masks.read.includes_map_ref().value();
-      EXPECT_EQ(mask.size(), 1);
-      EXPECT_EQ(mask.begin()->first, zigZag);
-      EXPECT_EQ(mask.begin()->second, allMask());
-    }
-  }
-  {
-    auto emptyMapValue =
-        asValueStruct<type::map<type::i32_t, type::binary_t>>({});
-    Object patchObj = makePatch(op::PatchOp::PatchPrior, emptyMapValue);
-    expectNoop(patchObj);
-  }
-
   // Prepend
   {
     auto expected = *patchValue.listValue_ref();
@@ -478,37 +438,6 @@ TEST_F(PatchTest, List) {
     expectNoop(patchObj);
   }
 
-  // Remove
-  {
-    Object patchObj = makePatch(
-        op::PatchOp::Remove,
-        asValueStruct<type::set<type::binary_t>>(std::set{"test"}));
-    EXPECT_EQ(
-        std::vector<Value>{},
-        *applyContainerPatch(patchObj, value).listValue_ref());
-    // It is a map mask as Remove can't distinguish between list, set, and map.
-    {
-      auto masks = extractMaskViewFromPatch(patchObj);
-      EXPECT_EQ(masks.read, masks.write);
-      auto mask = masks.read.includes_map_ref().value();
-      EXPECT_EQ(mask.size(), 1);
-      isBinaryEqual(*((Value*)mask.begin()->first), "test");
-      EXPECT_EQ(mask.begin()->second, allMask());
-    }
-    {
-      auto masks = extractMaskFromPatch(patchObj);
-      EXPECT_EQ(masks.read, masks.write);
-      auto mask = masks.read.includes_string_map_ref().value();
-      EXPECT_EQ(mask.size(), 1);
-      EXPECT_EQ(mask.begin()->first, "test");
-      EXPECT_EQ(mask.begin()->second, allMask());
-    }
-  }
-  {
-    Object patchObj = makePatch(op::PatchOp::Remove, emptySet);
-    expectNoop(patchObj);
-  }
-
   // Add
   {
     Object patchObj = makePatch(
@@ -517,7 +446,7 @@ TEST_F(PatchTest, List) {
     EXPECT_EQ(
         *value.listValue_ref(),
         *applyContainerPatch(patchObj, value).listValue_ref())
-        << "Shuold insert nothing";
+        << "Should insert nothing";
     EXPECT_TRUE(isMaskReadWriteOperation(patchObj));
   }
   {
@@ -552,19 +481,6 @@ TEST_F(PatchTest, GeneratedListPatch) {
   patched = applyGeneratedPatch<type::list<type::i16_t>>(patched, patch);
   EXPECT_EQ(
       patched, (Vec{1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 7, 8, 9, 10}));
-
-  ListPatch erasePatch;
-  erasePatch.erase(1);
-  patched = applyGeneratedPatch<type::list<type::i16_t>>(
-      Vec{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, erasePatch);
-  EXPECT_EQ(patched, (Vec{2, 3, 4, 5, 6, 7, 8, 9, 10}));
-
-  ListPatch removePatch;
-  removePatch.remove({1, 2, 3, 4});
-
-  patched = applyGeneratedPatch<type::list<type::i16_t>>(
-      Vec{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, removePatch);
-  EXPECT_EQ(patched, (Vec{5, 6, 7, 8, 9, 10}));
 }
 
 TEST_F(PatchTest, Set) {
@@ -598,9 +514,7 @@ TEST_F(PatchTest, Set) {
   {
     Object patchObj =
         makePatch(op::PatchOp::Clear, asValueStruct<type::bool_t>(true));
-    EXPECT_EQ(
-        std::set<Value>{},
-        *applyContainerPatch(patchObj, value).setValue_ref());
+    EXPECT_TRUE(applyContainerPatch(patchObj, value).setValue_ref()->empty());
     EXPECT_TRUE(isMaskWriteOperation(patchObj));
   }
   {
@@ -628,25 +542,18 @@ TEST_F(PatchTest, Set) {
     Object patchObj = makePatch(
         op::PatchOp::Remove,
         asValueStruct<type::set<type::binary_t>>({"test"}));
-    EXPECT_EQ(
-        std::set<Value>{},
-        *applyContainerPatch(patchObj, value).setValue_ref());
-    // It is a map mask as Remove can't distinguish between list, set, and
+    EXPECT_TRUE(applyContainerPatch(patchObj, value).setValue_ref()->empty());
+    // Both read and write mask are allMask, as RemovePatch can't be
+    // distinguished between set, map, and struct.
     {
       auto masks = extractMaskViewFromPatch(patchObj);
-      EXPECT_EQ(masks.read, masks.write);
-      auto mask = masks.read.includes_map_ref().value();
-      EXPECT_EQ(mask.size(), 1);
-      isBinaryEqual(*((Value*)mask.begin()->first), "test");
-      EXPECT_EQ(mask.begin()->second, allMask());
+      EXPECT_TRUE(MaskRef{masks.read}.isAllMask());
+      EXPECT_TRUE(MaskRef{masks.write}.isAllMask());
     }
     {
       auto masks = extractMaskFromPatch(patchObj);
-      EXPECT_EQ(masks.read, masks.write);
-      auto mask = masks.read.includes_string_map_ref().value();
-      EXPECT_EQ(mask.size(), 1);
-      EXPECT_EQ(mask.begin()->first, "test");
-      EXPECT_EQ(mask.begin()->second, allMask());
+      EXPECT_TRUE(MaskRef{masks.read}.isAllMask());
+      EXPECT_TRUE(MaskRef{masks.write}.isAllMask());
     }
   }
   {
@@ -661,7 +568,7 @@ TEST_F(PatchTest, Set) {
     EXPECT_EQ(
         *value.setValue_ref(),
         *applyContainerPatch(patchObj, value).setValue_ref())
-        << "Shuold insert nothing";
+        << "Should insert nothing";
     EXPECT_TRUE(isMaskReadWriteOperation(patchObj));
   }
   {
@@ -799,7 +706,16 @@ TEST_F(PatchTest, Map) {
     Object patchObj = makePatch(
         op::PatchOp::Remove, asValueStruct<type::set<type::binary_t>>({"key"}));
     EXPECT_EQ(emptyMap, *applyContainerPatch(patchObj, value).mapValue_ref());
-    checkMapMask(patchObj, {"key"});
+    {
+      auto masks = extractMaskViewFromPatch(patchObj);
+      EXPECT_TRUE(MaskRef{masks.read}.isAllMask());
+      EXPECT_TRUE(MaskRef{masks.write}.isAllMask());
+    }
+    {
+      auto masks = extractMaskFromPatch(patchObj);
+      EXPECT_TRUE(MaskRef{masks.read}.isAllMask());
+      EXPECT_TRUE(MaskRef{masks.write}.isAllMask());
+    }
   }
   {
     Object patchObj = makePatch(op::PatchOp::Remove, emptySet);
@@ -815,7 +731,7 @@ TEST_F(PatchTest, Map) {
     EXPECT_EQ(
         *value.mapValue_ref(),
         *applyContainerPatch(patchObj, value).mapValue_ref())
-        << "Shuold insert nothing";
+        << "Should insert nothing";
     checkMapMask(patchObj, {"key"});
   }
   {
@@ -871,7 +787,6 @@ TEST_F(PatchTest, Map) {
     EXPECT_EQ(
         *expected.mapValue_ref(),
         *applyContainerPatch(patchObj, value).mapValue_ref());
-    checkMapMask(patchObj, {"key", "new key", "added key"});
   }
 
   // PatchPrior
@@ -1156,6 +1071,52 @@ TEST_F(PatchTest, Struct) {
     expectNoop(makePatch(op::PatchOp::EnsureStruct, fieldPatch));
     expectNoop(makePatch(op::PatchOp::PatchAfter, fieldPatch));
   }
+  // Remove
+  {
+    Object patchObj = makePatch(
+        op::PatchOp::Remove, asValueStruct<type::list<type::i16_t>>({1}));
+    EXPECT_EQ(
+        protocol::Object{},
+        *applyContainerPatch(patchObj, value).objectValue_ref());
+    {
+      auto masks = extractMaskViewFromPatch(patchObj);
+      EXPECT_TRUE(MaskRef{masks.read}.isAllMask());
+      EXPECT_TRUE(MaskRef{masks.write}.isAllMask());
+    }
+    {
+      auto masks = extractMaskFromPatch(patchObj);
+      EXPECT_TRUE(MaskRef{masks.read}.isAllMask());
+      EXPECT_TRUE(MaskRef{masks.write}.isAllMask());
+    }
+  }
+  {
+    Object patchObj = makePatch(
+        op::PatchOp::Remove, asValueStruct<type::list<type::i16_t>>({}));
+    expectNoop(patchObj);
+  }
+  // TODO: Remove this after migrating to List
+  {
+    Object patchObj = makePatch(
+        op::PatchOp::Remove, asValueStruct<type::set<type::i16_t>>({1}));
+    EXPECT_EQ(
+        protocol::Object{},
+        *applyContainerPatch(patchObj, value).objectValue_ref());
+    {
+      auto masks = extractMaskViewFromPatch(patchObj);
+      EXPECT_TRUE(MaskRef{masks.read}.isAllMask());
+      EXPECT_TRUE(MaskRef{masks.write}.isAllMask());
+    }
+    {
+      auto masks = extractMaskFromPatch(patchObj);
+      EXPECT_TRUE(MaskRef{masks.read}.isAllMask());
+      EXPECT_TRUE(MaskRef{masks.write}.isAllMask());
+    }
+  }
+  {
+    Object patchObj = makePatch(
+        op::PatchOp::Remove, asValueStruct<type::set<type::i16_t>>({}));
+    expectNoop(patchObj);
+  }
 }
 
 TEST_F(PatchTest, GeneratedStructPatch) {
@@ -1192,7 +1153,7 @@ TEST_F(PatchTest, GeneratedUnionEnsurePatch) {
   test::patch::MyUnion original;
 
   test::patch::MyUnionPatch patch;
-  patch.ensure().option1_ref() = "test";
+  patch.ensure<ident::option1>("test");
 
   auto patched = applyGeneratedPatch<type::union_c>(original, patch);
   ASSERT_TRUE(patched.option1_ref().has_value());
@@ -1237,7 +1198,7 @@ TEST_F(PatchTest, GeneratedUnionClearAndAssign) {
 TEST_F(PatchTest, GeneratedUnionPatch) {
   test::patch::MyUnionPatch patch;
   patch.patchIfSet<ident::option1>() = "Hi";
-  patch.ensure().option1_ref() = "Bye";
+  patch.ensure<ident::option1>("Bye");
   patch.patchIfSet<ident::option1>() += " World!";
 
   test::patch::MyUnion hi, bye;
@@ -1274,7 +1235,7 @@ TEST_F(PatchTest, GeneratedUnionPatchInner) {
   EXPECT_EQ(applyGeneratedPatch<type::union_c>(a, patch), b);
 }
 
-TEST_F(PatchTest, Union) { // Shuold mostly behave like a struct
+TEST_F(PatchTest, Union) { // Should mostly behave like a struct
   test::testset::union_with<type::i32_t> valueObject;
   test::testset::union_with<type::i32_t> patchObject;
 
@@ -1669,6 +1630,45 @@ TEST_F(PatchTest, PrettyPrintPatch) {
     },
   },
 })");
+}
+
+TEST_F(PatchTest, RemoveField) {
+  Object obj;
+  obj[FieldId{1}].emplace_i32() = 10;
+  obj[FieldId{2}].emplace_i32() = 20;
+  obj[FieldId{3}].emplace_i32() = 30;
+
+  Object patch;
+  patch[static_cast<FieldId>(op::PatchOp::Remove)].emplace_set() = {};
+  applyPatch(patch, obj);
+  EXPECT_TRUE(obj.contains(FieldId{1}));
+  EXPECT_TRUE(obj.contains(FieldId{2}));
+  EXPECT_TRUE(obj.contains(FieldId{3}));
+
+  patch[static_cast<FieldId>(op::PatchOp::Remove)].emplace_set() = {
+      asValueStruct<type::i16_t>(1), asValueStruct<type::i16_t>(2)};
+  applyPatch(patch, obj);
+  EXPECT_FALSE(obj.contains(FieldId{1}));
+  EXPECT_FALSE(obj.contains(FieldId{2}));
+  EXPECT_TRUE(obj.contains(FieldId{3}));
+
+  patch[static_cast<FieldId>(op::PatchOp::Remove)].emplace_set() = {
+      asValueStruct<type::i16_t>(3)};
+  applyPatch(patch, obj);
+  EXPECT_FALSE(obj.contains(FieldId{1}));
+  EXPECT_FALSE(obj.contains(FieldId{2}));
+  EXPECT_FALSE(obj.contains(FieldId{3}));
+
+  patch[static_cast<FieldId>(op::PatchOp::Remove)].emplace_set() = {
+      asValueStruct<type::i32_t>(1)};
+  try {
+    applyPatch(patch, obj);
+    EXPECT_TRUE(false);
+  } catch (std::runtime_error& e) {
+    std::string msg = e.what();
+    EXPECT_NE(msg.find("is not `set<i16>` but `set<i32Value>`"), msg.npos)
+        << msg;
+  }
 }
 
 } // namespace

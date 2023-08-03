@@ -7,6 +7,7 @@ package module // [[[ program thrift source path ]]]
 import (
     "context"
     "fmt"
+    "sync"
 
 
     "thrift/lib/go/thrift"
@@ -17,6 +18,7 @@ import (
 var _ = context.Background
 var _ = fmt.Printf
 var _ = thrift.ZERO
+var _ = sync.Mutex{}
 
 
 
@@ -65,6 +67,7 @@ func (c *NestedContainersChannelClient) Open() error {
 // Deprecated: Use NestedContainersChannelClient instead.
 type NestedContainersClient struct {
     chClient *NestedContainersChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ NestedContainersClientInterface = &NestedContainersClient{}
@@ -216,7 +219,7 @@ type NestedContainersMapListArgs = reqNestedContainersMapList
 
 func newReqNestedContainersMapList() *reqNestedContainersMapList {
     return (&reqNestedContainersMapList{}).
-        SetFooNonCompat(make(map[int32][]int32))
+        SetFooNonCompat(nil)
 }
 
 func (x *reqNestedContainersMapList) GetFooNonCompat() map[int32][]int32 {
@@ -225,7 +228,7 @@ func (x *reqNestedContainersMapList) GetFooNonCompat() map[int32][]int32 {
 
 func (x *reqNestedContainersMapList) GetFoo() map[int32][]int32 {
     if !x.IsSetFoo() {
-        return make(map[int32][]int32)
+        return nil
     }
 
     return x.Foo
@@ -351,7 +354,9 @@ result := mapResult
 }
 
 func (x *reqNestedContainersMapList) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqNestedContainersMapListAlias reqNestedContainersMapList
+    valueAlias := (*reqNestedContainersMapListAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -444,7 +449,9 @@ func newRespNestedContainersMapList() *respNestedContainersMapList {
 }
 
 func (x *respNestedContainersMapList) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respNestedContainersMapListAlias respNestedContainersMapList
+    valueAlias := (*respNestedContainersMapListAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -527,7 +534,7 @@ type NestedContainersMapSetArgs = reqNestedContainersMapSet
 
 func newReqNestedContainersMapSet() *reqNestedContainersMapSet {
     return (&reqNestedContainersMapSet{}).
-        SetFooNonCompat(make(map[int32][]int32))
+        SetFooNonCompat(nil)
 }
 
 func (x *reqNestedContainersMapSet) GetFooNonCompat() map[int32][]int32 {
@@ -536,7 +543,7 @@ func (x *reqNestedContainersMapSet) GetFooNonCompat() map[int32][]int32 {
 
 func (x *reqNestedContainersMapSet) GetFoo() map[int32][]int32 {
     if !x.IsSetFoo() {
-        return make(map[int32][]int32)
+        return nil
     }
 
     return x.Foo
@@ -662,7 +669,9 @@ result := mapResult
 }
 
 func (x *reqNestedContainersMapSet) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqNestedContainersMapSetAlias reqNestedContainersMapSet
+    valueAlias := (*reqNestedContainersMapSetAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -755,7 +764,9 @@ func newRespNestedContainersMapSet() *respNestedContainersMapSet {
 }
 
 func (x *respNestedContainersMapSet) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respNestedContainersMapSetAlias respNestedContainersMapSet
+    valueAlias := (*respNestedContainersMapSetAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -838,7 +849,7 @@ type NestedContainersListMapArgs = reqNestedContainersListMap
 
 func newReqNestedContainersListMap() *reqNestedContainersListMap {
     return (&reqNestedContainersListMap{}).
-        SetFooNonCompat(make([]map[int32]int32, 0))
+        SetFooNonCompat(nil)
 }
 
 func (x *reqNestedContainersListMap) GetFooNonCompat() []map[int32]int32 {
@@ -847,7 +858,7 @@ func (x *reqNestedContainersListMap) GetFooNonCompat() []map[int32]int32 {
 
 func (x *reqNestedContainersListMap) GetFoo() []map[int32]int32 {
     if !x.IsSetFoo() {
-        return make([]map[int32]int32, 0)
+        return nil
     }
 
     return x.Foo
@@ -973,7 +984,9 @@ result := listResult
 }
 
 func (x *reqNestedContainersListMap) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqNestedContainersListMapAlias reqNestedContainersListMap
+    valueAlias := (*reqNestedContainersListMapAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1066,7 +1079,9 @@ func newRespNestedContainersListMap() *respNestedContainersListMap {
 }
 
 func (x *respNestedContainersListMap) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respNestedContainersListMapAlias respNestedContainersListMap
+    valueAlias := (*respNestedContainersListMapAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1149,7 +1164,7 @@ type NestedContainersListSetArgs = reqNestedContainersListSet
 
 func newReqNestedContainersListSet() *reqNestedContainersListSet {
     return (&reqNestedContainersListSet{}).
-        SetFooNonCompat(make([][]int32, 0))
+        SetFooNonCompat(nil)
 }
 
 func (x *reqNestedContainersListSet) GetFooNonCompat() [][]int32 {
@@ -1158,7 +1173,7 @@ func (x *reqNestedContainersListSet) GetFooNonCompat() [][]int32 {
 
 func (x *reqNestedContainersListSet) GetFoo() [][]int32 {
     if !x.IsSetFoo() {
-        return make([][]int32, 0)
+        return nil
     }
 
     return x.Foo
@@ -1267,7 +1282,9 @@ result := listResult
 }
 
 func (x *reqNestedContainersListSet) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqNestedContainersListSetAlias reqNestedContainersListSet
+    valueAlias := (*reqNestedContainersListSetAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1360,7 +1377,9 @@ func newRespNestedContainersListSet() *respNestedContainersListSet {
 }
 
 func (x *respNestedContainersListSet) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respNestedContainersListSetAlias respNestedContainersListSet
+    valueAlias := (*respNestedContainersListSetAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1443,7 +1462,7 @@ type NestedContainersTurtlesArgs = reqNestedContainersTurtles
 
 func newReqNestedContainersTurtles() *reqNestedContainersTurtles {
     return (&reqNestedContainersTurtles{}).
-        SetFooNonCompat(make([][]map[int32]map[int32][]int32, 0))
+        SetFooNonCompat(nil)
 }
 
 func (x *reqNestedContainersTurtles) GetFooNonCompat() [][]map[int32]map[int32][]int32 {
@@ -1452,7 +1471,7 @@ func (x *reqNestedContainersTurtles) GetFooNonCompat() [][]map[int32]map[int32][
 
 func (x *reqNestedContainersTurtles) GetFoo() [][]map[int32]map[int32][]int32 {
     if !x.IsSetFoo() {
-        return make([][]map[int32]map[int32][]int32, 0)
+        return nil
     }
 
     return x.Foo
@@ -1682,7 +1701,9 @@ result := listResult
 }
 
 func (x *reqNestedContainersTurtles) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqNestedContainersTurtlesAlias reqNestedContainersTurtles
+    valueAlias := (*reqNestedContainersTurtlesAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1775,7 +1796,9 @@ func newRespNestedContainersTurtles() *respNestedContainersTurtles {
 }
 
 func (x *respNestedContainersTurtles) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respNestedContainersTurtlesAlias respNestedContainersTurtles
+    valueAlias := (*respNestedContainersTurtlesAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1925,7 +1948,7 @@ func (p *procFuncNestedContainersMapList) Write(seqId int32, result thrift.Writa
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("MapList", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("mapList", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -1976,7 +1999,7 @@ func (p *procFuncNestedContainersMapSet) Write(seqId int32, result thrift.Writab
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("MapSet", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("mapSet", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -2027,7 +2050,7 @@ func (p *procFuncNestedContainersListMap) Write(seqId int32, result thrift.Writa
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("ListMap", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("listMap", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -2078,7 +2101,7 @@ func (p *procFuncNestedContainersListSet) Write(seqId int32, result thrift.Writa
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("ListSet", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("listSet", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -2129,7 +2152,7 @@ func (p *procFuncNestedContainersTurtles) Write(seqId int32, result thrift.Writa
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Turtles", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("turtles", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {

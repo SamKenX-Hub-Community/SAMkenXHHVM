@@ -873,14 +873,14 @@ void in(ISS& env, const bc::AddNewElemC&) {
 void in(ISS& env, const bc::NewCol& op) {
   auto const type = static_cast<CollectionType>(op.subop1);
   auto const name = collections::typeToString(type);
-  push(env, objExact(env.index.builtin_class(name)));
+  push(env, objExact(builtin_class(env.index, name)));
   effect_free(env);
 }
 
 void in(ISS& env, const bc::NewPair& /*op*/) {
   popC(env); popC(env);
   auto const name = collections::typeToString(CollectionType::Pair);
-  push(env, objExact(env.index.builtin_class(name)));
+  push(env, objExact(builtin_class(env.index, name)));
   effect_free(env);
 }
 
@@ -898,16 +898,13 @@ void in(ISS& env, const bc::ColFromArray& op) {
     if (src.subtypeOf(TDict)) effect_free(env);
   }
   auto const name = collections::typeToString(type);
-  push(env, objExact(env.index.builtin_class(name)));
+  push(env, objExact(builtin_class(env.index, name)));
 }
 
 void in(ISS& env, const bc::CnsE& op) {
   auto t = env.index.lookup_constant(env.ctx, op.str1);
-  if (t.strictSubtypeOf(TInitCell)) {
-    // constprop will take care of nothrow *if* its a constant; and if
-    // its not, we might trigger autoload.
-    constprop(env);
-  }
+  if (t.subtypeOf(BBottom)) unreachable(env);
+  constprop(env);
   push(env, std::move(t));
 }
 
@@ -2297,7 +2294,9 @@ void in(ISS& env, const bc::CGetS& op) {
   if (mustBeMutable && lookup.readOnly == TriBool::Yes) {
     return throws();
   }
-  auto const mightReadOnlyThrow = mustBeMutable && lookup.readOnly == TriBool::Maybe;
+  auto const mightReadOnlyThrow =
+    mustBeMutable &&
+    lookup.readOnly == TriBool::Maybe;
 
   if (lookup.found == TriBool::Yes &&
       lookup.lateInit == TriBool::No &&
@@ -2406,7 +2405,7 @@ void in(ISS& env, const bc::GetMemoKeyL& op) {
   always_assert(func->isMemoizeWrapper);
 
   auto const tyIMemoizeParam =
-    subObj(env.index.builtin_class(s_IMemoizeParam.get()));
+    subObj(builtin_class(env.index, s_IMemoizeParam.get()));
 
   auto const inTy = locAsCell(env, op.nloc1.id);
 
@@ -2672,10 +2671,10 @@ void isTypeObj(ISS& env, const Type& ty) {
   if (!ty.couldBe(BObj)) return push(env, TFalse);
   if (ty.subtypeOf(BObj)) {
     auto const incompl = objExact(
-      env.index.builtin_class(s_PHP_Incomplete_Class.get()));
+      builtin_class(env.index, s_PHP_Incomplete_Class.get()));
     if (RO::EvalBuildMayNoticeOnMethCallerHelperIsObject) {
       auto const c =
-        objExact(env.index.builtin_class(s_MethCallerHelper.get()));
+        objExact(builtin_class(env.index, s_MethCallerHelper.get()));
       if (ty.couldBe(c)) return push(env, TBool);
     }
     if (!ty.couldBe(incompl))  return push(env, TTrue);
@@ -3016,15 +3015,10 @@ void in(ISS& env, const bc::CombineAndResolveTypeStruct& op) {
     }
 
     // Optimize double input that needs a single combination and looks of the
-    // form ?T, @T or ~T
+    // form ?T or @T
     if (op.arg1 == 2 && get_ts_kind(ts) == TypeStructure::Kind::T_reifiedtype) {
       BytecodeVec instrs { bc::PopC {} };
       auto const tv_true = gen_constant(make_tv<KindOfBoolean>(true));
-      if (ts->exists(s_like.get())) {
-        instrs.push_back(gen_constant(make_tv<KindOfString>(s_like.get())));
-        instrs.push_back(tv_true);
-        instrs.push_back(bc::AddElemC {});
-      }
       if (ts->exists(s_nullable.get())) {
         instrs.push_back(gen_constant(make_tv<KindOfString>(s_nullable.get())));
         instrs.push_back(tv_true);
@@ -3270,18 +3264,10 @@ void in(ISS& env, const bc::SetS& op) {
 
   if (!tcls.couldBe(BCls)) return throws();
 
-  auto merge = env.index.merge_static_type(
-    env.ctx,
-    env.collect.publicSPropMutations,
-    env.collect.props,
-    tcls,
-    tname,
-    val,
-    true,
-    false,
-    ReadonlyOp::Readonly == op.subop1
+  auto merge = mergeStaticProp(
+    env, tcls, tname, val, true, false,
+    op.subop1 == ReadonlyOp::Readonly
   );
-
   if (merge.throws == TriBool::Yes || merge.adjusted.subtypeOf(BBottom)) {
     return throws();
   }
@@ -3336,15 +3322,7 @@ void in(ISS& env, const bc::SetOpS& op) {
   auto const newTy = typeSetOp(op.subop1, lookup.ty, rhs);
   if (newTy.subtypeOf(BBottom)) return throws();
 
-  auto merge = env.index.merge_static_type(
-    env.ctx,
-    env.collect.publicSPropMutations,
-    env.collect.props,
-    tcls,
-    tname,
-    newTy
-  );
-
+  auto merge = mergeStaticProp(env, tcls, tname, newTy);
   if (merge.throws == TriBool::Yes || merge.adjusted.subtypeOf(BBottom)) {
     return throws();
   }
@@ -3399,15 +3377,7 @@ void in(ISS& env, const bc::IncDecS& op) {
   auto newTy = typeIncDec(op.subop1, lookup.ty);
   if (newTy.subtypeOf(BBottom)) return throws();
 
-  auto const merge = env.index.merge_static_type(
-    env.ctx,
-    env.collect.publicSPropMutations,
-    env.collect.props,
-    tcls,
-    tname,
-    newTy
-  );
-
+  auto const merge = mergeStaticProp(env, tcls, tname, newTy);
   if (merge.throws == TriBool::Yes || merge.adjusted.subtypeOf(BBottom)) {
     return throws();
   }
@@ -3489,7 +3459,7 @@ bool coeffectRulesMatch(ISS& env,
     }
     case CoeffectRule::Type::CCParam:
       if (caller.m_name != callee.m_name) return false;
-      // fallthrough
+      [[fallthrough]];
     case CoeffectRule::Type::FunParam: {
       if (fca.hasUnpack()) return false;
       if (fca.numArgs() <= callee.m_index) return false;
@@ -3556,7 +3526,7 @@ bool fcallOptimizeChecks(
     if (inOutNum == fca.numRets() - 1) {
       bool match = true;
       for (auto i = 0; i < fca.numArgs(); ++i) {
-        auto const kind = env.index.lookup_param_prep(env.ctx, func, i);
+        auto const kind = func.lookupParamPrep(i);
         if (kind.inOut == TriBool::Maybe) {
           match = false;
           break;
@@ -3599,7 +3569,7 @@ bool fcallOptimizeChecks(
     bool match = true;
     for (auto i = 0; i < fca.numArgs(); ++i) {
       if (!fca.isReadonly(i)) continue;
-      auto const kind = env.index.lookup_param_prep(env.ctx, func, i);
+      auto const kind = func.lookupParamPrep(i);
       if (kind.readonly == TriBool::Maybe) {
         match = false;
         break;
@@ -3622,14 +3592,14 @@ bool fcallOptimizeChecks(
   }
 
   if (fca.enforceMutableReturn()) {
-    if (env.index.lookup_return_readonly(env.ctx, func) == TriBool::No) {
+    if (func.lookupReturnReadonly() == TriBool::No) {
       reduce(env, fcallWithFCA(fca.withoutEnforceMutableReturn()));
       return true;
     }
   }
 
   if (fca.enforceReadonlyThis()) {
-    if (env.index.lookup_readonly_this(env.ctx, func) == TriBool::Yes) {
+    if (func.lookupReadonlyThis() == TriBool::Yes) {
       reduce(env, fcallWithFCA(fca.withoutEnforceReadonlyThis()));
       return true;
     }
@@ -3637,7 +3607,7 @@ bool fcallOptimizeChecks(
 
   // Infer whether the callee supports async eager return.
   if (fca.asyncEagerTarget() != NoBlockId) {
-    if (env.index.supports_async_eager_return(func) == TriBool::No) {
+    if (func.supportsAsyncEagerReturn() == TriBool::No) {
       reduce(env, fcallWithFCA(fca.withoutAsyncEagerTarget()));
       return true;
     }
@@ -3912,7 +3882,7 @@ void in(ISS& env, const bc::FCallFuncD& op) {
   };
 
   auto const numInOut = op.fca.enforceInOut()
-    ? env.index.lookup_num_inout_params(env.ctx, rfunc)
+    ? rfunc.lookupNumInoutParams()
     : std::nullopt;
 
   if (fcallOptimizeChecks(env, op.fca, rfunc, updateBC, numInOut, false, 0) ||
@@ -4065,7 +4035,7 @@ void fcallObjMethodImpl(ISS& env, const FCallArgs& fca, SString methName,
   auto const rfunc = env.index.resolve_method(ctx, ctxTy, methName);
 
   auto const numInOut = fca.enforceInOut()
-    ? env.index.lookup_num_inout_params(env.ctx, rfunc)
+    ? rfunc.lookupNumInoutParams()
     : std::nullopt;
 
   auto const canFold = !mayUseNullsafe && !mayThrowNonObj;
@@ -4139,7 +4109,7 @@ void fcallFuncStr(ISS& env, const bc::FCallFunc& op) {
   };
 
   auto const numInOut = op.fca.enforceInOut()
-    ? env.index.lookup_num_inout_params(env.ctx, rfunc)
+    ? rfunc.lookupNumInoutParams()
     : std::nullopt;
 
   if (fcallOptimizeChecks(env, op.fca, rfunc, updateBC, numInOut, false, 1)) {
@@ -4361,7 +4331,7 @@ void fcallClsMethodImpl(ISS& env, const Op& op, Type clsTy, SString methName,
   auto const rfunc = env.index.resolve_method(ctx, clsTy, methName);
 
   auto const numInOut = op.fca.enforceInOut()
-    ? env.index.lookup_num_inout_params(env.ctx, rfunc)
+    ? rfunc.lookupNumInoutParams()
     : std::nullopt;
 
   if (fcallOptimizeChecks(env, op.fca, rfunc, updateBC, numInOut, false,
@@ -4553,7 +4523,7 @@ void fcallClsMethodSImpl(ISS& env, const Op& op, SString methName, bool dynamic,
   auto const rfunc = env.index.resolve_method(env.ctx, clsTy, methName);
 
   auto const numInOut = op.fca.enforceInOut()
-    ? env.index.lookup_num_inout_params(env.ctx, rfunc)
+    ? rfunc.lookupNumInoutParams()
     : std::nullopt;
 
   auto const numExtraInputs = extraInput ? 1 : 0;
@@ -4651,7 +4621,7 @@ void newObjDImpl(ISS& env, const StringData* className, bool rflavor) {
   auto const isCtx = [&] {
     if (!env.ctx.cls) return false;
     if (rcls->couldBeOverriddenByRegular()) return false;
-    auto const r = env.index.resolve_class(env.ctx.cls);
+    auto const r = env.index.resolve_class(env.ctx.cls->name);
     if (!r) return false;
     return obj == objExact(*r);
   }();
@@ -4741,7 +4711,7 @@ void in(ISS& env, const bc::FCallCtor& op) {
   };
 
   auto const numInOut = op.fca.enforceInOut()
-    ? env.index.lookup_num_inout_params(env.ctx, rfunc)
+    ? rfunc.lookupNumInoutParams()
     : std::nullopt;
 
   auto const canFold = obj.subtypeOf(BObj);
@@ -5036,6 +5006,7 @@ void in(ISS& env, const bc::OODeclExists& op) {
 }
 
 namespace {
+
 bool couldBeMocked(const Type& t) {
   auto const dcls = [&] () -> const DCls* {
     if (is_specialized_cls(t)) {
@@ -5054,6 +5025,24 @@ bool couldBeMocked(const Type& t) {
   }
   return true;
 }
+
+bool couldHaveReifiedType(const ISS& env, const TypeConstraint& tc) {
+  if (env.ctx.func->isClosureBody) {
+    for (auto i = env.ctx.func->params.size();
+         i < env.ctx.func->locals.size();
+         ++i) {
+      auto const name = env.ctx.func->locals[i].name;
+      if (!name) return false; // named locals do not appear after unnamed local
+      if (isMangledReifiedGenericInClosure(name)) return true;
+    }
+    return false;
+  }
+  if (!tc.isObject()) return false;
+  auto const cls = env.index.resolve_class(tc.clsName());
+  assertx(cls.has_value());
+  return cls->couldHaveReifiedGenerics();
+}
+
 }
 
 using TCVec = std::vector<const TypeConstraint*>;
@@ -5089,7 +5078,7 @@ void in(ISS& env, const bc::VerifyParamTypeTS& op) {
   // TODO(T31677864): We are being extremely pessimistic here, relax it
   if (!env.ctx.func->isReified &&
       (!env.ctx.cls || !env.ctx.cls->hasReifiedGenerics) &&
-      !env.index.could_have_reified_type(env.ctx, constraint)) {
+      !couldHaveReifiedType(env, constraint)) {
     return reduce(env, bc::PopC {});
   }
 
@@ -5225,14 +5214,14 @@ void in(ISS& env, const bc::VerifyOutType& op) {
   TCVec tcs;
   auto const& pinfo = env.ctx.func->params[op.loc1];
   tcs.push_back(&pinfo.typeConstraint);
-  for (auto const& t : pinfo.upperBounds) tcs.push_back(&t);
+  for (auto const& t : pinfo.upperBounds.m_constraints) tcs.push_back(&t);
   verifyRetImpl(env, tcs, false, false);
 }
 
 void in(ISS& env, const bc::VerifyRetTypeC& /*op*/) {
   TCVec tcs;
   tcs.push_back(&env.ctx.func->retTypeConstraint);
-  for (auto const& t : env.ctx.func->returnUBs) tcs.push_back(&t);
+  for (auto const& t : env.ctx.func->returnUBs.m_constraints) tcs.push_back(&t);
   verifyRetImpl(env, tcs, true, false);
 }
 
@@ -5247,7 +5236,7 @@ void in(ISS& env, const bc::VerifyRetTypeTS& /*op*/) {
   // TODO(T31677864): We are being extremely pessimistic here, relax it
   if (!env.ctx.func->isReified &&
       (!env.ctx.cls || !env.ctx.cls->hasReifiedGenerics) &&
-      !env.index.could_have_reified_type(env.ctx, constraint)) {
+      !couldHaveReifiedType(env, constraint)) {
     return reduce(env, bc::PopC {}, bc::VerifyRetTypeC {});
   }
   if (auto const inputTS = tv(a)) {
@@ -5279,7 +5268,7 @@ void in(ISS& env, const bc::VerifyRetTypeTS& /*op*/) {
     }
   }
   TCVec tcs {&constraint};
-  for (auto const& t : env.ctx.func->returnUBs) tcs.push_back(&t);
+  for (auto const& t : env.ctx.func->returnUBs.m_constraints) tcs.push_back(&t);
   verifyRetImpl(env, tcs, true, true);
 }
 
@@ -5320,7 +5309,16 @@ void in(ISS& env, const bc::ParentCls&) {
 
 void in(ISS& env, const bc::CreateCl& op) {
   auto const nargs   = op.arg1;
-  auto const clsPair = env.index.resolve_closure_class(env.ctx, op.str2);
+
+  auto const rcls = env.index.resolve_class(op.str2);
+  always_assert_flog(
+    rcls.has_value() && rcls->resolved(),
+    "A closure class ({}) failed to resolve",
+    op.str2
+  );
+  auto const cls = rcls->cls();
+  assertx(cls->unit == env.ctx.unit);
+  assertx(is_closure(*cls));
 
   /*
    * Every closure should have a unique allocation site, but we may see it
@@ -5336,7 +5334,7 @@ void in(ISS& env, const bc::CreateCl& op) {
     }
     merge_closure_use_vars_into(
       env.collect.closureUseTypes,
-      *clsPair.second,
+      *cls,
       std::move(usedVars)
     );
   }
@@ -5348,10 +5346,10 @@ void in(ISS& env, const bc::CreateCl& op) {
     // rescoped potentially multiple times at runtime.
     push(
       env,
-      subObj(env.index.builtin_class(s_Closure.get()))
+      subObj(builtin_class(env.index, s_Closure.get()))
     );
   } else {
-    push(env, objExact(clsPair.first));
+    push(env, objExact(*rcls));
   }
 }
 
@@ -5609,20 +5607,11 @@ void in(ISS& env, const bc::InitProp& op) {
   auto const t = topC(env);
   switch (op.subop2) {
     case InitPropOp::Static: {
-      auto const rcls = env.index.resolve_class(env.ctx.cls);
+      auto const rcls = env.index.resolve_class(env.ctx.cls->name);
       // If class isn't instantiable, this bytecode isn't reachable
       // anyways.
       if (!rcls) break;
-      env.index.merge_static_type(
-        env.ctx,
-        env.collect.publicSPropMutations,
-        env.collect.props,
-        clsExact(*rcls),
-        sval(op.str1),
-        t,
-        false,
-        true
-      );
+      mergeStaticProp(env, clsExact(*rcls), sval(op.str1), t, false, true);
       break;
     }
     case InitPropOp::NonStatic:
@@ -5630,7 +5619,7 @@ void in(ISS& env, const bc::InitProp& op) {
       break;
   }
 
-  for (auto& prop : env.ctx.func->cls->properties) {
+  for (auto const& prop : env.ctx.func->cls->properties) {
     if (prop.name != op.str1) continue;
 
     ITRACE(1, "InitProp: {} = {}\n", op.str1, show(t));
@@ -5651,7 +5640,7 @@ void in(ISS& env, const bc::InitProp& op) {
 
     auto const [refined, effectFree] = [&] () -> std::pair<Type, bool> {
       auto [refined, effectFree] = refine(prop.typeConstraint);
-      for (auto ub : prop.ubs) {
+      for (auto ub : prop.ubs.m_constraints) {
         if (!effectFree) break;
         applyFlagsToUB(ub, prop.typeConstraint);
         auto [refined2, effectFree2] = refine(ub);
@@ -5662,22 +5651,25 @@ void in(ISS& env, const bc::InitProp& op) {
       return { std::move(refined), effectFree };
     }();
 
-    if (effectFree) {
-      prop.attrs |= AttrInitialSatisfiesTC;
-    } else {
-      badPropInitialValue(env);
-      prop.attrs = (Attr)(prop.attrs & ~AttrInitialSatisfiesTC);
-      continue;
-    }
+    auto const val = [effectFree = effectFree] (const Type& t) {
+      if (!effectFree) return make_tv<KindOfUninit>();
+      if (auto const v = tv(t)) return *v;
+      return make_tv<KindOfUninit>();
+    }(refined);
 
-    auto const v = tv(refined);
-    if (v || !could_contain_objects(refined)) {
-      prop.attrs = (Attr)(prop.attrs & ~AttrDeepInit);
-      if (!v) break;
-      prop.val = *v;
-      env.index.update_static_prop_init_val(env.ctx.func->cls, op.str1);
-      return reduce(env, bc::PopC {});
-    }
+    auto const deepInit =
+      (prop.attrs & AttrDeepInit) &&
+      (type(val) == KindOfUninit) &&
+      could_contain_objects(refined);
+    propInitialValue(
+      env,
+      prop,
+      val,
+      effectFree,
+      deepInit
+    );
+    if (type(val) == KindOfUninit) break;
+    return reduce(env, bc::PopC {});
   }
 
   popC(env);
@@ -6229,10 +6221,6 @@ void default_dispatch(ISS& env, const Bytecode& op) {
   } else if (env.state.unreachable) {
     env.collect.mInstrState.clear();
   }
-}
-
-Optional<Type> thisType(const Index& index, Context ctx) {
-  return thisTypeFromContext(index, ctx);
 }
 
 //////////////////////////////////////////////////////////////////////

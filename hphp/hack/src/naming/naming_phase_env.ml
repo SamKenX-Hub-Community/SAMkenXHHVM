@@ -93,10 +93,16 @@ module Elab_everything_sdt = struct
     in_is_as: bool;
     in_enum_class: bool;
     under_no_auto_dynamic: bool;
+    under_no_auto_likes: bool;
   }
 
   let empty =
-    { in_is_as = false; in_enum_class = false; under_no_auto_dynamic = false }
+    {
+      in_is_as = false;
+      in_enum_class = false;
+      under_no_auto_dynamic = false;
+      under_no_auto_likes = false;
+    }
 end
 
 module Elab_wildcard_hint = struct
@@ -114,12 +120,6 @@ module Elab_shape_field_name = struct
   }
 
   let empty = { current_class = None }
-end
-
-module Validate_like_hint = struct
-  type t = { allow_like: bool }
-
-  let empty = { allow_like = false }
 end
 
 module Elab_retonly_hint = struct
@@ -140,7 +140,6 @@ type t = {
   elab_retonly_hint: Elab_retonly_hint.t;
   elab_wildcard_hint: Elab_wildcard_hint.t;
   elab_shape_field_name: Elab_shape_field_name.t;
-  validate_like_hint: Validate_like_hint.t;
   everything_sdt: bool;
   soft_as_like: bool;
   consistent_ctor_level: int;
@@ -165,7 +164,6 @@ let empty =
     elab_retonly_hint = Elab_retonly_hint.empty;
     elab_wildcard_hint = Elab_wildcard_hint.empty;
     elab_shape_field_name = Elab_shape_field_name.empty;
-    validate_like_hint = Validate_like_hint.empty;
     everything_sdt = false;
     soft_as_like = false;
     consistent_ctor_level = 0;

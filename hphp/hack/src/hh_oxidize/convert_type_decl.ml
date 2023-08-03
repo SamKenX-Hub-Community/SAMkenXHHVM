@@ -15,7 +15,6 @@ open Utils
 open Output
 open State
 open Convert_longident
-open Convert_type
 open Rust_type
 
 let is_by_ref () =
@@ -23,32 +22,71 @@ let is_by_ref () =
   | Configuration.ByRef -> true
   | Configuration.ByBox -> false
 
-let rust_de_field_attr (tys : Rust_type.t list) : string =
-  let contains_ref = List.exists ~f:Rust_type.contains_ref tys in
-  (* deserialize a type contains any Cell causes a compilation error, see T90211775 *)
-  let contains_cell =
-    List.exists
-      ~f:(fun t ->
-        Rust_type.type_name_and_params t
-        |> fst
-        |> String.is_suffix ~suffix:"::Cell")
-      tys
+let stringify_attribute { attr_name; attr_payload; _ } =
+  match (attr_name, attr_payload) with
+  | ({ txt = "ocaml.doc" | "value"; _ }, _) -> None
+  | ({ txt; _ }, PStr []) -> Some txt
+  | ({ txt; _ }, PStr [structure_item]) ->
+    let item =
+      structure_item
+      |> Format.asprintf "%a" Pprintast.structure_item
+      |> String.strip ~drop:(function
+             | ' '
+             | '\t'
+             | ';' ->
+               true
+             | _ -> false)
+    in
+    Some (txt ^ " " ^ item)
+  | _ -> None
+
+let add_default_attr_if_ocaml_yojson_drop_if attributes acc_attr_list =
+  let contains_yojson_drop_if attr =
+    match stringify_attribute attr with
+    | None -> false
+    | Some attr -> String.is_prefix attr ~prefix:"yojson_drop_if"
   in
-  if contains_ref || (is_by_ref () && List.exists ~f:Rust_type.is_var tys) then
-    if contains_cell then
-      "#[serde(skip)]"
-    else
-      let borrow =
-        if contains_ref then
-          ", borrow"
-        else
-          ""
-      in
-      sprintf
-        "#[serde(deserialize_with = \"arena_deserializer::arena\" %s)]"
-        borrow
+  if List.exists attributes ~f:contains_yojson_drop_if then
+    "default" :: acc_attr_list
   else
+    acc_attr_list
+
+let add_deserialize_with_arena tys acc_attr_list =
+  let contains_ref = List.exists ~f:Rust_type.contains_ref tys in
+  if contains_ref || (is_by_ref () && List.exists ~f:Rust_type.is_var tys) then
+    (* deserialize a type contains any Cell causes a compilation error, see T90211775 *)
+    let contains_cell =
+      List.exists
+        ~f:(fun t ->
+          Rust_type.type_name_and_params t
+          |> fst
+          |> String.is_suffix ~suffix:"::Cell")
+        tys
+    in
+    if contains_cell then
+      "skip" :: acc_attr_list
+    else
+      let acc_attr_list =
+        if contains_ref then
+          "borrow" :: acc_attr_list
+        else
+          acc_attr_list
+      in
+      "deserialize_with = \"arena_deserializer::arena\"" :: acc_attr_list
+  else
+    acc_attr_list
+
+let rust_de_field_attr (tys : Rust_type.t list) (attributes : attributes) :
+    string =
+  let serde_attr_list =
+    []
+    |> add_default_attr_if_ocaml_yojson_drop_if attributes
+    |> add_deserialize_with_arena tys
+  in
+  if List.is_empty serde_attr_list then
     ""
+  else
+    sprintf "#[serde(%s)]" @@ String.concat ~sep:", " serde_attr_list
 
 let default_implements () =
   match Configuration.mode () with
@@ -108,13 +146,16 @@ end = struct
       ["Eq"; "EqModuloPos"; "Hash"; "NoPosHash"; "Ord"]
     (* And GlobalOptions is used in SavedEnv. *)
     | "tast::SavedEnv" -> ["Eq"; "EqModuloPos"; "Hash"; "NoPosHash"; "Ord"]
-    | "ast_defs::Id" when is_by_ref -> ["Debug"]
+    | "tast::ByNames" -> ["Eq"; "EqModuloPos"; "Hash"; "NoPosHash"; "Ord"]
+    | "ast_defs::Id" -> ["Debug"]
     | "errors::Errors" when is_by_ref -> ["Debug"]
+    | "typing_reason::T_" when is_by_ref -> ["Debug"]
     | "typing_defs_core::Ty" when is_by_ref ->
       ["Eq"; "PartialEq"; "Ord"; "PartialOrd"]
-    | "typing_defs_core::Ty_" when is_by_ref -> ["Debug"]
+    | "typing_defs_core::Ty_" -> ["Debug"]
     | "typing_defs_core::ConstraintType" when is_by_ref ->
       ["Eq"; "PartialEq"; "Ord"; "PartialOrd"]
+    | "typing_defs_core::TshapeFieldName" when is_by_ref -> ["Debug"]
     | _ -> []
 
   let skip_list_for_trait trait =
@@ -126,6 +167,7 @@ end = struct
         "namespace_env::*";
         "file_info::NameType";
         "file_info::Pos";
+        "file_info::Id";
         "file_info::FileInfo";
         "file_info::Names";
         "file_info::SavedNames";
@@ -198,6 +240,7 @@ let denylisted_types () =
       ("typing_defs_core", "HasMember");
       ("typing_defs_core", "HasTypeMember");
       ("typing_defs_core", "InternalType");
+      ("nast", "Defs");
     ]
   | Configuration.ByBox -> [])
   @ [
@@ -207,10 +250,10 @@ let denylisted_types () =
       ("errors", "Marker");
       ("errors", "MarkedMessage");
       ("errors", "PositionGroup");
-      ("file_info", "FileInfo");
       ("file_info", "Saved");
       ("typing_defs", "ExpandEnv");
       ("typing_defs", "PhaseTy");
+      ("typing_defs", "WildcardAction");
       ("typing_reason", "DeclPhase");
       ("typing_reason", "LoclPhase");
     ]
@@ -240,7 +283,6 @@ let tuple_aliases =
     ("ast_defs", "Pstring");
     ("ast_defs", "PositionedByteString");
     ("errors", "Message");
-    ("file_info", "Id");
     ("typing_reason", "PosId");
   ]
 
@@ -250,6 +292,7 @@ let newtypes =
     ("aast_defs", "FinallyBlock");
     ("aast_defs", "Program");
     ("aast_defs", "UserAttributes");
+    ("file_info", "HashType");
   ]
 
 (*
@@ -260,7 +303,12 @@ let box_variant () =
   (match Configuration.mode () with
   | Configuration.ByRef -> [("typing_defs_core", "Ty_")]
   | Configuration.ByBox -> [])
-  @ [("aast_defs", "Expr_"); ("aast_defs", "Stmt_"); ("aast_defs", "Def")]
+  @ [
+      ("aast_defs", "Expr_");
+      ("aast_defs", "Stmt_");
+      ("aast_defs", "Def");
+      ("aast_defs", "Pattern");
+    ]
 
 let equal_s2 = [%derive.eq: string * string]
 
@@ -294,7 +342,7 @@ let unbox_field ty =
     || (is_prefix ty ~prefix:"Option<" && is_copy)
     || (is_prefix ty ~prefix:"std::cell::Cell<" && is_copy)
     || (is_prefix ty ~prefix:"std::cell::RefCell<" && is_copy)
-    || Convert_type.is_primitive ty []
+    || Convert_type.is_primitive ty
   | Configuration.ByBox -> false
 
 let add_rcoc = [("aast_defs", "Nsenv"); ("aast", "Nsenv")]
@@ -384,24 +432,6 @@ let doc_comment_of_attribute_list attrs =
   |> Option.map ~f:convert_doc_comment
   |> Option.value ~default:""
 
-let stringify_attribute { attr_name; attr_payload; _ } =
-  match (attr_name, attr_payload) with
-  | ({ txt = "ocaml.doc" | "value"; _ }, _) -> None
-  | ({ txt; _ }, PStr []) -> Some txt
-  | ({ txt; _ }, PStr [structure_item]) ->
-    let item =
-      structure_item
-      |> Format.asprintf "%a" Pprintast.structure_item
-      |> String.strip ~drop:(function
-             | ' '
-             | '\t'
-             | ';' ->
-               true
-             | _ -> false)
-    in
-    Some (txt ^ " " ^ item)
-  | _ -> None
-
 let ocaml_attr attrs =
   attrs
   |> List.filter_map ~f:stringify_attribute
@@ -412,7 +442,7 @@ let ocaml_attr attrs =
            Printf.sprintf "#[rust_to_ocaml(attr = \"%s\")]\n" attr)
   |> String.concat ~sep:""
 
-let type_param (ct, _) = core_type ct
+let type_param (ct, _) = Convert_type.core_type ct
 
 let type_params name params =
   let params = List.map ~f:type_param params in
@@ -440,11 +470,11 @@ let record_label_declaration
   let name =
     ld.pld_name.txt |> String.chop_prefix_exn ~prefix |> convert_field_name
   in
-  let ty = core_type ld.pld_type in
+  let ty = Convert_type.core_type ld.pld_type in
   sprintf
     "%s%s%s%s %s: %s,\n"
     doc
-    (rust_de_field_attr [ty])
+    (rust_de_field_attr [ty] ld.pld_attributes)
     attr
     pub
     name
@@ -479,12 +509,12 @@ let declare_constructor_arguments ?(box_fields = false) types : Rust_type.t list
     if List.is_empty types then
       []
     else
-      List.map ~f:core_type types
+      List.map ~f:Convert_type.core_type types
   else
     match types with
     | [] -> []
     | [ty] ->
-      let ty = core_type ty in
+      let ty = Convert_type.core_type ty in
       let ty =
         if unbox_field ty then
           ty
@@ -497,9 +527,9 @@ let declare_constructor_arguments ?(box_fields = false) types : Rust_type.t list
     | _ ->
       (match Configuration.mode () with
       | Configuration.ByRef ->
-        let tys = tuple ~seen_indirection:true types in
+        let tys = Convert_type.tuple ~seen_indirection:true types in
         [rust_ref (lifetime "a") tys]
-      | Configuration.ByBox -> [rust_type "Box" [] [tuple types]])
+      | Configuration.ByBox -> [rust_type "Box" [] [Convert_type.tuple types]])
 
 let variant_constructor_value cd =
   (* If we see the [@value 42] attribute, assume it's for ppx_deriving enum,
@@ -545,7 +575,7 @@ let variant_constructor_declaration ?(box_fields = false) cd =
     sprintf
       "%s%s%s%s%s%s%s%s,\n"
       doc
-      (rust_de_field_attr tys)
+      (rust_de_field_attr tys cd.pcd_attributes)
       attr
       name_attr
       (if box_fields && List.length types > 1 then
@@ -764,10 +794,10 @@ let type_declaration ~mutual_rec name td =
         add_ty_reexport id;
         raise (Skip_type_decl ("it is a re-export of " ^ id))
       ) else
-        let ty = core_type ty in
+        let ty = Convert_type.core_type ty in
         if should_add_rcoc name then
           sprintf
-            "%s%spub type %s = ocamlrep::rc::RcOc<%s>;"
+            "%s%spub type %s = std::sync::Arc<%s>;"
             doc
             attr
             (rust_type name lifetime tparams |> rust_type_to_string)
@@ -777,7 +807,7 @@ let type_declaration ~mutual_rec name td =
             "%s struct %s (%s pub %s);%s\n%s"
             (attrs_and_vis Not_an_enum ~force_derive_copy:false)
             (rust_type name lifetime tparams |> rust_type_to_string)
-            (rust_de_field_attr [ty])
+            (rust_de_field_attr [ty] td.ptype_attributes)
             (rust_type_to_string ty)
             (implements ~force_derive_copy:false)
             (deserialize_in_arena_macro ~force_derive_copy:false)
@@ -790,7 +820,7 @@ let type_declaration ~mutual_rec name td =
             (deref ty |> rust_type_to_string)
     | _ ->
       if should_use_alias_instead_of_tuple_struct name then
-        let ty = core_type ty |> deref |> rust_type_to_string in
+        let ty = Convert_type.core_type ty |> deref |> rust_type_to_string in
         sprintf
           "%s%spub type %s = %s;"
           doc
@@ -803,15 +833,18 @@ let type_declaration ~mutual_rec name td =
           | Ptyp_tuple tys ->
             map_and_concat
               ~f:(fun ty ->
-                core_type ty |> fun t ->
+                Convert_type.core_type ty |> fun t ->
                 sprintf
                   "%s pub %s"
-                  (rust_de_field_attr [t])
+                  (rust_de_field_attr [t] td.ptype_attributes)
                   (rust_type_to_string t))
               ~sep:","
               tys
             |> sprintf "(%s)"
-          | _ -> core_type ty |> rust_type_to_string |> sprintf "(pub %s)"
+          | _ ->
+            Convert_type.core_type ty
+            |> rust_type_to_string
+            |> sprintf "(pub %s)"
         in
         sprintf
           "%s struct %s %s;%s\n%s"

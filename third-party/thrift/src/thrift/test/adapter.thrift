@@ -48,8 +48,9 @@ typedef string AdaptedString
 
 typedef AdaptedBool DoubleTypedefBool
 
+@cpp.Type{name = "::folly::IOBuf"}
 @cpp.Adapter{name = "::apache::thrift::test::CustomProtocolAdapter"}
-typedef binary (cpp.type = "::folly::IOBuf") CustomProtocolType
+typedef binary CustomProtocolType
 
 @cpp.Adapter{
   name = "::apache::thrift::IndirectionAdapter<::apache::thrift::test::IndirectionString>",
@@ -97,6 +98,21 @@ struct ComparisonTestStruct {
   @cpp.Adapter{name = "::apache::thrift::test::NonComparableWrapperAdapter"}
   @thrift.InternBox
   3: MyStruct intern_box_non_comparable_adapted_type;
+}
+
+union AdaptedUnion {
+  @cpp.Adapter{name = "::apache::thrift::test::NonComparableWrapperAdapter"}
+  1: string field1;
+}
+
+union AdapterEqualsUnion {
+  @cpp.Adapter{name = "::apache::thrift::test::AdapterEqualsStringAdapter"}
+  1: string field1;
+}
+
+union AdaptedEqualsUnion {
+  @cpp.Adapter{name = "::apache::thrift::test::AdaptedEqualsStringAdapter"}
+  1: string field1;
 }
 
 enum ThriftAdaptedEnum {
@@ -209,21 +225,6 @@ struct SameNamespaceStruct {
   1: i64 data;
 }
 
-@cpp.Adapter{name = "::apache::thrift::test::MoveOnlyAdapter", moveOnly = true}
-struct HeapAllocated {}
-
-struct MoveOnly {
-  1: HeapAllocated ptr;
-}
-
-struct AlsoMoveOnly {
-  @cpp.Adapter{
-    name = "::apache::thrift::test::MoveOnlyAdapter",
-    moveOnly = true,
-  }
-  1: i64 ptr;
-}
-
 @cpp.Adapter{name = "::apache::thrift::test::TemplatedTestAdapter"}
 @scope.Transitive
 struct ApplyAdapter {}
@@ -243,9 +244,43 @@ struct CountingStruct {
   3: optional string regularString;
 }
 
+@cpp.UseOpEncode
+struct EncodeStruct {
+  @cpp.Adapter{name = "::apache::thrift::test::EncodeAdapter"}
+  1: i64 num_with_encode;
+  @cpp.Adapter{name = "::apache::thrift::test::InPlaceDeserializationAdapter"}
+  2: i64 num_in_place;
+  @cpp.Adapter{name = "::apache::thrift::test::NoEncodeAdapter"}
+  3: i64 num_without_encode;
+}
+
+@cpp.UseOpEncode
+struct EncodeFieldStruct {
+  @cpp.Adapter{name = "::apache::thrift::test::EncodeFieldAdapter"}
+  1: i64 num_with_encode;
+  @cpp.Adapter{name = "::apache::thrift::test::TemplatedTestFieldAdapter"}
+  2: i64 num_without_encode;
+}
+
+@cpp.Adapter{name = "::apache::thrift::test::EncodeTemplatedTestAdapter"}
+typedef i64 EncodeInt
+@cpp.Adapter{name = "::apache::thrift::test::TemplatedTestAdapter"}
+typedef i64 NoEncodeInt
+
+@cpp.UseOpEncode
+struct EncodeComposedStruct {
+  @cpp.Adapter{name = "::apache::thrift::test::EncodeTemplatedTestAdapter"}
+  1: EncodeInt double_wrapped_both_encode;
+  @cpp.Adapter{name = "::apache::thrift::test::TemplatedTestAdapter"}
+  2: EncodeInt double_wrapped_type_encode;
+  @cpp.Adapter{name = "::apache::thrift::test::EncodeTemplatedTestAdapter"}
+  3: NoEncodeInt double_wrapped_field_encode;
+  @cpp.Adapter{name = "::apache::thrift::test::TemplatedTestAdapter"}
+  4: NoEncodeInt double_wrapped_no_encode;
+}
+
 service AdapterService {
   CountingStruct count();
-  HeapAllocated adaptedTypes(1: HeapAllocated arg);
 }
 
 @cpp.Adapter{name = "::apache::thrift::test::VariableAdapter"}
@@ -278,8 +313,6 @@ const Person2 person_no_transitive = Person2{name = "DefaultName 2"};
 
 const AdaptedBool type_adapted = true;
 
-const MoveOnly nested_adapted = {"ptr": {}};
-
 const list<AdaptedByte> container_of_adapted = [1, 2, 3];
 
 struct ContainerOfAdaptedWithDefault {
@@ -296,4 +329,15 @@ struct ContainerWithAdaptedElement {
 
 struct NestedContainerOfAdapted {
   1: list<list<AdaptedByte>> container;
+}
+
+struct CustomSerializedSize {
+  @cpp.Adapter{name = "::apache::thrift::test::SerializedSizeAdapter"}
+  1: binary field;
+}
+
+@cpp.UseOpEncode
+struct CustomSerializedSizeOpEncode {
+  @cpp.Adapter{name = "::apache::thrift::test::SerializedSizeAdapter"}
+  1: binary field;
 }

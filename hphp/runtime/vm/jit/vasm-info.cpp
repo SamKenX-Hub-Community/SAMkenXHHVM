@@ -306,7 +306,6 @@ bool effectsImpl(const Vinstr& inst, bool pure) {
     case Vinstr::defvmsp:
     case Vinstr::defvmfp:
     case Vinstr::leap:
-    case Vinstr::leav:
     case Vinstr::load:
     case Vinstr::loadb:
     case Vinstr::loadl:
@@ -381,7 +380,6 @@ bool effectsImpl(const Vinstr& inst, bool pure) {
     case Vinstr::jcc:
     case Vinstr::jcci:
     case Vinstr::jmp:
-    case Vinstr::jmps:
     case Vinstr::jmpi:
     case Vinstr::jmpm:
     case Vinstr::jmpr:
@@ -390,7 +388,6 @@ bool effectsImpl(const Vinstr& inst, bool pure) {
     case Vinstr::leavetc:
     case Vinstr::loadstubret:
     case Vinstr::mcprep:
-    case Vinstr::movqs:
     case Vinstr::msr:
     case Vinstr::nothrow:
     case Vinstr::orbim:
@@ -418,8 +415,10 @@ bool effectsImpl(const Vinstr& inst, bool pure) {
     case Vinstr::unrecordbasenativesp:
     case Vinstr::recordstack:
     case Vinstr::restoreripm:
+    case Vinstr::restorerips:
     case Vinstr::resumetc:
     case Vinstr::ret:
+    case Vinstr::saverips:
     case Vinstr::store:
     case Vinstr::storeb:
     case Vinstr::storebi:

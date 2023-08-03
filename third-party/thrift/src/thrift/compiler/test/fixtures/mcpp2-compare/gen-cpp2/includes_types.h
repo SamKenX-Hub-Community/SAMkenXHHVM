@@ -80,14 +80,6 @@ template <> struct TEnumTraits<::a::different::ns::AnEnum> {
 
 }} // apache::thrift
 
-namespace a { namespace different { namespace ns {
-
-using _AnEnum_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<AnEnum>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _AnEnum_EnumMapFactory::ValuesToNamesMapType _AnEnum_VALUES_TO_NAMES;
-#endif
-}}} // a::different::ns
 
 // END declare_enums
 // BEGIN forward_declare
@@ -302,9 +294,8 @@ class AStructB final  {
 
  public:
 
-  AStructB() :
-      __fbthrift_field_FieldA(std::make_shared<::a::different::ns::AStruct>()) {
-  }
+  AStructB();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   AStructB(apache::thrift::FragileConstructor, ::std::shared_ptr<const ::a::different::ns::AStruct> FieldA__arg);
@@ -316,6 +307,9 @@ class AStructB final  {
 
   AStructB& operator=(AStructB&&) noexcept;
   AStructB& operator=(const AStructB& src);
+
+  ~AStructB();
+
  private:
   ::std::shared_ptr<const ::a::different::ns::AStruct> __fbthrift_field_FieldA;
 

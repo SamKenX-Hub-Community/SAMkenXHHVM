@@ -20,6 +20,7 @@
 
 #include <folly/Traits.h>
 #include <thrift/lib/cpp2/op/Clear.h>
+#include <thrift/lib/cpp2/op/Create.h>
 #include <thrift/lib/cpp2/op/Get.h>
 #include <thrift/lib/cpp2/op/detail/BasePatch.h>
 #include <thrift/lib/cpp2/type/Id.h>
@@ -27,8 +28,32 @@
 
 namespace apache {
 namespace thrift {
+namespace ident {
+struct remove;
+}
 namespace op {
 namespace detail {
+
+struct FieldIdListToSetAdapter {
+  using FieldIdSet = std::unordered_set<FieldId>;
+  using FieldIdList = std::vector<std::int16_t>;
+  static FieldIdSet fromThrift(const FieldIdList& v) {
+    FieldIdSet ret;
+    ret.reserve(v.size());
+    for (auto i : v) {
+      ret.emplace(static_cast<FieldId>(i));
+    }
+    return ret;
+  }
+  static FieldIdList toThrift(const FieldIdSet& v) {
+    FieldIdList ret;
+    ret.reserve(v.size());
+    for (auto i : v) {
+      ret.emplace_back(folly::to_underlying(i));
+    }
+    return ret;
+  }
+};
 
 /// Patch for a Thrift field.
 ///
@@ -65,19 +90,6 @@ class FieldPatch : public BasePatch<Patch, FieldPatch<Patch>> {
 
  private:
   using Base::data_;
-
-  friend bool operator==(const FieldPatch& lhs, const Patch& rhs) {
-    return lhs.data_ == rhs;
-  }
-  friend bool operator==(const Patch& lhs, const FieldPatch& rhs) {
-    return lhs == rhs.data_;
-  }
-  friend bool operator!=(const FieldPatch& lhs, const Patch& rhs) {
-    return lhs.data_ != rhs;
-  }
-  friend bool operator!=(const Patch& lhs, const FieldPatch& rhs) {
-    return lhs != rhs.data_;
-  }
 };
 
 /// Create a base patch that supports Ensure operator.
@@ -160,30 +172,69 @@ class BaseEnsurePatch : public BaseClearPatch<Patch, Derived> {
 
   /// Ensures the given field is set, and return the associated patch object.
   template <typename Id>
-  decltype(auto) ensure() {
-    return (maybeEnsure<Id>(), patchAfter<Id>());
+  void ensure() {
+    maybeEnsure<Id>();
   }
   /// Same as `ensure()` method, except uses the provided default value.
   template <typename Id, typename U = FieldType<Id>>
-  decltype(auto) ensure(U&& defaultVal) {
+  void ensure(U&& defaultVal) {
     if (maybeEnsure<Id>()) {
       getEnsure<Id>(data_) = std::forward<U>(defaultVal);
     }
-    return patchAfter<Id>();
   }
   /// Ensures the given field is initalized, and return the associated patch
   /// object.
   template <typename Id>
   decltype(auto) patch() {
-    return ensure<Id>();
+    return (maybeEnsure<Id>(), patchAfter<Id>());
   }
 
   /// Returns the proper patch object for the given field.
   template <typename Id>
   decltype(auto) patchIfSet() {
-    return ensures<Id>() ? patchAfter<Id>() : patchPrior<Id>();
+    ensurePatchable();
+    if constexpr (!is_thrift_union_v<T>) {
+      if (Base::derived().template isRemoved<Id>()) {
+        // If field is already cleared, Patch should be ignored.
+        getRawPatch<Id>(data_.patch()).toThrift().clear() = true;
+        return getRawPatch<Id>(data_.patchPrior());
+      }
+    }
+    return ensures<Id>() ? getRawPatch<Id>(data_.patch())
+                         : getRawPatch<Id>(data_.patchPrior());
   }
 
+  /// @copybrief AssignPatch::customVisit
+  ///
+  /// Users should provide a visitor with the following methods
+  ///
+  ///     struct Visitor {
+  ///       void assign(const MyClass&);
+  ///       void clear();
+  ///       template<class Id> void patchIfSet(const FieldPatch&);
+  ///       template<class Id> void ensure(const FieldPatch&);
+  ///     }
+  ///
+  /// For example, let's assume you have the following thrift struct:
+  ///
+  ///     struct MyClass {
+  ///       1: string foo;
+  ///       2: bool bar;
+  ///     }
+  ///
+  /// and then you created the following patch:
+  ///
+  ///     MyClassPatch patch;
+  ///     patch.patch<ident::bar>().invert();
+  ///     patch.patch<ident::bar>().invert();
+  ///     patch.patch<ident::foo>().append("_");
+  ///
+  /// `patch.customVisit(v)` will invoke the following methods
+  ///
+  ///     v.ensure<ident::foo>();
+  ///     v.ensure<ident::bar>();
+  ///     v.patchIfSet<ident::foo>(StringPatch::createAppend("_"));
+  ///     v.patchIfSet<ident::bar>(BoolPatch{});  // no-op since inverted twice
   template <typename Visitor>
   void customVisit(Visitor&& v) const {
     if (false) {
@@ -323,6 +374,8 @@ class StructPatch : public BaseEnsurePatch<Patch, StructPatch<Patch>> {
   template <typename Id>
   using F = type::native_type<get_field_tag<T, Id>>;
 
+  friend class BaseEnsurePatch<Patch, StructPatch<Patch>>;
+
  public:
   using Base::apply;
   using Base::assign;
@@ -346,12 +399,101 @@ class StructPatch : public BaseEnsurePatch<Patch, StructPatch<Patch>> {
     if (hasValue(data_.assign())) {
       op::get<Id>(*data_.assign()) = std::forward<U>(val);
     } else {
-      Base::template ensure<Id>().assign(std::forward<U>(val));
+      Base::template patch<Id>().assign(std::forward<U>(val));
+    }
+  }
+
+  template <class Protocol>
+  uint32_t encode(Protocol& prot) const {
+    uint32_t s = 0;
+    s += prot.writeStructBegin(op::get_class_name_v<Patch>.data());
+    const auto remove = removedFields();
+    op::for_each_field_id<Patch>([&](auto id) {
+      using Id = decltype(id);
+      using Tag = op::get_type_tag<Patch, Id>;
+      constexpr bool isRemoveField =
+          std::is_same<get_ident<Patch, Id>, ident::remove>::value;
+
+      auto&& field = op::get<Id>(data_);
+
+      if (!isRemoveField && !should_write<Tag>(field)) {
+        return;
+      }
+
+      if (isRemoveField && remove.empty()) {
+        return;
+      }
+
+      s += prot.writeFieldBegin(
+          &*op::get_name_v<Patch, Id>.begin(),
+          typeTagToTType<Tag>,
+          folly::to_underlying(Id::value));
+      s += op::encode<Tag>(
+          prot, folly::if_constexpr<isRemoveField>(remove, *field));
+      s += prot.writeFieldEnd();
+    });
+    s += prot.writeFieldStop();
+    s += prot.writeStructEnd();
+    return s;
+  }
+
+  ~StructPatch() {
+    if (false) {
+      // Implement this check in destructor to make sure it's instantiated.
+      op::for_each_ordinal<T>([](auto id) {
+        static_assert(
+            !apache::thrift::detail::is_shared_or_unique_ptr_v<
+                op::get_field_ref<T, decltype(id)>>,
+            "Patching cpp.ref field is unsupported since we cannot distinguish "
+            "unqualified and optional fields. Why? The type of `foo.field()` "
+            "is `std::unique_ptr` regardless Whether field is optional or "
+            "unqualified. In addition, Thrift Patch has different behavior "
+            "between optional and unqualified fields, e.g. `PatchOp::Clear` "
+            "will clear an optional field, but set an unqualified field to the "
+            "intrinsic default.");
+      });
     }
   }
 
  private:
   using Base::data_;
+
+  // Whether the field is removed
+  template <class Id>
+  bool isRemoved() const {
+    const auto& prior = data_.patchPrior()->toThrift();
+    const auto& ensure = *data_.ensure();
+    const auto& after = data_.patch()->toThrift();
+
+    using Ref = folly::remove_cvref_t<decltype(get<Id>(std::declval<T>()))>;
+    if (!is_optional_type<Ref>::value) {
+      // non-optional fields can not be removed
+      return false;
+    }
+
+    if (*get<Id>(after)->toThrift().clear()) {
+      // Cleared field in patch after
+      return true;
+    }
+
+    if (*get<Id>(prior)->toThrift().clear() && !get<Id>(ensure).has_value()) {
+      // Cleared field in patch prior and not ensured
+      return true;
+    }
+
+    return false;
+  }
+
+  // Combine fields from PatchOp::Clear and PatchOp::Remove operations
+  std::unordered_set<FieldId> removedFields() const {
+    auto removed = *data_.remove();
+    op::for_each_field_id<T>([&](auto id) {
+      if (isRemoved<decltype(id)>()) {
+        removed.insert(id.value);
+      }
+    });
+    return removed;
+  }
 };
 
 /// Patch for a Thrift union.
@@ -368,7 +510,6 @@ template <typename Patch>
 class UnionPatch : public BaseEnsurePatch<Patch, UnionPatch<Patch>> {
   using Base = BaseEnsurePatch<Patch, UnionPatch>;
   using T = typename Base::value_type;
-  using P = typename Base::patch_type;
   template <typename Id>
   using F = type::native_type<get_field_tag<T, Id>>;
 
@@ -378,41 +519,11 @@ class UnionPatch : public BaseEnsurePatch<Patch, UnionPatch<Patch>> {
   using Base::apply;
   using Base::assign;
   using Base::clear;
-  using Base::ensure;
-
-  /// Creates a new patch that ensures the union with a given value.
-  template <typename U = T>
-  FOLLY_NODISCARD static UnionPatch createEnsure(U&& _default) {
-    UnionPatch patch;
-    patch.ensure(std::forward<U>(_default));
-    return patch;
-  }
-  /// Returns the union that's used to ensure.
-  T& ensure() { return *data_.ensure(); }
-  /// Ensures the union with a given value.
-  P& ensure(const T& val) { return *ensureAnd(val).patch(); }
-  /// Ensures the union with a given value.
-  P& ensure(T&& val) { return *ensureAnd(std::move(val)).patch(); }
 
   /// Assigns to the given field, ensuring first if needed.
   template <typename Id, typename U = F<Id>>
   void assign(U&& val) {
     op::get<Id>(Base::resetAnd().assign().ensure()) = std::forward<U>(val);
-  }
-
- private:
-  using Base::data_;
-  using Base::ensurePatchable;
-  using Base::resetAnd;
-
-  template <typename U = T>
-  Patch& ensureAnd(U&& _default) {
-    ensurePatchable();
-    assert(!op::isEmpty<>(_default));
-    if (!hasValue(data_.ensure())) {
-      data_.ensure().emplace(std::forward<U>(_default));
-    }
-    return data_;
   }
 };
 

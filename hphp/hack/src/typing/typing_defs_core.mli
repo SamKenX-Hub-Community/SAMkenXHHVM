@@ -145,9 +145,16 @@ type dependent_type =
   | DTexpr of Ident.t
 [@@deriving eq, ord, show]
 
+type user_attribute_param =
+  | Classname of string
+  | EnumClassLabel of string
+  | String of Ast_defs.byte_string
+  | Int of string
+[@@deriving eq, hash, show]
+
 type user_attribute = {
   ua_name: pos_id;
-  ua_classname_params: string list;
+  ua_params: user_attribute_param list;
 }
 [@@deriving eq, show]
 
@@ -234,6 +241,12 @@ and _ ty_ =
    * during the localization phase.
    *)
   | Tmixed : decl_phase ty_
+  | Twildcard : decl_phase ty_
+      (** Various intepretations, depending on context.
+        *   inferred type e.g. (vec<_> $x) ==> $x[0]
+        *   placeholder in refinement e.g. $x as Vector<_>
+        *   placeholder for higher-kinded formal type parameter e.g. foo<T1<_>>(T1<int> $_)
+        *)
   | Tlike : decl_ty -> decl_phase ty_
   (*========== Following Types Exist in Both Phases ==========*)
   | Tany : TanySentinel.t -> 'phase ty_
@@ -258,13 +271,8 @@ and _ ty_ =
   | Tfun : 'phase ty fun_type -> 'phase ty_
   (* Tuple, with ordered list of the types of the elements of the tuple. *)
   | Ttuple : 'phase ty list -> 'phase ty_
-  (* Whether all fields of this shape are known, types of each of the
-   * known arms.
-   *)
-  | Tshape :
-      type_origin * 'phase ty * 'phase shape_field_type TShapeMap.t
-      -> 'phase ty_
-  | Tvar : Ident.t -> 'phase ty_
+  (* A wrapper around shape_type, which contains information about shape fields *)
+  | Tshape : 'phase shape_type -> 'phase ty_
   (* The type of a generic parameter. The constraints on a generic parameter
    * are accessed through the lenv.tpenv component of the environment, which
    * is set up when checking the body of a function or method. See uses of
@@ -301,6 +309,7 @@ and _ ty_ =
    *)
   | Tnewtype : string * 'phase ty list * 'phase ty -> 'phase ty_
   (*========== Below Are Types That Cannot Be Declared In User Code ==========*)
+  | Tvar : Ident.t -> locl_phase ty_
   (* This represents a type alias that lacks necessary type arguments. Given
    *   type Foo<T1,T2> = ...
    * Tunappliedalias "Foo" stands for usages of plain Foo, without supplying
@@ -340,6 +349,11 @@ and 'phase refined_const_bounds = {
 }
 
 and 'phase taccess_type = 'phase ty * pos_id
+
+(* Whether all fields of this shape are known, types of each of the
+ * known arms. *)
+and 'phase shape_type =
+  type_origin * 'phase ty * 'phase shape_field_type TShapeMap.t
 
 (* Because Tfun is currently used as both a decl and locl ty, without this,
  * the HH\Contexts\defaults alias must be stored in shared memory for a
@@ -390,6 +404,8 @@ module Flags : sig
   val get_ft_return_disposable : 'a fun_type -> bool
 
   val get_ft_returns_readonly : 'a fun_type -> bool
+
+  val set_ft_returns_readonly : 'a fun_type -> bool -> 'a fun_type
 
   val get_ft_async : 'a fun_type -> bool
 

@@ -553,7 +553,7 @@ class mstch_java_struct : public mstch_struct {
     return false;
   }
   mstch::node is_as_bean() {
-    if (!struct_->is_xception() && !struct_->is_union()) {
+    if (!struct_->is_exception() && !struct_->is_union()) {
       return struct_->get_annotation("java.swift.mutable") == "true" ||
           struct_->find_structured_annotation_or_null(kJavaMutableUri);
     } else {
@@ -597,7 +597,7 @@ class mstch_java_struct : public mstch_struct {
   //  2 - there is no struct field named 'message'
   //      (since it will generate getMessage() as well)
   mstch::node needs_exception_message() {
-    return struct_->is_xception() && struct_->has_annotation("message") &&
+    return struct_->is_exception() && struct_->has_annotation("message") &&
         struct_->get_field_by_name("message") == nullptr;
   }
 };
@@ -1179,7 +1179,6 @@ class mstch_java_type : public mstch_type {
     register_methods(
         this,
         {
-            {"type:primitive?", &mstch_java_type::is_primitive},
             {"type:isContainer?", &mstch_java_type::is_container_type},
             {"type:javaType", &mstch_java_type::java_type},
             {"type:setIsMapKey", &mstch_java_type::set_is_map_key},
@@ -1227,11 +1226,6 @@ class mstch_java_type : public mstch_type {
     return type_->get_true_type()->is_container();
   }
 
-  mstch::node is_primitive() {
-    return type_->is_void() || type_->is_bool() || type_->is_byte() ||
-        type_->is_i16() || type_->is_i32() || type_->is_i64() ||
-        type_->is_double() || type_->is_float();
-  }
   mstch::node java_type() {
     return type_->get_true_type()->get_annotation("java.swift.type");
   }

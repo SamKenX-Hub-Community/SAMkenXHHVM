@@ -30,21 +30,21 @@ http://en.wikipedia.org/wiki/Covariance_and_contravariance_(computer_science)
   (+) Aliased types are covariant
 File "case_type_wellformed.php", line 4, characters 40-48:
 Some type arguments violate their constraints (Typing[4323])
-  File "hackarray.hhi", line 43, characters 32-32:
+  File "hackarray.hhi", line 43, characters 50-50:
   `T` is a constrained type parameter
-  File "hackarray.hhi", line 43, characters 37-44:
+  File "hackarray.hhi", line 43, characters 55-62:
   This type constraint is violated
-  File "hackarray.hhi", line 43, characters 37-44:
+  File "hackarray.hhi", line 43, characters 55-62:
   Expected `arraykey`
   File "case_type_wellformed.php", line 4, characters 47-47:
   But got `T`
 File "case_type_wellformed.php", line 4, characters 52-63:
 Some type arguments violate their constraints (Typing[4323])
-  File "hackarray.hhi", line 33, characters 6-7:
+  File "hackarray.hhi", line 33, characters 24-25:
   `Tk` is a constrained type parameter
-  File "hackarray.hhi", line 33, characters 12-19:
+  File "hackarray.hhi", line 33, characters 30-37:
   This type constraint is violated
-  File "hackarray.hhi", line 33, characters 12-19:
+  File "hackarray.hhi", line 33, characters 30-37:
   Expected `arraykey`
   File "case_type_wellformed.php", line 4, characters 57-57:
   But got `T`
@@ -60,3 +60,21 @@ Invalid constraint on `newtype` (Typing[4332])
   Expected `Stringish`
   File "case_type_wellformed.php", line 14, characters 77-79:
   But got `int`
+File "case_type_wellformed.php", line 14, characters 11-31:
+Invalid constraint on `newtype` (Typing[4332])
+  File "case_type_wellformed.php", line 14, characters 46-54:
+  Expected `Stringish`
+  File "case_type_wellformed.php", line 14, characters 83-86:
+  But got `bool`
+File "case_type_wellformed.php", line 14, characters 11-31:
+Invalid constraint on `newtype` (Typing[4332])
+  File "case_type_wellformed.php", line 14, characters 57-64:
+  Expected `arraykey`
+  File "case_type_wellformed.php", line 14, characters 83-86:
+  But got `bool`
+File "case_type_wellformed.php", line 6, characters 11-27:
+The case type `VarianceIsChecked` cannot be decomposed because it contains overlapping variant types. The following types share the same runtime data type `dict`: (Typing[4475])
+  File "case_type_wellformed.php", line 7, characters 5-30:
+  (function(Tin, Tout): int)
+  File "case_type_wellformed.php", line 8, characters 5-19:
+  dict<Tin, Tout>

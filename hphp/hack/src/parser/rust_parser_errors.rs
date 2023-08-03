@@ -3,6 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::matches;
 use std::str::FromStr;
@@ -31,11 +32,11 @@ use parser_core_types::syntax_error::{self as errors};
 use parser_core_types::syntax_trait::SyntaxTrait;
 use parser_core_types::syntax_tree::SyntaxTree;
 use parser_core_types::token_kind::TokenKind;
+use strum::Display;
+use strum::EnumIter;
+use strum::EnumString;
 use strum::IntoEnumIterator;
-use strum_macros::Display;
-use strum_macros::EnumIter;
-use strum_macros::EnumString;
-use strum_macros::IntoStaticStr;
+use strum::IntoStaticStr;
 
 #[derive(Clone, PartialEq, Debug)]
 struct Location {
@@ -82,7 +83,7 @@ enum FeatureStatus {
 #[derive(Clone, Copy, Eq, Display, Hash, PartialEq)]
 #[derive(EnumIter, EnumString, IntoStaticStr)]
 #[strum(serialize_all = "snake_case")]
-enum UnstableFeatures {
+pub enum UnstableFeatures {
     // TODO: rename this from unstable to something else
     UnionIntersectionTypeHints,
     ClassLevelWhere,
@@ -104,6 +105,9 @@ enum UnstableFeatures {
     ExpressionTreeBlocks,
     Package,
     CaseTypes,
+    ModuleLevelTraits,
+    TypedLocalVariables,
+    MatchStatements,
 }
 impl UnstableFeatures {
     // Preview features are allowed to run in prod. This function decides
@@ -126,11 +130,14 @@ impl UnstableFeatures {
             UnstableFeatures::TypeRefinements => OngoingRelease,
             UnstableFeatures::MethodTraitDiamond => OngoingRelease,
             UnstableFeatures::UpcastExpression => Unstable,
-            UnstableFeatures::RequireClass => Preview,
+            UnstableFeatures::RequireClass => OngoingRelease,
             UnstableFeatures::NewtypeSuperBounds => Unstable,
             UnstableFeatures::ExpressionTreeBlocks => OngoingRelease,
             UnstableFeatures::Package => Unstable,
             UnstableFeatures::CaseTypes => Unstable,
+            UnstableFeatures::ModuleLevelTraits => Preview,
+            UnstableFeatures::TypedLocalVariables => Unstable,
+            UnstableFeatures::MatchStatements => Unstable,
         }
     }
 }
@@ -751,7 +758,7 @@ fn cant_be_reserved_type_name(name: &str) -> bool {
         "arraykey" | "bool" | "dynamic" | "float" | "int" | "mixed" | "nonnull" | "noreturn"
         | "nothing" | "null" | "num" | "resource" | "string" | "this" | "void" | "_" => true,
         // misc
-        "darray" | "false" | "true" | "varray" => true,
+        "darray" | "false" | "static" | "true" | "varray" => true,
         _ => false,
     }
 }
@@ -1112,7 +1119,7 @@ fn get_positions_binop_allows_await(t: S<'_>) -> BinopAllowsAwaitInPositions {
 fn unop_allows_await(t: S<'_>) -> bool {
     use TokenKind::*;
     token_kind(t).map_or(false, |t| match t {
-        Exclamation | Tilde | Plus | Minus | At | Clone | Print | Readonly => true,
+        Exclamation | Tilde | Plus | Minus | At | Clone | Print | Readonly | DotDotDot => true,
         _ => false,
     })
 }
@@ -2826,7 +2833,8 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
                 | ReturnStatement(_)
                 | UnsetStatement(_)
                 | EchoStatement(_)
-                | ThrowStatement(_) => break,
+                | ThrowStatement(_)
+                | DeclareLocalStatement(_) => break,
                 IfStatement(x) if std::ptr::eq(node, &x.condition) => break,
                 ForStatement(x) if std::ptr::eq(node, &x.initializer) => break,
                 SwitchStatement(x) if std::ptr::eq(node, &x.expression) => break,
@@ -4602,18 +4610,6 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
                 if is_good_scope_resolution_qualifier(&x.qualifier, static_allowed)
                     && is_good_scope_resolution_name(&x.name)
                     && !is_parent_class_access(&x.qualifier, &x.name) => {}
-            AsExpression(x) => match &x.right_operand.children {
-                LikeTypeSpecifier(_) => {
-                    self.check_constant_expression(&x.left_operand, static_allowed)
-                }
-                GenericTypeSpecifier(y)
-                    if self.text(&y.class_type) == sn::fb::INCORRECT_TYPE
-                        || self.text(&y.class_type) == strip_ns(sn::fb::INCORRECT_TYPE) =>
-                {
-                    self.check_constant_expression(&x.left_operand, static_allowed)
-                }
-                _ => default(self),
-            },
             FunctionCallExpression(x) => {
                 let mut check_receiver_and_arguments = |receiver| {
                     if is_whitelisted_function(self, receiver) {
@@ -5200,6 +5196,14 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
                                 errors::statement_without_await_in_concurrent_block,
                             ))
                         }
+                    } else if let DeclareLocalStatement(x) = &n.children {
+                        if !self.node_has_await_child(&x.initializer) && !x.initializer.is_missing()
+                        {
+                            self.errors.push(make_error_from_node(
+                                n,
+                                errors::statement_without_await_in_concurrent_block,
+                            ))
+                        }
                     } else {
                         self.errors.push(make_error_from_node(
                             n,
@@ -5419,6 +5423,14 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
                     self.check_lvalue_and_inout(expr, LvalRoot::Unset);
                 }
             }
+            DeclareLocalStatement(x) => {
+                if self.text(&x.variable) == sn::special_idents::THIS {
+                    self.errors.push(make_error_from_node(
+                        node,
+                        Cow::Owned("You cannot declare $this as a typed local.".to_string()),
+                    ));
+                }
+            }
             PackageExpression(_) => {
                 self.check_can_use_feature(node, &UnstableFeatures::Package);
             }
@@ -5444,6 +5456,9 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
             UnionTypeSpecifier(_) | IntersectionTypeSpecifier(_) => {
                 self.check_can_use_feature(node, &UnstableFeatures::UnionIntersectionTypeHints)
             }
+            DeclareLocalStatement(_) => {
+                self.check_can_use_feature(node, &UnstableFeatures::TypedLocalVariables)
+            }
             ClassishDeclaration(x) => match &x.where_clause.children {
                 WhereClause(_) => {
                     self.check_can_use_feature(&x.where_clause, &UnstableFeatures::ClassLevelWhere)
@@ -5451,14 +5466,18 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
                 _ => {}
             },
             UpcastExpression(_) => {
-                if !self.env.parser_options.tco_enable_sound_dynamic {
-                    self.check_can_use_feature(node, &UnstableFeatures::UpcastExpression)
-                }
+                self.check_can_use_feature(node, &UnstableFeatures::UpcastExpression)
             }
             RequireClause(c) => {
                 if c.kind.is_class() {
                     self.check_can_use_feature(node, &UnstableFeatures::RequireClass)
                 }
+            }
+            OldAttributeSpecification(x) => {
+                self.old_attr_spec(node, &x.attributes);
+            }
+            MatchStatement(_) => {
+                self.check_can_use_feature(node, &UnstableFeatures::MatchStatements);
             }
             _ => {}
         }
@@ -5600,6 +5619,16 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
         self.env.context.active_expression_tree = previous_state;
     }
 
+    fn old_attr_spec(&mut self, node: S<'a>, attributes: S<'a>) {
+        let attributes = self.text(attributes).split(',');
+        attributes.for_each(|attr| match attr.trim() {
+            sn::user_attributes::MODULE_LEVEL_TRAIT => {
+                self.check_can_use_feature(node, &UnstableFeatures::ModuleLevelTraits)
+            }
+            _ => {}
+        });
+    }
+
     fn check_nested_namespace(&mut self, node: S<'a>) {
         assert_eq!(
             self.nested_namespaces.pop().map(|x| x as *const _),
@@ -5634,6 +5663,7 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
         hhi_mode: bool,
         codegen: bool,
         systemlib: bool,
+        default_unstable_features: HashSet<UnstableFeatures>,
     ) -> (Vec<SyntaxError>, bool) {
         let env = Env {
             parser_options,
@@ -5645,7 +5675,7 @@ impl<'a, State: 'a + Clone> ParserErrors<'a, State> {
                 active_callable: None,
                 active_callable_attr_spec: None,
                 active_const: None,
-                active_unstable_features: HashSet::default(),
+                active_unstable_features: default_unstable_features,
                 active_expression_tree: false,
             },
             hhvm_compat_mode,
@@ -5664,6 +5694,7 @@ pub fn parse_errors<'a, State: Clone>(
     hhi_mode: bool,
     codegen: bool,
     systemlib: bool,
+    default_unstable_features: HashSet<UnstableFeatures>,
 ) -> (Vec<SyntaxError>, bool) {
     <ParserErrors<'a, State>>::parse_errors(
         tree,
@@ -5673,6 +5704,7 @@ pub fn parse_errors<'a, State: Clone>(
         hhi_mode,
         codegen,
         systemlib,
+        default_unstable_features,
     )
 }
 
@@ -5684,6 +5716,7 @@ pub fn parse_errors_with_text<'a, State: Clone>(
     hhi_mode: bool,
     codegen: bool,
     systemlib: bool,
+    default_unstable_features: HashSet<UnstableFeatures>,
 ) -> (Vec<SyntaxError>, bool) {
     <ParserErrors<'a, State>>::parse_errors(
         tree,
@@ -5693,5 +5726,6 @@ pub fn parse_errors_with_text<'a, State: Clone>(
         hhi_mode,
         codegen,
         systemlib,
+        default_unstable_features,
     )
 }

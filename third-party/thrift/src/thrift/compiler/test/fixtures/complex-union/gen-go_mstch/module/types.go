@@ -18,7 +18,7 @@ var _ = thrift.ZERO
 type ContainerTypedef = map[int16]string
 
 func NewContainerTypedef() ContainerTypedef {
-  return make(map[int16]string)
+  return nil
 }
 
 func WriteContainerTypedef(item ContainerTypedef, p thrift.Protocol) error {
@@ -99,13 +99,7 @@ type ComplexUnion struct {
 var _ thrift.Struct = &ComplexUnion{}
 
 func NewComplexUnion() *ComplexUnion {
-    return (&ComplexUnion{}).
-        SetIntValueNonCompat(0).
-        SetStringValueNonCompat("").
-        SetIntListValueNonCompat(make([]int64, 0)).
-        SetStringListValueNonCompat(make([]string, 0)).
-        SetTypedefValueNonCompat(NewContainerTypedef()).
-        SetStringRefNonCompat("")
+    return (&ComplexUnion{})
 }
 
 func (x *ComplexUnion) GetIntValueNonCompat() *int64 {
@@ -138,7 +132,7 @@ func (x *ComplexUnion) GetIntListValueNonCompat() []int64 {
 
 func (x *ComplexUnion) GetIntListValue() []int64 {
     if !x.IsSetIntListValue() {
-        return make([]int64, 0)
+        return nil
     }
 
     return x.IntListValue
@@ -150,7 +144,7 @@ func (x *ComplexUnion) GetStringListValueNonCompat() []string {
 
 func (x *ComplexUnion) GetStringListValue() []string {
     if !x.IsSetStringListValue() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.StringListValue
@@ -513,7 +507,9 @@ var ComplexUnion_StringValue_DEFAULT = NewComplexUnion().GetStringValue()
 var ComplexUnion_StringRef_DEFAULT = NewComplexUnion().GetStringRef()
 
 func (x *ComplexUnion) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ComplexUnionAlias ComplexUnion
+    valueAlias := (*ComplexUnionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *ComplexUnion) countSetFields() int {
@@ -699,9 +695,7 @@ type ListUnion struct {
 var _ thrift.Struct = &ListUnion{}
 
 func NewListUnion() *ListUnion {
-    return (&ListUnion{}).
-        SetIntListValueNonCompat(make([]int64, 0)).
-        SetStringListValueNonCompat(make([]string, 0))
+    return (&ListUnion{})
 }
 
 func (x *ListUnion) GetIntListValueNonCompat() []int64 {
@@ -710,7 +704,7 @@ func (x *ListUnion) GetIntListValueNonCompat() []int64 {
 
 func (x *ListUnion) GetIntListValue() []int64 {
     if !x.IsSetIntListValue() {
-        return make([]int64, 0)
+        return nil
     }
 
     return x.IntListValue
@@ -722,7 +716,7 @@ func (x *ListUnion) GetStringListValueNonCompat() []string {
 
 func (x *ListUnion) GetStringListValue() []string {
     if !x.IsSetStringListValue() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.StringListValue
@@ -875,7 +869,9 @@ result := listResult
 }
 
 func (x *ListUnion) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ListUnionAlias ListUnion
+    valueAlias := (*ListUnionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *ListUnion) countSetFields() int {
@@ -997,9 +993,7 @@ type DataUnion struct {
 var _ thrift.Struct = &DataUnion{}
 
 func NewDataUnion() *DataUnion {
-    return (&DataUnion{}).
-        SetBinaryDataNonCompat([]byte("")).
-        SetStringDataNonCompat("")
+    return (&DataUnion{})
 }
 
 func (x *DataUnion) GetBinaryDataNonCompat() []byte {
@@ -1059,7 +1053,7 @@ func (x *DataUnion) writeField1(p thrift.Protocol) error {  // BinaryData
         return nil
     }
 
-    if err := p.WriteFieldBegin("binaryData", thrift.BINARY, 1); err != nil {
+    if err := p.WriteFieldBegin("binaryData", thrift.STRING, 1); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -1118,7 +1112,9 @@ if err != nil {
 var DataUnion_StringData_DEFAULT = NewDataUnion().GetStringData()
 
 func (x *DataUnion) String() string {
-    return fmt.Sprintf("%+v", x)
+    type DataUnionAlias DataUnion
+    valueAlias := (*DataUnionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *DataUnion) countSetFields() int {
@@ -1393,7 +1389,9 @@ if err != nil {
 }
 
 func (x *Val) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ValAlias Val
+    valueAlias := (*ValAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1510,9 +1508,7 @@ type ValUnion struct {
 var _ thrift.Struct = &ValUnion{}
 
 func NewValUnion() *ValUnion {
-    return (&ValUnion{}).
-        SetV1NonCompat(*NewVal()).
-        SetV2NonCompat(*NewVal())
+    return (&ValUnion{})
 }
 
 func (x *ValUnion) GetV1NonCompat() *Val {
@@ -1521,7 +1517,7 @@ func (x *ValUnion) GetV1NonCompat() *Val {
 
 func (x *ValUnion) GetV1() *Val {
     if !x.IsSetV1() {
-        return NewVal()
+        return nil
     }
 
     return x.V1
@@ -1533,7 +1529,7 @@ func (x *ValUnion) GetV2NonCompat() *Val {
 
 func (x *ValUnion) GetV2() *Val {
     if !x.IsSetV2() {
-        return NewVal()
+        return nil
     }
 
     return x.V2
@@ -1652,7 +1648,9 @@ func (x *ValUnion) DefaultGetV2() *Val {
 }
 
 func (x *ValUnion) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ValUnionAlias ValUnion
+    valueAlias := (*ValUnionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *ValUnion) countSetFields() int {
@@ -1774,9 +1772,7 @@ type VirtualComplexUnion struct {
 var _ thrift.Struct = &VirtualComplexUnion{}
 
 func NewVirtualComplexUnion() *VirtualComplexUnion {
-    return (&VirtualComplexUnion{}).
-        SetThingOneNonCompat("").
-        SetThingTwoNonCompat("")
+    return (&VirtualComplexUnion{})
 }
 
 func (x *VirtualComplexUnion) GetThingOneNonCompat() *string {
@@ -1898,7 +1894,9 @@ var VirtualComplexUnion_ThingOne_DEFAULT = NewVirtualComplexUnion().GetThingOne(
 var VirtualComplexUnion_ThingTwo_DEFAULT = NewVirtualComplexUnion().GetThingTwo()
 
 func (x *VirtualComplexUnion) String() string {
-    return fmt.Sprintf("%+v", x)
+    type VirtualComplexUnionAlias VirtualComplexUnion
+    valueAlias := (*VirtualComplexUnionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *VirtualComplexUnion) countSetFields() int {
@@ -2068,7 +2066,9 @@ if err != nil {
 }
 
 func (x *NonCopyableStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type NonCopyableStructAlias NonCopyableStruct
+    valueAlias := (*NonCopyableStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2158,8 +2158,7 @@ type NonCopyableUnion struct {
 var _ thrift.Struct = &NonCopyableUnion{}
 
 func NewNonCopyableUnion() *NonCopyableUnion {
-    return (&NonCopyableUnion{}).
-        SetSNonCompat(*NewNonCopyableStruct())
+    return (&NonCopyableUnion{})
 }
 
 func (x *NonCopyableUnion) GetSNonCompat() *NonCopyableStruct {
@@ -2168,7 +2167,7 @@ func (x *NonCopyableUnion) GetSNonCompat() *NonCopyableStruct {
 
 func (x *NonCopyableUnion) GetS() *NonCopyableStruct {
     if !x.IsSetS() {
-        return NewNonCopyableStruct()
+        return nil
     }
 
     return x.S
@@ -2231,7 +2230,9 @@ func (x *NonCopyableUnion) DefaultGetS() *NonCopyableStruct {
 }
 
 func (x *NonCopyableUnion) String() string {
-    return fmt.Sprintf("%+v", x)
+    type NonCopyableUnionAlias NonCopyableUnion
+    valueAlias := (*NonCopyableUnionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *NonCopyableUnion) countSetFields() int {

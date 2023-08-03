@@ -28,7 +28,6 @@
 #include "hphp/runtime/base/variable-serializer.h"
 
 #include "hphp/runtime/ext/asio/asio-session.h"
-#include "hphp/runtime/ext/hotprofiler/ext_hotprofiler.h"
 #include "hphp/runtime/ext/intervaltimer/ext_intervaltimer.h"
 #include "hphp/runtime/ext/std/ext_std_function.h"
 #include "hphp/runtime/ext/std/ext_std_variable.h"
@@ -70,19 +69,27 @@ const StaticString
 
 RDS_LOCAL_NO_CHECK(uint64_t, rl_func_sequence_id){0};
 
-// implemented in runtime/ext/ext_hotprofiler.cpp
-extern void begin_profiler_frame(Profiler *p,
-                                 const char *symbol);
-extern void end_profiler_frame(Profiler *p,
-                               const TypedValue *retval,
-                               const char *symbol);
-
 void EventHook::Enable() {
   setSurpriseFlag(EventHookFlag);
 }
 
 void EventHook::Disable() {
-  clearSurpriseFlag(EventHookFlag);
+  if (g_context->m_internalEventHookCallback == nullptr) {
+    clearSurpriseFlag(EventHookFlag);
+  }
+}
+
+void EventHook::EnableInternal(ExecutionContext::InternalEventHookCallbackType
+                              callback) {
+  g_context->m_internalEventHookCallback = callback;
+  setSurpriseFlag(EventHookFlag);
+}
+
+void EventHook::DisableInternal() {
+  if (g_context->m_setprofileCallback.isNull()) {
+    clearSurpriseFlag(EventHookFlag);
+  }
+  g_context->m_internalEventHookCallback = nullptr;
 }
 
 void EventHook::EnableAsync() {
@@ -280,6 +287,13 @@ void addFileLine(const ActRec* ar, Array& frameinfo) {
 
 inline bool isResumeAware() {
   return (g_context->m_setprofileFlags & EventHook::ProfileResumeAware) != 0;
+}
+
+void runInternalEventHook(const ActRec* ar,
+                          ExecutionContext::InternalEventHook event_type) {
+  if (g_context->m_internalEventHookCallback != nullptr) {
+    g_context->m_internalEventHookCallback(ar, event_type);
+  }
 }
 
 void runUserProfilerOnFunctionEnter(const ActRec* ar, bool isResume) {
@@ -486,12 +500,9 @@ bool EventHook::RunInterceptHandler(ActRec* ar) {
    * intercepted during static analysis should actually be
    * intercepted.
    */
-  if (RuntimeOption::RepoAuthoritative &&
-      !RuntimeOption::EvalJitEnableRenameFunction) {
-    if (!(func->attrs() & AttrInterceptable)) {
+  if (RuntimeOption::RepoAuthoritative && !(func->attrs() & AttrInterceptable)) {
       raise_error("fb_intercept2 was used on a non-interceptable function (%s) "
                   "in RepoAuthoritative mode", func->fullName()->data());
-    }
   }
 
   PC savePc = vmpc();
@@ -596,27 +607,6 @@ bool EventHook::RunInterceptHandler(ActRec* ar) {
   return true;
 }
 
-const char* EventHook::GetFunctionNameForProfiler(const Func* func,
-                                                  int funcType) {
-  const char* name;
-  switch (funcType) {
-    case EventHook::NormalFunc:
-      name = func->fullName()->data();
-      if (name[0] == '\0') {
-        // We're evaling some code for internal purposes, most
-        // likely getting the default value for a function parameter
-        name = "{internal}";
-      }
-      break;
-    case EventHook::Eval:
-      name = "_";
-      break;
-    default:
-      not_reached();
-  }
-  return name;
-}
-
 static bool shouldLog(const Func* /*func*/) {
   return RID().logFunctionCalls();
 }
@@ -647,18 +637,15 @@ void EventHook::onFunctionEnter(const ActRec* ar, int funcType,
     if (shouldRunUserProfiler(ar->func())) {
       runUserProfilerOnFunctionEnter(ar, isResume);
     }
+    runInternalEventHook(ar, isResume
+                                 ? ExecutionContext::InternalEventHook::Resume
+                                 : ExecutionContext::InternalEventHook::Call);
     if (shouldLog(ar->func())) {
       StructuredLogEntry sample;
       sample.setStr("event_name", "function_enter");
       sample.setInt("func_type", funcType);
       sample.setInt("is_resume", isResume);
       logCommon(sample, ar, flags);
-    }
-    auto profiler = RequestInfo::s_requestInfo->m_profiler;
-    if (profiler != nullptr &&
-        !(profiler->shouldSkipBuiltins() && ar->func()->isBuiltin())) {
-      begin_profiler_frame(profiler,
-                           GetFunctionNameForProfiler(ar->func(), funcType));
     }
   }
 
@@ -718,17 +705,6 @@ void EventHook::onFunctionExit(const ActRec* ar, const TypedValue* retval,
 
   // User profiler
   if (flags & EventHookFlag) {
-    auto profiler = RequestInfo::s_requestInfo->m_profiler;
-    if (profiler != nullptr &&
-        !(profiler->shouldSkipBuiltins() && ar->func()->isBuiltin())) {
-      // NB: we don't have a function type flag to match what we got in
-      // onFunctionEnter. That's okay, though... we tolerate this in
-      // TraceProfiler.
-      end_profiler_frame(profiler,
-                         retval,
-                         GetFunctionNameForProfiler(ar->func(), NormalFunc));
-    }
-
     if (shouldRunUserProfiler(ar->func())) {
       if (RequestInfo::s_requestInfo->m_pendingException != nullptr) {
         // Avoid running PHP code when exception from destructor is pending.
@@ -740,6 +716,13 @@ void EventHook::onFunctionExit(const ActRec* ar, const TypedValue* retval,
       } else {
         // Avoid running PHP code when unwinding C++ exception.
       }
+    }
+    if (!unwind) {
+      runInternalEventHook(ar, isSuspend
+                               ? ExecutionContext::InternalEventHook::Suspend
+                               : ExecutionContext::InternalEventHook::Return);
+    } else {
+      runInternalEventHook(ar, ExecutionContext::InternalEventHook::Unwind);
     }
     if (shouldLog(ar->func())) {
       StructuredLogEntry sample;

@@ -2,13 +2,13 @@
     { fd_namespace =
       { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
         ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-        ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+        ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
       fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([3:10-27], "\\echo_non_arraykey");
       fd_fun =
       { f_span = [3:1-8:2]; f_readonly_this = None; f_annotation = (); 
         f_readonly_ret = None; f_ret = ((void), (Some ([3:49-53], (Hprim Tvoid))));
         f_params =
-        [{ param_annotation = (mixed); param_type_hint = ((mixed), (Some ([3:28-33], Hmixed))); 
+        [{ param_annotation = (mixed); param_type_hint = ((mixed), (Some ([3:28-33], (Happly (([3:28-33], "\\HH\\supportdyn"), [([3:28-33], Hmixed)]))))); 
            param_is_variadic = false; param_pos = [3:34-36]; param_name = "$x"; 
            param_expr = None; param_readonly = None; param_callconv = Pnormal; 
            param_user_attributes = []; param_visibility = None };
@@ -23,13 +23,19 @@
           [([5:3-12],
             (Expr
                ((void), [5:3-12],
-                (Call (((_), [5:3-7], (Id ([5:3-7], "echo"))), [], [(Pnormal, ((mixed), [5:8-10], (Hole (((mixed), [5:8-10], (Lvar ([5:8-10], $x))), (mixed), (arraykey), Typing))))], None)))));
+                (Call
+                   { func = ((_), [5:3-7], (Id ([5:3-7], "echo"))); targs = [];
+                     args = [(Pnormal, ((mixed), [5:8-10], (Hole (((mixed), [5:8-10], (Lvar ([5:8-10], $x))), (mixed), (arraykey), Typing))))]; 
+                     unpacked_arg = None }))));
             ([7:3-12],
              (Expr
                 ((void), [7:3-12],
-                 (Call (((_), [7:3-7], (Id ([7:3-7], "echo"))), [], [(Pnormal, ((bool), [7:8-10], (Hole (((bool), [7:8-10], (Lvar ([7:8-10], $y))), (bool), (arraykey), Typing))))], None)))))
+                 (Call
+                    { func = ((_), [7:3-7], (Id ([7:3-7], "echo"))); 
+                      targs = []; args = [(Pnormal, ((bool), [7:8-10], (Hole (((bool), [7:8-10], (Lvar ([7:8-10], $y))), (bool), (arraykey), Typing))))]; 
+                      unpacked_arg = None }))))
             ]
           };
-        f_fun_kind = FSync; f_user_attributes = []; f_external = false; 
-        f_doc_comment = None };
+        f_fun_kind = FSync; f_user_attributes = [{ ua_name = ([3:10-27], "__SupportDynamicType"); ua_params = [] }]; 
+        f_external = false; f_doc_comment = None };
       fd_internal = false; fd_module = None; fd_tparams = []; fd_where_constraints = [] })

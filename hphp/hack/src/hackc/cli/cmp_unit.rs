@@ -677,12 +677,12 @@ fn cmp_constant(a: &Constant<'_>, b: &Constant<'_>) -> Result {
     let Constant {
         name: a_name,
         value: a_value,
-        is_abstract: a_is_abstract,
+        attrs: a_attrs,
     } = a;
     let Constant {
         name: b_name,
         value: b_value,
-        is_abstract: b_is_abstract,
+        attrs: b_attrs,
     } = b;
     cmp_eq(a_name, b_name).qualified("name")?;
     cmp_option(
@@ -691,7 +691,7 @@ fn cmp_constant(a: &Constant<'_>, b: &Constant<'_>) -> Result {
         cmp_eq,
     )
     .qualified("value")?;
-    cmp_eq(a_is_abstract, b_is_abstract).qualified("is_abstract")?;
+    cmp_eq(a_attrs, b_attrs).qualified("attrs")?;
     Ok(())
 }
 
@@ -979,26 +979,30 @@ fn cmp_typedef(a: &Typedef<'_>, b: &Typedef<'_>) -> Result {
     let Typedef {
         name: a_name,
         attributes: a_attributes,
-        type_info: a_type_info,
+        type_info_union: a_type_info_union,
         type_structure: a_type_structure,
         span: a_span,
         attrs: a_attrs,
+        case_type: a_case_type,
     } = a;
     let Typedef {
         name: b_name,
         attributes: b_attributes,
-        type_info: b_type_info,
+        type_info_union: b_type_info_union,
         type_structure: b_type_structure,
         span: b_span,
         attrs: b_attrs,
+        case_type: b_case_type,
     } = b;
 
     cmp_eq(a_name, b_name).qualified("name")?;
     cmp_attributes(a_attributes, b_attributes).qualified("attributes")?;
-    cmp_typedef_typeinfo(a_type_info, b_type_info).qualified("type_info")?;
+    cmp_slice(a_type_info_union, b_type_info_union, cmp_typedef_typeinfo)
+        .qualified("type_info_union")?;
     cmp_eq(a_type_structure, b_type_structure).qualified("type_structure")?;
     cmp_eq(a_span, b_span).qualified("span")?;
     cmp_eq(a_attrs, b_attrs).qualified("attrs")?;
+    cmp_eq(a_case_type, b_case_type).qualified("case_type")?;
     Ok(())
 }
 

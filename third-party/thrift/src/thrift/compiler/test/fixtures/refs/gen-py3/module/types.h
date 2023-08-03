@@ -50,6 +50,16 @@ inline const std::vector<std::pair<std::string_view, std::string_view>>& PyEnumT
   return *pairs;
 }
 
+template<>
+inline const std::vector<std::pair<std::string_view, std::string_view>>& PyEnumTraits<
+    ::cpp2::NonTriviallyDestructibleUnion::Type>::namesmap() {
+  static const folly::Indestructible<NamesMap> pairs {
+    {
+    }
+  };
+  return *pairs;
+}
+
 
 template<>
 inline void reset_field<::cpp2::MyField>(
@@ -217,11 +227,18 @@ inline void reset_field<::cpp2::StructWithInternBox>(
     case 1:
       obj.field2_ref().copy_from(default_inst<::cpp2::StructWithInternBox>().field2_ref());
       return;
-    case 2:
-      obj.field3_ref().copy_from(default_inst<::cpp2::StructWithInternBox>().field3_ref());
+  }
+}
+
+template<>
+inline void reset_field<::cpp2::StructWithTerseInternBox>(
+    ::cpp2::StructWithTerseInternBox& obj, uint16_t index) {
+  switch (index) {
+    case 0:
+      obj.field1_ref().copy_from(default_inst<::cpp2::StructWithTerseInternBox>().field1_ref());
       return;
-    case 3:
-      obj.field4_ref().copy_from(default_inst<::cpp2::StructWithInternBox>().field4_ref());
+    case 1:
+      obj.field2_ref().copy_from(default_inst<::cpp2::StructWithTerseInternBox>().field2_ref());
       return;
   }
 }
@@ -236,11 +253,18 @@ inline void reset_field<::cpp2::AdaptedStructWithInternBox>(
     case 1:
       obj.field2_ref().copy_from(default_inst<::cpp2::AdaptedStructWithInternBox>().field2_ref());
       return;
-    case 2:
-      obj.field3_ref().copy_from(default_inst<::cpp2::AdaptedStructWithInternBox>().field3_ref());
+  }
+}
+
+template<>
+inline void reset_field<::cpp2::AdaptedStructWithTerseInternBox>(
+    ::cpp2::AdaptedStructWithTerseInternBox& obj, uint16_t index) {
+  switch (index) {
+    case 0:
+      obj.field1_ref().copy_from(default_inst<::cpp2::AdaptedStructWithTerseInternBox>().field1_ref());
       return;
-    case 3:
-      obj.field4_ref().copy_from(default_inst<::cpp2::AdaptedStructWithInternBox>().field4_ref());
+    case 1:
+      obj.field2_ref().copy_from(default_inst<::cpp2::AdaptedStructWithTerseInternBox>().field2_ref());
       return;
   }
 }
@@ -328,6 +352,16 @@ inline void reset_field<::cpp2::StructWithString>(
 template<>
 inline const std::unordered_map<std::string_view, std::string_view>& PyStructTraits<
     ::cpp2::MyUnion>::namesmap() {
+  static const folly::Indestructible<NamesMap> map {
+    {
+    }
+  };
+  return *map;
+}
+
+template<>
+inline const std::unordered_map<std::string_view, std::string_view>& PyStructTraits<
+    ::cpp2::NonTriviallyDestructibleUnion>::namesmap() {
   static const folly::Indestructible<NamesMap> map {
     {
     }
@@ -437,7 +471,27 @@ inline const std::unordered_map<std::string_view, std::string_view>& PyStructTra
 
 template<>
 inline const std::unordered_map<std::string_view, std::string_view>& PyStructTraits<
+    ::cpp2::StructWithTerseInternBox>::namesmap() {
+  static const folly::Indestructible<NamesMap> map {
+    {
+    }
+  };
+  return *map;
+}
+
+template<>
+inline const std::unordered_map<std::string_view, std::string_view>& PyStructTraits<
     ::cpp2::AdaptedStructWithInternBox>::namesmap() {
+  static const folly::Indestructible<NamesMap> map {
+    {
+    }
+  };
+  return *map;
+}
+
+template<>
+inline const std::unordered_map<std::string_view, std::string_view>& PyStructTraits<
+    ::cpp2::AdaptedStructWithTerseInternBox>::namesmap() {
   static const folly::Indestructible<NamesMap> map {
     {
     }

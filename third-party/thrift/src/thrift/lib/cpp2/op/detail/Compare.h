@@ -528,8 +528,8 @@ template <typename Adapter, typename Tag>
 struct EqualTo<type::adapted<Adapter, Tag>> {
   using adapted_tag = type::adapted<Adapter, Tag>;
   static_assert(type::is_concrete_v<adapted_tag>, "");
-  template <typename T1, typename T2 = T1>
-  constexpr bool operator()(const T1& lhs, const T2& rhs) const {
+  template <typename T>
+  constexpr bool operator()(const T& lhs, const T& rhs) const {
     return ::apache::thrift::adapt_detail::equal<Adapter>(lhs, rhs);
   }
 };
@@ -537,8 +537,8 @@ template <typename Adapter, typename Tag>
 struct LessThan<type::adapted<Adapter, Tag>> {
   using adapted_tag = type::adapted<Adapter, Tag>;
   static_assert(type::is_concrete_v<adapted_tag>, "");
-  template <typename T1, typename T2 = T1>
-  constexpr bool operator()(const T1& lhs, const T2& rhs) const {
+  template <typename T>
+  constexpr bool operator()(const T& lhs, const T& rhs) const {
     return ::apache::thrift::adapt_detail::less<Adapter>(lhs, rhs);
   }
 };
@@ -572,15 +572,8 @@ struct StructLessThan {
         return;
       }
 
-      LessThanImpl<Tag> less;
-      if (less(*lhsValue, *rhsValue)) {
-        result = true;
-        return;
-      }
-
-      if (less(*rhsValue, *lhsValue)) {
-        result = false;
-        return;
+      if (!EqualTo<Tag>{}(*lhsValue, *rhsValue)) {
+        result = LessThanImpl<Tag>{}(*lhsValue, *rhsValue);
       }
     });
 
@@ -589,6 +582,86 @@ struct StructLessThan {
     }
 
     return false;
+  }
+};
+
+template <template <class...> class Equality = EqualTo>
+struct StructEquality {
+  template <class T>
+  bool operator()(const T& lhs, const T& rhs) const {
+    bool result = true;
+    for_each_ordinal<T>([&](auto ord) {
+      if (result == false) {
+        return;
+      }
+
+      using Ord = decltype(ord);
+      using Tag = get_type_tag<T, Ord>;
+      const auto* lhsValue = getValueOrNull(get<Ord>(lhs));
+      const auto* rhsValue = getValueOrNull(get<Ord>(rhs));
+
+      if (lhsValue == rhsValue) {
+        return;
+      }
+
+      if (lhsValue == nullptr) {
+        result = false;
+        return;
+      }
+
+      if (rhsValue == nullptr) {
+        result = false;
+        return;
+      }
+
+      if (!Equality<Tag>{}(*lhsValue, *rhsValue)) {
+        result = false;
+      }
+    });
+
+    return result;
+  }
+};
+
+template <template <class...> class LessThanImpl = LessThan>
+struct UnionLessThan {
+  template <class T>
+  bool operator()(const T& lhs, const T& rhs) const {
+    if (lhs.getType() != rhs.getType()) {
+      return lhs.getType() < rhs.getType();
+    }
+
+    return invoke_by_field_id<T>(
+        static_cast<FieldId>(lhs.getType()),
+        [&](auto id) {
+          using Id = decltype(id);
+          using Tag = get_type_tag<T, Id>;
+          return LessThanImpl<Tag>{}(*get<Id>(lhs), *get<Id>(rhs));
+        },
+        [] {
+          return false; // union is __EMPTY__
+        });
+  }
+};
+
+template <template <class...> class Equality = EqualTo>
+struct UnionEquality {
+  template <class T>
+  bool operator()(const T& lhs, const T& rhs) const {
+    if (lhs.getType() != rhs.getType()) {
+      return false;
+    }
+
+    return invoke_by_field_id<T>(
+        static_cast<FieldId>(lhs.getType()),
+        [&](auto id) {
+          using Id = decltype(id);
+          using Tag = get_type_tag<T, Id>;
+          return Equality<Tag>{}(*get<Id>(lhs), *get<Id>(rhs));
+        },
+        [] {
+          return true; // union is __EMPTY__
+        });
   }
 };
 

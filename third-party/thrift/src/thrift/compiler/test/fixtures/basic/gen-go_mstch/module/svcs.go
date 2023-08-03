@@ -7,18 +7,18 @@ package module // [[[ program thrift source path ]]]
 import (
     "context"
     "fmt"
+    "sync"
 
-    hack "thrift/annotation/hack"
 
     "thrift/lib/go/thrift"
 )
 
-var _ = hack.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = context.Background
 var _ = fmt.Printf
 var _ = thrift.ZERO
+var _ = sync.Mutex{}
 
 
 
@@ -59,6 +59,7 @@ func (c *FooServiceChannelClient) Open() error {
 // Deprecated: Use FooServiceChannelClient instead.
 type FooServiceClient struct {
     chClient *FooServiceChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ FooServiceClientInterface = &FooServiceClient{}
@@ -143,7 +144,9 @@ func newReqFooServiceSimpleRPC() *reqFooServiceSimpleRPC {
 }
 
 func (x *reqFooServiceSimpleRPC) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqFooServiceSimpleRPCAlias reqFooServiceSimpleRPC
+    valueAlias := (*reqFooServiceSimpleRPCAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -223,7 +226,9 @@ func newRespFooServiceSimpleRPC() *respFooServiceSimpleRPC {
 }
 
 func (x *respFooServiceSimpleRPC) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respFooServiceSimpleRPCAlias respFooServiceSimpleRPC
+    valueAlias := (*respFooServiceSimpleRPCAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -365,7 +370,7 @@ func (p *procFuncFooServiceSimpleRPC) Write(seqId int32, result thrift.WritableS
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("SimpleRPC", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("simple_rpc", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -431,6 +436,7 @@ func (c *FB303ServiceChannelClient) Open() error {
 // Deprecated: Use FB303ServiceChannelClient instead.
 type FB303ServiceClient struct {
     chClient *FB303ServiceChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ FB303ServiceClientInterface = &FB303ServiceClient{}
@@ -562,7 +568,9 @@ if err != nil {
 }
 
 func (x *reqFB303ServiceSimpleRPC) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqFB303ServiceSimpleRPCAlias reqFB303ServiceSimpleRPC
+    valueAlias := (*reqFB303ServiceSimpleRPCAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -662,7 +670,7 @@ func (x *respFB303ServiceSimpleRPC) GetValueNonCompat() *ReservedKeyword {
 
 func (x *respFB303ServiceSimpleRPC) GetValue() *ReservedKeyword {
     if !x.IsSetValue() {
-        return NewReservedKeyword()
+        return nil
     }
 
     return x.Value
@@ -725,7 +733,9 @@ func (x *respFB303ServiceSimpleRPC) DefaultGetValue() *ReservedKeyword {
 }
 
 func (x *respFB303ServiceSimpleRPC) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respFB303ServiceSimpleRPCAlias respFB303ServiceSimpleRPC
+    valueAlias := (*respFB303ServiceSimpleRPCAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -880,7 +890,7 @@ func (p *procFuncFB303ServiceSimpleRPC) Write(seqId int32, result thrift.Writabl
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("SimpleRPC", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("simple_rpc", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -966,6 +976,7 @@ func (c *MyServiceChannelClient) Open() error {
 // Deprecated: Use MyServiceChannelClient instead.
 type MyServiceClient struct {
     chClient *MyServiceChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ MyServiceClientInterface = &MyServiceClient{}
@@ -1197,7 +1208,9 @@ func newReqMyServicePing() *reqMyServicePing {
 }
 
 func (x *reqMyServicePing) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServicePingAlias reqMyServicePing
+    valueAlias := (*reqMyServicePingAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1277,7 +1290,9 @@ func newRespMyServicePing() *respMyServicePing {
 }
 
 func (x *respMyServicePing) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServicePingAlias respMyServicePing
+    valueAlias := (*respMyServicePingAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1362,7 +1377,9 @@ func newReqMyServiceGetRandomData() *reqMyServiceGetRandomData {
 }
 
 func (x *reqMyServiceGetRandomData) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceGetRandomDataAlias reqMyServiceGetRandomData
+    valueAlias := (*reqMyServiceGetRandomDataAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1488,7 +1505,9 @@ if err != nil {
 }
 
 func (x *respMyServiceGetRandomData) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceGetRandomDataAlias respMyServiceGetRandomData
+    valueAlias := (*respMyServiceGetRandomDataAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1632,7 +1651,9 @@ if err != nil {
 }
 
 func (x *reqMyServiceSink) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceSinkAlias reqMyServiceSink
+    valueAlias := (*reqMyServiceSinkAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1725,7 +1746,9 @@ func newRespMyServiceSink() *respMyServiceSink {
 }
 
 func (x *respMyServiceSink) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceSinkAlias respMyServiceSink
+    valueAlias := (*respMyServiceSinkAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1902,7 +1925,9 @@ if err != nil {
 }
 
 func (x *reqMyServicePutDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServicePutDataByIdAlias reqMyServicePutDataById
+    valueAlias := (*reqMyServicePutDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2008,7 +2033,9 @@ func newRespMyServicePutDataById() *respMyServicePutDataById {
 }
 
 func (x *respMyServicePutDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServicePutDataByIdAlias respMyServicePutDataById
+    valueAlias := (*respMyServicePutDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2139,7 +2166,9 @@ if err != nil {
 }
 
 func (x *reqMyServiceHasDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceHasDataByIdAlias reqMyServiceHasDataById
+    valueAlias := (*reqMyServiceHasDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2278,7 +2307,9 @@ if err != nil {
 }
 
 func (x *respMyServiceHasDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceHasDataByIdAlias respMyServiceHasDataById
+    valueAlias := (*respMyServiceHasDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2422,7 +2453,9 @@ if err != nil {
 }
 
 func (x *reqMyServiceGetDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceGetDataByIdAlias reqMyServiceGetDataById
+    valueAlias := (*reqMyServiceGetDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2561,7 +2594,9 @@ if err != nil {
 }
 
 func (x *respMyServiceGetDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceGetDataByIdAlias respMyServiceGetDataById
+    valueAlias := (*respMyServiceGetDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2705,7 +2740,9 @@ if err != nil {
 }
 
 func (x *reqMyServiceDeleteDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceDeleteDataByIdAlias reqMyServiceDeleteDataById
+    valueAlias := (*reqMyServiceDeleteDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2798,7 +2835,9 @@ func newRespMyServiceDeleteDataById() *respMyServiceDeleteDataById {
 }
 
 func (x *respMyServiceDeleteDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceDeleteDataByIdAlias respMyServiceDeleteDataById
+    valueAlias := (*respMyServiceDeleteDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2975,7 +3014,9 @@ if err != nil {
 }
 
 func (x *reqMyServiceLobDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceLobDataByIdAlias reqMyServiceLobDataById
+    valueAlias := (*reqMyServiceLobDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3081,7 +3122,9 @@ func newRespMyServiceLobDataById() *respMyServiceLobDataById {
 }
 
 func (x *respMyServiceLobDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceLobDataByIdAlias respMyServiceLobDataById
+    valueAlias := (*respMyServiceLobDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3166,7 +3209,9 @@ func newReqMyServiceInvalidReturnForHack() *reqMyServiceInvalidReturnForHack {
 }
 
 func (x *reqMyServiceInvalidReturnForHack) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceInvalidReturnForHackAlias reqMyServiceInvalidReturnForHack
+    valueAlias := (*reqMyServiceInvalidReturnForHackAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3244,7 +3289,7 @@ var _ thrift.WritableResult = &respMyServiceInvalidReturnForHack{}
 
 func newRespMyServiceInvalidReturnForHack() *respMyServiceInvalidReturnForHack {
     return (&respMyServiceInvalidReturnForHack{}).
-        SetValueNonCompat(make([]float32, 0))
+        SetValueNonCompat(nil)
 }
 
 func (x *respMyServiceInvalidReturnForHack) GetValueNonCompat() []float32 {
@@ -3253,7 +3298,7 @@ func (x *respMyServiceInvalidReturnForHack) GetValueNonCompat() []float32 {
 
 func (x *respMyServiceInvalidReturnForHack) GetValue() []float32 {
     if !x.IsSetValue() {
-        return make([]float32, 0)
+        return nil
     }
 
     return x.Value
@@ -3333,7 +3378,9 @@ result := setResult
 }
 
 func (x *respMyServiceInvalidReturnForHack) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceInvalidReturnForHackAlias respMyServiceInvalidReturnForHack
+    valueAlias := (*respMyServiceInvalidReturnForHackAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3431,7 +3478,9 @@ func newReqMyServiceRpcSkippedCodegen() *reqMyServiceRpcSkippedCodegen {
 }
 
 func (x *reqMyServiceRpcSkippedCodegen) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceRpcSkippedCodegenAlias reqMyServiceRpcSkippedCodegen
+    valueAlias := (*reqMyServiceRpcSkippedCodegenAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3511,7 +3560,9 @@ func newRespMyServiceRpcSkippedCodegen() *respMyServiceRpcSkippedCodegen {
 }
 
 func (x *respMyServiceRpcSkippedCodegen) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceRpcSkippedCodegenAlias respMyServiceRpcSkippedCodegen
+    valueAlias := (*respMyServiceRpcSkippedCodegenAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3671,7 +3722,7 @@ func (p *procFuncMyServicePing) Write(seqId int32, result thrift.WritableStruct,
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Ping", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("ping", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -3721,7 +3772,7 @@ func (p *procFuncMyServiceGetRandomData) Write(seqId int32, result thrift.Writab
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetRandomData", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getRandomData", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -3772,7 +3823,7 @@ func (p *procFuncMyServiceSink) Write(seqId int32, result thrift.WritableStruct,
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Sink", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("sink", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -3823,7 +3874,7 @@ func (p *procFuncMyServicePutDataById) Write(seqId int32, result thrift.Writable
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("PutDataById", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("putDataById", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -3874,7 +3925,7 @@ func (p *procFuncMyServiceHasDataById) Write(seqId int32, result thrift.Writable
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("HasDataById", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("hasDataById", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -3926,7 +3977,7 @@ func (p *procFuncMyServiceGetDataById) Write(seqId int32, result thrift.Writable
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetDataById", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getDataById", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -3978,7 +4029,7 @@ func (p *procFuncMyServiceDeleteDataById) Write(seqId int32, result thrift.Writa
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("DeleteDataById", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("deleteDataById", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -4029,7 +4080,7 @@ func (p *procFuncMyServiceLobDataById) Write(seqId int32, result thrift.Writable
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("LobDataById", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("lobDataById", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -4079,7 +4130,7 @@ func (p *procFuncMyServiceInvalidReturnForHack) Write(seqId int32, result thrift
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("InvalidReturnForHack", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("invalid_return_for_hack", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -4130,7 +4181,7 @@ func (p *procFuncMyServiceRpcSkippedCodegen) Write(seqId int32, result thrift.Wr
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("RpcSkippedCodegen", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("rpc_skipped_codegen", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -4198,6 +4249,7 @@ func (c *DbMixedStackArgumentsChannelClient) Open() error {
 // Deprecated: Use DbMixedStackArgumentsChannelClient instead.
 type DbMixedStackArgumentsClient struct {
     chClient *DbMixedStackArgumentsChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ DbMixedStackArgumentsClientInterface = &DbMixedStackArgumentsClient{}
@@ -4346,7 +4398,9 @@ if err != nil {
 }
 
 func (x *reqDbMixedStackArgumentsGetDataByKey0) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqDbMixedStackArgumentsGetDataByKey0Alias reqDbMixedStackArgumentsGetDataByKey0
+    valueAlias := (*reqDbMixedStackArgumentsGetDataByKey0Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -4471,7 +4525,7 @@ func (x *respDbMixedStackArgumentsGetDataByKey0) writeField0(p thrift.Protocol) 
         return nil
     }
 
-    if err := p.WriteFieldBegin("value", thrift.BINARY, 0); err != nil {
+    if err := p.WriteFieldBegin("value", thrift.STRING, 0); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -4497,7 +4551,9 @@ if err != nil {
 }
 
 func (x *respDbMixedStackArgumentsGetDataByKey0) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respDbMixedStackArgumentsGetDataByKey0Alias respDbMixedStackArgumentsGetDataByKey0
+    valueAlias := (*respDbMixedStackArgumentsGetDataByKey0Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -4641,7 +4697,9 @@ if err != nil {
 }
 
 func (x *reqDbMixedStackArgumentsGetDataByKey1) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqDbMixedStackArgumentsGetDataByKey1Alias reqDbMixedStackArgumentsGetDataByKey1
+    valueAlias := (*reqDbMixedStackArgumentsGetDataByKey1Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -4766,7 +4824,7 @@ func (x *respDbMixedStackArgumentsGetDataByKey1) writeField0(p thrift.Protocol) 
         return nil
     }
 
-    if err := p.WriteFieldBegin("value", thrift.BINARY, 0); err != nil {
+    if err := p.WriteFieldBegin("value", thrift.STRING, 0); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -4792,7 +4850,9 @@ if err != nil {
 }
 
 func (x *respDbMixedStackArgumentsGetDataByKey1) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respDbMixedStackArgumentsGetDataByKey1Alias respDbMixedStackArgumentsGetDataByKey1
+    valueAlias := (*respDbMixedStackArgumentsGetDataByKey1Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -4949,7 +5009,7 @@ func (p *procFuncDbMixedStackArgumentsGetDataByKey0) Write(seqId int32, result t
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetDataByKey0", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getDataByKey0", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -5001,7 +5061,7 @@ func (p *procFuncDbMixedStackArgumentsGetDataByKey1) Write(seqId int32, result t
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetDataByKey1", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getDataByKey1", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {

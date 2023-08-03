@@ -2,6 +2,8 @@
 
 from . import base
 
+import lldb
+
 import hhvm_lldb.utils as utils
 
 class UtilsGivenTargetTestCase(base.TestHHVMBinary):
@@ -32,18 +34,11 @@ class UtilsGivenTargetTestCase(base.TestHHVMBinary):
 
     def test_Global(self):
         g_code = utils.Global("HPHP::jit::tc::g_code", self.target)
-        self.assertTrue(g_code.IsValid())
         self.assertTrue(g_code.type.IsPointerType())
 
     def test_Enum(self):
         k_vec_kind = utils.Enum("HPHP::ArrayData::ArrayKind", "kVecKind", self.target)
-        self.assertTrue(k_vec_kind.IsValid())
         self.assertTrue(k_vec_kind.GetName(), "kVecKind")
-
-    def test_get(self):
-        g_code = utils.Global("HPHP::jit::tc::g_code", self.target)
-        code_size = utils.get(g_code, "m_threadLocalStart")
-        self.assertTrue(code_size.IsValid())
 
     def test_rawtype_remove_typedef(self):
         ty = utils.Type("HPHP::Native::NativeDataInfo::InitFunc", self.target)
@@ -62,6 +57,14 @@ class UtilsGivenTargetTestCase(base.TestHHVMBinary):
 class UtilsGivenFrameTestCase(base.TestHHVMBinary):
     def setUp(self):
         super().setUp(test_file="quick/method2.php", interp = True)
+
+    def test_get(self):
+        self.run_until_breakpoint("lookupObjMethod")
+        g_code = utils.Global("HPHP::jit::tc::g_code", self.target)
+        try:
+            utils.get(g_code, "m_threadLocalStart")
+        except Exception:
+            self.fail("Unable to get m_threadLocalStart from HPHP::jit::tc::g_code")
 
     def test_nameof_func(self):
         self.run_commands(["b lookupObjMethod", "continue", "thread step-out"])
@@ -98,7 +101,11 @@ class UtilsGivenFrameTestCase(base.TestHHVMBinary):
 
     def test_rawptr_std_unique_ptr(self):
         self.run_until_breakpoint("lookupObjMethod")
-        s_func_vec = utils.Global("HPHP::Func::s_funcVec", self.target)
+        try:
+            s_func_vec = utils.Global("HPHP::Func::s_funcVec")
+        except Exception:
+            # lowptr builds don't have a funcVec
+            return
         smart_ptr = utils.get(s_func_vec, "m_vals")
         self.assertEqual(utils.template_type(smart_ptr.type), "std::unique_ptr")
         raw_ptr = utils.rawptr(smart_ptr)
@@ -113,3 +120,47 @@ class UtilsGivenFrameTestCase(base.TestHHVMBinary):
         self.assertEqual(sp.unsigned, self.frame.sp)
         ip = utils.reg('ip', self.frame)
         self.assertEqual(ip.unsigned, self.frame.pc)
+
+
+class UtilsOnTypesBinaryTestCase(base.TestHHVMTypesBinary):
+    def setUp(self):
+        super().setUp(test_type = "utility")
+
+    def test_utility_functions(self):
+        with self.subTest("HHVMString"):
+            self.run_until_breakpoint("takeHHVMString")
+            s = self.frame.FindVariable("v")
+            info = utils.strinfo(s)
+            self.assertEqual(info["data"], "Most excellent")
+            self.assertEqual(info["hash"], 900261463)
+
+        with self.subTest("char*"):
+            self.run_until_breakpoint("takeCharPtr")
+            s = self.frame.FindVariable("v")
+            info = utils.strinfo(s)
+            self.assertEqual(info["data"], "Very excellent")
+            self.assertEqual(info["hash"], 527044057)
+
+        with self.subTest("StaticString"):
+            self.run_until_breakpoint("takeStaticString")
+            s = self.frame.FindVariable("v")
+            info = utils.strinfo(s)
+            self.assertEqual(info["data"], "cats and dogs")
+            self.assertEqual(info["hash"], 1462514979)
+
+        with self.subTest("StrNR"):
+            self.run_until_breakpoint("takeStrNR")
+            s = self.frame.FindVariable("v")
+            info = utils.strinfo(s)
+            self.assertEqual(info["data"], "lions and tigers")
+            self.assertEqual(info["hash"], 2000936965)
+        
+        with self.subTest("ptr_add"):
+            self.run_until_breakpoint("takeStringData")
+            s = self.frame.FindVariable("v")
+            self.assertTrue(s.TypeIsPointerType())
+
+            s_plus_1 = utils.ptr_add(s, 1)
+            self.assertIsInstance(s_plus_1, lldb.SBValue)
+            self.assertTrue(s_plus_1, lldb.SBValue)
+            self.assertEqual(s_plus_1.unsigned, s.unsigned + 16)

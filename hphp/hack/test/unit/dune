@@ -13,7 +13,7 @@
   errors
   naming_global
   naming_table
-  package
+  package_info
   provider_context
   tast_provider))
 
@@ -35,7 +35,6 @@
   server_monitor
   telemetry_test_utils
   typing_check
-  typing_service_api
   unit_test))
 
 (rule

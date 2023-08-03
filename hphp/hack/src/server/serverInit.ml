@@ -66,7 +66,6 @@ let post_init genv (env, _t) =
       env with
       local_symbol_table =
         SymbolIndex.initialize
-          ~globalrev:None
           ~gleanopt:env.gleanopt
           ~namespace_map
           ~provider_name:
@@ -90,39 +89,6 @@ let get_lazy_level (genv : ServerEnv.genv) : lazy_level =
   | (true, true, false) -> Parse
   | (true, true, true) -> Init
   | _ -> Off
-
-let remote_init genv env root worker_key nonce check_id _profiling =
-  if not (ServerArgs.check_mode genv.options) then
-    failwith "Remote init is only supported in check (run once) mode";
-  let bin_root = Path.make (Filename.dirname Sys.argv.(0)) in
-  let t = Unix.gettimeofday () in
-  let ctx = Provider_utils.ctx_from_server_env env in
-  let cache_remote_decls =
-    genv.local_config.ServerLocalConfig.cache_remote_decls
-  in
-  let use_shallow_decls_saved_state =
-    genv.local_config.ServerLocalConfig.use_shallow_decls_saved_state
-  in
-  let open ServerLocalConfig in
-  let { init_id; ci_info; init_start_t; _ } = env.init_env in
-  ServerRemoteInit.init
-    ctx
-    genv.workers
-    ~worker_key
-    ~nonce
-    ~check_id
-    ~ci_info
-    ~init_id
-    ~init_start_t
-    ~bin_root
-    ~root
-    ~cache_remote_decls
-    ~use_shallow_decls_saved_state
-    ~saved_state_manifold_path:
-      genv.local_config.remote_worker_saved_state_manifold_path
-    ~shallow_decls_manifold_path:genv.local_config.shallow_decls_manifold_path;
-  let _ = Hh_logger.log_duration "Remote type check" t in
-  (env, Load_state_declined "Out-of-band naming table initialization only")
 
 let lazy_full_init genv env profiling =
   ( ServerLazyInit.full_init genv env profiling |> post_init genv,
@@ -231,21 +197,12 @@ let init
   );
   let lazy_lev = get_lazy_level genv in
   let root = ServerArgs.root genv.options in
-  let (lazy_lev, init_approach) =
-    if TypecheckerOptions.global_inference env.tcopt then (
-      Typing_global_inference.init ();
-      (Off, Full_init)
-    ) else
-      (lazy_lev, init_approach)
-  in
   let (init_method, init_method_name) =
     Hh_logger.log "ServerInit: lazy_lev=%s" (show_lazy_level lazy_lev);
     Hh_logger.log
       "ServerInit: init_approach=%s"
       (show_init_approach init_approach);
     match (lazy_lev, init_approach) with
-    | (_, Remote_init { worker_key; nonce; check_id }) ->
-      (remote_init genv env root worker_key nonce check_id, "remote_init")
     | (Init, Full_init) -> (lazy_full_init genv env, "lazy_full_init")
     | (Init, Parse_only_init) ->
       (lazy_parse_only_init genv env, "lazy_parse_only_init")

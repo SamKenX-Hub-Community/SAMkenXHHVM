@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<fc35bda8d16e7d483f9dce7613e09f27>>
+// @generated SignedSource<<2537c375f61a4ae9338b381b0392ceb7>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -111,7 +111,7 @@ pub type Program = aast::Program<Ty, SavedEnv>;
 pub type Def = aast::Def<Ty, SavedEnv>;
 
 #[rust_to_ocaml(attr = "deriving hash")]
-pub type DefList = Vec<Def>;
+pub type DefWithDynamic = tast_with_dynamic::TastWithDynamic<Def>;
 
 pub type Expr = aast::Expr<Ty, SavedEnv>;
 
@@ -166,3 +166,24 @@ pub type Typedef = aast::Typedef<Ty, SavedEnv>;
 pub type Gconst = aast::Gconst<Ty, SavedEnv>;
 
 pub type ModuleDef = aast::ModuleDef<Ty, SavedEnv>;
+
+pub type CallExpr = aast::CallExpr<Ty, SavedEnv>;
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    FromOcamlRep,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
+#[repr(C)]
+pub struct ByNames {
+    pub fun_tasts: s_map::SMap<tast_with_dynamic::TastWithDynamic<Def>>,
+    pub class_tasts: s_map::SMap<tast_with_dynamic::TastWithDynamic<Def>>,
+    pub typedef_tasts: s_map::SMap<Def>,
+    pub gconst_tasts: s_map::SMap<Def>,
+    pub module_tasts: s_map::SMap<Def>,
+}

@@ -71,15 +71,8 @@ type t = {
   tco_num_local_workers: int option;
   tco_max_typechecker_worker_memory_mb: int option;
   tco_defer_class_declaration_threshold: int option;
-  tco_prefetch_deferred_files: bool;
-  tco_remote_type_check_threshold: int;
-  tco_remote_type_check: bool;
-  tco_remote_worker_key: string option;
-  tco_remote_check_id: string option;
-  tco_num_remote_workers: int;
   tco_locl_cache_capacity: int;
   tco_locl_cache_node_threshold: int;
-  so_remote_version_specifier: string option;
   so_naming_sqlite_path: string option;
   po_auto_namespace_map: (string * string) list;
   po_codegen: bool;
@@ -112,13 +105,11 @@ type t = {
   tco_check_xhp_attribute: bool;
   tco_check_redundant_generics: bool;
   tco_disallow_unresolved_type_variables: bool;
+  tco_custom_error_config: Custom_error_config.t;
   po_enable_class_level_where_clauses: bool;
   po_disable_legacy_soft_typehints: bool;
   po_allowed_decl_fixme_codes: ISet.t;
   po_allow_new_attribute_syntax: bool;
-  tco_global_inference: bool;
-  tco_gi_reinfer_types: string list;
-  tco_ordered_solving: bool;
   tco_const_static_props: bool;
   po_disable_legacy_attribute_syntax: bool;
   tco_const_attribute: bool;
@@ -128,9 +119,6 @@ type t = {
   po_abstract_static_props: bool;
   po_parser_errors_only: bool;
   tco_check_attribute_locations: bool;
-  glean_service: string;
-  glean_hostname: string;
-  glean_port: int;
   glean_reponame: string;
   symbol_write_ownership: bool;
   symbol_write_root_path: string;
@@ -151,12 +139,14 @@ type t = {
   po_disable_xhp_element_mangling: bool;
   po_disable_xhp_children_declarations: bool;
   po_disable_hh_ignore_error: int;
+  po_keep_user_attributes: bool;
   tco_is_systemlib: bool;
   tco_higher_kinded_types: bool;
   tco_method_call_inference: bool;
   tco_report_pos_from_reason: bool;
   tco_typecheck_sample_rate: float;
   tco_enable_sound_dynamic: bool;
+  tco_pessimise_builtins: bool;
   tco_enable_no_auto_dynamic: bool;
   tco_skip_check_under_dynamic: bool;
   tco_ifc_enabled: string list;
@@ -192,10 +182,12 @@ type t = {
   tco_populate_dead_unsafe_cast_heap: bool;
   po_disallow_static_constants_in_default_func_args: bool;
   tco_load_hack_64_distc_saved_state: bool;
-  tco_ide_should_use_hack_64_distc: bool;
-  tco_tast_under_dynamic: bool;
   tco_rust_elab: bool;
-  tco_ide_load_naming_table_on_disk: bool;
+  dump_tast_hashes: bool;
+  tco_autocomplete_mode: bool;
+  tco_package_info: PackageInfo.t;
+  po_unwrap_concurrent: bool;
+  tco_log_exhaustivity_check: bool;
 }
 [@@deriving eq, show]
 
@@ -207,15 +199,8 @@ let default =
     tco_num_local_workers = None;
     tco_max_typechecker_worker_memory_mb = None;
     tco_defer_class_declaration_threshold = None;
-    tco_prefetch_deferred_files = false;
-    tco_remote_type_check_threshold = 1_000_000;
-    tco_remote_type_check = true;
-    tco_remote_worker_key = None;
-    tco_remote_check_id = None;
     tco_locl_cache_capacity = 30;
     tco_locl_cache_node_threshold = 10_000;
-    tco_num_remote_workers = 4;
-    so_remote_version_specifier = None;
     so_naming_sqlite_path = None;
     po_auto_namespace_map = [];
     po_codegen = false;
@@ -248,13 +233,11 @@ let default =
     tco_check_xhp_attribute = false;
     tco_check_redundant_generics = false;
     tco_disallow_unresolved_type_variables = false;
+    tco_custom_error_config = Custom_error_config.empty;
     po_enable_class_level_where_clauses = false;
     po_disable_legacy_soft_typehints = true;
     po_allowed_decl_fixme_codes = ISet.empty;
     po_allow_new_attribute_syntax = false;
-    tco_global_inference = false;
-    tco_gi_reinfer_types = [];
-    tco_ordered_solving = false;
     tco_const_static_props = false;
     po_disable_legacy_attribute_syntax = false;
     tco_const_attribute = false;
@@ -264,9 +247,6 @@ let default =
     po_abstract_static_props = false;
     po_parser_errors_only = false;
     tco_check_attribute_locations = true;
-    glean_service = "";
-    glean_hostname = "";
-    glean_port = 0;
     glean_reponame = "www.autocomplete";
     symbol_write_ownership = false;
     symbol_write_root_path = "www";
@@ -275,7 +255,7 @@ let default =
     symbol_write_index_paths = [];
     symbol_write_index_paths_file = None;
     symbol_write_index_paths_file_output = None;
-    symbol_write_include_hhi = true;
+    symbol_write_include_hhi = false;
     symbol_write_sym_hash_in = None;
     symbol_write_exclude_out = None;
     symbol_write_referenced_out = None;
@@ -287,12 +267,14 @@ let default =
     po_disable_xhp_element_mangling = true;
     po_disable_xhp_children_declarations = true;
     po_disable_hh_ignore_error = 0;
+    po_keep_user_attributes = false;
     tco_is_systemlib = false;
     tco_higher_kinded_types = false;
     tco_method_call_inference = false;
     tco_report_pos_from_reason = false;
     tco_typecheck_sample_rate = 1.0;
     tco_enable_sound_dynamic = false;
+    tco_pessimise_builtins = false;
     tco_enable_no_auto_dynamic = false;
     tco_skip_check_under_dynamic = false;
     tco_ifc_enabled = [];
@@ -328,10 +310,12 @@ let default =
     tco_populate_dead_unsafe_cast_heap = false;
     po_disallow_static_constants_in_default_func_args = false;
     tco_load_hack_64_distc_saved_state = false;
-    tco_ide_should_use_hack_64_distc = false;
-    tco_tast_under_dynamic = false;
     tco_rust_elab = false;
-    tco_ide_load_naming_table_on_disk = false;
+    dump_tast_hashes = false;
+    tco_autocomplete_mode = false;
+    tco_package_info = PackageInfo.empty;
+    po_unwrap_concurrent = false;
+    tco_log_exhaustivity_check = false;
   }
 
 let set
@@ -345,15 +329,8 @@ let set
     ?tco_num_local_workers
     ?tco_max_typechecker_worker_memory_mb
     ?tco_defer_class_declaration_threshold
-    ?tco_prefetch_deferred_files
-    ?tco_remote_type_check_threshold
-    ?tco_remote_type_check
-    ?tco_remote_worker_key
-    ?tco_remote_check_id
-    ?tco_num_remote_workers
     ?tco_locl_cache_capacity
     ?tco_locl_cache_node_threshold
-    ?so_remote_version_specifier
     ?so_naming_sqlite_path
     ?po_auto_namespace_map
     ?po_codegen
@@ -381,13 +358,11 @@ let set
     ?tco_check_xhp_attribute
     ?tco_check_redundant_generics
     ?tco_disallow_unresolved_type_variables
+    ?tco_custom_error_config
     ?po_enable_class_level_where_clauses
     ?po_disable_legacy_soft_typehints
     ?po_allowed_decl_fixme_codes
     ?po_allow_new_attribute_syntax
-    ?tco_global_inference
-    ?tco_gi_reinfer_types
-    ?tco_ordered_solving
     ?tco_const_static_props
     ?po_disable_legacy_attribute_syntax
     ?tco_const_attribute
@@ -397,9 +372,6 @@ let set
     ?po_abstract_static_props
     ?po_parser_errors_only
     ?tco_check_attribute_locations
-    ?glean_service
-    ?glean_hostname
-    ?glean_port
     ?glean_reponame
     ?symbol_write_ownership
     ?symbol_write_root_path
@@ -420,6 +392,7 @@ let set
     ?po_disable_xhp_element_mangling
     ?po_disable_xhp_children_declarations
     ?po_disable_hh_ignore_error
+    ?po_keep_user_attributes
     ?po_allow_unstable_features
     ?tco_is_systemlib
     ?tco_higher_kinded_types
@@ -427,6 +400,7 @@ let set
     ?tco_report_pos_from_reason
     ?tco_typecheck_sample_rate
     ?tco_enable_sound_dynamic
+    ?tco_pessimise_builtins
     ?tco_enable_no_auto_dynamic
     ?tco_skip_check_under_dynamic
     ?tco_ifc_enabled
@@ -462,10 +436,12 @@ let set
     ?tco_populate_dead_unsafe_cast_heap
     ?po_disallow_static_constants_in_default_func_args
     ?tco_load_hack_64_distc_saved_state
-    ?tco_ide_should_use_hack_64_distc
-    ?tco_tast_under_dynamic
     ?tco_rust_elab
-    ?tco_ide_load_naming_table_on_disk
+    ?dump_tast_hashes
+    ?tco_autocomplete_mode
+    ?tco_package_info
+    ?po_unwrap_concurrent
+    ?tco_log_exhaustivity_check
     options =
   let setting setting option =
     match setting with
@@ -493,30 +469,12 @@ let set
       setting_opt
         tco_defer_class_declaration_threshold
         options.tco_defer_class_declaration_threshold;
-    tco_prefetch_deferred_files =
-      setting tco_prefetch_deferred_files options.tco_prefetch_deferred_files;
-    tco_remote_type_check_threshold =
-      setting
-        tco_remote_type_check_threshold
-        options.tco_remote_type_check_threshold;
-    tco_remote_type_check =
-      setting tco_remote_type_check options.tco_remote_type_check;
-    tco_remote_worker_key =
-      setting_opt tco_remote_worker_key options.tco_remote_worker_key;
-    tco_remote_check_id =
-      setting_opt tco_remote_check_id options.tco_remote_check_id;
-    tco_num_remote_workers =
-      setting tco_num_remote_workers options.tco_num_remote_workers;
     tco_locl_cache_capacity =
       setting tco_locl_cache_capacity options.tco_locl_cache_capacity;
     tco_locl_cache_node_threshold =
       setting
         tco_locl_cache_node_threshold
         options.tco_locl_cache_node_threshold;
-    so_remote_version_specifier =
-      setting_opt
-        so_remote_version_specifier
-        options.so_remote_version_specifier;
     so_naming_sqlite_path =
       setting_opt so_naming_sqlite_path options.so_naming_sqlite_path;
     po_auto_namespace_map =
@@ -594,6 +552,8 @@ let set
       setting
         tco_disallow_unresolved_type_variables
         options.tco_disallow_unresolved_type_variables;
+    tco_custom_error_config =
+      setting tco_custom_error_config options.tco_custom_error_config;
     po_enable_class_level_where_clauses =
       setting
         po_enable_class_level_where_clauses
@@ -608,12 +568,6 @@ let set
       setting
         po_allow_new_attribute_syntax
         options.po_allow_new_attribute_syntax;
-    tco_global_inference =
-      setting tco_global_inference options.tco_global_inference;
-    tco_gi_reinfer_types =
-      setting tco_gi_reinfer_types options.tco_gi_reinfer_types;
-    tco_ordered_solving =
-      setting tco_ordered_solving options.tco_ordered_solving;
     tco_const_static_props =
       setting tco_const_static_props options.tco_const_static_props;
     po_disable_legacy_attribute_syntax =
@@ -636,9 +590,6 @@ let set
       setting
         tco_check_attribute_locations
         options.tco_check_attribute_locations;
-    glean_service = setting glean_service options.glean_service;
-    glean_hostname = setting glean_hostname options.glean_hostname;
-    glean_port = setting glean_port options.glean_port;
     glean_reponame = setting glean_reponame options.glean_reponame;
     symbol_write_ownership =
       setting symbol_write_ownership options.symbol_write_ownership;
@@ -692,6 +643,8 @@ let set
         options.po_disable_xhp_children_declarations;
     po_disable_hh_ignore_error =
       setting po_disable_hh_ignore_error options.po_disable_hh_ignore_error;
+    po_keep_user_attributes =
+      setting po_keep_user_attributes options.po_keep_user_attributes;
     tco_is_systemlib = setting tco_is_systemlib options.tco_is_systemlib;
     tco_higher_kinded_types =
       setting tco_higher_kinded_types options.tco_higher_kinded_types;
@@ -703,6 +656,8 @@ let set
       setting tco_typecheck_sample_rate options.tco_typecheck_sample_rate;
     tco_enable_sound_dynamic =
       setting tco_enable_sound_dynamic options.tco_enable_sound_dynamic;
+    tco_pessimise_builtins =
+      setting tco_pessimise_builtins options.tco_pessimise_builtins;
     tco_enable_no_auto_dynamic =
       setting tco_enable_no_auto_dynamic options.tco_enable_no_auto_dynamic;
     tco_skip_check_under_dynamic =
@@ -809,20 +764,16 @@ let set
       setting
         tco_load_hack_64_distc_saved_state
         options.tco_load_hack_64_distc_saved_state;
-    tco_ide_should_use_hack_64_distc =
-      setting
-        tco_ide_should_use_hack_64_distc
-        options.tco_ide_should_use_hack_64_distc;
-    tco_tast_under_dynamic =
-      setting tco_tast_under_dynamic options.tco_tast_under_dynamic;
     tco_rust_elab = setting tco_rust_elab options.tco_rust_elab;
-    tco_ide_load_naming_table_on_disk =
-      setting
-        tco_ide_load_naming_table_on_disk
-        options.tco_ide_load_naming_table_on_disk;
+    dump_tast_hashes = setting dump_tast_hashes options.dump_tast_hashes;
+    tco_autocomplete_mode =
+      setting tco_autocomplete_mode options.tco_autocomplete_mode;
+    tco_package_info = setting tco_package_info options.tco_package_info;
+    po_unwrap_concurrent =
+      setting po_unwrap_concurrent options.po_unwrap_concurrent;
+    tco_log_exhaustivity_check =
+      setting tco_log_exhaustivity_check options.tco_log_exhaustivity_check;
   }
-
-let so_remote_version_specifier t = t.so_remote_version_specifier
 
 let so_naming_sqlite_path t = t.so_naming_sqlite_path
 

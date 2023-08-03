@@ -9,7 +9,6 @@
 #include <thrift/lib/cpp2/gen/module_types_h.h>
 
 
-#include "thrift/annotation/gen-cpp2/cpp_types.h"
 
 namespace apache {
 namespace thrift {
@@ -258,8 +257,8 @@ class Foo final  {
 
  public:
 
-  Foo() {
-  }
+  Foo();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   Foo(apache::thrift::FragileConstructor, ::std::vector<double> field1__arg, ::std::vector<::std::int32_t> field2__arg, ::std::vector<double> field3__arg, ::std::vector<::std::int32_t> field4__arg);
@@ -271,6 +270,9 @@ class Foo final  {
 
   Foo& operator=(Foo&&) noexcept;
   Foo& operator=(const Foo& src);
+
+  ~Foo();
+
  private:
   ::std::vector<double> __fbthrift_field_field1;
  private:
@@ -562,8 +564,8 @@ class LazyFoo final  {
 
  public:
 
-  LazyFoo() {
-  }
+  LazyFoo();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   LazyFoo(apache::thrift::FragileConstructor, ::std::vector<double> field1__arg, ::std::vector<::std::int32_t> field2__arg, ::std::vector<double> field3__arg, ::std::vector<::std::int32_t> field4__arg);
@@ -574,6 +576,9 @@ class LazyFoo final  {
 
   LazyFoo& operator=(LazyFoo&&) noexcept;
   LazyFoo& operator=(const LazyFoo& src);
+
+  ~LazyFoo();
+
  private:
   ::std::vector<double> __fbthrift_field_field1;
  private:
@@ -870,8 +875,8 @@ class OptionalFoo final  {
 
  public:
 
-  OptionalFoo() {
-  }
+  OptionalFoo();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   OptionalFoo(apache::thrift::FragileConstructor, ::std::vector<double> field1__arg, ::std::vector<::std::int32_t> field2__arg, ::std::vector<double> field3__arg, ::std::vector<::std::int32_t> field4__arg);
@@ -883,6 +888,9 @@ class OptionalFoo final  {
 
   OptionalFoo& operator=(OptionalFoo&&) noexcept;
   OptionalFoo& operator=(const OptionalFoo& src);
+
+  ~OptionalFoo();
+
  private:
   ::std::vector<double> __fbthrift_field_field1;
  private:
@@ -1178,8 +1186,8 @@ class OptionalLazyFoo final  {
 
  public:
 
-  OptionalLazyFoo() {
-  }
+  OptionalLazyFoo();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   OptionalLazyFoo(apache::thrift::FragileConstructor, ::std::vector<double> field1__arg, ::std::vector<::std::int32_t> field2__arg, ::std::vector<double> field3__arg, ::std::vector<::std::int32_t> field4__arg);
@@ -1190,6 +1198,9 @@ class OptionalLazyFoo final  {
 
   OptionalLazyFoo& operator=(OptionalLazyFoo&&) noexcept;
   OptionalLazyFoo& operator=(const OptionalLazyFoo& src);
+
+  ~OptionalLazyFoo();
+
  private:
   ::std::vector<double> __fbthrift_field_field1;
  private:
@@ -1488,9 +1499,8 @@ class LazyCppRef final  {
 
  public:
 
-  LazyCppRef() :
-      __fbthrift_field_field4(std::make_unique<::std::vector<::std::int32_t>>()) {
-  }
+  LazyCppRef();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   LazyCppRef(apache::thrift::FragileConstructor, ::std::unique_ptr<::std::vector<::std::int32_t>> field1__arg, ::std::shared_ptr<::std::vector<::std::int32_t>> field2__arg, ::std::shared_ptr<const ::std::vector<::std::int32_t>> field3__arg, ::std::unique_ptr<::std::vector<::std::int32_t>> field4__arg);
@@ -1501,6 +1511,9 @@ class LazyCppRef final  {
 
   LazyCppRef& operator=(LazyCppRef&&) noexcept;
   LazyCppRef& operator=(const LazyCppRef& src);
+
+  ~LazyCppRef();
+
  private:
   mutable ::std::unique_ptr<::std::vector<::std::int32_t>> __fbthrift_field_field1;
  private:

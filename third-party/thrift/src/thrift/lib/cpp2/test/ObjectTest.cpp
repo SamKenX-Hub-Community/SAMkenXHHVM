@@ -56,13 +56,6 @@ namespace {
 
 namespace testset = apache::thrift::test::testset;
 
-template <typename C>
-decltype(auto) at(C& container, size_t i) {
-  auto itr = container.begin();
-  std::advance(itr, i);
-  return *itr;
-}
-
 template <typename Protocol>
 MaskedDecodeResult parseObjectWithTest(
     const folly::IOBuf& buf, Mask mask, bool string_to_binary = true) {
@@ -196,63 +189,37 @@ TEST(ObjectTest, List) {
   }
 
   // Works with other containers
-  value = asValueStruct<type::list<type::i16_t>>(
-      std::set<int>(data.begin(), data.end()));
+  std::set<int> s(data.begin(), data.end());
+  value = asValueStruct<type::list<type::i16_t>>(s);
   std::sort(data.begin(), data.end());
   ASSERT_EQ(value.getType(), Value::Type::listValue);
   ASSERT_EQ(value.get_listValue().size(), data.size());
   for (size_t i = 0; i < data.size(); ++i) {
     EXPECT_EQ(value.get_listValue()[i], asValueStruct<type::i16_t>(data[i]));
   }
-}
 
-TEST(ObjectTest, List_Move) {
-  // Validate the premise of the test.
-  std::string s1 = "hi";
-  std::string s2 = std::move(s1);
-  EXPECT_EQ(s1, "");
-  EXPECT_EQ(s2, "hi");
-
-  std::vector<std::string> data;
-  data.emplace_back("hi");
-  data.emplace_back("bye");
-
-  Value value = asValueStruct<type::list<type::string_t>>(data);
-  // The strings are unchanged
-  EXPECT_THAT(data, ::testing::ElementsAre("hi", "bye"));
-  ASSERT_EQ(value.getType(), Value::Type::listValue);
-  ASSERT_EQ(value.get_listValue().size(), 2);
-  EXPECT_EQ(value.get_listValue()[0].get_stringValue(), "hi");
-  EXPECT_EQ(value.get_listValue()[1].get_stringValue(), "bye");
-
-  value = asValueStruct<type::list<type::string_t>>(std::move(data));
-
-  // The strings have been moved.
-  EXPECT_THAT(data, ::testing::ElementsAre("", ""));
-  ASSERT_EQ(value.getType(), Value::Type::listValue);
-  ASSERT_EQ(value.get_listValue().size(), 2);
-  EXPECT_EQ(value.get_listValue()[0].get_stringValue(), "hi");
-  EXPECT_EQ(value.get_listValue()[1].get_stringValue(), "bye");
+  // Works with cpp_type type tag
+  Value value2 =
+      asValueStruct<type::cpp_type<std::set<int>, type::list<type::i16_t>>>(s);
+  EXPECT_EQ(value, value2);
 }
 
 TEST(ObjectTest, Set) {
   std::set<int> data = {1, 4, 2};
   Value value = asValueStruct<type::set<type::i16_t>>(data);
   ASSERT_EQ(value.getType(), Value::Type::setValue);
-  ASSERT_EQ(value.get_setValue().size(), data.size());
-  for (size_t i = 0; i < data.size(); ++i) {
-    EXPECT_EQ(
-        at(value.get_setValue(), i), asValueStruct<type::i16_t>(at(data, i)));
+  ASSERT_EQ(value.setValue_ref()->size(), data.size());
+  for (const Value& v : value.setValue_ref().value()) {
+    ASSERT_TRUE(data.contains(v.as_i16()));
   }
 
   // Works with other containers
   value = asValueStruct<type::set<type::i16_t>>(
       std::vector<int>(data.begin(), data.end()));
   ASSERT_EQ(value.getType(), Value::Type::setValue);
-  ASSERT_EQ(value.get_setValue().size(), data.size());
-  for (size_t i = 0; i < data.size(); ++i) {
-    EXPECT_EQ(
-        at(value.get_setValue(), i), asValueStruct<type::i16_t>(at(data, i)));
+  ASSERT_EQ(value.setValue_ref()->size(), data.size());
+  for (const Value& v : value.setValue_ref().value()) {
+    ASSERT_TRUE(data.contains(v.as_i16()));
   }
 }
 
@@ -356,7 +323,11 @@ TEST(ObjectTest, serializeObject) {
   auto expected = iobufQueue.move();
   auto object = parseObject<BinarySerializer::ProtocolReader>(*expected);
   auto actual = serializeObject<BinarySerializer::ProtocolWriter>(object);
-  EXPECT_TRUE(folly::IOBufEqualTo{}(*actual, *expected));
+  auto objectd = parseObject<BinarySerializer::ProtocolReader>(*actual);
+  EXPECT_EQ(objectd.members_ref()->size(), 1);
+  EXPECT_EQ(
+      objectd.members_ref()->at(1),
+      asValueStruct<type::set<type::i64_t>>(setValues));
 }
 
 TEST(ObjectTest, ValueUnionTypeMatch) {
@@ -664,7 +635,7 @@ TEST(Value, Wrapper) {
   const std::vector<Value> l = {
       asValueStruct<type::i32_t>(10), asValueStruct<type::i32_t>(20)};
 
-  const std::set<Value> s = {
+  const folly::F14FastSet<Value> s = {
       asValueStruct<type::i32_t>(30), asValueStruct<type::i32_t>(40)};
 
   const folly::F14FastMap<Value, Value> m = {
@@ -1124,7 +1095,6 @@ TEST(ObjectTest, ToDynamic) {
   EXPECT_EQ(toDynamic(v), folly::dynamic::array(1, 4, 2));
 
   v = asValueStruct<type::set<type::i16_t>>({1, 4, 2});
-  EXPECT_EQ(toDynamic(v), folly::dynamic::array(1, 2, 4));
 
   v = asValueStruct<type::map<type::string_t, type::string_t>>(
       {{"1", "10"}, {"4", "40"}, {"2", "20"}});

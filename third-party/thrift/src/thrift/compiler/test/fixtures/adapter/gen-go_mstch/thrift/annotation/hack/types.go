@@ -6,11 +6,9 @@ package hack // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    scope "thrift/annotation/scope"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = scope.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
@@ -73,7 +71,9 @@ if err != nil {
 }
 
 func (x *FieldWrapper) String() string {
-    return fmt.Sprintf("%+v", x)
+    type FieldWrapperAlias FieldWrapper
+    valueAlias := (*FieldWrapperAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -304,7 +304,9 @@ if err != nil {
 }
 
 func (x *Wrapper) String() string {
-    return fmt.Sprintf("%+v", x)
+    type WrapperAlias Wrapper
+    valueAlias := (*WrapperAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -469,7 +471,9 @@ if err != nil {
 }
 
 func (x *Adapter) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AdapterAlias Adapter
+    valueAlias := (*AdapterAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -608,7 +612,9 @@ if err != nil {
 }
 
 func (x *SkipCodegen) String() string {
-    return fmt.Sprintf("%+v", x)
+    type SkipCodegenAlias SkipCodegen
+    valueAlias := (*SkipCodegenAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -793,7 +799,9 @@ if err != nil {
 }
 
 func (x *Name) String() string {
-    return fmt.Sprintf("%+v", x)
+    type NameAlias Name
+    valueAlias := (*NameAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -897,7 +905,7 @@ var _ thrift.Struct = &UnionEnumAttributes{}
 
 func NewUnionEnumAttributes() *UnionEnumAttributes {
     return (&UnionEnumAttributes{}).
-        SetAttributesNonCompat(make([]string, 0))
+        SetAttributesNonCompat(nil)
 }
 
 func (x *UnionEnumAttributes) GetAttributesNonCompat() []string {
@@ -906,7 +914,7 @@ func (x *UnionEnumAttributes) GetAttributesNonCompat() []string {
 
 func (x *UnionEnumAttributes) GetAttributes() []string {
     if !x.IsSetAttributes() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.Attributes
@@ -986,7 +994,9 @@ result := listResult
 }
 
 func (x *UnionEnumAttributes) String() string {
-    return fmt.Sprintf("%+v", x)
+    type UnionEnumAttributesAlias UnionEnumAttributes
+    valueAlias := (*UnionEnumAttributesAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1125,7 +1135,9 @@ if err != nil {
 }
 
 func (x *StructTrait) String() string {
-    return fmt.Sprintf("%+v", x)
+    type StructTraitAlias StructTrait
+    valueAlias := (*StructTraitAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1216,7 +1228,7 @@ var _ thrift.Struct = &Attributes{}
 
 func NewAttributes() *Attributes {
     return (&Attributes{}).
-        SetAttributesNonCompat(make([]string, 0))
+        SetAttributesNonCompat(nil)
 }
 
 func (x *Attributes) GetAttributesNonCompat() []string {
@@ -1225,7 +1237,7 @@ func (x *Attributes) GetAttributesNonCompat() []string {
 
 func (x *Attributes) GetAttributes() []string {
     if !x.IsSetAttributes() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.Attributes
@@ -1305,7 +1317,9 @@ result := listResult
 }
 
 func (x *Attributes) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AttributesAlias Attributes
+    valueAlias := (*AttributesAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1398,7 +1412,9 @@ func NewStructAsTrait() *StructAsTrait {
 }
 
 func (x *StructAsTrait) String() string {
-    return fmt.Sprintf("%+v", x)
+    type StructAsTraitAlias StructAsTrait
+    valueAlias := (*StructAsTraitAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1478,7 +1494,9 @@ func NewModuleInternal() *ModuleInternal {
 }
 
 func (x *ModuleInternal) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ModuleInternalAlias ModuleInternal
+    valueAlias := (*ModuleInternalAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

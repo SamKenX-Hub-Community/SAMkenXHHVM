@@ -7,7 +7,7 @@ use macros::HasLocals;
 use macros::HasOperands;
 use newtype::newtype_int;
 use smallvec::SmallVec;
-use strum_macros::Display;
+use strum::Display;
 
 use crate::BareThisOp;
 use crate::BlockId;
@@ -590,6 +590,13 @@ pub enum BaseOp {
         readonly: ReadonlyOp,
         loc: LocId,
     },
+    // Not allowed in HHBC - Get base from static property.
+    BaseST {
+        mode: MOpMode,
+        readonly: ReadonlyOp,
+        loc: LocId,
+        prop: PropId,
+    },
 }
 
 #[derive(Debug, HasLoc, Clone, PartialEq, Eq)]
@@ -694,7 +701,8 @@ impl MemberOp {
             BaseOp::BaseGC { .. }
             | BaseOp::BaseH { .. }
             | BaseOp::BaseL { .. }
-            | BaseOp::BaseSC { .. } => 0,
+            | BaseOp::BaseSC { .. }
+            | BaseOp::BaseST { .. } => 0,
         };
         rets_from_base + rets_from_final
     }

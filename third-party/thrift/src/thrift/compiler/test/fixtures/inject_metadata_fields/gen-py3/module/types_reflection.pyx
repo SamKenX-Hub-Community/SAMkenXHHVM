@@ -14,7 +14,6 @@ from thrift.py3.reflection cimport (
     Qualifier as __Qualifier,
 )
 
-cimport facebook.thrift.annotation.internal.types as _facebook_thrift_annotation_internal_types
 cimport foo.types as _foo_types
 
 cimport module.types as _module_types
@@ -41,6 +40,7 @@ cdef __StructSpec get_reflection__Fields():
         __FieldSpec._fbthrift_create(
             id=100,
             name="injected_field",
+            py_name="injected_field",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -66,6 +66,7 @@ cdef __StructSpec get_reflection__FieldsInjectedToEmptyStruct():
         __FieldSpec._fbthrift_create(
             id=-1100,
             name="injected_field",
+            py_name="injected_field",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -91,6 +92,7 @@ cdef __StructSpec get_reflection__FieldsInjectedToStruct():
         __FieldSpec._fbthrift_create(
             id=1,
             name="string_field",
+            py_name="string_field",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -103,6 +105,7 @@ cdef __StructSpec get_reflection__FieldsInjectedToStruct():
         __FieldSpec._fbthrift_create(
             id=-1100,
             name="injected_field",
+            py_name="injected_field",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -128,6 +131,7 @@ cdef __StructSpec get_reflection__FieldsInjectedWithIncludedStruct():
         __FieldSpec._fbthrift_create(
             id=1,
             name="string_field",
+            py_name="string_field",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -140,6 +144,7 @@ cdef __StructSpec get_reflection__FieldsInjectedWithIncludedStruct():
         __FieldSpec._fbthrift_create(
             id=-1100,
             name="injected_field",
+            py_name="injected_field",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -152,6 +157,7 @@ cdef __StructSpec get_reflection__FieldsInjectedWithIncludedStruct():
         __FieldSpec._fbthrift_create(
             id=-1101,
             name="injected_structured_annotation_field",
+            py_name="injected_structured_annotation_field",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
@@ -164,12 +170,13 @@ cdef __StructSpec get_reflection__FieldsInjectedWithIncludedStruct():
         __FieldSpec._fbthrift_create(
             id=-1102,
             name="injected_unstructured_annotation_field",
+            py_name="injected_unstructured_annotation_field",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
             default=None,
             annotations={
-                """thrift.box""": """1""",            },
+            },
         ),
     )
     return spec

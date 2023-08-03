@@ -14,7 +14,6 @@ from thrift.py3.reflection cimport (
     Qualifier as __Qualifier,
 )
 
-cimport facebook.thrift.annotation.thrift.types as _facebook_thrift_annotation_thrift_types
 
 cimport module.types as _module_types
 
@@ -40,6 +39,7 @@ cdef __StructSpec get_reflection__Fiery():
         __FieldSpec._fbthrift_create(
             id=1,
             name="message",
+            py_name="message",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.REQUIRED,
@@ -65,6 +65,7 @@ cdef __StructSpec get_reflection__Serious():
         __FieldSpec._fbthrift_create(
             id=1,
             name="sonnet",
+            py_name="sonnet",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
@@ -90,6 +91,7 @@ cdef __StructSpec get_reflection__ComplexFieldNames():
         __FieldSpec._fbthrift_create(
             id=1,
             name="error_message",
+            py_name="error_message",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -102,6 +104,7 @@ cdef __StructSpec get_reflection__ComplexFieldNames():
         __FieldSpec._fbthrift_create(
             id=2,
             name="internal_error_message",
+            py_name="internal_error_message",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -127,6 +130,7 @@ cdef __StructSpec get_reflection__CustomFieldNames():
         __FieldSpec._fbthrift_create(
             id=1,
             name="error_message",
+            py_name="error_message",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -139,6 +143,7 @@ cdef __StructSpec get_reflection__CustomFieldNames():
         __FieldSpec._fbthrift_create(
             id=2,
             name="internal_error_message",
+            py_name="internal_error_message",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -164,6 +169,7 @@ cdef __StructSpec get_reflection__ExceptionWithPrimitiveField():
         __FieldSpec._fbthrift_create(
             id=1,
             name="message",
+            py_name="message",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -176,6 +182,7 @@ cdef __StructSpec get_reflection__ExceptionWithPrimitiveField():
         __FieldSpec._fbthrift_create(
             id=2,
             name="error_code",
+            py_name="error_code",
             type=int,
             kind=__NumberType.I32,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -201,6 +208,7 @@ cdef __StructSpec get_reflection__ExceptionWithStructuredAnnotation():
         __FieldSpec._fbthrift_create(
             id=1,
             name="message_field",
+            py_name="message_field",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -213,6 +221,7 @@ cdef __StructSpec get_reflection__ExceptionWithStructuredAnnotation():
         __FieldSpec._fbthrift_create(
             id=2,
             name="error_code",
+            py_name="error_code",
             type=int,
             kind=__NumberType.I32,
             qualifier=__Qualifier.UNQUALIFIED,

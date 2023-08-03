@@ -100,6 +100,17 @@ type penv =
   | Loclenv of env
   | Declenv
 
+let split_desugared_ctx_tparams_gen ~tparams ~param_name =
+  let (generated_tparams, other_tparams) =
+    List.partition_tf tparams ~f:(fun param ->
+        param_name param |> SN.Coeffects.is_generated_generic)
+  in
+  let desugared_tparams =
+    List.map generated_tparams ~f:(fun param ->
+        param_name param |> SN.Coeffects.unwrap_generated_generic)
+  in
+  (desugared_tparams, other_tparams)
+
 let strip_ns id =
   id |> Utils.strip_ns |> Hh_autoimport.strip_HH_namespace_if_autoimport
 
@@ -217,15 +228,25 @@ module Full = struct
      desugared to type parameters. *)
   let split_desugared_ctx_tparams (tparams : 'a tparam list) :
       string list * 'a tparam list =
-    let (generated_tparams, other_tparams) =
-      List.partition_tf tparams ~f:(fun { tp_name = (_, name); _ } ->
-          SN.Coeffects.is_generated_generic name)
-    in
-    let desugared_tparams =
-      List.map generated_tparams ~f:(fun { tp_name = (_, name); _ } ->
-          SN.Coeffects.unwrap_generated_generic name)
-    in
-    (desugared_tparams, other_tparams)
+    let param_name { tp_name = (_, name); _ } = name in
+    split_desugared_ctx_tparams_gen ~tparams ~param_name
+
+  let rec is_supportdyn_mixed : type a. penv -> a ty -> bool =
+   fun env t ->
+    match get_node t with
+    | Tnewtype (n, _, ty)
+      when String.equal n SN.Classes.cSupportDyn
+           && not (show_supportdyn_penv env) ->
+      is_supportdyn_mixed env ty
+    | Tapply ((_, n), [ty])
+      when String.equal n SN.Classes.cSupportDyn
+           && not (show_supportdyn_penv env) ->
+      is_supportdyn_mixed env ty
+    | Toption t ->
+      (match get_node t with
+      | Tnonnull -> true
+      | _ -> false)
+    | _ -> false
 
   let rec fun_type ~fuel ~ty to_doc st penv ft fun_implicit_params =
     let n = List.length ft.ft_params in
@@ -333,6 +354,13 @@ module Full = struct
       st
       env
       { tp_name = (_, x); tp_constraints = cstrl; tp_reified = r; _ } =
+    let cstrl =
+      List.filter cstrl ~f:(fun cstr ->
+          match cstr with
+          | (Ast_defs.Constraint_as, ty) when is_supportdyn_mixed env ty ->
+            false
+          | _ -> true)
+    in
     let (fuel, tparam_constraints_doc) =
       list_sep
         ~fuel
@@ -579,6 +607,18 @@ module Full = struct
     let doc = Concat [prefix; doc] in
     (fuel, doc)
 
+  let rec is_open_mixed_decl penv t =
+    match get_node t with
+    | Tapply ((_, n), [ty])
+      when String.equal n SN.Classes.cSupportDyn
+           && not (show_supportdyn_penv penv) ->
+      is_open_mixed_decl penv ty
+    | Toption t ->
+      (match get_node t with
+      | Tnonnull -> true
+      | _ -> false)
+    | _ -> false
+
   (* Prints a decl_ty. If there isn't enough fuel, the type is omitted. Each
      recursive call to print a type depletes the fuel by one. *)
   let rec decl_ty ~fuel : _ -> _ -> _ -> decl_ty -> Fuel.t * Doc.t =
@@ -593,6 +633,7 @@ module Full = struct
     | Tany _ -> (fuel, text "_")
     | Tthis -> (fuel, text SN.Typehints.this)
     | Tmixed -> (fuel, text "mixed")
+    | Twildcard -> (fuel, text "_")
     | Tdynamic -> (fuel, text "dynamic")
     | Tnonnull -> (fuel, text "nonnull")
     | Tvec_or_dict (x, y) -> list ~fuel "vec_or_dict<" k [x; y] ">"
@@ -615,9 +656,12 @@ module Full = struct
       let like_doc = Concat [text "~"; ty_doc] in
       (fuel, like_doc)
     | Tprim x -> (fuel, tprim x)
-    | Tvar x -> (fuel, text (Printf.sprintf "#%d" x))
     | Tfun ft -> tfun ~fuel ~ty to_doc st penv ft fun_decl_implicit_params
     | Tnewtype (n, _, ty)
+      when String.equal n SN.Classes.cSupportDyn
+           && not (show_supportdyn_penv penv) ->
+      k ~fuel ty
+    | Tapply ((_, n), [ty])
       when String.equal n SN.Classes.cSupportDyn
            && not (show_supportdyn_penv penv) ->
       k ~fuel ty
@@ -639,7 +683,13 @@ module Full = struct
       let intersection_doc = Concat [text "&"; tys_doc] in
       (fuel, intersection_doc)
     | Tshape (_, shape_kind, fdm) ->
-      tshape ~fuel ~open_mixed:false k to_doc shape_kind fdm
+      tshape
+        ~fuel
+        ~open_mixed:(is_open_mixed_decl penv shape_kind)
+        k
+        to_doc
+        shape_kind
+        fdm
 
   (* TODO (T86471586): Display capabilities that are decls for functions *)
   and fun_decl_implicit_params ~fuel _to_doc _st _penv _tparams _implicit_param
@@ -681,10 +731,6 @@ module Full = struct
         @ List.map (TySet.elements upper) ~f:(fun ty ->
               (tparam, Ast_defs.Constraint_as, ty))
 
-  let show_likes env =
-    TypecheckerOptions.enable_sound_dynamic env.genv.tcopt
-    || TypecheckerOptions.like_type_hints env.genv.tcopt
-
   let rec is_open_mixed env t =
     match get_node t with
     | Tnewtype (n, _, ty)
@@ -706,8 +752,7 @@ module Full = struct
         let (fuel, d) = locl_ty_ ~fuel to_doc st penv x in
         let d =
           match r with
-          | Typing_reason.Rsolve_fail _ ->
-            Concat [text "{suggest:"; d; text "}"]
+          | Reason.Rsolve_fail _ -> Concat [text "{suggest:"; d; text "}"]
           | _ -> d
         in
         (fuel, d))
@@ -730,7 +775,7 @@ module Full = struct
     | Toption ty -> begin
       match deref ty with
       | (_, Tnonnull) -> (fuel, text "mixed")
-      | (r, Tunion tyl) when show_likes env && List.exists ~f:is_dynamic tyl ->
+      | (r, Tunion tyl) when List.exists ~f:is_dynamic tyl ->
         (* Unions with null become Toption, which leads to the awkward ?~...
          * The Tunion case can better handle this *)
         k ~fuel (mk (r, Tunion (mk (r, Tprim Nast.Tnull) :: tyl)))
@@ -830,10 +875,9 @@ module Full = struct
       *)
     | Ttuple tyl -> ttuple ~fuel k tyl
     | Tunion [] -> (fuel, text "nothing")
-    | Tunion tyl when show_likes env ->
+    | Tunion tyl ->
       let tyl =
-        List.fold_right tyl ~init:Typing_set.empty ~f:Typing_set.add
-        |> Typing_set.elements
+        List.fold_right tyl ~init:TySet.empty ~f:TySet.add |> TySet.elements
       in
       let (dynamic, null, nonnull) =
         List.partition3_map tyl ~f:(fun t ->
@@ -933,56 +977,6 @@ module Full = struct
           let doc = Concat [text "~"; text "?"; tys_doc] in
           (fuel, doc)
       end
-    | Tunion tyl ->
-      let tyl =
-        List.fold_right tyl ~init:Typing_set.empty ~f:Typing_set.add
-        |> Typing_set.elements
-      in
-      let (null, nonnull) =
-        List.partition_tf tyl ~f:(fun ty ->
-            equal_locl_ty_ (get_node ty) (Tprim Nast.Tnull))
-      in
-      begin
-        match (null, nonnull) with
-        (* type isn't nullable *)
-        | ([], [ty]) ->
-          let (fuel, ty_doc) = k ~fuel ty in
-          let doc =
-            if verbose then
-              Concat [text "("; ty_doc; text ")"]
-            else
-              ty_doc
-          in
-          (fuel, doc)
-        | ([], _) ->
-          delimited_list ~fuel (Space ^^ text "|" ^^ Space) "(" k nonnull ")"
-        (* Type only is null *)
-        | (_, []) ->
-          let doc =
-            if verbose then
-              text "(null)"
-            else
-              text "null"
-          in
-          (fuel, doc)
-        (* Type is nullable single type *)
-        | (_, [ty]) ->
-          let (fuel, ty_doc) = k ~fuel ty in
-          let doc =
-            if verbose then
-              Concat [text "(null |"; ty_doc; text ")"]
-            else
-              Concat [text "?"; ty_doc]
-          in
-          (fuel, doc)
-        (* Type is nullable union type *)
-        | (_, _) ->
-          let (fuel, tys_doc) =
-            delimited_list ~fuel (Space ^^ text "|" ^^ Space) "(" k nonnull ")"
-          in
-          let doc = Concat [text "?"; tys_doc] in
-          (fuel, doc)
-      end
     | Tintersection [] -> (fuel, text "mixed")
     | Tintersection tyl ->
       delimited_list ~fuel (Space ^^ text "&" ^^ Space) "(" k tyl ")"
@@ -1079,7 +1073,7 @@ module Full = struct
     let (fuel, constraint_ty_doc) = constraint_type_ ~fuel to_doc st penv x in
     let constraint_ty_doc =
       match r with
-      | Typing_reason.Rsolve_fail _ ->
+      | Reason.Rsolve_fail _ ->
         Concat [text "{suggest:"; constraint_ty_doc; text "}"]
       | _ -> constraint_ty_doc
     in
@@ -1418,6 +1412,11 @@ module Json = struct
     | "inout" -> Some FPinout
     | _ -> None
 
+  let is_like ty =
+    match get_node ty with
+    | Tunion tyl -> List.exists tyl ~f:is_dynamic
+    | _ -> false
+
   let rec from_type : env -> locl_ty -> json =
    fun env ty ->
     (* Helpers to construct fields that appear in JSON rendering of type *)
@@ -1534,7 +1533,11 @@ module Json = struct
     end
     | (p, Tintersection []) -> obj @@ kind p "mixed"
     | (_, Tintersection [ty]) -> from_type env ty
-    | (p, Tintersection tyl) -> obj @@ kind p "intersection" @ args tyl
+    | (p, Tintersection tyl) -> begin
+      match List.find tyl ~f:is_like with
+      | None -> obj @@ kind p "intersection" @ args tyl
+      | Some ty -> from_type env ty
+    end
     | (p, Tfun ft) ->
       let fun_kind p = kind p "function" in
       let callconv cc =

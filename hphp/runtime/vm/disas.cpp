@@ -139,7 +139,7 @@ struct EHCatchLegacy { std::string label; };
 struct EHCatch { Offset end; };
 using EHInfo = boost::variant<EHCatchLegacy, EHCatch>;
 using UBMap =
-  std::unordered_map<const StringData*, std::vector<TypeConstraint>>;
+  std::unordered_map<const StringData*, StdTypeIntersectionConstraint>;
 struct FuncInfo {
   FuncInfo(const Unit* u, const Func* f) : unit(u), func(f) {}
 
@@ -215,13 +215,13 @@ FuncInfo find_func_info(const Func* func) {
       for (auto const& p : func->paramUBs()) {
         auto const& typeName = params[p.first].typeConstraint.typeName();
         auto& v = finfo.ubs[typeName];
-        if (v.empty()) v.assign(std::begin(p.second), std::end(p.second));
+        if (v.isTop()) v.m_constraints.assign(std::begin(p.second.m_constraints), std::end(p.second.m_constraints));
       }
     }
     if (func->hasReturnWithMultiUBs()) {
       auto& v = finfo.ubs[func->returnTypeConstraint().typeName()];
-      if (v.empty()) {
-        v.assign(std::begin(func->returnUBs()), std::end(func->returnUBs()));
+      if (v.isTop()) {
+        v.m_constraints.assign(std::begin(func->returnUBs().m_constraints), std::end(func->returnUBs().m_constraints));
       }
     }
   };
@@ -635,7 +635,7 @@ std::string opt_ubs(const UBMap& ubs) {
     ret += p.first->data();
     ret += " as ";
     bool first = true;
-    for (auto const& ub : p.second) {
+    for (auto const& ub : p.second.m_constraints) {
       if (!first) ret += ", ";
       ret += opt_type_info(nullptr, ub);
       first = false;
@@ -828,10 +828,10 @@ void print_cls(Output& out, const PreClass* cls) {
   }
   UBMap cls_ubs;
   for (auto const& prop : cls->allProperties()) {
-    if (prop.upperBounds().empty()) continue;
+    if (prop.upperBounds().isTop()) continue;
     auto& v = cls_ubs[prop.typeConstraint().typeName()];
-    if (v.empty()) {
-      v.assign(std::begin(prop.upperBounds()), std::end(prop.upperBounds()));
+    if (v.isTop()) {
+      v.m_constraints.assign(std::begin(prop.upperBounds().m_constraints), std::end(prop.upperBounds().m_constraints));
     }
   }
 
@@ -852,13 +852,20 @@ void print_cls(Output& out, const PreClass* cls) {
 void print_alias(Output& out, const PreTypeAlias& alias) {
   auto flags = TypeConstraintFlags::NoFlags;
   if (alias.nullable) flags |= TypeConstraintFlags::Nullable;
-  if (alias.case_type) flags |= TypeConstraintFlags::CaseType;
-  TypeConstraint constraint(alias.value, flags);
+  std::string type_constraints;
+  for (auto const& tv : alias.typeAndValueUnion) {
+    if (!type_constraints.empty()) type_constraints.append(",");
+    type_constraints.append(folly::to<std::string>(
+      "<",
+      type_constraint(TypeConstraint(tv.value, flags)),
+      ">"));
+  }
 
-  out.fmtln(".alias{} {} = <{}> ({}, {}) {};",
+  out.fmtln(".{}{} {} = {} ({}, {}) {};",
+            alias.caseType ? "case_type" : "alias",
             opt_attrs(AttrContext::Alias, alias.attrs, &alias.userAttrs),
             (const StringData*)alias.name,
-            type_constraint(constraint),
+            type_constraints,
             alias.line0,
             alias.line1,
             escaped_long(alias.typeStructure.get()));

@@ -41,8 +41,16 @@ AnyData::AnyData(SemiAny semiAny) {
 void AnyData::throwTypeMismatchException(const Type& want, const Type& actual) {
   folly::throw_exception<std::runtime_error>(fmt::format(
       "Type mismatch. Want: {}, Actual: {}.",
-      debugStringViaRecursiveEncode(want),
-      debugStringViaRecursiveEncode(actual)));
+      debugStringViaEncode(want),
+      debugStringViaEncode(actual)));
+}
+
+SemiAny AnyData::moveToSemiAny() && {
+  SemiAny semiAny;
+  semiAny.data() = std::move(*data_.data());
+  semiAny.type() = std::move(*data_.type());
+  semiAny.protocol() = std::move(*data_.protocol());
+  return semiAny;
 }
 
 } // namespace type

@@ -653,7 +653,8 @@ class HTTPMessage {
    * It is expected that during request processing, stripPerHopHeaders() will
    * be called before the message is proxied to the other connection.
    */
-  void stripPerHopHeaders(bool stripPriority = false);
+  void stripPerHopHeaders(bool stripPriority = false,
+                          const HTTPHeaders* customHeaders = nullptr);
 
   const HTTPHeaders& getStrippedPerHopHeaders() const {
     CHECK(strippedPerHopHeaders_) << "call stripPerHopHeaders first";
@@ -781,7 +782,7 @@ class HTTPMessage {
     return h2Pri_;
   }
 
-  void setHTTP2Priority(HTTP2Priority h2Pri) {
+  void setHTTP2Priority(const HTTP2Priority& h2Pri) {
     h2Pri_ = h2Pri;
   }
 

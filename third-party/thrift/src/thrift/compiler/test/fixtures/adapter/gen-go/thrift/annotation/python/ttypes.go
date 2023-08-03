@@ -10,8 +10,6 @@ import (
 	"sync"
 	"fmt"
 	thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
-	scope0 "thrift/annotation/scope"
-
 )
 
 // (needed to ensure safety because of naive import list construction.)
@@ -21,7 +19,6 @@ var _ = sync.Mutex{}
 var _ = bytes.Equal
 var _ = context.Background
 
-var _ = scope0.GoUnusedProtection__
 var GoUnusedProtection__ int;
 
 type Hidden struct {
@@ -481,5 +478,70 @@ func (p *Adapter) String() string {
   nameVal := fmt.Sprintf("%v", p.Name)
   typeHintVal := fmt.Sprintf("%v", p.TypeHint)
   return fmt.Sprintf("Adapter({Name:%s TypeHint:%s})", nameVal, typeHintVal)
+}
+
+type MarshalCapi struct {
+}
+
+func NewMarshalCapi() *MarshalCapi {
+  return &MarshalCapi{}
+}
+
+type MarshalCapiBuilder struct {
+  obj *MarshalCapi
+}
+
+func NewMarshalCapiBuilder() *MarshalCapiBuilder{
+  return &MarshalCapiBuilder{
+    obj: NewMarshalCapi(),
+  }
+}
+
+func (p MarshalCapiBuilder) Emit() *MarshalCapi{
+  return &MarshalCapi{
+  }
+}
+
+func (p *MarshalCapi) Read(iprot thrift.Protocol) error {
+  if _, err := iprot.ReadStructBegin(); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+  }
+
+
+  for {
+    _, fieldTypeId, fieldId, err := iprot.ReadFieldBegin()
+    if err != nil {
+      return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+    }
+    if fieldTypeId == thrift.STOP { break; }
+    if err := iprot.Skip(fieldTypeId); err != nil {
+      return err
+    }
+    if err := iprot.ReadFieldEnd(); err != nil {
+      return err
+    }
+  }
+  if err := iprot.ReadStructEnd(); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+  }
+  return nil
+}
+
+func (p *MarshalCapi) Write(oprot thrift.Protocol) error {
+  if err := oprot.WriteStructBegin("MarshalCapi"); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err) }
+  if err := oprot.WriteFieldStop(); err != nil {
+    return thrift.PrependError("write field stop error: ", err) }
+  if err := oprot.WriteStructEnd(); err != nil {
+    return thrift.PrependError("write struct stop error: ", err) }
+  return nil
+}
+
+func (p *MarshalCapi) String() string {
+  if p == nil {
+    return "<nil>"
+  }
+
+  return fmt.Sprintf("MarshalCapi({})")
 }
 

@@ -24,17 +24,13 @@ let strip_awaitable fun_kind env et =
     let (_env, ty) = Env.expand_type env et.et_type in
     match get_node ty with
     | Tclass ((_, class_name), _, [ty])
-      when String.equal class_name Naming_special_names.Classes.cAwaitable ->
+      when String.equal class_name SN.Classes.cAwaitable ->
       { et with et_type = ty }
-    (* In non-strict code we might find Awaitable without type arguments. Assume Tany *)
-    | Tclass ((_, class_name), _, [])
-      when String.equal class_name Naming_special_names.Classes.cAwaitable ->
-      { et with et_type = mk (Reason.Rnone, TUtils.tany env) }
     | _ -> et
 
 let enforce_return_not_disposable ret_pos fun_kind env et =
   let stripped_et = strip_awaitable fun_kind env et in
-  Option.iter ~f:Typing_error_utils.add_typing_error
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env)
   @@ Option.map
        (Typing_disposable.is_disposable_type env stripped_et.et_type)
        ~f:(fun class_name ->
@@ -103,15 +99,14 @@ let force_return_kind ~is_toplevel env p ety =
       (* For toplevel functions, this is already checked in the parser *)
       (env, ty)
     | (Ast_defs.FAsync, Tclass ((_, class_name), _, _))
-      when String.equal class_name Naming_special_names.Classes.cAwaitable ->
+      when String.equal class_name SN.Classes.cAwaitable ->
       (* For toplevel functions, this is already checked in the parser *)
       (env, ty)
     | (Ast_defs.FGenerator, Tclass ((_, class_name), _, _))
-      when String.equal class_name Naming_special_names.Classes.cGenerator ->
+      when String.equal class_name SN.Classes.cGenerator ->
       (env, ty)
     | (Ast_defs.FAsyncGenerator, Tclass ((_, class_name), _, _))
-      when String.equal class_name Naming_special_names.Classes.cAsyncGenerator
-      ->
+      when String.equal class_name SN.Classes.cAsyncGenerator ->
       (env, ty)
     | _ ->
       let (env, wrapped_ty) = make_fresh_return_type env p in
@@ -124,7 +119,7 @@ let force_return_kind ~is_toplevel env p ety =
           ty
           Typing_error.Callback.unify_error
       in
-      Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+      Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
       (env, wrapped_ty)
   in
   (env, { ety with et_type = ty })
@@ -162,21 +157,14 @@ let make_return_type
     in
     let localize ~wrap (env : env) (dty : decl_ty) =
       if TypecheckerOptions.everything_sdt env.genv.tcopt then (
-        (* Under implicit pessimisation, all unenforceable return types get pessimised to a like type,
-           and all enforceable ones for the purpose of checking the function body also get a like type
-           when the function is __SupportDynamicType, which all functions are during implicit pessimisation.
-           Hence we don't need to check enforcement here. Don't pessimise void. *)
         let dty =
           match get_node dty with
           | Tfun _ ->
-            Typing_utils.make_supportdyn_decl_type
-              (get_pos dty)
-              (get_reason dty)
-              dty
+            TUtils.make_supportdyn_decl_type (get_pos dty) (get_reason dty) dty
           | _ -> dty
         in
         let ((env, ty_err_opt), ty) = Typing_phase.localize ~ety_env env dty in
-        Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+        Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
         (* If type doesn't already support dynamic then wrap it if supportdyn=true *)
         let (env, ty) =
           if supportdyn then
@@ -187,10 +175,28 @@ let make_return_type
           else
             (env, ty)
         in
+        (* If <<__NoAutoLikes>> is specified, then add a like- to enforced returns
+         * so that we can return an expression of like-type.
+         * If <<__NoAutoLikes>> is not specified, then add a like- for the same reason,
+         * but add a like type even for non-enforced returns because these we pessimise anyway.
+         * Never pessimise void.
+         *)
+        let add_like =
+          if Env.get_no_auto_likes env then
+            match Typing_enforceability.get_enforcement ~this_class env dty with
+            | Unenforced -> false
+            | Enforced -> true
+          else
+            true
+        in
         let et_type =
           match get_node ty with
           | Tprim Aast.Tvoid when not wrap -> ty
-          | _ -> Typing_utils.make_like env ty
+          | _ ->
+            if add_like then
+              TUtils.make_like env ty
+            else
+              ty
         in
         let et_type =
           if wrap then
@@ -242,7 +248,7 @@ let make_return_type
         let ((env, ty_err_opt), et_type) =
           Typing_phase.localize ~ety_env env dty
         in
-        Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+        Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
         (* If type doesn't already support dynamic then wrap it if supportdyn=true *)
         let (env, et_type) =
           if supportdyn then
@@ -254,9 +260,7 @@ let make_return_type
             (env, et_type)
         in
         (* If return type t is enforced we permit values of type ~t to be returned *)
-        let ety =
-          Typing_utils.make_like_if_enforced env { et_enforced; et_type }
-        in
+        let ety = TUtils.make_like_if_enforced env { et_enforced; et_type } in
         let et_type =
           if wrap then
             wrap_awaitable (get_pos et_type) ety.et_type
@@ -267,12 +271,12 @@ let make_return_type
     in
     (match (Env.get_fn_kind env, deref ty) with
     | (Ast_defs.FAsync, (_, Tapply ((_, class_name), [inner_ty])))
-      when String.equal class_name Naming_special_names.Classes.cAwaitable ->
+      when String.equal class_name SN.Classes.cAwaitable ->
       localize ~wrap:true env inner_ty
     | (Ast_defs.FAsync, (r_like, Tlike ty_like)) -> begin
       match get_node ty_like with
       | Tapply ((_, class_name), [inner_ty])
-        when String.equal class_name Naming_special_names.Classes.cAwaitable ->
+        when String.equal class_name SN.Classes.cAwaitable ->
         let ty = mk (r_like, Tlike inner_ty) in
         localize ~wrap:true env ty
       | _ -> localize ~wrap:false env ty
@@ -311,7 +315,7 @@ let implicit_return env pos ~expected ~actual ~hint_pos ~is_async =
     @@ Typing_error.Callback.of_primary_error error
   in
 
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
   env
 
 let check_inout_return ret_pos env =
@@ -326,11 +330,12 @@ let check_inout_return ret_pos env =
           (* Whenever the function exits normally, we require that each local
            * corresponding to an inout parameter be compatible with the original
            * type for the parameter (under subtyping rules). *)
-          let (local_ty, local_pos) = Env.get_local_pos env id in
-          let (env, ety) = Env.expand_type env local_ty in
+          let local = Env.get_local env id in
+          let open Typing_local_types in
+          let (env, ety) = Env.expand_type env local.ty in
           let pos =
-            if not (Pos.equal Pos.none local_pos) then
-              local_pos
+            if not (Pos.equal Pos.none local.pos) then
+              local.pos
             else if not (Pos.equal Pos.none ret_pos) then
               ret_pos
             else
@@ -357,7 +362,7 @@ let check_inout_return ret_pos env =
           (env, ty_errs)
         | None -> (env, ty_errs))
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env)
   @@ Typing_error.multiple_opt ty_errs;
   env
 
@@ -367,7 +372,7 @@ let rec remove_like_for_return env ty =
   | None ->
     (match get_node ty with
     | Tclass ((p, class_name), exact, [ty])
-      when String.equal class_name Naming_special_names.Classes.cAwaitable ->
+      when String.equal class_name SN.Classes.cAwaitable ->
       mk
         ( get_reason ty,
           Tclass ((p, class_name), exact, [remove_like_for_return env ty]) )

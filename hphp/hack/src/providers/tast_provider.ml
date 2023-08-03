@@ -10,14 +10,14 @@ open Hh_prelude
 
 module Compute_tast = struct
   type t = {
-    tast: Tast.program;
+    tast: Tast.program Tast_with_dynamic.t;
     telemetry: Telemetry.t;
   }
 end
 
 module Compute_tast_and_errors = struct
   type t = {
-    tast: Tast.program;
+    tast: Tast.program Tast_with_dynamic.t;
     errors: Errors.t;
     telemetry: Telemetry.t;
   }
@@ -33,28 +33,13 @@ let compute_tast_and_errors_unquarantined_internal
     ~(entry : Provider_context.entry)
     ~(mode : a compute_tast_mode) : a =
   match
-    ( mode,
-      TypecheckerOptions.tast_under_dynamic (Provider_context.get_tcopt ctx),
-      entry.Provider_context.tast,
-      entry.Provider_context.all_errors )
+    (mode, entry.Provider_context.tast, entry.Provider_context.all_errors)
   with
-  | (Compute_tast_only, false, Provider_context.Entry_tast_no_dynamic tast, _)
-    ->
+  | (Compute_tast_only, Some tast, _) ->
     { Compute_tast.tast; telemetry = Telemetry.create () }
-  | (Compute_tast_only, true, Provider_context.Entry_tast_under_dynamic tast, _)
-    ->
-    { Compute_tast.tast; telemetry = Telemetry.create () }
-  | ( Compute_tast_and_errors,
-      false,
-      Provider_context.Entry_tast_no_dynamic tast,
-      Some errors ) ->
+  | (Compute_tast_and_errors, Some tast, Some errors) ->
     { Compute_tast_and_errors.tast; errors; telemetry = Telemetry.create () }
-  | ( Compute_tast_and_errors,
-      true,
-      Provider_context.Entry_tast_under_dynamic tast,
-      Some errors ) ->
-    { Compute_tast_and_errors.tast; errors; telemetry = Telemetry.create () }
-  | (mode, tast_under_dynamic, _, _) ->
+  | (_, _, _) ->
     (* prepare logging *)
     Provider_context.reset_telemetry ctx;
     let prev_ctx_telemetry = Provider_context.get_telemetry ctx in
@@ -70,18 +55,9 @@ let compute_tast_and_errors_unquarantined_internal
         ~popt:(Provider_context.get_popt ctx)
         ~entry
     in
-    (* Note: this only picks up errors during Naming.program.
-       It doesn't pick up "this name is already bound" errors.
-       How do other parts of the code pick them up? - during ServerTypeCheck.declare_names,
-       during the course of updating the reverse naming table.
-       There isn't a clean way to do the same here, and indeed
-       most consumers of Tast_provider such as serverHover don't
-       even care for such errors. *)
     let (naming_errors, nast) =
-      Errors.do_with_context
-        entry.Provider_context.path
-        Errors.Naming
-        (fun () -> Naming.program ctx ast)
+      Errors.do_with_context entry.Provider_context.path (fun () ->
+          Naming.program ctx ast)
     in
     let (typing_errors, tast) =
       let do_tast_checks =
@@ -89,10 +65,8 @@ let compute_tast_and_errors_unquarantined_internal
         | Compute_tast_only -> false
         | Compute_tast_and_errors -> true
       in
-      Errors.do_with_context
-        entry.Provider_context.path
-        Errors.Typing
-        (fun () -> Typing_toplevel.nast_to_tast ~do_tast_checks ctx nast)
+      Errors.do_with_context entry.Provider_context.path (fun () ->
+          Typing_toplevel.nast_to_tast ~do_tast_checks ctx nast)
     in
 
     (* Logging... *)
@@ -138,23 +112,16 @@ let compute_tast_and_errors_unquarantined_internal
       ~telemetry
       ~path:entry.Provider_context.path
       ~start_time;
-
-    let some_tast =
-      if tast_under_dynamic then
-        Provider_context.Entry_tast_under_dynamic tast
-      else
-        Provider_context.Entry_tast_no_dynamic tast
-    in
     (match mode with
     | Compute_tast_and_errors ->
       let errors =
         naming_errors |> Errors.merge typing_errors |> Errors.merge ast_errors
       in
-      entry.Provider_context.tast <- some_tast;
+      entry.Provider_context.tast <- Some tast;
       entry.Provider_context.all_errors <- Some errors;
       { Compute_tast_and_errors.tast; errors; telemetry }
     | Compute_tast_only ->
-      entry.Provider_context.tast <- some_tast;
+      entry.Provider_context.tast <- Some tast;
       { Compute_tast.tast; telemetry })
 
 let compute_tast_and_errors_unquarantined
@@ -177,14 +144,8 @@ let compute_tast_and_errors_quarantined
     ~(ctx : Provider_context.t) ~(entry : Provider_context.entry) :
     Compute_tast_and_errors.t =
   (* If results have already been memoized, don't bother quarantining anything *)
-  match
-    ( TypecheckerOptions.tast_under_dynamic (Provider_context.get_tcopt ctx),
-      entry.Provider_context.tast,
-      entry.Provider_context.all_errors )
-  with
-  | (false, Provider_context.Entry_tast_no_dynamic tast, Some errors) ->
-    { Compute_tast_and_errors.tast; errors; telemetry = Telemetry.create () }
-  | (true, Provider_context.Entry_tast_under_dynamic tast, Some errors) ->
+  match (entry.Provider_context.tast, entry.Provider_context.all_errors) with
+  | (Some tast, Some errors) ->
     { Compute_tast_and_errors.tast; errors; telemetry = Telemetry.create () }
   (* Okay, we don't have memoized results, let's ensure we are quarantined before computing *)
   | _ ->
@@ -197,16 +158,10 @@ let compute_tast_quarantined
     ~(ctx : Provider_context.t) ~(entry : Provider_context.entry) :
     Compute_tast.t =
   (* If results have already been memoized, don't bother quarantining anything *)
-  match
-    ( TypecheckerOptions.tast_under_dynamic (Provider_context.get_tcopt ctx),
-      entry.Provider_context.tast )
-  with
-  | (false, Provider_context.Entry_tast_no_dynamic tast) ->
-    { Compute_tast.tast; telemetry = Telemetry.create () }
-  | (true, Provider_context.Entry_tast_under_dynamic tast) ->
-    { Compute_tast.tast; telemetry = Telemetry.create () }
+  match entry.Provider_context.tast with
+  | Some tast -> { Compute_tast.tast; telemetry = Telemetry.create () }
   (* Okay, we don't have memoized results, let's ensure we are quarantined before computing *)
-  | (_, _) ->
+  | None ->
     let f () =
       compute_tast_and_errors_unquarantined_internal
         ~ctx

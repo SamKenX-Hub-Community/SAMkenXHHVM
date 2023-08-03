@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<1a44ccaa1355ef6618dc0312ae7b40cc>>
+// @generated SignedSource<<20c4efefe7c37d0a182e2f7c75e498aa>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -325,11 +325,35 @@ pub enum DependentType {
     ToOcamlRep
 )]
 #[rust_to_ocaml(attr = "deriving (eq, hash, show)")]
+#[repr(C, u8)]
+pub enum UserAttributeParam {
+    Classname(String),
+    EnumClassLabel(String),
+    String(bstr::BString),
+    Int(String),
+}
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    EqModuloPos,
+    FromOcamlRep,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
+#[rust_to_ocaml(attr = "deriving (eq, hash, show)")]
 #[rust_to_ocaml(prefix = "ua_")]
 #[repr(C)]
 pub struct UserAttribute {
     pub name: PosId,
-    pub classname_params: Vec<String>,
+    pub params: Vec<UserAttributeParam>,
 }
 
 #[derive(
@@ -480,7 +504,6 @@ pub struct ShapeFieldType {
 
 #[derive(
     Clone,
-    Debug,
     Deserialize,
     Eq,
     EqModuloPos,
@@ -529,6 +552,11 @@ pub enum Ty_ {
     /// mixed exists only in the decl_phase phase because it is desugared into ?nonnull
     /// during the localization phase.
     Tmixed,
+    /// Various intepretations, depending on context.
+    ///   inferred type e.g. (vec<_> $x) ==> $x[0]
+    ///   placeholder in refinement e.g. $x as Vector<_>
+    ///   placeholder for higher-kinded formal type parameter e.g. foo<T1<_>>(T1<int> $_)
+    Twildcard,
     Tlike(Ty),
     Tany(tany_sentinel::TanySentinel),
     Tnonnull,
@@ -551,10 +579,7 @@ pub enum Ty_ {
     Tfun(FunType),
     /// Tuple, with ordered list of the types of the elements of the tuple.
     Ttuple(Vec<Ty>),
-    /// Whether all fields of this shape are known, types of each of the
-    /// known arms.
-    Tshape(TypeOrigin, Ty, t_shape_map::TShapeMap<ShapeFieldType>),
-    Tvar(ident::Ident),
+    Tshape(ShapeType),
     /// The type of a generic parameter. The constraints on a generic parameter
     /// are accessed through the lenv.tpenv component of the environment, which
     /// is set up when checking the body of a function or method. See uses of
@@ -598,6 +623,7 @@ pub enum Ty_ {
     ///
     /// The second parameter is the list of type arguments to the type.
     Tnewtype(String, Vec<Ty>, Ty),
+    Tvar(ident::Ident),
     /// This represents a type alias that lacks necessary type arguments. Given
     /// type Foo<T1,T2> = ...
     /// Tunappliedalias "Foo" stands for usages of plain Foo, without supplying
@@ -746,6 +772,31 @@ pub struct RefinedConstBounds {
     pub lower: Vec<Ty>,
     pub upper: Vec<Ty>,
 }
+
+/// Whether all fields of this shape are known, types of each of the
+/// known arms.
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    EqModuloPos,
+    FromOcamlRep,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
+#[rust_to_ocaml(and)]
+#[repr(C)]
+pub struct ShapeType(
+    pub TypeOrigin,
+    pub Ty,
+    pub t_shape_map::TShapeMap<ShapeFieldType>,
+);
 
 #[derive(
     Clone,

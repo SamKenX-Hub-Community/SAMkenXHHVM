@@ -59,244 +59,8 @@ class CompilerFailureTest(unittest.TestCase):
         out = out.decode(sys.getdefaultencoding())
         err = err.decode(sys.getdefaultencoding())
         err = err.replace("{}/".format(self.tmp), "")
+        err = err.replace("\r\n", "\n")
         return p.returncode, out, err
-
-    def test_double_package(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                package "test.dev/test"
-                package "test.dev/test"
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:2] Package already specified.\n",
-        )
-        self.assertEqual(ret, 1)
-
-    def test_no_field_id(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                struct NoLegacy {} (thrift.uri = "facebook.com/thrift/annotation/NoLegacy")
-                struct Testing {} (thrift.uri = "facebook.com/thrift/annotation/Testing")
-                struct Experimental {} (thrift.uri = "facebook.com/thrift/annotation/Experimental")
-
-                @NoLegacy
-                struct Foo {
-                    i32 field1; // Failure
-                    @Experimental
-                    i32 field2; // Warning
-                    @Testing
-                    i32 field3; // Warning
-                }
-
-                struct Bar {
-                    i32 field4; // Warning
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:7] No field id specified for `field1`, resulting protocol may have conflicts or not be backwards compatible!\n"
-            "[WARNING:foo.thrift:8] No field id specified for `field2`, resulting protocol may have conflicts or not be backwards compatible!\n"
-            "[WARNING:foo.thrift:10] No field id specified for `field3`, resulting protocol may have conflicts or not be backwards compatible!\n"
-            "[WARNING:foo.thrift:15] No field id specified for `field4`, resulting protocol may have conflicts or not be backwards compatible!\n",
-        )
-        self.assertEqual(ret, 1)
-
-    def test_zero_as_field_id(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                struct Foo {
-                    0: i32 field;
-                    1: list<i32> other;
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(
-            err,
-            "[WARNING:foo.thrift:2] Nonpositive field id (0) differs from what is auto-assigned by thrift. The id must be positive or -1.\n"
-            "[WARNING:foo.thrift:2] No field id specified for `field`, resulting protocol may have conflicts or not be backwards compatible!\n",
-        )
-        self.assertEqual(ret, 0)
-
-        ret, out, err = self.run_thrift("--allow-neg-keys", "foo.thrift")
-        self.assertEqual(
-            err,
-            "[WARNING:foo.thrift:2] Nonpositive field id (0) differs from what would be auto-assigned by thrift (-1).\n"
-            "[ERROR:foo.thrift:2] Zero value (0) not allowed as a field id for `field`\n",
-        )
-        self.assertEqual(ret, 1)
-
-    def test_zero_as_field_id_allowed(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                struct Foo {
-                    0: i32 field (cpp.deprecated_allow_zero_as_field_id);
-                    1: list<i32> other;
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(
-            err,
-            "[WARNING:foo.thrift:2] Nonpositive field id (0) differs from what is auto-assigned by thrift. The id must be positive or -1.\n"
-            "[WARNING:foo.thrift:2] No field id specified for `field`, resulting protocol may have conflicts or not be backwards compatible!\n",
-        )
-        self.assertEqual(ret, 0)
-
-        ret, out, err = self.run_thrift("--allow-neg-keys", "foo.thrift")
-        self.assertEqual(
-            err,
-            "[WARNING:foo.thrift:2] Nonpositive field id (0) differs from what would be auto-assigned by thrift (-1).\n",
-        )
-        self.assertEqual(ret, 0)
-
-    def test_negative_field_ids(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                struct Foo {
-                    i32 f1;  // auto id = -1
-                    -2: i32 f2; // auto and manual id = -2
-                    -32: i32 f3; // min value.
-                    -33: i32 f4; // min value - 1.
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(
-            err,
-            "[WARNING:foo.thrift:3] Nonpositive value (-2) not allowed as a field id.\n"
-            "[WARNING:foo.thrift:4] Nonpositive field id (-32) differs from what is auto-assigned by thrift. The id must be positive or -3.\n"
-            "[WARNING:foo.thrift:5] Nonpositive field id (-33) differs from what is auto-assigned by thrift. The id must be positive or -4.\n"
-            "[WARNING:foo.thrift:2] No field id specified for `f1`, resulting protocol may have conflicts or not be backwards compatible!\n"
-            "[WARNING:foo.thrift:4] No field id specified for `f3`, resulting protocol may have conflicts or not be backwards compatible!\n"
-            "[WARNING:foo.thrift:5] No field id specified for `f4`, resulting protocol may have conflicts or not be backwards compatible!\n",
-        )
-        self.assertEqual(ret, 0)
-
-        ret, out, err = self.run_thrift("--allow-neg-keys", "foo.thrift")
-        self.assertEqual(
-            err,
-            "[WARNING:foo.thrift:4] Nonpositive field id (-32) differs from what would be auto-assigned by thrift (-3).\n"
-            "[WARNING:foo.thrift:2] No field id specified for `f1`, resulting protocol may have conflicts or not be backwards compatible!\n"
-            "[ERROR:foo.thrift:5] Reserved field id (-33) cannot be used for `f4`.\n",
-        )
-        self.assertEqual(ret, 1)
-
-    def test_exhausted_field_ids(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                struct Foo {
-                    -32: i32 f1; // min value.
-                    i32 f2; // auto id = -2 or min value - 1.
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(
-            err,
-            "[WARNING:foo.thrift:2] Nonpositive field id (-32) differs from what is auto-assigned by thrift. The id must be positive or -1.\n"
-            "[WARNING:foo.thrift:2] No field id specified for `f1`, resulting protocol may have conflicts or not be backwards compatible!\n"
-            "[WARNING:foo.thrift:3] No field id specified for `f2`, resulting protocol may have conflicts or not be backwards compatible!\n",
-        )
-        self.assertEqual(ret, 0)
-
-        ret, out, err = self.run_thrift("--allow-neg-keys", "foo.thrift")
-        self.assertEqual(
-            err,
-            "[WARNING:foo.thrift:2] Nonpositive field id (-32) differs from what would be auto-assigned by thrift (-1).\n"
-            "[ERROR:foo.thrift:3] Cannot allocate an id for `f2`. Automatic field ids are exhausted.\n"
-            "[WARNING:foo.thrift:3] No field id specified for `f2`, resulting protocol may have conflicts or not be backwards compatible!\n"
-            "[ERROR:foo.thrift:3] Reserved field id (-33) cannot be used for `f2`.\n",
-        )
-        self.assertEqual(ret, 1)
-
-    def test_too_many_fields(self):
-        id_count = 33
-        lines = ["struct Foo {"] + [f"i32 field_{i}" for i in range(id_count)] + ["}"]
-        write_file("foo.thrift", "\n".join(lines))
-
-        lines = [
-            f"[WARNING:foo.thrift:{i + 2}] No field id specified for `field_{i}`, "
-            "resulting protocol may have conflicts or not be backwards compatible!\n"
-            for i in range(id_count)
-        ]
-
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(ret, 1)
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:34] Cannot allocate an id for `field_32`. Automatic field ids are exhausted.\n"
-            + "".join(lines)
-            + "[ERROR:foo.thrift:34] Reserved field id (-33) cannot be used for `field_32`.\n",
-        )
-
-    def test_out_of_range_field_ids(self):
-        write_file(
-            "overflow.thrift",
-            textwrap.dedent(
-                """\
-                struct Foo {
-                    -32768: i32 f1;
-                    32767: i32 f2;
-                    32768: i32 f3;
-                }
-                """
-            ),
-        )
-        write_file(
-            "underflow.thrift",
-            textwrap.dedent(
-                """\
-                struct Foo {
-                    -32768: i32 f4;
-                    32767: i32 f5;
-                    -32769: i32 f6;
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("overflow.thrift")
-        self.assertEqual(
-            err,
-            "[ERROR:overflow.thrift:4] Integer constant 32768 outside the range of field ids ([-32768, 32767]).\n"
-            "[WARNING:overflow.thrift:2] Nonpositive field id (-32768) differs from what is auto-assigned by thrift. The id must be positive or -1.\n"
-            "[WARNING:overflow.thrift:4] Nonpositive field id (-32768) differs from what is auto-assigned by thrift. The id must be positive or -2.\n"
-            "[WARNING:overflow.thrift:2] No field id specified for `f1`, resulting protocol may have conflicts or not be backwards compatible!\n"
-            "[WARNING:overflow.thrift:4] No field id specified for `f3`, resulting protocol may have conflicts or not be backwards compatible!\n",
-        )
-        self.assertEqual(ret, 1)
-        ret, out, err = self.run_thrift("underflow.thrift")
-        self.assertEqual(
-            err,
-            "[ERROR:underflow.thrift:4] Integer constant -32769 outside the range of field ids ([-32768, 32767]).\n"
-            "[WARNING:underflow.thrift:2] Nonpositive field id (-32768) differs from what is auto-assigned by thrift. The id must be positive or -1.\n"
-            "[ERROR:underflow.thrift:4] Field id 32767 for `f6` has already been used.\n"
-            "[WARNING:underflow.thrift:2] No field id specified for `f4`, resulting protocol may have conflicts or not be backwards compatible!\n",
-        )
-        self.assertEqual(ret, 1)
 
     def test_function_return_type(self):
         write_file(
@@ -323,263 +87,6 @@ class CompilerFailureTest(unittest.TestCase):
         )
         self.assertEqual(ret, 1)
 
-    def test_oneway_return_type(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                service MyService {
-                    oneway void foo();
-                    oneway string bar();
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        # TODO(afuller): Report a diagnostic instead.
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:3] Oneway methods must have void return type: bar\n",
-        )
-        self.assertEqual(ret, 1)
-
-    def test_oneway_exception(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                exception A {}
-
-                service MyService {
-                    oneway void foo();
-                    oneway void baz() throws (1: A ex);
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        # TODO(afuller): Report a diagnostic instead.
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:5] Oneway methods can't throw exceptions: baz\n",
-        )
-        self.assertEqual(ret, 1)
-
-    def test_enum_wrong_default_value(self):
-        # tests initializing enum with default value of wrong type
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                enum Color {
-                    RED = 1,
-                    GREEN = 2,
-                    BLUE = 3,
-                }
-
-                struct MyS {
-                    1: Color color = -1
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(ret, 0)
-        self.assertEqual(
-            err,
-            "[WARNING:foo.thrift:8] type error: const `color` was declared as enum `Color` with "
-            "a value not of that enum.\n",
-        )
-
-    def test_enum_overflow(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                    enum Foo {
-                        Bar = 2147483647
-                        Baz = 2147483648
-                    }
-                    """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(ret, 1)
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:3] Integer constant 2147483648 outside the range of enum values ([-2147483648, 2147483647]).\n",
-        )
-
-    def test_enum_underflow(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                    enum Foo {
-                        Bar = -2147483648
-                        Baz = -2147483649
-                    }
-                    """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(ret, 1)
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:3] Integer constant -2147483649 outside the range of enum values ([-2147483648, 2147483647]).\n",
-        )
-
-    def assertConstError(self, type, value, expected):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                f"""\
-                    const {type} overflowInt = {value};
-                    """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(ret, 1, err)
-        self.assertEqual(err, expected)
-
-    def test_integer_overflow(self):
-        self.assertConstError(
-            "i64",
-            "9223372036854775808",  # max int64 + 1
-            "[ERROR:foo.thrift:1] integer constant 9223372036854775808 is too large\n"
-            "[WARNING:foo.thrift:1] 64-bit constant -9223372036854775808 may not work in all languages\n",
-        )
-        self.assertConstError(
-            "i64",
-            "18446744073709551615",  # max uint64
-            "[ERROR:foo.thrift:1] integer constant 18446744073709551615 is too large\n",
-        )
-        self.assertConstError(
-            "i64",
-            "18446744073709551616",  # max uint64 + 1
-            "[ERROR:foo.thrift:1] integer constant 18446744073709551616 is too large\n",
-        )
-
-    def test_double_overflow(self):
-        for value in [
-            "1.7976931348623159e+308",
-            "1.7976931348623158e+309",
-        ]:
-            self.assertConstError(
-                "double",
-                f"{value}",
-                f"[ERROR:foo.thrift:1] floating-point constant {value} is out of range\n",
-            )
-            self.assertConstError(
-                "double",
-                f"-{value}",
-                f"[ERROR:foo.thrift:1] floating-point constant {value} is out of range\n",
-            )
-
-    def test_integer_underflow(self):
-        self.assertConstError(
-            "i64",
-            "-9223372036854775809",
-            "[ERROR:foo.thrift:1] integer constant -9223372036854775809 is too small\n"
-            "[WARNING:foo.thrift:1] 64-bit constant 9223372036854775807 may not work in all languages\n",
-        )
-
-    def test_double_underflow(self):
-        for value in [
-            "4.9406564584124654e-325",
-            "1e-324",
-        ]:
-            self.assertConstError(
-                "double",
-                f"{value}",
-                f"[ERROR:foo.thrift:1] magnitude of floating-point constant {value} is too small\n",
-            )
-            self.assertConstError(
-                "double",
-                f"-{value}",
-                f"[ERROR:foo.thrift:1] magnitude of floating-point constant {value} is too small\n",
-            )
-
-    def test_const_wrong_type(self):
-        # tests initializing const with value of wrong type
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                const i32 wrongInt = "stringVal"
-                const set<string> wrongSet = {1: 2}
-                const map<i32, i32> wrongMap = [1,32,3];
-                const map<i32, i32> wierdMap = [];
-                const set<i32> wierdSet = {};
-                const list<i32> wierdList = {};
-                const list<string> badValList = [1]
-                const set<string> badValSet = [2]
-                const map<string, i32> badValMap = {1: "str"}
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(ret, 1)
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:1] type error: const `wrongInt` was declared as i32.\n"
-            "[WARNING:foo.thrift:2] type error: const `wrongSet` was declared as set. This will become an error in future versions of thrift.\n"
-            "[WARNING:foo.thrift:3] type error: const `wrongMap` was declared as map. This will become an error in future versions of thrift.\n"
-            "[WARNING:foo.thrift:4] type error: map `wierdMap` initialized with empty list.\n"
-            "[WARNING:foo.thrift:5] type error: set `wierdSet` initialized with empty map.\n"
-            "[WARNING:foo.thrift:6] type error: list `wierdList` initialized with empty map.\n"
-            "[ERROR:foo.thrift:7] type error: const `badValList<elem>` was declared as string.\n"
-            "[ERROR:foo.thrift:8] type error: const `badValSet<elem>` was declared as string.\n"
-            "[ERROR:foo.thrift:9] type error: const `badValMap<key>` was declared as string.\n"
-            "[ERROR:foo.thrift:9] type error: const `badValMap<val>` was declared as i32.\n",
-        )
-
-    def test_struct_fields_wrong_type(self):
-        # tests initializing structured annotation value of wrong type
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                struct Annot {
-                    1: i32 val
-                    2: list<string> otherVal
-                }
-
-                @Annot{val="hi", otherVal=5}
-                struct BadFields {
-                    1: i32 badInt = "str"
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(ret, 1)
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:6] type error: const `.val` was declared as i32.\n"
-            "[WARNING:foo.thrift:6] type error: const `.otherVal` was declared as list. This will become an error in future versions of thrift.\n"
-            "[ERROR:foo.thrift:8] type error: const `badInt` was declared as i32.\n",
-        )
-
-    def test_duplicate_method_name(self):
-        # tests overriding a method of the same service
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                service MyS {
-                    void meh(),
-                    void meh(),
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(ret, 1)
-        self.assertEqual(
-            err, "[ERROR:foo.thrift:3] Function `meh` is already defined for `MyS`.\n"
-        )
-
     def test_duplicate_method_name_base_base(self):
         # tests overriding a method of the parent and the grandparent services
         write_file(
@@ -587,7 +94,7 @@ class CompilerFailureTest(unittest.TestCase):
             textwrap.dedent(
                 """\
                 service MySBB {
-                    void lol(),
+                    void lol();
                 }
                 """
             ),
@@ -598,7 +105,7 @@ class CompilerFailureTest(unittest.TestCase):
                 """\
                 include "foo.thrift"
                 service MySB extends foo.MySBB {
-                    void meh(),
+                    void meh();
                 }
                 """
             ),
@@ -609,8 +116,8 @@ class CompilerFailureTest(unittest.TestCase):
                 """\
                 include "bar.thrift"
                 service MyS extends bar.MySB {
-                    void lol(),
-                    void meh(),
+                    void lol();
+                    void meh();
                 }
                 """
             ),
@@ -623,62 +130,6 @@ class CompilerFailureTest(unittest.TestCase):
             "[ERROR:baz.thrift:4] Function `MyS.meh` redefines `bar.MySB.meh`.\n",
         )
 
-    def test_duplicate_enum_value_name(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                enum Foo {
-                    Bar = 1,
-                    Bar = 2,
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:3] Enum value `Bar` is already defined for `Foo`.\n",
-        )
-
-    def test_duplicate_enum_value(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                enum Foo {
-                    Bar = 1,
-                    Baz = 1,
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:3] Duplicate value `Baz=1` with value `Bar` in enum `Foo`.\n",
-        )
-
-    def test_unset_enum_value(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                enum Foo {
-                    Foo = 1,
-                    Bar,
-                    Baz,
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("foo.thrift")
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:3] The enum value, `Bar`, must have an explicitly assigned value.\n"
-            "[ERROR:foo.thrift:4] The enum value, `Baz`, must have an explicitly assigned value.\n",
-        )
-
     def test_circular_include_dependencies(self):
         # tests overriding a method of the parent and the grandparent services
         write_file(
@@ -687,7 +138,7 @@ class CompilerFailureTest(unittest.TestCase):
                 """\
                 include "bar.thrift"
                 service MySBB {
-                    void lol(),
+                    void lol();
                 }
                 """
             ),
@@ -698,7 +149,7 @@ class CompilerFailureTest(unittest.TestCase):
                 """\
                 include "foo.thrift"
                 service MySB extends foo.MySBB {
-                    void meh(),
+                    void meh();
                 }
                 """
             ),
@@ -709,89 +160,6 @@ class CompilerFailureTest(unittest.TestCase):
             err,
             "[ERROR:bar.thrift:1] Circular dependency found: "
             "file `foo.thrift` is already parsed.\n",
-        )
-
-    def test_nonexistent_type(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                struct S {
-                    1: Random.Type field
-                }
-                """
-            ),
-        )
-
-        ret, out, err = self.run_thrift("foo.thrift")
-
-        self.assertEqual(ret, 1)
-        self.assertEqual(err, "[ERROR:foo.thrift:2] Type `Random.Type` not defined.\n")
-
-    def test_field_names_uniqueness(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                struct Foo {
-                    1: i32 a;
-                    2: i32 b;
-                    3: i64 a;
-                }
-                """
-            ),
-        )
-
-        ret, out, err = self.run_thrift("foo.thrift")
-
-        self.assertEqual(ret, 1)
-        self.assertEqual(
-            err, "[ERROR:foo.thrift:4] Field `a` is already defined for `Foo`.\n"
-        )
-
-    def test_mixin_field_names_uniqueness(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                struct A { 1: i32 i }
-                struct B { 2: i64 i }
-                struct C {
-                    1: A a (cpp.mixin);
-                    2: B b (cpp.mixin);
-                }
-                """
-            ),
-        )
-
-        ret, out, err = self.run_thrift("foo.thrift")
-
-        self.assertEqual(ret, 1)
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:5] Field `B.i` and `A.i` can not have same name in `C`.\n",
-        )
-
-        write_file(
-            "bar.thrift",
-            textwrap.dedent(
-                """\
-                struct A { 1: i32 i }
-
-                struct C {
-                    1: A a (cpp.mixin);
-                    2: i64 i;
-                }
-                """
-            ),
-        )
-
-        ret, out, err = self.run_thrift("bar.thrift")
-
-        self.assertEqual(ret, 1)
-        self.assertEqual(
-            err,
-            "[ERROR:bar.thrift:5] Field `C.i` and `A.i` can not have same name in `C`.\n",
         )
 
     def test_struct_optional_refs(self):
@@ -1563,7 +931,9 @@ class CompilerFailureTest(unittest.TestCase):
         self.assertEqual(ret, 1)
         self.assertEqual(
             err,
-            textwrap.dedent("[ERROR:foo.thrift:3] field `foo` does not exist.\n"),
+            textwrap.dedent(
+                "[ERROR:foo.thrift:3] type error: `Foo` has no field `foo`.\n"
+            ),
         )
 
     def test_annotation_scopes(self):
@@ -1856,40 +1226,10 @@ class CompilerFailureTest(unittest.TestCase):
         self.assertEqual(ret, 1)
         self.assertEqual(
             err,
-            "[ERROR:foo.thrift:9] `@thrift.TerseWrite` cannot be used with qualified fields. "
-            "Remove `optional` qualifier from field `field2`.\n"
-            "[ERROR:foo.thrift:11] `@thrift.TerseWrite` cannot be used with qualified fields. "
-            "Remove `required` qualifier from field `field3`.\n"
+            "[ERROR:foo.thrift:9] `@thrift.TerseWrite` cannot be used with qualified fields\n"
+            "[ERROR:foo.thrift:11] `@thrift.TerseWrite` cannot be used with qualified fields\n"
+            "[WARNING:foo.thrift:11] Required field is deprecated: `field3`.\n"
             "[ERROR:foo.thrift:16] `@thrift.TerseWrite` cannot be applied to union fields (in `TerseUnion`).\n",
-        )
-
-    def test_interaction_nesting(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                interaction I {
-                    void foo();
-                }
-
-                interaction J {
-                    performs I;
-                }
-
-                interaction K {
-                    I foo();
-                }
-                """
-            ),
-        )
-
-        ret, out, err = self.run_thrift("foo.thrift")
-
-        self.assertEqual(ret, 1)
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:6] Nested interactions are forbidden.\n"
-            "[ERROR:foo.thrift:10] Nested interactions are forbidden: foo\n",
         )
 
     def test_interaction_oneway_factory(self):
@@ -1914,62 +1254,6 @@ class CompilerFailureTest(unittest.TestCase):
         self.assertEqual(
             err,
             "[ERROR:foo.thrift:6] Oneway methods must have void return type: foo\n",
-        )
-
-    def test_interaction_return_type_order(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                interaction I {
-                    void foo();
-                }
-
-                service S {
-                    i32, I foo();
-                    i32, i32 bar();
-                    i32, I, stream<i32> baz();
-                }
-                """
-            ),
-        )
-
-        ret, out, err = self.run_thrift("foo.thrift")
-
-        self.assertEqual(ret, 1)
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:6] Interactions are only allowed as the leftmost return type: foo.I\n"
-            "[ERROR:foo.thrift:7] Too many return types: i32\n"
-            "[ERROR:foo.thrift:8] Interactions are only allowed as the leftmost return type: foo.I\n",
-        )
-
-    def test_interaction_in_return_type(self):
-        write_file(
-            "foo.thrift",
-            textwrap.dedent(
-                """\
-                interaction I {
-                    void foo();
-                }
-
-                service S {
-                    I, I foo();
-                    I, I, stream<i32> bar();
-                    I, I, sink<i32, i32> baz();
-                }
-                """
-            ),
-        )
-
-        ret, out, err = self.run_thrift("foo.thrift")
-
-        self.assertEqual(ret, 1)
-        self.assertEqual(
-            err,
-            "[ERROR:foo.thrift:6] Interactions are only allowed as the leftmost return type: foo.I\n"
-            "[ERROR:foo.thrift:7] Interactions are only allowed as the leftmost return type: foo.I\n"
-            "[ERROR:foo.thrift:8] Interactions are only allowed as the leftmost return type: foo.I\n",
         )
 
     # Time complexity of for_each_transitive_field should be O(1)
@@ -2109,8 +1393,8 @@ class CompilerFailureTest(unittest.TestCase):
             textwrap.dedent(
                 """\
                 struct S {
-                    1: i32 field,
-                    2: set<float> set_of_float,
+                    1: i32 field;
+                    2: set<float> set_of_float;
                 }
                 """
             ),
@@ -2129,8 +1413,8 @@ class CompilerFailureTest(unittest.TestCase):
             textwrap.dedent(
                 """\
                 struct S {
-                    1: i32 field,
-                    2: map<float, i32> map_of_float_to_int,
+                    1: i32 field;
+                    2: map<float, i32> map_of_float_to_int;
                 }
                 """
             ),
@@ -2179,28 +1463,6 @@ class CompilerFailureTest(unittest.TestCase):
             err,
             "[ERROR:main.thrift:3] Failed to resolve return type of `func`.\n"
             "[ERROR:main.thrift:3] Type `header.Bar` not defined.\n",
-        )
-
-        write_file(
-            "main.thrift",
-            textwrap.dedent(
-                """\
-                @Undefined
-                struct Bar {
-                    @Undefined
-                    1: i32 field1;
-                }
-                """
-            ),
-        )
-        ret, out, err = self.run_thrift("main.thrift")
-        self.assertEqual(ret, 1)
-        self.assertEqual(
-            err,
-            "[ERROR:main.thrift:1] The type 'Undefined' is not defined yet. "
-            "Types must be defined before the usage in constant values.\n"
-            "[ERROR:main.thrift:3] The type 'Undefined' is not defined yet. "
-            "Types must be defined before the usage in constant values.\n",
         )
 
     def test_adapting_variable(self):
@@ -2453,13 +1715,6 @@ class CompilerFailureTest(unittest.TestCase):
                 @cpp.Adapter{name="Adapter"}
                 typedef i32 Bar1 (cpp.type = "std::uint32_t")
 
-                @cpp.StrongType
-                typedef i32 Bar2 (cpp.type = "std::uint32_t")
-
-                @cpp.Adapter{name="Adapter"}
-                @cpp.StrongType
-                typedef i32 Bar3
-
                 @cpp.Adapter{name="Adapter"}
                 struct A {
                     1: i32 field;
@@ -2476,11 +1731,9 @@ class CompilerFailureTest(unittest.TestCase):
         self.assertEqual(ret, 1)
         self.assertEqual(
             err,
-            "[ERROR:foo.thrift:13] Definition `A` cannot have both cpp.type/cpp.template and @cpp.Adapter annotations\n"
-            "[ERROR:foo.thrift:19] Definition `field` cannot have both cpp.type/cpp.template and @cpp.Adapter annotations\n"
-            "[ERROR:foo.thrift:3] Definition `Bar1` cannot have both cpp.type/cpp.template and @cpp.Adapter annotations\n"
-            "[ERROR:foo.thrift:6] Definition `Bar2` cannot have both cpp.type/cpp.template and @cpp.StrongType annotations\n"
-            "[ERROR:foo.thrift:9] Definition `Bar3` cannot have both @cpp.StrongType and @cpp.Adapter annotations\n",
+            "[ERROR:foo.thrift:6] Definition `A` cannot have both cpp.type/cpp.template and @cpp.Adapter annotations\n"
+            "[ERROR:foo.thrift:12] Definition `field` cannot have both cpp.type/cpp.template and @cpp.Adapter annotations\n"
+            "[ERROR:foo.thrift:3] Definition `Bar1` cannot have both cpp.type/cpp.template and @cpp.Adapter annotations\n",
         )
 
     def test_nonexist_type_in_variable(self):

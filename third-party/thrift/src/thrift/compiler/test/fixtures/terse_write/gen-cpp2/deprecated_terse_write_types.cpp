@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::facebook::thrift::test::terse_write::deprecated::MyEnum>::size;
+#endif
 folly::Range<::facebook::thrift::test::terse_write::deprecated::MyEnum const*> const TEnumTraits<::facebook::thrift::test::terse_write::deprecated::MyEnum>::values = folly::range(TEnumDataStorage<::facebook::thrift::test::terse_write::deprecated::MyEnum>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::facebook::thrift::test::terse_write::deprecated::MyEnum>::names = folly::range(TEnumDataStorage<::facebook::thrift::test::terse_write::deprecated::MyEnum>::names);
 
@@ -28,14 +30,6 @@ bool TEnumTraits<::facebook::thrift::test::terse_write::deprecated::MyEnum>::fin
 
 }} // apache::thrift
 
-namespace facebook { namespace thrift { namespace test { namespace terse_write { namespace deprecated {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _MyEnum_EnumMapFactory::ValuesToNamesMapType _MyEnum_VALUES_TO_NAMES = _MyEnum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}}}} // facebook::thrift::test::terse_write::deprecated
 
 namespace apache {
 namespace thrift {

@@ -14,7 +14,6 @@ from thrift.py3.reflection cimport (
     Qualifier as __Qualifier,
 )
 
-cimport facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
 
 cimport module.types as _module_types
 
@@ -35,24 +34,47 @@ cdef __StructSpec get_reflection__MyUnion():
         __FieldSpec._fbthrift_create(
             id=1,
             name="anInteger",
+            py_name="anInteger",
             type=int,
             kind=__NumberType.I32,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=2,
             name="aString",
+            py_name="aString",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
+        ),
+    )
+    return spec
+cdef __StructSpec get_reflection__NonTriviallyDestructibleUnion():
+    cdef __StructSpec spec = __StructSpec._fbthrift_create(
+        name="NonTriviallyDestructibleUnion",
+        kind=__StructType.UNION,
+        annotations={
+        },
+    )
+    spec.add_field(
+        __FieldSpec._fbthrift_create(
+            id=1,
+            name="int_field",
+            py_name="int_field",
+            type=int,
+            kind=__NumberType.I32,
+            qualifier=__Qualifier.UNQUALIFIED,
+            default=None,
+            annotations={
+            },
         ),
     )
     return spec
@@ -72,108 +94,117 @@ cdef __StructSpec get_reflection__MyField():
         __FieldSpec._fbthrift_create(
             id=1,
             name="opt_value",
+            py_name="opt_value",
             type=int,
             kind=__NumberType.I64,
             qualifier=__Qualifier.OPTIONAL,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=2,
             name="value",
+            py_name="value",
             type=int,
             kind=__NumberType.I64,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=3,
             name="req_value",
+            py_name="req_value",
             type=int,
             kind=__NumberType.I64,
             qualifier=__Qualifier.REQUIRED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=4,
             name="opt_enum_value",
+            py_name="opt_enum_value",
             type=_module_types.MyEnum,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=5,
             name="enum_value",
+            py_name="enum_value",
             type=_module_types.MyEnum,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=6,
             name="req_enum_value",
+            py_name="req_enum_value",
             type=_module_types.MyEnum,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.REQUIRED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=7,
             name="opt_str_value",
+            py_name="opt_str_value",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=8,
             name="str_value",
+            py_name="str_value",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=9,
             name="req_str_value",
+            py_name="req_str_value",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.REQUIRED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     return spec
@@ -193,36 +224,39 @@ cdef __StructSpec get_reflection__MyStruct():
         __FieldSpec._fbthrift_create(
             id=1,
             name="opt_ref",
+            py_name="opt_ref",
             type=_module_types.MyField,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=2,
             name="ref",
+            py_name="ref",
             type=_module_types.MyField,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=3,
             name="req_ref",
+            py_name="req_ref",
             type=_module_types.MyField,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.REQUIRED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     return spec
@@ -242,30 +276,33 @@ cdef __StructSpec get_reflection__StructWithUnion():
         __FieldSpec._fbthrift_create(
             id=1,
             name="u",
+            py_name="u",
             type=_module_types.MyUnion,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=2,
             name="aDouble",
+            py_name="aDouble",
             type=float,
             kind=__NumberType.DOUBLE,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=3,
             name="f",
+            py_name="f",
             type=_module_types.MyField,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -291,6 +328,7 @@ cdef __StructSpec get_reflection__RecursiveStruct():
         __FieldSpec._fbthrift_create(
             id=1,
             name="mes",
+            py_name="mes",
             type=_module_types.List__RecursiveStruct,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
@@ -316,72 +354,78 @@ cdef __StructSpec get_reflection__StructWithContainers():
         __FieldSpec._fbthrift_create(
             id=1,
             name="list_ref",
+            py_name="list_ref",
             type=_module_types.List__i32,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=2,
             name="set_ref",
+            py_name="set_ref",
             type=_module_types.Set__i32,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=3,
             name="map_ref",
+            py_name="map_ref",
             type=_module_types.Map__i32_i32,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref""": """true""",                """cpp2.ref""": """true""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=4,
             name="list_ref_unique",
+            py_name="list_ref_unique",
             type=_module_types.List__i32,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref_type""": """unique""",                """cpp2.ref_type""": """unique""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=5,
             name="set_ref_shared",
+            py_name="set_ref_shared",
             type=_module_types.Set__i32,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref_type""": """shared""",                """cpp2.ref_type""": """shared""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=6,
             name="list_ref_shared_const",
+            py_name="list_ref_shared_const",
             type=_module_types.List__i32,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref_type""": """shared_const""",                """cpp2.ref_type""": """shared_const""",            },
+            },
         ),
     )
     return spec
@@ -401,36 +445,39 @@ cdef __StructSpec get_reflection__StructWithSharedConst():
         __FieldSpec._fbthrift_create(
             id=1,
             name="opt_shared_const",
+            py_name="opt_shared_const",
             type=_module_types.MyField,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
             default=None,
             annotations={
-                """cpp.ref_type""": """shared_const""",                """cpp2.ref_type""": """shared_const""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=2,
             name="shared_const",
+            py_name="shared_const",
             type=_module_types.MyField,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref_type""": """shared_const""",                """cpp2.ref_type""": """shared_const""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=3,
             name="req_shared_const",
+            py_name="req_shared_const",
             type=_module_types.MyField,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.REQUIRED,
             default=None,
             annotations={
-                """cpp.ref_type""": """shared_const""",                """cpp2.ref_type""": """shared_const""",            },
+            },
         ),
     )
     return spec
@@ -463,36 +510,39 @@ cdef __StructSpec get_reflection__StructWithRef():
         __FieldSpec._fbthrift_create(
             id=1,
             name="def_field",
+            py_name="def_field",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref""": """1""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=2,
             name="opt_field",
+            py_name="opt_field",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
             default=None,
             annotations={
-                """cpp.ref""": """1""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=3,
             name="req_field",
+            py_name="req_field",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.REQUIRED,
             default=None,
             annotations={
-                """cpp.ref""": """1""",            },
+            },
         ),
     )
     return spec
@@ -512,36 +562,39 @@ cdef __StructSpec get_reflection__StructWithBox():
         __FieldSpec._fbthrift_create(
             id=1,
             name="a",
+            py_name="a",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
             default=None,
             annotations={
-                """thrift.box""": """1""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=2,
             name="b",
+            py_name="b",
             type=_module_types.List__i64,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
             default=None,
             annotations={
-                """thrift.box""": """1""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=3,
             name="c",
+            py_name="c",
             type=_module_types.StructWithRef,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
             default=None,
             annotations={
-                """thrift.box""": """1""",            },
+            },
         ),
     )
     return spec
@@ -561,6 +614,7 @@ cdef __StructSpec get_reflection__StructWithInternBox():
         __FieldSpec._fbthrift_create(
             id=1,
             name="field1",
+            py_name="field1",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -573,6 +627,7 @@ cdef __StructSpec get_reflection__StructWithInternBox():
         __FieldSpec._fbthrift_create(
             id=2,
             name="field2",
+            py_name="field2",
             type=_module_types.MyField,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -581,10 +636,24 @@ cdef __StructSpec get_reflection__StructWithInternBox():
             },
         ),
     )
+    return spec
+cdef __StructSpec get_reflection__StructWithTerseInternBox():
+    cdef _module_types.StructWithTerseInternBox defaults = _module_types.StructWithTerseInternBox._fbthrift_create(
+        constant_shared_ptr[_module_types.cStructWithTerseInternBox](
+            default_inst[_module_types.cStructWithTerseInternBox]()
+        )
+    )
+    cdef __StructSpec spec = __StructSpec._fbthrift_create(
+        name="StructWithTerseInternBox",
+        kind=__StructType.STRUCT,
+        annotations={
+        },
+    )
     spec.add_field(
         __FieldSpec._fbthrift_create(
-            id=3,
-            name="field3",
+            id=1,
+            name="field1",
+            py_name="field1",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -595,8 +664,9 @@ cdef __StructSpec get_reflection__StructWithInternBox():
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
-            id=4,
-            name="field4",
+            id=2,
+            name="field2",
+            py_name="field2",
             type=_module_types.MyField,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -622,6 +692,7 @@ cdef __StructSpec get_reflection__AdaptedStructWithInternBox():
         __FieldSpec._fbthrift_create(
             id=1,
             name="field1",
+            py_name="field1",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -634,6 +705,7 @@ cdef __StructSpec get_reflection__AdaptedStructWithInternBox():
         __FieldSpec._fbthrift_create(
             id=2,
             name="field2",
+            py_name="field2",
             type=_module_types.MyField,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -642,10 +714,24 @@ cdef __StructSpec get_reflection__AdaptedStructWithInternBox():
             },
         ),
     )
+    return spec
+cdef __StructSpec get_reflection__AdaptedStructWithTerseInternBox():
+    cdef _module_types.AdaptedStructWithTerseInternBox defaults = _module_types.AdaptedStructWithTerseInternBox._fbthrift_create(
+        constant_shared_ptr[_module_types.cAdaptedStructWithTerseInternBox](
+            default_inst[_module_types.cAdaptedStructWithTerseInternBox]()
+        )
+    )
+    cdef __StructSpec spec = __StructSpec._fbthrift_create(
+        name="AdaptedStructWithTerseInternBox",
+        kind=__StructType.STRUCT,
+        annotations={
+        },
+    )
     spec.add_field(
         __FieldSpec._fbthrift_create(
-            id=3,
-            name="field3",
+            id=1,
+            name="field1",
+            py_name="field1",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -656,8 +742,9 @@ cdef __StructSpec get_reflection__AdaptedStructWithInternBox():
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
-            id=4,
-            name="field4",
+            id=2,
+            name="field2",
+            py_name="field2",
             type=_module_types.MyField,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -683,36 +770,39 @@ cdef __StructSpec get_reflection__StructWithRefTypeUnique():
         __FieldSpec._fbthrift_create(
             id=1,
             name="def_field",
+            py_name="def_field",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref_type""": """unique""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=2,
             name="opt_field",
+            py_name="opt_field",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
             default=None,
             annotations={
-                """cpp.ref_type""": """unique""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=3,
             name="req_field",
+            py_name="req_field",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.REQUIRED,
             default=None,
             annotations={
-                """cpp.ref_type""": """unique""",            },
+            },
         ),
     )
     return spec
@@ -732,36 +822,39 @@ cdef __StructSpec get_reflection__StructWithRefTypeShared():
         __FieldSpec._fbthrift_create(
             id=1,
             name="def_field",
+            py_name="def_field",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref_type""": """shared""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=2,
             name="opt_field",
+            py_name="opt_field",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
             default=None,
             annotations={
-                """cpp.ref_type""": """shared""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=3,
             name="req_field",
+            py_name="req_field",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.REQUIRED,
             default=None,
             annotations={
-                """cpp.ref_type""": """shared""",            },
+            },
         ),
     )
     return spec
@@ -781,36 +874,39 @@ cdef __StructSpec get_reflection__StructWithRefTypeSharedConst():
         __FieldSpec._fbthrift_create(
             id=1,
             name="def_field",
+            py_name="def_field",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref_type""": """shared_const""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=2,
             name="opt_field",
+            py_name="opt_field",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
             default=None,
             annotations={
-                """cpp.ref_type""": """shared_const""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=3,
             name="req_field",
+            py_name="req_field",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.REQUIRED,
             default=None,
             annotations={
-                """cpp.ref_type""": """shared_const""",            },
+            },
         ),
     )
     return spec
@@ -830,12 +926,13 @@ cdef __StructSpec get_reflection__StructWithRefAndAnnotCppNoexceptMoveCtor():
         __FieldSpec._fbthrift_create(
             id=1,
             name="def_field",
+            py_name="def_field",
             type=_module_types.Empty,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref""": """1""",            },
+            },
         ),
     )
     return spec
@@ -855,60 +952,65 @@ cdef __StructSpec get_reflection__StructWithString():
         __FieldSpec._fbthrift_create(
             id=1,
             name="def_unique_string_ref",
+            py_name="def_unique_string_ref",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=defaults.def_unique_string_ref,
             annotations={
-                """cpp.ref_type""": """unique""",                """cpp2.ref_type""": """unique""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=2,
             name="def_shared_string_ref",
+            py_name="def_shared_string_ref",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=defaults.def_shared_string_ref,
             annotations={
-                """cpp.ref_type""": """shared""",                """cpp2.ref_type""": """shared""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=3,
             name="def_shared_string_const_ref",
+            py_name="def_shared_string_const_ref",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=defaults.def_shared_string_const_ref,
             annotations={
-                """cpp.ref_type""": """shared_const""",                """cpp2.ref_type""": """shared_const""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=4,
             name="unique_string_ref",
+            py_name="unique_string_ref",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref_type""": """unique""",                """cpp2.ref_type""": """unique""",            },
+            },
         ),
     )
     spec.add_field(
         __FieldSpec._fbthrift_create(
             id=5,
             name="shared_string_ref",
+            py_name="shared_string_ref",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
             default=None,
             annotations={
-                """cpp.ref_type""": """shared""",                """cpp2.ref_type""": """shared""",            },
+            },
         ),
     )
     return spec

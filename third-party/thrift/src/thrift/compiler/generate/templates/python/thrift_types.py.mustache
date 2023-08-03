@@ -42,7 +42,7 @@ class {{> structs/unadapted_name}}(metaclass={{!
         }}{{/struct:union?}}{{!
         }}):
     _fbthrift_SPEC = (
-        {{#struct:fields_and_mixin_fields}}
+        {{#struct:fields_ordered_by_id}}
         (
             {{field:key}},  # id
             _fbthrift_python_types.{{field:tablebased_qualifier}}, # qualifier
@@ -52,7 +52,7 @@ class {{> structs/unadapted_name}}(metaclass={{!
             }}{{^field:user_default_value}}None{{/field:user_default_value}},  # default value
             {{> fields/adapter_info }},  # adapter info
         ),
-        {{/struct:fields_and_mixin_fields}}
+        {{/struct:fields_ordered_by_id}}
     )
 
     @staticmethod
@@ -173,6 +173,8 @@ _fbthrift_python_types.fill_specs(*_fbthrift_all_structs)
     }}{{^constant:is_adapter_transitive?}}{{!
         }}None
     }}{{/constant:is_adapter_transitive?}},
+    constant_uri={{#constant:uri}}"{{constant:uri}}"{{/constant:uri}}{{!
+        }}{{^constant:uri}}None{{/constant:uri}},
 )
 {{/constant:has_adapter?}}
 {{/program:constants}}

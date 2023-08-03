@@ -12,6 +12,7 @@ open Typing_defs
 open Utils
 module Reason = Typing_reason
 module Env = Typing_env
+module SN = Naming_special_names
 module Subst = Decl_subst
 module TUtils = Typing_utils
 module Phase = Typing_phase
@@ -23,7 +24,7 @@ module MakeType = Typing_make_type
 
 let expand_typedef_ ?(force_expand = false) ety_env env r (x : string) argl =
   let pos = Reason.to_pos r in
-  let td = unsafe_opt @@ Typing_env.get_typedef env x in
+  let td = unsafe_opt @@ Env.get_typedef env x in
   let {
     td_pos;
     td_module = _;
@@ -59,7 +60,7 @@ let expand_typedef_ ?(force_expand = false) ety_env env r (x : string) argl =
   | None ->
     let should_expand =
       force_expand
-      || Typing_env.is_typedef_visible
+      || Env.is_typedef_visible
            env
            ~expand_visible_newtype:ety_env.expand_visible_newtype
            ~name:x
@@ -90,7 +91,7 @@ let expand_typedef_ ?(force_expand = false) ety_env env r (x : string) argl =
           | Some cstr ->
             (* Special case for supportdyn<T> defined with "as T" in order to
              * avoid supportdynamic.hhi appearing in reason *)
-            if String.equal x Naming_special_names.Classes.cSupportDyn then
+            if String.equal x SN.Classes.cSupportDyn then
               ((env, None), List.hd_exn argl)
             else
               Phase.localize ~ety_env env cstr
@@ -108,16 +109,25 @@ let expand_typedef ety_env env r type_name argl =
  * of where the typedefs come from. *)
 let force_expand_typedef ~ety_env env (t : locl_ty) =
   let rec aux e1 ety_env env t =
+    let default () =
+      ( (env, e1),
+        t,
+        Typing_defs.Type_expansions.positions ety_env.type_expansions )
+    in
     match deref t with
-    | (r, Tnewtype (x, argl, _)) when not (Env.is_enum env x) ->
+    | (_, Tnewtype (x, _, _)) when String.equal SN.Classes.cEnumClassLabel x ->
+      (* Labels are Resources at runtime, so we don't want to force them
+       * to string. MemberOf on the other hand are "typed alias" on the
+       * underlying type so it's ok to force them. So we only special case
+       * Labels here *)
+      default ()
+    | (r, Tnewtype (x, argl, _))
+      when not (Env.is_enum env x || Env.is_enum_class env x) ->
       let ((env, e2), (ety_env, ty)) =
         expand_typedef_ ~force_expand:true ety_env env r x argl
       in
       aux (Option.merge e1 e2 ~f:Typing_error.both) ety_env env ty
-    | _ ->
-      ( (env, e1),
-        t,
-        Typing_defs.Type_expansions.positions ety_env.type_expansions )
+    | _ -> default ()
   in
   aux None ety_env env t
 

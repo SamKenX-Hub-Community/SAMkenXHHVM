@@ -164,7 +164,7 @@ pub struct Edges {
     ///
     /// For scalability it's sharded. The low bits of the HashIndex pick which shard
     /// to use, and remaining bits index into that shard's Vec.
-    shards: [Mutex<Vec<HashIndexSet>>; Self::NUM_SHARDS],
+    shards: Box<[Mutex<Vec<HashIndexSet>>; Self::NUM_SHARDS]>,
 
     /// Assigns new, temporary Dep -> HashIndex mappings.
     dep_to_temp_index: DepToHashIndex,
@@ -173,7 +173,7 @@ pub struct Edges {
 impl Default for Edges {
     fn default() -> Self {
         Self {
-            shards: std::array::from_fn(|_| Default::default()),
+            shards: Box::new(std::array::from_fn(|_| Default::default())),
             dep_to_temp_index: DepToHashIndex::new(),
         }
     }
@@ -415,7 +415,7 @@ pub fn build(
         let optimize_config = OptimizeConfig::default();
         depgraph_compress::write_dep_graph(output, mem_dep_graph, &write_config, &optimize_config)?;
     } else {
-        depgraph_writer::write_dep_graph(output, mem_dep_graph)?;
+        depgraph_writer::write_dep_graph(output, &mem_dep_graph)?;
     }
 
     info!("Done");

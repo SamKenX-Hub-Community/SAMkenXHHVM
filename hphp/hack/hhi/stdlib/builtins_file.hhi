@@ -9,10 +9,6 @@
  */
 
 namespace {
-const resource STDIN;
-const resource STDOUT;
-const resource STDERR;
-
 const int PATHINFO_DIRNAME;
 const int PATHINFO_BASENAME;
 const int PATHINFO_EXTENSION;
@@ -377,10 +373,39 @@ function closedir(
 }
 
 namespace HH {
-  <<__PHPStdLib>> function try_stdin()[]: ?resource;
-  <<__PHPStdLib>> function try_stdout()[]: ?resource;
-  <<__PHPStdLib>> function try_stderr()[]: ?resource;
-  <<__PHPStdLib>> function stdin()[]: resource;
-  <<__PHPStdLib>> function stdout()[]: resource;
-  <<__PHPStdLib>> function stderr()[]: resource;
+/**
+ * Return a stream resource attached to stdin in script environments,
+ * or null in web requests
+ */
+<<__PHPStdLib>> function try_stdin()[]: ?resource;
+
+/**
+ * Return a stream resource attached to stdout in script environments,
+ * or null in web requests
+ */
+<<__PHPStdLib>> function try_stdout()[]: ?resource;
+
+/**
+ * Return a stream resource attached to stderr in script environments,
+ * or null in web requests
+ */
+<<__PHPStdLib>> function try_stderr()[]: ?resource;
+
+/**
+ * Return a stream resource attached to stdin in script environments,
+ * or throw a RuntimeException in web requests.
+ */
+<<__PHPStdLib>> function stdin()[]: resource;
+
+/**
+ * Return a stream resource attached to stdout in script environments,
+ * or throw a RuntimeException in web requests.
+ */
+<<__PHPStdLib>> function stdout()[]: resource;
+
+/**
+ * Return a stream resource attached to stderr in script environments,
+ * or throw a RuntimeException in web requests.
+ */
+<<__PHPStdLib>> function stderr()[]: resource;
 }

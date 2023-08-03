@@ -192,7 +192,7 @@ createSymlinkWrapper(const std::string& fileName,
       found = true;
       std::string escapedName;
       folly::cEscape(fe->name->toCppString(), escapedName);
-      ss << ".function{} [unique persistent "
+      ss << ".function{} [persistent "
         "\"__EntryPoint\"(\"\"\"y:0:{}\"\"\")] (4,7) <\"\" N  > "
         "entrypoint$symlink$" << string_sha1(fileName) << "() {\n"
          << "  String \"" << targetPath << "\"\n"
@@ -307,16 +307,12 @@ void Package::parseInit(const Config& config, FileMetaVec meta) {
 
   // Inhibit extensions and systemlib from being initialized. It
   // takes a while and we don't need it.
-  register_process_init(true);
+  register_process_init();
   hphp_process_init(true);
 
   // Don't use unit emitter's caching here, we're relying on
   // extern-worker to do that for us.
   g_unit_emitter_cache_hook = nullptr;
-
-  // This is a lie, but a lot of stuff breaks if you don't set it to
-  // true (when false, everything assumes you're parsing systemlib).
-  SystemLib::s_inited = true;
 
   s_fileMetas = std::move(meta);
   s_fileMetasIdx = 0;
@@ -378,7 +374,7 @@ Package::parseRun(const std::string& content,
     BatchDeclProvider provider(decls);
     try {
       ue = compile_unit(
-        content.data(),
+        content,
         fileName.c_str(),
         mangled_sha1,
         Native::s_noNativeFuncs,
@@ -1131,13 +1127,17 @@ Package::UnitDecls IndexJob::run(
 
   hackc::DeclParserConfig decl_config;
   repoOptions.initDeclConfig(decl_config);
-  auto decls = hackc::direct_decl_parse(decl_config, fileName, content);
+  auto decls = hackc::direct_decl_parse_and_serialize(
+      decl_config,
+      fileName,
+      {(const uint8_t*)content.data(), content.size()}
+  );
   if (decls.has_errors) {
     return bail("decl parser error");
   }
 
   // Get Facts from Decls, then populate IndexMeta.
-  auto facts = hackc::decls_to_facts_cpp_ffi(decls, "");
+  auto facts = hackc::decls_to_facts(*decls.decls, "");
   auto summary = summary_of_facts(facts);
   s_indexMetas.emplace_back(summary);
   if (!RO::EvalEnableDecl) {
@@ -1643,18 +1643,18 @@ coro::Task<Package::OndemandInfo> Package::emitGroup(
   HPHP_CORO_RETURN(OndemandInfo{});
 }
 
-Package::IndexMeta HPHP::summary_of_facts(const hackc::FactsResult& facts) {
+Package::IndexMeta HPHP::summary_of_facts(const hackc::FileFacts& facts) {
   Package::IndexMeta summary;
-  for (auto& e : facts.facts.types) {
+  for (auto& e : facts.types) {
     summary.types.emplace_back(makeStaticString(std::string(e.name)));
   }
-  for (auto& e : facts.facts.functions) {
+  for (auto& e : facts.functions) {
     summary.funcs.emplace_back(makeStaticString(std::string(e)));
   }
-  for (auto& e : facts.facts.constants) {
+  for (auto& e : facts.constants) {
     summary.constants.emplace_back(makeStaticString(std::string(e)));
   }
-  for (auto& e : facts.facts.modules) {
+  for (auto& e : facts.modules) {
     summary.modules.emplace_back(makeStaticString(std::string(e.name)));
   }
   return summary;

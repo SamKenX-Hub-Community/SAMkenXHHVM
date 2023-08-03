@@ -27,37 +27,50 @@ module TCO = TypecheckerOptions
 module SN = Naming_special_names
 module Profile = Typing_toplevel_profile
 
-(* The two following functions enable us to retrieve the function (or class)
-   header from the shared mem. Note that they only return a non None value if
-   global inference is on *)
-let get_decl_function_header env function_id =
-  let is_global_inference_on = TCO.global_inference (Env.get_tcopt env) in
-  if is_global_inference_on then
-    match Decl_provider.get_fun (Env.get_ctx env) function_id with
-    | Some { fe_type; _ } -> begin
-      match get_node fe_type with
-      | Tfun fun_type -> Some fun_type
-      | _ -> None
-    end
-    | _ -> None
-  else
-    None
-
 let is_literal_with_trivially_inferable_type (_, _, e) =
   Option.is_some @@ Decl_utils.infer_const e
 
-let fun_def ctx fd : Tast.fun_def list option =
+let check_if_this_def_is_the_winner ctx name_type (pos, name) : bool =
+  if String.is_empty name || String.equal name "\\" then
+    (* In case of some parse errors, the AST contains definitions with empty names.
+       There's no useful duplicate-name-check we can do here.
+       Return [false] because there's no such thing as the winner for the empty name. *)
+    false
+  else
+    match Decl_provider.is_this_def_the_winner ctx name_type (pos, name) with
+    | Decl_provider.Winner -> true
+    | Decl_provider.Loser_to prev_pos ->
+      Errors.add_error
+        Naming_error.(
+          to_user_error @@ Error_name_already_bound { name; pos; prev_pos });
+      false
+    | Decl_provider.Not_found ->
+      (* This is impossible! The fact that we have an AST def for [name] implies
+         that Decl_provider should be able to find at least one decl with this name.
+         Only explanations are (1) weirdness with Provider_context.entry which
+         gives slightly different answers from what direct-decl-parser provides
+         e.g. in case of incorrect parse trees, or order of winner; (2) disk race
+         where the file on disk has changed but we haven't yet updated naming table. *)
+      HackEventLogger.decl_consistency_bug
+        "Decl consistency: Ast definition but no decl"
+        ~data:name
+        ~pos:(Pos.to_relative_string pos |> Pos.string);
+      false
+
+let fun_def ctx fd : Tast.fun_def Tast_with_dynamic.t option =
   let f = fd.fd_fun in
   let tcopt = Provider_context.get_tcopt ctx in
   Profile.measure_elapsed_time_and_report tcopt None fd.fd_name @@ fun () ->
   Counters.count Counters.Category.Typecheck @@ fun () ->
   Errors.run_with_span f.f_span @@ fun () ->
+  let (_ : bool) =
+    check_if_this_def_is_the_winner ctx FileInfo.Fun fd.fd_name
+  in
   let env = EnvFromDef.fun_env ~origin:Decl_counters.TopLevel ctx fd in
   with_timeout env fd.fd_name @@ fun env ->
   (* reset the expression dependent display ids for each function body *)
   Reason.expr_display_id_map := IMap.empty;
   let pos = fst fd.fd_name in
-  let decl_header = get_decl_function_header env (snd fd.fd_name) in
   let env = Env.open_tyvars env (fst fd.fd_name) in
   let env = Env.set_env_callable_pos env pos in
   let (env, user_attributes) =
@@ -83,34 +96,24 @@ let fun_def ctx fd : Tast.fun_def list option =
     else
       env
   in
-  let env =
-    match
-      Naming_attributes.find
-        SN.UserAttributes.uaCrossPackage
-        f.f_user_attributes
-    with
-    | Some attr ->
-      let pkgs_to_load =
-        List.fold
-          ~init:SSet.empty
-          ~f:
-            (fun acc -> function
-              | (_, _, Aast.String pkg) -> SSet.add pkg acc
-              | _ -> acc)
-          attr.ua_params
-      in
-      Env.load_packages env pkgs_to_load
-    | _ -> env
+  let no_auto_likes =
+    Naming_attributes.mem SN.UserAttributes.uaNoAutoLikes f.f_user_attributes
   in
+  let env =
+    if no_auto_likes then
+      Env.set_no_auto_likes env true
+    else
+      env
+  in
+  let env = Env.load_cross_packages_from_attr env f.f_user_attributes in
   (* Is sound dynamic enabled, and the function marked <<__SupportDynamicType>> explicitly or implicitly? *)
   let sdt_function =
-    TypecheckerOptions.enable_sound_dynamic
-      (Provider_context.get_tcopt (Env.get_ctx env))
+    TCO.enable_sound_dynamic (Provider_context.get_tcopt (Env.get_ctx env))
     && Env.get_support_dynamic_type env
   in
-  List.iter ~f:Typing_error_utils.add_typing_error
+  List.iter ~f:(Typing_error_utils.add_typing_error ~env)
   @@ Typing_type_wellformedness.fun_def env fd;
-  Typing_env.make_depend_on_current_module env;
+  Env.make_depend_on_current_module env;
   let (env, ty_err_opt) =
     Phase.localize_and_add_ast_generic_parameters_and_where_constraints
       env
@@ -118,10 +121,10 @@ let fun_def ctx fd : Tast.fun_def list option =
       fd.fd_tparams
       fd.fd_where_constraints
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
   let env = Env.set_fn_kind env f.f_fun_kind in
   let (return_decl_ty, params_decl_ty) =
-    merge_decl_header_with_hints ~params:f.f_params ~ret:f.f_ret decl_header env
+    hint_fun_decl ~params:f.f_params ~ret:f.f_ret env
   in
   let hint_pos =
     match f.f_ret with
@@ -166,6 +169,7 @@ let fun_def ctx fd : Tast.fun_def list option =
   let (env, param_tys) =
     Typing_param.make_param_local_tys
       ~dynamic_mode:false
+      ~no_auto_likes
       env
       params_decl_ty
       f.f_params
@@ -177,7 +181,13 @@ let fun_def ctx fd : Tast.fun_def list option =
       (MakeType.capability (get_reason cap_ty) SN.Capabilities.accessGlobals)
   in
   let (env, typed_params) =
-    Typing.bind_params env ~can_read_globals f.f_ctxs param_tys f.f_params
+    Typing.bind_params
+      env
+      ~can_read_globals
+      ~no_auto_likes
+      f.f_ctxs
+      param_tys
+      f.f_params
   in
   let env = set_tyvars_variance_in_callable env return_ty.et_type param_tys in
   let local_tpenv = Env.get_tpenv env in
@@ -202,6 +212,7 @@ let fun_def ctx fd : Tast.fun_def list option =
     match hint_of_type_hint f.f_ret with
     | None ->
       Typing_error_utils.add_typing_error
+        ~env
         Typing_error.(primary @@ Primary.Expecting_return_type_hint pos)
     | Some _ -> ()
   end;
@@ -226,7 +237,7 @@ let fun_def ctx fd : Tast.fun_def list option =
       Aast.f_doc_comment = f.f_doc_comment;
     }
   in
-  let fundef =
+  let under_normal_assumptions =
     {
       Aast.fd_mode = fd.fd_mode;
       Aast.fd_name = fd.fd_name;
@@ -239,31 +250,35 @@ let fun_def ctx fd : Tast.fun_def list option =
       Aast.fd_where_constraints = fd.fd_where_constraints;
     }
   in
-  let fundefs =
-    let fundef_of_dynamic
-        (dynamic_env, dynamic_params, dynamic_body, dynamic_return_ty) =
-      let open Aast in
-      {
-        fundef with
-        fd_fun =
-          {
-            fundef.fd_fun with
-            f_annotation = Env.save local_tpenv dynamic_env;
-            f_ret = (dynamic_return_ty, ret_hint);
-            f_params = dynamic_params;
-            f_body = { fb_ast = dynamic_body };
-          };
-      }
-    in
+  let fundef_of_dynamic
+      (dynamic_env, dynamic_params, dynamic_body, dynamic_return_ty) =
+    let open Aast in
+    {
+      under_normal_assumptions with
+      fd_fun =
+        {
+          under_normal_assumptions.fd_fun with
+          f_annotation = Env.save local_tpenv dynamic_env;
+          f_ret = (dynamic_return_ty, ret_hint);
+          f_params = dynamic_params;
+          f_body = { fb_ast = dynamic_body };
+        };
+    }
+  in
+  let (under_normal_assumptions, under_dynamic_assumptions) =
     if
       sdt_dynamic_check_required
       && (not had_errors)
-      && not (TypecheckerOptions.skip_check_under_dynamic tcopt)
+      && not (TCO.skip_check_under_dynamic tcopt)
     then
       let env = { env with checked = Tast.CUnderNormalAssumptions } in
-      let fundef =
+      let under_normal_assumptions =
         let f_annotation = Env.save local_tpenv env in
-        Aast.{ fundef with fd_fun = { fundef.fd_fun with f_annotation } }
+        Aast.
+          {
+            under_normal_assumptions with
+            fd_fun = { under_normal_assumptions.fd_fun with f_annotation };
+          }
       in
       let dynamic_components =
         Typing.check_function_dynamically_callable
@@ -274,29 +289,44 @@ let fun_def ctx fd : Tast.fun_def list option =
           params_decl_ty
           return_ty.et_type
       in
-      let fundefs =
-        if TypecheckerOptions.tast_under_dynamic tcopt then
-          [fundef_of_dynamic dynamic_components]
-        else
-          []
-      in
-      fundef :: fundefs
+      (under_normal_assumptions, Some (fundef_of_dynamic dynamic_components))
     else
-      [fundef]
+      (under_normal_assumptions, None)
   in
   let ty_err_opt = Option.merge e1 e2 ~f:Typing_error.both in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
-  fundefs
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
+  { Tast_with_dynamic.under_normal_assumptions; under_dynamic_assumptions }
 
-let class_def = Typing_class.class_def
+let class_def ctx class_ =
+  Counters.count Counters.Category.Typecheck @@ fun () ->
+  Errors.run_with_span class_.c_span @@ fun () ->
+  if check_if_this_def_is_the_winner ctx FileInfo.Class class_.c_name then
+    (* [Typing_class.class_def] is unusual in that it can't work properly
+       unless it's the winner and has the same capitalization.
+       If either isn't met, it will report to telemetry and return None. *)
+    Typing_class.class_def ctx class_
+  else
+    None
+
+let typedef_def ctx typedef =
+  let tcopt = Provider_context.get_tcopt ctx in
+  Profile.measure_elapsed_time_and_report tcopt None typedef.t_name @@ fun () ->
+  Errors.run_with_span typedef.t_span @@ fun () ->
+  let (_ : bool) =
+    check_if_this_def_is_the_winner ctx FileInfo.Typedef typedef.t_name
+  in
+  Typing_typedef.typedef_def ctx typedef
 
 let gconst_def ctx cst =
   let tcopt = Provider_context.get_tcopt ctx in
   Profile.measure_elapsed_time_and_report tcopt None cst.cst_name @@ fun () ->
   Counters.count Counters.Category.Typecheck @@ fun () ->
   Errors.run_with_span cst.cst_span @@ fun () ->
+  let (_ : bool) =
+    check_if_this_def_is_the_winner ctx FileInfo.Const cst.cst_name
+  in
   let env = EnvFromDef.gconst_env ~origin:Decl_counters.TopLevel ctx cst in
-  List.iter ~f:Typing_error_utils.add_typing_error
+  List.iter ~f:(Typing_error_utils.add_typing_error ~env)
   @@ Typing_type_wellformedness.global_constant env cst;
   let (typed_cst_value, (env, ty_err_opt)) =
     let ((_, _, init) as value) = cst.cst_value in
@@ -344,7 +374,7 @@ let gconst_def ctx cst =
       let (env, te, _value_type) = Typing.expr_with_pure_coeffects env value in
       (te, (env, None))
   in
-  Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
+  Option.iter ty_err_opt ~f:(Typing_error_utils.add_typing_error ~env);
   {
     Aast.cst_annotation = Env.save (Env.get_tpenv env) env;
     Aast.cst_mode = cst.cst_mode;
@@ -359,6 +389,9 @@ let gconst_def ctx cst =
 let module_def ctx md =
   Counters.count Counters.Category.Typecheck @@ fun () ->
   Errors.run_with_span md.md_span @@ fun () ->
+  let (_ : bool) =
+    check_if_this_def_is_the_winner ctx FileInfo.Module md.md_name
+  in
   let env = EnvFromDef.module_env ~origin:Decl_counters.TopLevel ctx md in
   let (env, file_attributes) =
     Typing.file_attributes env md.md_file_attributes
@@ -376,21 +409,28 @@ let module_def ctx md =
     Aast.md_file_attributes = file_attributes;
   }
 
-let nast_to_tast ~(do_tast_checks : bool) ctx nast : Tast.program =
+let nast_to_tast ~(do_tast_checks : bool) ctx nast :
+    Tast.program Tast_with_dynamic.t =
   let convert_def = function
     (* Sometimes typing will just return `None` but that should only be the case
      * if an error had already been registered e.g. in naming
      *)
     | Fun f -> begin
       match fun_def ctx f with
-      | Some fs -> Some (List.map ~f:(fun f -> Aast.Fun f) fs)
+      | Some fs -> Some (Tast_with_dynamic.map ~f:(fun f -> Aast.Fun f) fs)
       | None -> None
     end
-    | Constant gc -> Some [Aast.Constant (gconst_def ctx gc)]
-    | Typedef td -> Some [Aast.Typedef (Typing_typedef.typedef_def ctx td)]
+    | Constant gc ->
+      Some
+        (Tast_with_dynamic.mk_without_dynamic
+        @@ Aast.Constant (gconst_def ctx gc))
+    | Typedef td ->
+      Some
+        (Tast_with_dynamic.mk_without_dynamic
+        @@ Aast.Typedef (typedef_def ctx td))
     | Class c -> begin
       match class_def ctx c with
-      | Some c -> Some [Aast.Class c]
+      | Some cs -> Some (Tast_with_dynamic.map ~f:(fun c -> Aast.Class c) cs)
       | None -> None
     end
     (* We don't typecheck top level statements:
@@ -399,9 +439,14 @@ let nast_to_tast ~(do_tast_checks : bool) ctx nast : Tast.program =
      *)
     | Stmt s ->
       let env = Typing_env_types.empty ctx Relative_path.default ~droot:None in
-      Some [Aast.Stmt (snd (Typing.stmt env s))]
-    | Module md -> Some [Aast.Module (module_def ctx md)]
-    | SetModule sm -> Some [Aast.SetModule sm]
+      Some
+        (Tast_with_dynamic.mk_without_dynamic
+        @@ Aast.Stmt (snd (Typing.stmt env s)))
+    | Module md ->
+      Some
+        (Tast_with_dynamic.mk_without_dynamic @@ Aast.Module (module_def ctx md))
+    | SetModule sm ->
+      Some (Tast_with_dynamic.mk_without_dynamic @@ Aast.SetModule sm)
     | Namespace _
     | NamespaceUse _
     | SetNamespaceEnv _
@@ -410,6 +455,8 @@ let nast_to_tast ~(do_tast_checks : bool) ctx nast : Tast.program =
         "Invalid nodes in NAST. These nodes should be removed during naming."
   in
   if do_tast_checks then Nast_check.program ctx nast;
-  let tast = List.filter_map nast ~f:convert_def |> List.concat in
-  if do_tast_checks then Tast_check.program ctx tast;
+  let tast = List.filter_map nast ~f:convert_def |> Tast_with_dynamic.collect in
+  (* We only do TAST checks for non-dynamic components *)
+  if do_tast_checks then
+    Tast_check.program ctx tast.Tast_with_dynamic.under_normal_assumptions;
   tast

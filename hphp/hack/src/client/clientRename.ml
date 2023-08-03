@@ -86,48 +86,6 @@ let patches_to_json_string patches =
 
 let print_patches_json patches = print_endline (patches_to_json_string patches)
 
-let go_sound_dynamic
-    (conn : unit -> ClientConnect.conn Lwt.t)
-    (args : client_check_env)
-    (mode : rename_mode)
-    (name : string) =
-  let command =
-    match mode with
-    | Class -> ServerRenameTypes.ClassRename (name, "")
-    | Function ->
-      let filename = None in
-      let definition = None in
-      ServerRenameTypes.FunctionRename
-        { filename; definition; old_name = name; new_name = "" }
-    | _ -> failwith "Unexpected Mode"
-  in
-  ClientConnect.rpc_with_retry conn ~desc:args.desc
-  @@ ServerCommandTypes.RENAME_CHECK_SD command
-
-let go_ide
-    (conn : unit -> ClientConnect.conn Lwt.t)
-    ~(desc : string)
-    (args : client_check_env)
-    (filename : string)
-    (line : int)
-    (char : int)
-    (new_name : string) : unit Lwt.t =
-  let%lwt patches =
-    ClientConnect.rpc_with_retry conn ~desc
-    @@ ServerCommandTypes.IDE_RENAME
-         { ServerCommandTypes.Ide_rename_type.filename; line; char; new_name }
-  in
-  let patches =
-    match patches with
-    | Ok patches -> patches
-    | Error message -> failwith message
-  in
-  if args.output_json then
-    print_patches_json patches
-  else
-    apply_patches patches;
-  Lwt.return_unit
-
 let go_ide_from_patches patches json =
   if json then
     print_patches_json patches
@@ -139,20 +97,13 @@ let go
     ~(desc : string)
     (args : client_check_env)
     (mode : rename_mode)
-    (before : string)
-    (after : string) : unit Lwt.t =
+    ~(before : string)
+    ~(after : string) : unit Lwt.t =
   let command =
     match mode with
     | Class -> ServerRenameTypes.ClassRename (before, after)
     | Function ->
-      (*
-        We set these to `None` here because we don't want to add a deprecated
-          wrapper after the rename. Likewise for `MethodRename`
-      *)
-      let filename = None in
-      let definition = None in
-      ServerRenameTypes.FunctionRename
-        { filename; definition; old_name = before; new_name = after }
+      ServerRenameTypes.FunctionRename { old_name = before; new_name = after }
     | Method ->
       let befores = Str.split (Str.regexp "::") before in
       if List.length befores <> 2 then
@@ -168,12 +119,8 @@ let go
         Printf.printf "%s %s\n" before_class after_class;
         failwith "Before and After classname must match"
       ) else
-        let filename = None in
-        let definition = None in
         ServerRenameTypes.MethodRename
           {
-            filename;
-            definition;
             class_name = before_class;
             old_name = before_method;
             new_name = after_method;

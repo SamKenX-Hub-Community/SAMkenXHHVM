@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<8135d2dad7fab2c8755ab38de4c0c246>>
+// @generated SignedSource<<1e1b8786a83645eeb331d1df9bcf9bfb>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -398,6 +398,19 @@ impl<'a> Node<'a> for DependentType {
         }
     }
 }
+impl<'a> Node<'a> for UserAttributeParam<'a> {
+    fn accept(&'a self, v: &mut dyn Visitor<'a>) {
+        v.visit_user_attribute_param(self)
+    }
+    fn recurse(&'a self, v: &mut dyn Visitor<'a>) {
+        match self {
+            UserAttributeParam::Classname(ref __binding_0) => __binding_0.accept(v),
+            UserAttributeParam::EnumClassLabel(ref __binding_0) => __binding_0.accept(v),
+            UserAttributeParam::String(ref __binding_0) => __binding_0.accept(v),
+            UserAttributeParam::Int(ref __binding_0) => __binding_0.accept(v),
+        }
+    }
+}
 impl<'a> Node<'a> for UserAttribute<'a> {
     fn accept(&'a self, v: &mut dyn Visitor<'a>) {
         v.visit_user_attribute(self)
@@ -406,7 +419,7 @@ impl<'a> Node<'a> for UserAttribute<'a> {
         match self {
             UserAttribute {
                 name: ref __binding_0,
-                classname_params: ref __binding_1,
+                params: ref __binding_1,
             } => {
                 {
                     __binding_0.accept(v)
@@ -522,6 +535,7 @@ impl<'a> Node<'a> for Ty_<'a> {
             Ty_::Tapply(ref __binding_0) => __binding_0.accept(v),
             Ty_::Trefinement(ref __binding_0) => __binding_0.accept(v),
             Ty_::Tmixed => {}
+            Ty_::Twildcard => {}
             Ty_::Tlike(ref __binding_0) => __binding_0.accept(v),
             Ty_::Tany(ref __binding_0) => __binding_0.accept(v),
             Ty_::Tnonnull => {}
@@ -531,13 +545,13 @@ impl<'a> Node<'a> for Ty_<'a> {
             Ty_::Tfun(ref __binding_0) => __binding_0.accept(v),
             Ty_::Ttuple(ref __binding_0) => __binding_0.accept(v),
             Ty_::Tshape(ref __binding_0) => __binding_0.accept(v),
-            Ty_::Tvar(ref __binding_0) => __binding_0.accept(v),
             Ty_::Tgeneric(ref __binding_0) => __binding_0.accept(v),
             Ty_::Tunion(ref __binding_0) => __binding_0.accept(v),
             Ty_::Tintersection(ref __binding_0) => __binding_0.accept(v),
             Ty_::TvecOrDict(ref __binding_0) => __binding_0.accept(v),
             Ty_::Taccess(ref __binding_0) => __binding_0.accept(v),
             Ty_::Tnewtype(ref __binding_0) => __binding_0.accept(v),
+            Ty_::Tvar(ref __binding_0) => __binding_0.accept(v),
             Ty_::TunappliedAlias(ref __binding_0) => __binding_0.accept(v),
             Ty_::Tdependent(ref __binding_0) => __binding_0.accept(v),
             Ty_::Tclass(ref __binding_0) => __binding_0.accept(v),
@@ -626,6 +640,24 @@ impl<'a> Node<'a> for RefinedConstBounds<'a> {
                     __binding_0.accept(v)
                 }
                 { __binding_1.accept(v) }
+            }
+        }
+    }
+}
+impl<'a> Node<'a> for ShapeType<'a> {
+    fn accept(&'a self, v: &mut dyn Visitor<'a>) {
+        v.visit_shape_type(self)
+    }
+    fn recurse(&'a self, v: &mut dyn Visitor<'a>) {
+        match self {
+            ShapeType(ref __binding_0, ref __binding_1, ref __binding_2) => {
+                {
+                    __binding_0.accept(v)
+                }
+                {
+                    __binding_1.accept(v)
+                }
+                { __binding_2.accept(v) }
             }
         }
     }
@@ -798,6 +830,7 @@ impl<'a> Node<'a> for FunElt<'a> {
                 php_std_lib: ref __binding_5,
                 support_dynamic_type: ref __binding_6,
                 no_auto_dynamic: ref __binding_7,
+                no_auto_likes: ref __binding_8,
             } => {
                 {
                     __binding_0.accept(v)
@@ -820,7 +853,10 @@ impl<'a> Node<'a> for FunElt<'a> {
                 {
                     __binding_6.accept(v)
                 }
-                { __binding_7.accept(v) }
+                {
+                    __binding_7.accept(v)
+                }
+                { __binding_8.accept(v) }
             }
         }
     }

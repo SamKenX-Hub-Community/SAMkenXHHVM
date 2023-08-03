@@ -793,7 +793,7 @@ void Func::def(Func* func) {
     f = ne->getCachedFunc();
     if (f == nullptr) {
       auto const persistent = func->isPersistent();
-      assertx(!persistent || (RuntimeOption::RepoAuthoritative || !SystemLib::s_inited));
+      assertx(!persistent || (RuntimeOption::RepoAuthoritative || func->unit()->isSystemLib()));
 
       if (!ne->m_cachedFunc.bound()) {
         ne->m_cachedFunc.bind(
@@ -843,7 +843,7 @@ Func* Func::lookupBuiltin(const StringData* name) {
   // NamedFunc.
   auto const ne = NamedFunc::get(name);
   auto const f = ne->getCachedFunc();
-  return (f && f->isUnique() && f->isBuiltin()) ? f : nullptr;
+  return (f && f->isPersistent() && f->isBuiltin()) ? f : nullptr;
 }
 
 Func* Func::load(const NamedFunc* ne, const StringData* name) {
@@ -880,6 +880,12 @@ void handleModuleBoundaryViolation(const Func* callee, const Func* caller) {
   if (!callee || !caller) return;
   if (will_symbol_raise_module_boundary_violation(callee, caller)) {
     raiseModuleBoundaryViolation(nullptr, callee, caller->moduleName());
+  }
+  if (RO::EvalEnforceDeployment) {
+    auto const& packageInfo = g_context->getPackageInfo();
+    if (will_symbol_raise_deployment_boundary_violation(packageInfo, *callee)) {
+      raiseDeploymentBoundaryViolation(callee);
+    }
   }
 }
 } // namespace

@@ -8,7 +8,7 @@
 open Hh_prelude
 
 let invalidate_tast_cache_of_entry (entry : Provider_context.entry) : unit =
-  entry.Provider_context.tast <- Provider_context.Entry_tast_missing;
+  entry.Provider_context.tast <- None;
   entry.Provider_context.all_errors <- None;
   ()
 
@@ -72,19 +72,8 @@ let invalidate_local_decl_caches_for_entries
     match entry.Provider_context.parser_return with
     | None -> () (* hasn't been parsed, hence nothing to invalidate *)
     | Some { Parser_return.ast; _ } ->
-      let (funs, classes, typedefs, consts, modules) = Nast.get_defs ast in
-      invalidate_local_decl_caches_for_file
-        local_memory
-        {
-          FileInfo.funs;
-          classes;
-          typedefs;
-          consts;
-          modules;
-          hash = None;
-          comments = None;
-          file_mode = None;
-        }
+      let file_info = Nast.get_def_names ast in
+      invalidate_local_decl_caches_for_file local_memory file_info
   in
   Relative_path.Map.iter entries ~f:invalidate_for_entry
 
@@ -95,7 +84,6 @@ let ctx_from_server_env (env : ServerEnv.env) : Provider_context.t =
     ~tcopt:env.ServerEnv.tcopt
     ~backend:(Provider_backend.get ())
     ~deps_mode:env.ServerEnv.deps_mode
-    ~package_info:env.ServerEnv.package_info
 
 let respect_but_quarantine_unsaved_changes
     ~(ctx : Provider_context.t) ~(f : unit -> 'a) : 'a =

@@ -8,6 +8,11 @@
 
 #pragma once
 
+#include <fizz/fizz-config.h>
+#if FIZZ_BUILD_AEGIS
+#include <fizz/crypto/aead/AEGISCipher.h>
+#endif
+
 #include <fizz/crypto/RandomGenerator.h>
 #include <fizz/crypto/aead/AESGCM128.h>
 #include <fizz/crypto/aead/AESGCM256.h>
@@ -95,6 +100,12 @@ class Factory {
         return OpenSSLEVPCipher::makeCipher<AESGCM256>();
       case CipherSuite::TLS_AES_128_OCB_SHA256_EXPERIMENTAL:
         return OpenSSLEVPCipher::makeCipher<AESOCB128>();
+#if FIZZ_BUILD_AEGIS
+      case CipherSuite::TLS_AEGIS_128L_SHA256_EXPERIMENTAL:
+        return AEGISCipher::make128L();
+      case CipherSuite::TLS_AEGIS_256_SHA384_EXPERIMENTAL:
+        return AEGISCipher::make256();
+#endif
       default:
         throw std::runtime_error("aead: not implemented");
     }
@@ -116,6 +127,10 @@ class Factory {
       CertificateEntry certEntry,
       bool /*leaf*/) const {
     return CertUtils::makePeerCert(std::move(certEntry.cert_data));
+  }
+
+  virtual std::shared_ptr<Cert> makeIdentityOnlyCert(std::string ident) const {
+    return std::make_shared<IdentityCert>(std::move(ident));
   }
 
   virtual std::string getHkdfPrefix() const {

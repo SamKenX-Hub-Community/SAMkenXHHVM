@@ -114,6 +114,7 @@ module WithToken (Token : TokenType) = struct
       | MarkupSection _ -> SyntaxKind.MarkupSection
       | MarkupSuffix _ -> SyntaxKind.MarkupSuffix
       | UnsetStatement _ -> SyntaxKind.UnsetStatement
+      | DeclareLocalStatement _ -> SyntaxKind.DeclareLocalStatement
       | UsingStatementBlockScoped _ -> SyntaxKind.UsingStatementBlockScoped
       | UsingStatementFunctionScoped _ ->
         SyntaxKind.UsingStatementFunctionScoped
@@ -131,6 +132,8 @@ module WithToken (Token : TokenType) = struct
       | SwitchFallthrough _ -> SyntaxKind.SwitchFallthrough
       | CaseLabel _ -> SyntaxKind.CaseLabel
       | DefaultLabel _ -> SyntaxKind.DefaultLabel
+      | MatchStatement _ -> SyntaxKind.MatchStatement
+      | MatchStatementArm _ -> SyntaxKind.MatchStatementArm
       | ReturnStatement _ -> SyntaxKind.ReturnStatement
       | YieldBreakStatement _ -> SyntaxKind.YieldBreakStatement
       | ThrowStatement _ -> SyntaxKind.ThrowStatement
@@ -142,6 +145,9 @@ module WithToken (Token : TokenType) = struct
       | AnonymousClass _ -> SyntaxKind.AnonymousClass
       | AnonymousFunction _ -> SyntaxKind.AnonymousFunction
       | AnonymousFunctionUseClause _ -> SyntaxKind.AnonymousFunctionUseClause
+      | VariablePattern _ -> SyntaxKind.VariablePattern
+      | ConstructorPattern _ -> SyntaxKind.ConstructorPattern
+      | RefinementPattern _ -> SyntaxKind.RefinementPattern
       | LambdaExpression _ -> SyntaxKind.LambdaExpression
       | LambdaSignature _ -> SyntaxKind.LambdaSignature
       | CastExpression _ -> SyntaxKind.CastExpression
@@ -379,6 +385,8 @@ module WithToken (Token : TokenType) = struct
 
     let is_unset_statement = has_kind SyntaxKind.UnsetStatement
 
+    let is_declare_local_statement = has_kind SyntaxKind.DeclareLocalStatement
+
     let is_using_statement_block_scoped =
       has_kind SyntaxKind.UsingStatementBlockScoped
 
@@ -413,6 +421,10 @@ module WithToken (Token : TokenType) = struct
 
     let is_default_label = has_kind SyntaxKind.DefaultLabel
 
+    let is_match_statement = has_kind SyntaxKind.MatchStatement
+
+    let is_match_statement_arm = has_kind SyntaxKind.MatchStatementArm
+
     let is_return_statement = has_kind SyntaxKind.ReturnStatement
 
     let is_yield_break_statement = has_kind SyntaxKind.YieldBreakStatement
@@ -435,6 +447,12 @@ module WithToken (Token : TokenType) = struct
 
     let is_anonymous_function_use_clause =
       has_kind SyntaxKind.AnonymousFunctionUseClause
+
+    let is_variable_pattern = has_kind SyntaxKind.VariablePattern
+
+    let is_constructor_pattern = has_kind SyntaxKind.ConstructorPattern
+
+    let is_refinement_pattern = has_kind SyntaxKind.RefinementPattern
 
     let is_lambda_expression = has_kind SyntaxKind.LambdaExpression
 
@@ -1324,6 +1342,22 @@ module WithToken (Token : TokenType) = struct
         let acc = f acc unset_right_paren in
         let acc = f acc unset_semicolon in
         acc
+      | DeclareLocalStatement
+          {
+            declare_local_keyword;
+            declare_local_variable;
+            declare_local_colon;
+            declare_local_type;
+            declare_local_initializer;
+            declare_local_semicolon;
+          } ->
+        let acc = f acc declare_local_keyword in
+        let acc = f acc declare_local_variable in
+        let acc = f acc declare_local_colon in
+        let acc = f acc declare_local_type in
+        let acc = f acc declare_local_initializer in
+        let acc = f acc declare_local_semicolon in
+        acc
       | UsingStatementBlockScoped
           {
             using_block_await_keyword;
@@ -1523,6 +1557,34 @@ module WithToken (Token : TokenType) = struct
         let acc = f acc default_keyword in
         let acc = f acc default_colon in
         acc
+      | MatchStatement
+          {
+            match_statement_keyword;
+            match_statement_left_paren;
+            match_statement_expression;
+            match_statement_right_paren;
+            match_statement_left_brace;
+            match_statement_arms;
+            match_statement_right_brace;
+          } ->
+        let acc = f acc match_statement_keyword in
+        let acc = f acc match_statement_left_paren in
+        let acc = f acc match_statement_expression in
+        let acc = f acc match_statement_right_paren in
+        let acc = f acc match_statement_left_brace in
+        let acc = f acc match_statement_arms in
+        let acc = f acc match_statement_right_brace in
+        acc
+      | MatchStatementArm
+          {
+            match_statement_arm_pattern;
+            match_statement_arm_arrow;
+            match_statement_arm_body;
+          } ->
+        let acc = f acc match_statement_arm_pattern in
+        let acc = f acc match_statement_arm_arrow in
+        let acc = f acc match_statement_arm_body in
+        acc
       | ReturnStatement { return_keyword; return_expression; return_semicolon }
         ->
         let acc = f acc return_keyword in
@@ -1623,6 +1685,31 @@ module WithToken (Token : TokenType) = struct
         let acc = f acc anonymous_use_left_paren in
         let acc = f acc anonymous_use_variables in
         let acc = f acc anonymous_use_right_paren in
+        acc
+      | VariablePattern { variable_pattern_variable } ->
+        let acc = f acc variable_pattern_variable in
+        acc
+      | ConstructorPattern
+          {
+            constructor_pattern_constructor;
+            constructor_pattern_left_paren;
+            constructor_pattern_members;
+            constructor_pattern_right_paren;
+          } ->
+        let acc = f acc constructor_pattern_constructor in
+        let acc = f acc constructor_pattern_left_paren in
+        let acc = f acc constructor_pattern_members in
+        let acc = f acc constructor_pattern_right_paren in
+        acc
+      | RefinementPattern
+          {
+            refinement_pattern_variable;
+            refinement_pattern_colon;
+            refinement_pattern_specifier;
+          } ->
+        let acc = f acc refinement_pattern_variable in
+        let acc = f acc refinement_pattern_colon in
+        let acc = f acc refinement_pattern_specifier in
         acc
       | LambdaExpression
           {
@@ -3073,6 +3160,23 @@ module WithToken (Token : TokenType) = struct
           unset_right_paren;
           unset_semicolon;
         ]
+      | DeclareLocalStatement
+          {
+            declare_local_keyword;
+            declare_local_variable;
+            declare_local_colon;
+            declare_local_type;
+            declare_local_initializer;
+            declare_local_semicolon;
+          } ->
+        [
+          declare_local_keyword;
+          declare_local_variable;
+          declare_local_colon;
+          declare_local_type;
+          declare_local_initializer;
+          declare_local_semicolon;
+        ]
       | UsingStatementBlockScoped
           {
             using_block_await_keyword;
@@ -3272,6 +3376,36 @@ module WithToken (Token : TokenType) = struct
         [case_keyword; case_expression; case_colon]
       | DefaultLabel { default_keyword; default_colon } ->
         [default_keyword; default_colon]
+      | MatchStatement
+          {
+            match_statement_keyword;
+            match_statement_left_paren;
+            match_statement_expression;
+            match_statement_right_paren;
+            match_statement_left_brace;
+            match_statement_arms;
+            match_statement_right_brace;
+          } ->
+        [
+          match_statement_keyword;
+          match_statement_left_paren;
+          match_statement_expression;
+          match_statement_right_paren;
+          match_statement_left_brace;
+          match_statement_arms;
+          match_statement_right_brace;
+        ]
+      | MatchStatementArm
+          {
+            match_statement_arm_pattern;
+            match_statement_arm_arrow;
+            match_statement_arm_body;
+          } ->
+        [
+          match_statement_arm_pattern;
+          match_statement_arm_arrow;
+          match_statement_arm_body;
+        ]
       | ReturnStatement { return_keyword; return_expression; return_semicolon }
         ->
         [return_keyword; return_expression; return_semicolon]
@@ -3355,6 +3489,32 @@ module WithToken (Token : TokenType) = struct
           anonymous_use_left_paren;
           anonymous_use_variables;
           anonymous_use_right_paren;
+        ]
+      | VariablePattern { variable_pattern_variable } ->
+        [variable_pattern_variable]
+      | ConstructorPattern
+          {
+            constructor_pattern_constructor;
+            constructor_pattern_left_paren;
+            constructor_pattern_members;
+            constructor_pattern_right_paren;
+          } ->
+        [
+          constructor_pattern_constructor;
+          constructor_pattern_left_paren;
+          constructor_pattern_members;
+          constructor_pattern_right_paren;
+        ]
+      | RefinementPattern
+          {
+            refinement_pattern_variable;
+            refinement_pattern_colon;
+            refinement_pattern_specifier;
+          } ->
+        [
+          refinement_pattern_variable;
+          refinement_pattern_colon;
+          refinement_pattern_specifier;
         ]
       | LambdaExpression
           {
@@ -4759,6 +4919,23 @@ module WithToken (Token : TokenType) = struct
           "unset_right_paren";
           "unset_semicolon";
         ]
+      | DeclareLocalStatement
+          {
+            declare_local_keyword;
+            declare_local_variable;
+            declare_local_colon;
+            declare_local_type;
+            declare_local_initializer;
+            declare_local_semicolon;
+          } ->
+        [
+          "declare_local_keyword";
+          "declare_local_variable";
+          "declare_local_colon";
+          "declare_local_type";
+          "declare_local_initializer";
+          "declare_local_semicolon";
+        ]
       | UsingStatementBlockScoped
           {
             using_block_await_keyword;
@@ -4958,6 +5135,36 @@ module WithToken (Token : TokenType) = struct
         ["case_keyword"; "case_expression"; "case_colon"]
       | DefaultLabel { default_keyword; default_colon } ->
         ["default_keyword"; "default_colon"]
+      | MatchStatement
+          {
+            match_statement_keyword;
+            match_statement_left_paren;
+            match_statement_expression;
+            match_statement_right_paren;
+            match_statement_left_brace;
+            match_statement_arms;
+            match_statement_right_brace;
+          } ->
+        [
+          "match_statement_keyword";
+          "match_statement_left_paren";
+          "match_statement_expression";
+          "match_statement_right_paren";
+          "match_statement_left_brace";
+          "match_statement_arms";
+          "match_statement_right_brace";
+        ]
+      | MatchStatementArm
+          {
+            match_statement_arm_pattern;
+            match_statement_arm_arrow;
+            match_statement_arm_body;
+          } ->
+        [
+          "match_statement_arm_pattern";
+          "match_statement_arm_arrow";
+          "match_statement_arm_body";
+        ]
       | ReturnStatement { return_keyword; return_expression; return_semicolon }
         ->
         ["return_keyword"; "return_expression"; "return_semicolon"]
@@ -5041,6 +5248,32 @@ module WithToken (Token : TokenType) = struct
           "anonymous_use_left_paren";
           "anonymous_use_variables";
           "anonymous_use_right_paren";
+        ]
+      | VariablePattern { variable_pattern_variable } ->
+        ["variable_pattern_variable"]
+      | ConstructorPattern
+          {
+            constructor_pattern_constructor;
+            constructor_pattern_left_paren;
+            constructor_pattern_members;
+            constructor_pattern_right_paren;
+          } ->
+        [
+          "constructor_pattern_constructor";
+          "constructor_pattern_left_paren";
+          "constructor_pattern_members";
+          "constructor_pattern_right_paren";
+        ]
+      | RefinementPattern
+          {
+            refinement_pattern_variable;
+            refinement_pattern_colon;
+            refinement_pattern_specifier;
+          } ->
+        [
+          "refinement_pattern_variable";
+          "refinement_pattern_colon";
+          "refinement_pattern_specifier";
         ]
       | LambdaExpression
           {
@@ -6598,6 +6831,24 @@ module WithToken (Token : TokenType) = struct
             unset_right_paren;
             unset_semicolon;
           }
+      | ( SyntaxKind.DeclareLocalStatement,
+          [
+            declare_local_keyword;
+            declare_local_variable;
+            declare_local_colon;
+            declare_local_type;
+            declare_local_initializer;
+            declare_local_semicolon;
+          ] ) ->
+        DeclareLocalStatement
+          {
+            declare_local_keyword;
+            declare_local_variable;
+            declare_local_colon;
+            declare_local_type;
+            declare_local_initializer;
+            declare_local_semicolon;
+          }
       | ( SyntaxKind.UsingStatementBlockScoped,
           [
             using_block_await_keyword;
@@ -6809,6 +7060,38 @@ module WithToken (Token : TokenType) = struct
         CaseLabel { case_keyword; case_expression; case_colon }
       | (SyntaxKind.DefaultLabel, [default_keyword; default_colon]) ->
         DefaultLabel { default_keyword; default_colon }
+      | ( SyntaxKind.MatchStatement,
+          [
+            match_statement_keyword;
+            match_statement_left_paren;
+            match_statement_expression;
+            match_statement_right_paren;
+            match_statement_left_brace;
+            match_statement_arms;
+            match_statement_right_brace;
+          ] ) ->
+        MatchStatement
+          {
+            match_statement_keyword;
+            match_statement_left_paren;
+            match_statement_expression;
+            match_statement_right_paren;
+            match_statement_left_brace;
+            match_statement_arms;
+            match_statement_right_brace;
+          }
+      | ( SyntaxKind.MatchStatementArm,
+          [
+            match_statement_arm_pattern;
+            match_statement_arm_arrow;
+            match_statement_arm_body;
+          ] ) ->
+        MatchStatementArm
+          {
+            match_statement_arm_pattern;
+            match_statement_arm_arrow;
+            match_statement_arm_body;
+          }
       | ( SyntaxKind.ReturnStatement,
           [return_keyword; return_expression; return_semicolon] ) ->
         ReturnStatement { return_keyword; return_expression; return_semicolon }
@@ -6900,6 +7183,34 @@ module WithToken (Token : TokenType) = struct
             anonymous_use_left_paren;
             anonymous_use_variables;
             anonymous_use_right_paren;
+          }
+      | (SyntaxKind.VariablePattern, [variable_pattern_variable]) ->
+        VariablePattern { variable_pattern_variable }
+      | ( SyntaxKind.ConstructorPattern,
+          [
+            constructor_pattern_constructor;
+            constructor_pattern_left_paren;
+            constructor_pattern_members;
+            constructor_pattern_right_paren;
+          ] ) ->
+        ConstructorPattern
+          {
+            constructor_pattern_constructor;
+            constructor_pattern_left_paren;
+            constructor_pattern_members;
+            constructor_pattern_right_paren;
+          }
+      | ( SyntaxKind.RefinementPattern,
+          [
+            refinement_pattern_variable;
+            refinement_pattern_colon;
+            refinement_pattern_specifier;
+          ] ) ->
+        RefinementPattern
+          {
+            refinement_pattern_variable;
+            refinement_pattern_colon;
+            refinement_pattern_specifier;
           }
       | ( SyntaxKind.LambdaExpression,
           [
@@ -8687,6 +8998,27 @@ module WithToken (Token : TokenType) = struct
         let value = ValueBuilder.value_from_syntax syntax in
         make syntax value
 
+      let make_declare_local_statement
+          declare_local_keyword
+          declare_local_variable
+          declare_local_colon
+          declare_local_type
+          declare_local_initializer
+          declare_local_semicolon =
+        let syntax =
+          DeclareLocalStatement
+            {
+              declare_local_keyword;
+              declare_local_variable;
+              declare_local_colon;
+              declare_local_type;
+              declare_local_initializer;
+              declare_local_semicolon;
+            }
+        in
+        let value = ValueBuilder.value_from_syntax syntax in
+        make syntax value
+
       let make_using_statement_block_scoped
           using_block_await_keyword
           using_block_using_keyword
@@ -8947,6 +9279,44 @@ module WithToken (Token : TokenType) = struct
         let value = ValueBuilder.value_from_syntax syntax in
         make syntax value
 
+      let make_match_statement
+          match_statement_keyword
+          match_statement_left_paren
+          match_statement_expression
+          match_statement_right_paren
+          match_statement_left_brace
+          match_statement_arms
+          match_statement_right_brace =
+        let syntax =
+          MatchStatement
+            {
+              match_statement_keyword;
+              match_statement_left_paren;
+              match_statement_expression;
+              match_statement_right_paren;
+              match_statement_left_brace;
+              match_statement_arms;
+              match_statement_right_brace;
+            }
+        in
+        let value = ValueBuilder.value_from_syntax syntax in
+        make syntax value
+
+      let make_match_statement_arm
+          match_statement_arm_pattern
+          match_statement_arm_arrow
+          match_statement_arm_body =
+        let syntax =
+          MatchStatementArm
+            {
+              match_statement_arm_pattern;
+              match_statement_arm_arrow;
+              match_statement_arm_body;
+            }
+        in
+        let value = ValueBuilder.value_from_syntax syntax in
+        make syntax value
+
       let make_return_statement
           return_keyword return_expression return_semicolon =
         let syntax =
@@ -9079,6 +9449,43 @@ module WithToken (Token : TokenType) = struct
               anonymous_use_left_paren;
               anonymous_use_variables;
               anonymous_use_right_paren;
+            }
+        in
+        let value = ValueBuilder.value_from_syntax syntax in
+        make syntax value
+
+      let make_variable_pattern variable_pattern_variable =
+        let syntax = VariablePattern { variable_pattern_variable } in
+        let value = ValueBuilder.value_from_syntax syntax in
+        make syntax value
+
+      let make_constructor_pattern
+          constructor_pattern_constructor
+          constructor_pattern_left_paren
+          constructor_pattern_members
+          constructor_pattern_right_paren =
+        let syntax =
+          ConstructorPattern
+            {
+              constructor_pattern_constructor;
+              constructor_pattern_left_paren;
+              constructor_pattern_members;
+              constructor_pattern_right_paren;
+            }
+        in
+        let value = ValueBuilder.value_from_syntax syntax in
+        make syntax value
+
+      let make_refinement_pattern
+          refinement_pattern_variable
+          refinement_pattern_colon
+          refinement_pattern_specifier =
+        let syntax =
+          RefinementPattern
+            {
+              refinement_pattern_variable;
+              refinement_pattern_colon;
+              refinement_pattern_specifier;
             }
         in
         let value = ValueBuilder.value_from_syntax syntax in

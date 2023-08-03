@@ -32,6 +32,7 @@
 #include <thrift/test/gen-cpp2/adapter_clients.h>
 #include <thrift/test/gen-cpp2/adapter_constants.h>
 #include <thrift/test/gen-cpp2/adapter_handlers.h>
+#include <thrift/test/gen-cpp2/adapter_no_uri_types.h>
 #include <thrift/test/gen-cpp2/adapter_terse_types.h>
 #include <thrift/test/gen-cpp2/adapter_types.h>
 
@@ -518,6 +519,60 @@ TEST_F(AdapterTest, TemplatedTestAdapter_AdaptTemplatedNestedTestStruct) {
   EXPECT_TRUE(obj.adaptedStruct()->adaptedMapDefault()->value.empty());
 }
 
+TEST_F(AdapterTest, AdaptedUnion) {
+  AdaptedUnion obj1;
+  EXPECT_EQ(obj1.getType(), AdaptedUnion::Type::__EMPTY__);
+  auto wrapper = NonComparableWrapper<std::string>();
+  wrapper.value = "1";
+  obj1.field1_ref() = wrapper;
+  EXPECT_EQ(obj1.field1_ref()->value, "1");
+}
+
+TEST(AdaptTest, ComparisonTestUnion) {
+  auto obj = AdaptedUnion();
+  auto wrapper = NonComparableWrapper<std::string>();
+  wrapper.value = "1";
+  obj.field1_ref() = std::move(wrapper);
+
+  auto obj1 = AdaptedUnion();
+  auto wrapper1 = NonComparableWrapper<std::string>();
+  wrapper1.value = "1";
+  obj1.field1_ref() = std::move(wrapper1);
+
+  auto obj2 = AdaptedUnion();
+  auto wrapper2 = NonComparableWrapper<std::string>();
+  wrapper2.value = "2";
+  obj2.field1_ref() = std::move(wrapper2);
+  // It uses 'Adapter::toThrift(lhs) == Adapter::toThrift(rhs)' for comparison.
+  EXPECT_EQ(obj, obj1);
+  EXPECT_FALSE(obj < obj1);
+  EXPECT_FALSE(obj > obj1);
+  EXPECT_TRUE(obj < obj2);
+  EXPECT_FALSE(obj > obj2);
+}
+
+TEST(AdaptTest, ComparisonFallbackTest) {
+  auto obj1a = AdapterEqualsUnion();
+  obj1a.field1_ref() = "1";
+
+  auto obj2a = AdapterEqualsUnion();
+  obj2a.field1_ref() = "1";
+  // It should use the AdapterEqualsStringAdapter operator== for comparison.
+  EXPECT_FALSE(obj1a == obj2a);
+
+  auto obj1b = AdaptedEqualsUnion();
+  auto string1 = AdaptedEqualsString();
+  string1.val = "1";
+  obj1b.field1_ref() = string1;
+
+  auto obj2b = AdaptedEqualsUnion();
+  auto string2 = AdaptedEqualsString();
+  string2.val = "1";
+  obj2b.field1_ref() = string2;
+  // It should use the AdaptedEqualsStringAdapter operator== for comparison.
+  EXPECT_FALSE(obj1b == obj2b);
+}
+
 TEST_F(AdapterTest, StructFieldAdaptedStruct) {
   StructFieldAdaptedStruct obj;
   {
@@ -575,6 +630,54 @@ TEST_F(AdapterTest, StructFieldAdaptedStruct) {
   }
 }
 } // namespace basic
+
+namespace no_uri {
+TEST(AdaptTest, Union_NoUri) {
+  ThriftComparisonUnion obj1;
+  obj1.field1_ref().ensure().value = "1";
+  EXPECT_EQ(obj1.field1_ref()->value, "1");
+
+  RefUnion obj2;
+  obj2.field1_ref().ensure().value = "1";
+  EXPECT_EQ(obj2.field1_ref()->value, "1");
+
+  auto obj1b = ThriftComparisonUnion();
+  obj1b.field1_ref().ensure().value = "1";
+
+  auto obj2b = ThriftComparisonUnion();
+  obj2b.field1_ref().ensure().value = "1";
+  EXPECT_TRUE(obj1b == obj2b);
+}
+
+TEST(AdaptTest, LessThanComparisonFallbackTest) {
+  auto obj1a = AdapterComparisonUnion();
+  obj1a.field1_ref() = "1";
+
+  auto obj2a = AdapterComparisonUnion();
+  obj2a.field1_ref() = "2";
+  // It should use the AdapterComparisonStringAdapter less for comparison.
+  EXPECT_TRUE(obj1a > obj2a);
+  EXPECT_FALSE(obj1a < obj2a);
+
+  auto obj1b = AdaptedComparisonUnion();
+  obj1b.field1_ref().ensure().val = "1";
+
+  auto obj2b = AdaptedComparisonUnion();
+  obj2b.field1_ref().ensure().val = "2";
+  // It should use the AdaptedComparisonString operator< for comparison.
+  EXPECT_TRUE(obj1b > obj2b);
+  EXPECT_FALSE(obj1b < obj2b);
+
+  auto obj1c = ThriftComparisonUnion();
+  obj1c.field1_ref().ensure().value = "1";
+
+  auto obj2c = ThriftComparisonUnion();
+  obj2c.field1_ref().ensure().value = "2";
+  // It uses 'Adapter::toThrift(lhs) < Adapter::toThrift(rhs)' for comparison.
+  EXPECT_FALSE(obj1c > obj2c);
+  EXPECT_TRUE(obj1c < obj2c);
+}
+} // namespace no_uri
 
 namespace terse {
 TEST_F(AdapterTest, UnionCodeGen_Empty_Terse) {
@@ -804,33 +907,6 @@ TEST(AdaptTest, TransitiveAdapter) {
   EXPECT_EQ(obj.value, basic::detail::TransitiveAdapted{});
 }
 
-TEST(AdaptTest, MoveOnlyAdapter) {
-  basic::MoveOnly obj;
-  obj.ptr() = std::make_unique<basic::detail::HeapAllocated>();
-  auto objs = CompactSerializer::serialize<std::string>(obj);
-  basic::MoveOnly objd;
-  EXPECT_FALSE(*objd.ptr());
-  CompactSerializer::deserialize(objs, objd);
-  EXPECT_TRUE(*objd.ptr());
-
-  EXPECT_FALSE(std::is_copy_constructible_v<basic::MoveOnly>);
-  EXPECT_FALSE(std::is_copy_constructible_v<basic::AlsoMoveOnly>);
-}
-
-TEST(AdaptTest, MoveOnlyArgsReturn) {
-  struct Handler : apache::thrift::ServiceHandler<basic::AdapterService> {
-    void sync_adaptedTypes(
-        basic::HeapAllocated& ret, std::unique_ptr<basic::HeapAllocated> arg) {
-      ret = std::move(*arg);
-    }
-  };
-  basic::HeapAllocated arg = std::make_unique<basic::detail::HeapAllocated>();
-  basic::HeapAllocated ret;
-  EXPECT_FALSE(ret);
-  makeTestClient(std::make_shared<Handler>())->sync_adaptedTypes(ret, arg);
-  EXPECT_TRUE(ret);
-}
-
 TEST(AdaptTest, NumAdapterConversions) {
   // When an adapter implements serializedSize we guarantee to only call
   // toThrift once during deserialization.
@@ -848,12 +924,52 @@ TEST(AdaptTest, NumAdapterConversions) {
   EXPECT_EQ((CountingAdapter<false, std::string>::count), 2);
 }
 
+TEST(AdaptTest, EncodeFallback) {
+  basic::EncodeStruct obj{};
+  obj.num_with_encode() = Num{1};
+  obj.num_in_place().ensure().value = 2;
+  obj.num_without_encode() = Num{3};
+
+  // num_with_encode should not call to/fromThrift.
+  // num_in_place should not call fromThrift.
+  auto data = CompactSerializer::serialize<std::string>(obj);
+  auto objd = CompactSerializer::deserialize<basic::EncodeStruct>(data);
+
+  EXPECT_EQ(obj, objd);
+}
+
+TEST(AdaptTest, EncodeFieldFallback) {
+  basic::EncodeFieldStruct obj{};
+  obj.num_with_encode().ensure().value = 1;
+  obj.num_without_encode().ensure().value = 2;
+
+  // num_with_encode should not call toThrift/fromThriftField.
+  auto data = CompactSerializer::serialize<std::string>(obj);
+  auto objd = CompactSerializer::deserialize<basic::EncodeFieldStruct>(data);
+
+  EXPECT_EQ(obj, objd);
+}
+
+TEST(AdaptTest, EncodeComposedAdapter) {
+  auto obj = basic::EncodeComposedStruct();
+
+  obj.double_wrapped_type_encode()->value = Wrapper<int64_t>{42};
+  obj.double_wrapped_no_encode()->value = Wrapper<int64_t>{1};
+  obj.double_wrapped_both_encode()->value = Wrapper<int64_t>{2};
+  obj.double_wrapped_field_encode()->value = Wrapper<int64_t>{3};
+
+  // No toThrift/fromThrift should be called at any adapter with an
+  // encode/decode implementation.
+  auto serialized = CompactSerializer::serialize<std::string>(obj);
+  auto obj2 = basic::EncodeComposedStruct();
+  CompactSerializer::deserialize(serialized, obj2);
+
+  EXPECT_EQ(obj, obj2);
+}
+
 TEST(AdaptTest, Constants) {
   // const AdaptedBool type_adapted = true;
   EXPECT_EQ(basic::adapter_constants::type_adapted().value, true);
-
-  // const MoveOnly nested_adapted = {"ptr": {}};
-  EXPECT_TRUE(basic::adapter_constants::nested_adapted().ptr()->get());
 
   // const list<AdaptedByte> container_of_adapted = [1, 2, 3];
   EXPECT_EQ(basic::adapter_constants::container_of_adapted()[0].value, 1);
@@ -931,6 +1047,30 @@ TEST_F(AdapterTest, GetClassName) {
   EXPECT_EQ(
       op::get_class_name_v<basic::detail::UnderlyingRenamedStruct>,
       "RenamedStruct");
+}
+
+template <class T>
+void testCustomSerializedSize(bool zeroCopy) {
+  T a;
+  CompactProtocolWriter writer;
+  if (!zeroCopy) {
+    SerializedSizeAdapter::mockSize = 0;
+    auto base = a.serializedSize(&writer);
+    SerializedSizeAdapter::mockSize = 10;
+    EXPECT_EQ(base + 10, a.serializedSize(&writer));
+    return;
+  }
+  SerializedSizeAdapter::mockSizeZeroCopy = 0;
+  auto base = a.serializedSizeZC(&writer);
+  SerializedSizeAdapter::mockSizeZeroCopy = 10;
+  EXPECT_EQ(base + 10, a.serializedSizeZC(&writer));
+}
+
+TEST_F(AdapterTest, CustomSerializedSize) {
+  testCustomSerializedSize<basic::CustomSerializedSize>(false);
+  testCustomSerializedSize<basic::CustomSerializedSize>(true);
+  testCustomSerializedSize<basic::CustomSerializedSizeOpEncode>(false);
+  testCustomSerializedSize<basic::CustomSerializedSizeOpEncode>(true);
 }
 
 } // namespace apache::thrift::test

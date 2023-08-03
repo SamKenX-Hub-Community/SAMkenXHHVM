@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test::fixtures::tablebased::ExampleEnum>::size;
+#endif
 folly::Range<::test::fixtures::tablebased::ExampleEnum const*> const TEnumTraits<::test::fixtures::tablebased::ExampleEnum>::values = folly::range(TEnumDataStorage<::test::fixtures::tablebased::ExampleEnum>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test::fixtures::tablebased::ExampleEnum>::names = folly::range(TEnumDataStorage<::test::fixtures::tablebased::ExampleEnum>::names);
 
@@ -28,14 +30,6 @@ bool TEnumTraits<::test::fixtures::tablebased::ExampleEnum>::findValue(folly::St
 
 }} // apache::thrift
 
-namespace test { namespace fixtures { namespace tablebased {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _ExampleEnum_EnumMapFactory::ValuesToNamesMapType _ExampleEnum_VALUES_TO_NAMES = _ExampleEnum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // test::fixtures::tablebased
 namespace apache {
 namespace thrift {
 namespace detail {
@@ -588,7 +582,9 @@ static_assert(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test::fixtures::tablebased::ExampleUnion::Type>::size;
+#endif
 folly::Range<::test::fixtures::tablebased::ExampleUnion::Type const*> const TEnumTraits<::test::fixtures::tablebased::ExampleUnion::Type>::values = folly::range(TEnumDataStorage<::test::fixtures::tablebased::ExampleUnion::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test::fixtures::tablebased::ExampleUnion::Type>::names = folly::range(TEnumDataStorage<::test::fixtures::tablebased::ExampleUnion::Type>::names);
 

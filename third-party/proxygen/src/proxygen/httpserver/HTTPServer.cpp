@@ -19,6 +19,7 @@
 
 using folly::EventBaseManager;
 using folly::IOThreadPoolExecutor;
+using folly::IOThreadPoolExecutorBase;
 using folly::ThreadPoolExecutor;
 
 namespace proxygen {
@@ -104,7 +105,7 @@ class HandlerCallbacks : public ThreadPoolExecutor::Observer {
   }
 
   void threadStarted(ThreadPoolExecutor::ThreadHandle* h) override {
-    auto evb = IOThreadPoolExecutor::getEventBase(h);
+    auto evb = IOThreadPoolExecutorBase::getEventBase(h);
     CHECK(evb) << "Invariant violated - started thread must have an EventBase";
     evb->runInEventBaseThread([=]() {
       for (auto& factory : options_->handlerFactories) {
@@ -113,7 +114,7 @@ class HandlerCallbacks : public ThreadPoolExecutor::Observer {
     });
   }
   void threadStopped(ThreadPoolExecutor::ThreadHandle* h) override {
-    IOThreadPoolExecutor::getEventBase(h)->runInEventBaseThread([&]() {
+    IOThreadPoolExecutorBase::getEventBase(h)->runInEventBaseThread([&]() {
       for (auto& factory : options_->handlerFactories) {
         factory->onServerStop();
       }
@@ -126,7 +127,7 @@ class HandlerCallbacks : public ThreadPoolExecutor::Observer {
 
 folly::Expected<folly::Unit, std::exception_ptr> HTTPServer::startTcpServer(
     std::shared_ptr<wangle::AcceptorFactory> inputAcceptorFactory,
-    std::shared_ptr<folly::IOThreadPoolExecutor> ioExecutor) {
+    std::shared_ptr<folly::IOThreadPoolExecutorBase> ioExecutor) {
   auto accExe = std::make_shared<IOThreadPoolExecutor>(1);
   if (!ioExecutor) {
     ioExecutor = std::make_shared<IOThreadPoolExecutor>(
@@ -150,6 +151,7 @@ folly::Expected<folly::Unit, std::exception_ptr> HTTPServer::startTcpServer(
       }
       bootstrap_.push_back(wangle::ServerBootstrap<wangle::DefaultPipeline>());
       bootstrap_[i].childHandler(acceptorFactory);
+      bootstrap_[i].useZeroCopy(options_->useZeroCopy);
       if (accConfig.enableTCPFastOpen) {
         // We need to do this because wangle's bootstrap has 2 acceptor configs
         // and the socketConfig gets passed to the SocketFactory. The number of
@@ -182,7 +184,7 @@ void HTTPServer::start(
     std::function<void()> onSuccess,
     std::function<void(std::exception_ptr)> onError,
     std::shared_ptr<wangle::AcceptorFactory> acceptorFactory,
-    std::shared_ptr<folly::IOThreadPoolExecutor> ioExecutor) {
+    std::shared_ptr<folly::IOThreadPoolExecutorBase> ioExecutor) {
   mainEventBase_ = EventBaseManager::get()->getEventBase();
 
   auto tcpStarted = startTcpServer(acceptorFactory, ioExecutor);

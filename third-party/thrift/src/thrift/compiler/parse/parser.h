@@ -34,6 +34,9 @@ class diagnostics_engine;
 class lexer;
 
 class t_base_type;
+class t_sink;
+class t_stream_response;
+class t_templated_type;
 class t_throws;
 
 struct identifier {
@@ -43,7 +46,7 @@ struct identifier {
 
 struct comment {
   std::string text;
-  source_location loc;
+  source_range range;
 };
 
 struct deprecated_annotations {
@@ -52,6 +55,7 @@ struct deprecated_annotations {
 };
 
 struct attributes {
+  source_location loc;
   boost::optional<comment> doc;
   node_list<t_const> annotations;
   std::unique_ptr<struct deprecated_annotations> deprecated_annotations;
@@ -60,6 +64,11 @@ struct attributes {
 struct type_throws_spec {
   t_type_ref type;
   std::unique_ptr<t_throws> throws;
+};
+
+struct return_type {
+  std::vector<t_type_ref> types;
+  std::unique_ptr<t_templated_type> sink_or_stream;
 };
 
 enum class sign { plus, minus };
@@ -71,13 +80,11 @@ class parser_actions {
 
   virtual void on_program() = 0;
 
-  virtual void on_standard_header(
-      source_location loc, std::unique_ptr<attributes> attrs) = 0;
-
   virtual void on_package(
       source_range range,
       std::unique_ptr<attributes> attrs,
       fmt::string_view name) = 0;
+
   virtual void on_include(source_range range, fmt::string_view str) = 0;
   virtual void on_cpp_include(source_range range, fmt::string_view str) = 0;
   virtual void on_hs_include(source_range range, fmt::string_view str) = 0;
@@ -87,7 +94,7 @@ class parser_actions {
 
   virtual boost::optional<comment> on_doctext() = 0;
   virtual void on_program_doctext() = 0;
-  virtual comment on_inline_doc(source_location loc, fmt::string_view text) = 0;
+  virtual comment on_inline_doc(source_range range, fmt::string_view text) = 0;
 
   virtual std::unique_ptr<t_const> on_structured_annotation(
       source_range range, fmt::string_view name) = 0;
@@ -111,17 +118,18 @@ class parser_actions {
       source_range range,
       std::unique_ptr<attributes> attrs,
       t_function_qualifier qual,
-      std::vector<t_type_ref> return_type,
+      return_type ret,
       const identifier& name,
       t_field_list params,
       std::unique_ptr<t_throws> throws) = 0;
 
-  virtual t_type_ref on_stream_return_type(
-      source_range range, type_throws_spec spec) = 0;
-  virtual t_type_ref on_sink_return_type(
+  virtual std::unique_ptr<t_sink> on_sink(
       source_range range,
       type_throws_spec sink_spec,
       type_throws_spec final_response_spec) = 0;
+
+  virtual std::unique_ptr<t_stream_response> on_stream(
+      source_range range, type_throws_spec spec) = 0;
 
   virtual t_type_ref on_list_type(
       source_range range,
@@ -138,7 +146,7 @@ class parser_actions {
       std::unique_ptr<deprecated_annotations> annotations) = 0;
 
   virtual std::unique_ptr<t_function> on_performs(
-      source_range range, t_type_ref type) = 0;
+      source_range range, const identifier& interaction_name) = 0;
 
   virtual std::unique_ptr<t_throws> on_throws(t_field_list exceptions) = 0;
 

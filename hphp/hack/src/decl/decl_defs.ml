@@ -7,10 +7,25 @@
  *
  *)
 
+open Hh_prelude
 open Typing_defs
 
 (** Exception representing not finding a class during decl *)
 exception Decl_not_found of string
+
+let raise_decl_not_found (path : Relative_path.t option) (name : string) : 'a =
+  HackEventLogger.decl_consistency_bug ?path ~data:name "Decl_not_found";
+  let err_str =
+    Printf.sprintf
+      "%s not found in %s"
+      name
+      (Option.value_map path ~default:"_" ~f:Relative_path.to_absolute)
+  in
+  Hh_logger.log
+    "Decl_not_found: %s\n%s"
+    err_str
+    (Exception.get_current_callstack_string 99 |> Exception.clean_stack);
+  raise (Decl_not_found err_str)
 
 (** A substitution context contains all the information necessary for
  * changing the type of an inherited class element to the class that is
@@ -88,6 +103,7 @@ type decl_class_type = {
   dc_is_xhp: bool;
   dc_has_xhp_keyword: bool;
   dc_module: Ast_defs.id option;
+  dc_is_module_level_trait: bool;
   dc_name: string;
   dc_pos: Pos_or_decl.t;
   dc_tparams: decl_tparam list;

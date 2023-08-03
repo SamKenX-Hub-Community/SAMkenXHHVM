@@ -40,6 +40,7 @@
 #include <folly/io/ShutdownSocketSet.h>
 #include <folly/io/async/AsyncServerSocket.h>
 #include <folly/io/async/EventBase.h>
+#include <folly/io/async/EventBaseLocal.h>
 #include <folly/io/async/EventBaseManager.h>
 #include <folly/lang/Badge.h>
 #include <folly/synchronization/CallOnce.h>
@@ -76,6 +77,10 @@ THRIFT_FLAG_DECLARE_bool(dump_snapshot_on_long_shutdown);
 THRIFT_FLAG_DECLARE_bool(server_check_unimplemented_extra_interfaces);
 THRIFT_FLAG_DECLARE_bool(enable_io_queue_lag_detection);
 THRIFT_FLAG_DECLARE_bool(enforce_queue_concurrency_resource_pools);
+
+namespace quic {
+class QuicAsyncTransportServer;
+}
 
 namespace apache {
 namespace thrift {
@@ -186,6 +191,12 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
   //! Listen socket
   folly::AsyncServerSocket::UniquePtr socket_;
 
+  // quic server
+  std::unique_ptr<quic::QuicAsyncTransportServer> quicServer_;
+
+  // evb->worker eventbase local
+  folly::EventBaseLocal<Cpp2Worker*> evbToWorker_;
+
   struct IdleServerAction : public folly::HHWheelTimer::Callback {
     IdleServerAction(
         ThriftServer& server,
@@ -216,10 +227,10 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
   folly::EventBaseManager* eventBaseManager_ = folly::EventBaseManager::get();
 
   // Creates the default ThriftIO IOThreadPoolExecutor
-  static std::shared_ptr<folly::IOThreadPoolExecutor> createIOThreadPool();
+  static std::shared_ptr<folly::IOThreadPoolExecutorBase> createIOThreadPool();
 
   //! IO thread pool. Drives Cpp2Workers.
-  std::shared_ptr<folly::IOThreadPoolExecutor> ioThreadPool_ =
+  std::shared_ptr<folly::IOThreadPoolExecutorBase> ioThreadPool_ =
       createIOThreadPool();
 
   /**
@@ -244,20 +255,15 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
 
   folly::AsyncWriter::ZeroCopyEnableFunc zeroCopyEnableFunc_;
 
-  std::shared_ptr<folly::IOThreadPoolExecutor> acceptPool_;
+  folly::AsyncServerSocket::CallbackAssignFunction callbackAssignFunc_;
+
+  std::shared_ptr<folly::IOThreadPoolExecutorBase> acceptPool_;
   int nAcceptors_ = 1;
   uint16_t socketMaxReadsPerEvent_{16};
 
-  // HeaderServerChannel and Cpp2Worker to use for a duplex server
-  // (used by client). Both are nullptr for a regular server.
-  std::shared_ptr<HeaderServerChannel> serverChannel_;
-  std::shared_ptr<Cpp2Worker> duplexWorker_;
-
-  bool isDuplex_ = false; // is server in duplex mode? (used by server)
-
   mutable std::mutex ioGroupMutex_;
 
-  std::shared_ptr<folly::IOThreadPoolExecutor> getIOGroupSafe() const {
+  std::shared_ptr<folly::IOThreadPoolExecutorBase> getIOGroupSafe() const {
     std::lock_guard<std::mutex> lock(ioGroupMutex_);
     return getIOGroup();
   }
@@ -272,6 +278,8 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
   void ensureDecoratedProcessorFactoryInitialized();
 
   bool serverRanWithDCHECK();
+
+  void startQuicServer();
 
 #if FOLLY_HAS_COROUTINES
   std::unique_ptr<folly::coro::CancellableAsyncScope> asyncScope_;
@@ -440,14 +448,6 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
 
   explicit ThriftServer(const ThriftServerInitialConfig& initialConfig);
 
-  // NOTE: Don't use this constructor to create a regular Thrift server. This
-  // constructor is used by the client to create a duplex server on an existing
-  // connection.
-  // Don't create a listening server. Instead use the channel to run incoming
-  // requests.
-  explicit ThriftServer(
-      const std::shared_ptr<HeaderServerChannel>& serverChannel);
-
  private:
   // method to encapsulate the default setup needed for the construction of
   // ThriftServer. Should be called in all ctors not calling the default ctor
@@ -467,7 +467,7 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
    * @param the new thread pool
    */
   void setIOThreadPool(
-      std::shared_ptr<folly::IOThreadPoolExecutor> ioThreadPool) {
+      std::shared_ptr<folly::IOThreadPoolExecutorBase> ioThreadPool) {
     CHECK(configMutable());
     ioThreadPool_ = ioThreadPool;
 
@@ -481,7 +481,7 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
    * stall servicing requests. Be careful about using this executor for anything
    * other than its main purpose.
    */
-  std::shared_ptr<folly::IOThreadPoolExecutor> getIOThreadPool() {
+  std::shared_ptr<folly::IOThreadPoolExecutorBase> getIOThreadPool() {
     return ioThreadPool_;
   }
 
@@ -551,7 +551,18 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
     return zeroCopyEnableFunc_;
   }
 
-  void setAcceptExecutor(std::shared_ptr<folly::IOThreadPoolExecutor> pool) {
+  void setCallbackAssignFunc(
+      folly::AsyncServerSocket::CallbackAssignFunction func) {
+    callbackAssignFunc_ = std::move(func);
+  }
+
+  const folly::AsyncServerSocket::CallbackAssignFunction&
+  getCallbackAssignFunc() const {
+    return callbackAssignFunc_;
+  }
+
+  void setAcceptExecutor(
+      std::shared_ptr<folly::IOThreadPoolExecutorBase> pool) {
     acceptPool_ = pool;
   }
 
@@ -559,7 +570,7 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
    * Generally the acceptor should not do any work other than
    * accepting connections, so use this with care.
    */
-  std::shared_ptr<folly::IOThreadPoolExecutor> getAcceptExecutor() {
+  std::shared_ptr<folly::IOThreadPoolExecutorBase> getAcceptExecutor() {
     return acceptPool_;
   }
 
@@ -589,7 +600,13 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
   void setSSLConfig(
       folly::observer::Observer<wangle::SSLContextConfig> contextObserver) {
     sslContextObserver_ = folly::observer::makeObserver(
-        [observer = std::move(contextObserver)]() {
+        [observer = std::move(contextObserver),
+         tlsRevocationObserver = enableTLSCertRevocation(),
+         tlsRevocationEnforcementObserver = enforceTLSCertRevocation(),
+         hybridKexObserver = enableHybridKex()]() {
+          (void)**tlsRevocationObserver;
+          (void)**tlsRevocationEnforcementObserver;
+          (void)**hybridKexObserver;
           auto context = **observer;
           context.isDefault = true;
           context.alpnAllowMismatch = false;
@@ -783,6 +800,9 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
 
   static folly::observer::Observer<bool> enableStopTLS();
 
+  static folly::observer::Observer<bool> enableTLSCertRevocation();
+  static folly::observer::Observer<bool> enforceTLSCertRevocation();
+
 #if FOLLY_HAS_COROUTINES
   /**
    * Get CancellableAsyncScope that will be maintained by the Thrift Server.
@@ -913,20 +933,6 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
    */
   void cleanUp();
 
-  /**
-   * Preferably use this method in order to start ThriftServer created for
-   * DuplexChannel instead of the serve() method.
-   */
-  void startDuplex();
-
-  /**
-   * This method should be used to cleanly stop a ThriftServer created for
-   * DuplexChannel before disposing the ThriftServer. The caller should pass in
-   * a shared_ptr to this ThriftServer since the ThriftServer does not have a
-   * way of getting that (does not inherit from enable_shared_from_this)
-   */
-  void stopDuplex(std::shared_ptr<ThriftServer> thisServer);
-
   void setQueueTimeout(std::chrono::milliseconds timeout) override final {
     THRIFT_SERVER_EVENT(call.setQueueTimeout).log(*this, [timeout]() {
       return folly::dynamic::object("timeout_ms", timeout.count());
@@ -989,14 +995,6 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
    */
   void stopListening() override;
 
-  // client side duplex
-  std::shared_ptr<HeaderServerChannel> getDuplexServerChannel() {
-    return serverChannel_;
-  }
-
-  // server side duplex
-  bool isDuplex() { return isDuplex_; }
-
   const std::vector<std::unique_ptr<TransportRoutingHandler>>*
   getRoutingHandlers() const {
     return &routingHandlers_;
@@ -1008,14 +1006,6 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
   }
 
   void clearRoutingHandlers() { routingHandlers_.clear(); }
-
-  void setDuplex(bool duplex) {
-    // setDuplex may only be called on the server side.
-    // serverChannel_ must be nullptr in this case
-    CHECK(serverChannel_ == nullptr);
-    CHECK(configMutable());
-    isDuplex_ = duplex;
-  }
 
   /**
    * Returns a reference to the processor that is used by custom transports
@@ -1120,6 +1110,8 @@ class ThriftServer : public apache::thrift::BaseThriftServer,
   void setQuickExitOnShutdownTimeout(bool quickExitOnShutdownTimeout) {
     quickExitOnShutdownTimeout_ = quickExitOnShutdownTimeout;
   }
+
+  static folly::observer::Observer<bool> enableHybridKex();
 
   /**
    * For each request debug stub, a snapshot information can be constructed to
@@ -1303,11 +1295,10 @@ class ThriftAcceptorFactory : public wangle::AcceptorFactorySharedSSLContext {
 
   std::shared_ptr<wangle::Acceptor> newAcceptor(folly::EventBase* eventBase) {
     if (!sharedSSLContextManager_) {
-      return AcceptorClass::create(server_, nullptr, eventBase);
+      return AcceptorClass::create(server_, eventBase);
     }
     auto acceptor = AcceptorClass::create(
         server_,
-        nullptr,
         eventBase,
         sharedSSLContextManager_->getCertManager(),
         sharedSSLContextManager_->getContextManager(),

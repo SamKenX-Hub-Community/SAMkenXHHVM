@@ -724,7 +724,7 @@ impl<'a, R: Reason> DeclFolder<'a, R> {
     fn get_sealed_whitelist(&self) -> Option<IndexSet<TypeName>> {
         (self.child.user_attributes.iter())
             .find(|ua| ua.name.id() == *sn::user_attributes::uaSealed)
-            .map(|ua| ua.classname_params.iter().copied().collect())
+            .map(|ua| ua.classname_params().iter().copied().collect())
     }
 
     fn get_deferred_init_members_helper(&self) -> IndexSet<PropName> {
@@ -873,6 +873,8 @@ impl<'a, R: Reason> DeclFolder<'a, R> {
             enum_type: self.child.enum_type.clone(),
             has_xhp_keyword: self.child.has_xhp_keyword,
             module: self.child.module.clone(),
+            is_module_level_trait: (self.child.user_attributes.iter())
+                .any(|ua| ua.name.id() == *sn::user_attributes::uaModuleLevelTrait),
             tparams,
             where_constraints: self.child.where_constraints.clone(),
             substs,

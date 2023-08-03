@@ -24,6 +24,7 @@ mod lambda_captures;
 mod pass;
 mod passes;
 mod transform;
+mod typed_local;
 
 /// Private convenience module for simplifying imports in pass implementations.
 mod prelude {
@@ -47,9 +48,10 @@ mod prelude {
     pub use crate::transform::Transform;
 }
 
+use std::sync::Arc;
+
 use env::Env;
 use env::ProgramSpecificOptions;
-use ocamlrep::rc::RcOc;
 use oxidized::namespace_env;
 use oxidized::naming_phase_error::NamingPhaseError;
 use oxidized::nast;
@@ -57,15 +59,16 @@ use oxidized::typechecker_options::TypecheckerOptions;
 use pass::Pass;
 use relative_path::RelativePath;
 use transform::Transform;
+use vec1::Vec1;
 
 /// Provided for use in hackc, where we have an `ns_env` in hand already.
 /// Expected to behave the same as `elaborate_program` when `po_codegen` is
 /// `true`.
 pub fn elaborate_program_for_codegen(
-    ns_env: RcOc<namespace_env::Env>,
+    ns_env: Arc<namespace_env::Env>,
     path: &RelativePath,
     program: &mut nast::Program,
-) {
+) -> Result<(), Vec1<NamingPhaseError>> {
     assert!(ns_env.is_codegen);
     let tco = TypecheckerOptions {
         po_codegen: true,
@@ -75,10 +78,16 @@ pub fn elaborate_program_for_codegen(
         ..Default::default()
     };
     elaborate_namespaces_visitor::elaborate_program(ns_env, program);
-    let env = make_env(&tco, path);
+    let mut env = make_env(&tco, path);
     elaborate_common(&env, program);
     elaborate_package_expr(&env, program);
-    assert!(env.into_errors().is_empty());
+    // Passes below here can emit errors
+    typed_local::elaborate_program(&mut env, program, tco.po_codegen);
+    let errs = env.into_errors();
+    match Vec1::try_from_vec(errs) {
+        Err(_) => Ok(()),
+        Ok(v) => Err(v),
+    }
 }
 
 pub fn elaborate_program(
@@ -93,6 +102,7 @@ pub fn elaborate_program(
         return env.into_errors();
     }
     lambda_captures::elaborate_program(&mut env, program);
+    typed_local::elaborate_program(&mut env, program, false);
     elaborate_for_typechecking(env, program)
 }
 
@@ -108,6 +118,7 @@ pub fn elaborate_fun_def(
         return env.into_errors();
     }
     lambda_captures::elaborate_fun_def(&mut env, f);
+    typed_local::elaborate_fun_def(&mut env, f, false);
     elaborate_for_typechecking(env, f)
 }
 
@@ -123,6 +134,7 @@ pub fn elaborate_class_(
         return env.into_errors();
     }
     lambda_captures::elaborate_class_(&mut env, c);
+    typed_local::elaborate_class_(&mut env, c, false);
     elaborate_for_typechecking(env, c)
 }
 
@@ -171,8 +183,8 @@ pub fn elaborate_typedef(
     elaborate_for_typechecking(env, t)
 }
 
-fn ns_env(tco: &TypecheckerOptions) -> RcOc<namespace_env::Env> {
-    RcOc::new(namespace_env::Env::empty(
+fn ns_env(tco: &TypecheckerOptions) -> Arc<namespace_env::Env> {
+    Arc::new(namespace_env::Env::empty(
         tco.po_auto_namespace_map.clone(),
         tco.po_codegen,
         tco.po_disable_xhp_element_mangling,
@@ -308,6 +320,9 @@ fn elaborate_for_typechecking<T: Transform>(env: Env, node: &mut T) -> Vec<Namin
 
         // Validate hints used in `Cast` expressions
         passes::validate_expr_cast::ValidateExprCastPass::default(),
+
+        // Validate where `dynamic` can be used in a hint
+        passes::validate_dynamic_hint::ValidateDynamicHintPass::default(),
 
         // Check for duplicate function parameter names
         passes::validate_fun_params::ValidateFunParamsPass::default(),

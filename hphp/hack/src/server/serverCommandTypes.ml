@@ -143,7 +143,14 @@ module Find_refs = struct
 
   type action =
     | Class of string
+        (** When user does find-all-refs on Foo::f or self::f or parent::f, it produces `Class "Foo"`
+        and passes this to serverFindRefs. As expected, it will find all references to the class Foo,
+        including self:: and parent:: references.
+        Class is used for all typelikes -- typedefs, enums, enum classes, classes, interfaces, traits *)
     | ExplicitClass of string
+        (** When user does rename of Foo to Bar, then serverRename produces `ExplicitClass "Foo"`
+        and passes this to serverFindRefs. This will only find the explicit references to the class Foo,
+        not including self:: and parent::, since they shouldn't be renamed. *)
     | Member of string * member
     | Function of string
     | GConst of string
@@ -259,32 +266,31 @@ module Rename = struct
   type result_or_retry = result Done_or_retry.t
 
   (** Returns a string in the form of
-   * NEW_NAME|COMMA_SEPARATED_FIND_REFS_ACTION|FILENAME|OCaml_marshalled_SymbolDefinition.T
+   * NEW_NAME|COMMA_SEPARATED_FIND_REFS_ACTION|OCaml_marshalled_SymbolDefinition.T
   *)
   let arguments_to_string_exn
       (new_name : string)
       (action : Find_refs.action)
-      (filename : string)
-      (symbol_def : string SymbolDefinition.t) : string =
+      (symbol_def : Relative_path.t SymbolDefinition.t) : string =
     let symbol_and_action =
       Find_refs.symbol_and_action_to_string_exn new_name action
     in
     let marshalled_def = Marshal.to_string symbol_def [] in
     let encoded = Base64.encode_exn marshalled_def in
-    Printf.sprintf "%s|%s|%s" symbol_and_action filename encoded
+    Printf.sprintf "%s|%s" symbol_and_action encoded
 
   (** Expects a string in the form of
-   * NEW_NAME|COMMA_SEPARATED_FIND_REFS_ACTION|filename|OCaml_marshalled_SymbolDefinition.T
+   * NEW_NAME|COMMA_SEPARATED_FIND_REFS_ACTION|OCaml_marshalled_SymbolDefinition.T
    * For example, a valid entry is
-   * HackTypecheckerQueryBase::WWWDir|Member,\HackTypecheckerQueryBase,Method,getWWWDir|foo.php|<byte_string>
+   * HackTypecheckerQueryBase::WWWDir|Member,\HackTypecheckerQueryBase,Method,getWWWDir|<byte_string>
   *)
   let string_to_args arg :
-      string * Find_refs.action * string * string SymbolDefinition.t =
+      string * Find_refs.action * Relative_path.t SymbolDefinition.t =
     let split_arg = Str.split (Str.regexp "|") arg in
-    let (symbol_name, action_arg, filename, marshalled_def) =
+    let (symbol_name, action_arg, marshalled_def) =
       match split_arg with
-      | [symbol_name; action_arg; filename; marshalled_def] ->
-        (symbol_name, action_arg, filename, marshalled_def)
+      | [symbol_name; action_arg; marshalled_def] ->
+        (symbol_name, action_arg, marshalled_def)
       | _ ->
         Printf.eprintf "Invalid input\n";
         raise Exit_status.(Exit_with Input_error)
@@ -292,10 +298,10 @@ module Rename = struct
     let str = Printf.sprintf "%s|%s" symbol_name action_arg in
     let (new_name, action) = Find_refs.string_to_symbol_and_action_exn str in
     let decoded_str = Base64.decode_exn marshalled_def in
-    let symbol_definition : string SymbolDefinition.t =
+    let symbol_definition : Relative_path.t SymbolDefinition.t =
       Marshal.from_string decoded_str 0
     in
-    (new_name, action, filename, symbol_definition)
+    (new_name, action, symbol_definition)
 end
 
 module Symbol_type = struct
@@ -380,7 +386,7 @@ end
 
 module Ide_rename_type = struct
   type t = {
-    filename: string;
+    filename: Relative_path.t;
     line: int;
     char: int;
     new_name: string;
@@ -461,13 +467,13 @@ type _ t =
   | TAST_HOLES_BATCH : string list -> TastHolesService.result t
   | IDE_HOVER : string * int * int -> HoverService.result t
   | DOCBLOCK_AT :
-      (string * int * int * string option * SearchUtils.si_kind)
+      (string * int * int * string option * SearchTypes.si_kind)
       -> DocblockService.result t
   | DOCBLOCK_FOR_SYMBOL :
-      (string * SearchUtils.si_kind)
+      (string * SearchTypes.si_kind)
       -> DocblockService.result t
   | IDE_SIGNATURE_HELP : (string * int * int) -> Lsp.SignatureHelp.result t
-  | COMMANDLINE_AUTOCOMPLETE : string -> AutocompleteTypes.result t
+  | XHP_AUTOCOMPLETE_SNIPPET : string -> string option t
   | IDENTIFY_SYMBOL : string -> string SymbolDefinition.t list t
   | IDENTIFY_FUNCTION :
       string * file_input * int * int
@@ -480,23 +486,15 @@ type _ t =
       -> Method_jumps.result list t
   | FIND_REFS : Find_refs.action -> Find_refs.result_or_retry t
   | GO_TO_IMPL : Find_refs.action -> Find_refs.result_or_retry t
-  | IDE_FIND_REFS :
-      labelled_file * int * int * bool
-      -> Find_refs.ide_result_or_retry t
   | IDE_FIND_REFS_BY_SYMBOL :
       Find_refs.action * string
       -> Find_refs.ide_result_or_retry t
-  | IDE_GO_TO_IMPL :
-      labelled_file * int * int
+  | IDE_GO_TO_IMPL_BY_SYMBOL :
+      Find_refs.action * string
       -> Find_refs.ide_result_or_retry t
-  | IDE_HIGHLIGHT_REFS :
-      string * file_input * int * int
-      -> ServerHighlightRefsTypes.result t
   | RENAME : ServerRenameTypes.action -> Rename.result_or_retry t
-  | RENAME_CHECK_SD : ServerRenameTypes.action -> string Done_or_retry.t t
-  | IDE_RENAME : Ide_rename_type.t -> Rename.ide_result_or_retry t
   | IDE_RENAME_BY_SYMBOL :
-      Find_refs.action * string * string * string SymbolDefinition.t
+      Find_refs.action * string * Relative_path.t SymbolDefinition.t
       -> Rename.ide_result_or_retry t
   | CODEMOD_SDT :
       string
@@ -511,7 +509,6 @@ type _ t =
   | REMOVE_DEAD_UNSAFE_CASTS
       : [ `Ok of ServerRenameTypes.patch list | `Error of string ] t
   | REWRITE_LAMBDA_PARAMETERS : string list -> ServerRenameTypes.patch list t
-  | REWRITE_TYPE_PARAMS_TYPE : string list -> ServerRenameTypes.patch list t
   | IN_MEMORY_DEP_TABLE_SIZE : (int, string) Stdlib.result t
   | SAVE_NAMING :
       string
@@ -535,14 +532,25 @@ type _ t =
   | IDE_AUTOCOMPLETE :
       string * position * bool
       -> AutocompleteTypes.ide_result t
-  | CODE_ACTIONS : string * range -> Lsp.CodeAction.command_or_action list t
+  | CODE_ACTION : {
+      path: string;
+      range: range;
+    }
+      -> Lsp.CodeAction.command_or_action list t
+  | CODE_ACTION_RESOLVE : {
+      path: string;
+      range: range;
+      resolve_title: string;
+      use_snippet_edits: bool;
+    }
+      -> Lsp.CodeActionResolve.result t
   | DISCONNECT : unit t
   | OUTLINE : string -> Outline.outline t
   | IDE_IDLE : unit t
   | RAGE : ServerRageTypes.result t
   | CST_SEARCH : cst_search_input -> (Hh_json.json, string) result t
   | NO_PRECHECKED_FILES : unit t
-  | GEN_PREFETCH_DIR : string -> unit t
+  | POPULATE_REMOTE_DECLS : Relative_path.t list option -> unit t
   | FUN_DEPS_BATCH : (string * int * int) list -> string list t
   | LIST_FILES_WITH_ERRORS : string list t
   | FILE_DEPENDENTS : string list -> string list t
@@ -563,9 +571,6 @@ type _ t =
       Lsp.CallHierarchyItem.t
       -> Lsp.CallHierarchyOutgoingCalls.result t
   | PAUSE : bool -> unit t
-  | GLOBAL_INFERENCE :
-      ServerGlobalInferenceTypes.mode * string list
-      -> ServerGlobalInferenceTypes.result t
   | VERBOSE : bool -> unit t
   | DEPS_OUT_BATCH : (string * int * int) list -> string list t
   | DEPS_IN_BATCH :

@@ -12,6 +12,7 @@ use std::mem;
 use std::rc::Rc;
 use std::slice::Iter;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use bstr::BString;
 use bstr::B;
@@ -32,7 +33,6 @@ use naming_special_names_rust::user_attributes as special_attrs;
 use ocaml_helper::int_of_string_opt;
 use ocaml_helper::parse_int;
 use ocaml_helper::ParseIntError;
-use ocamlrep::rc::RcOc;
 use oxidized::aast;
 use oxidized::aast::Binop;
 use oxidized::aast_defs::ClassReq;
@@ -182,10 +182,9 @@ const EXP_RECURSION_LIMIT: usize = 30_000;
 #[derive(Clone)]
 pub struct Env<'a> {
     pub codegen: bool,
-    pub keep_errors: bool,
     quick_mode: bool,
-    /// Show errors even in quick mode. Does not override keep_errors. Hotfix
-    /// until we can properly set up saved states to surface parse errors during
+    /// Show errors even in quick mode.
+    /// Hotfix until we can properly set up saved states to surface parse errors during
     /// typechecking properly.
     pub show_all_errors: bool,
     file_mode: file_info::Mode,
@@ -193,7 +192,7 @@ pub struct Env<'a> {
 
     // Cache none pos, lazy_static doesn't allow Rc.
     pos_none: Pos,
-    pub empty_ns_env: RcOc<NamespaceEnv>,
+    pub empty_ns_env: Arc<NamespaceEnv>,
 
     pub saw_yield: bool, /* Information flowing back up */
     pub lifted_awaits: Option<LiftedAwaits>,
@@ -212,18 +211,16 @@ impl<'a> Env<'a> {
     pub fn make(
         codegen: bool,
         quick_mode: bool,
-        keep_errors: bool,
         show_all_errors: bool,
         mode: file_info::Mode,
         indexed_source_text: &'a IndexedSourceText<'a>,
         parser_options: &'a GlobalOptions,
-        namespace_env: RcOc<NamespaceEnv>,
+        namespace_env: Arc<NamespaceEnv>,
         token_factory: PositionedTokenFactory<'a>,
         arena: &'a Bump,
     ) -> Self {
         Env {
             codegen,
-            keep_errors,
             quick_mode,
             show_all_errors,
             file_mode: mode,
@@ -258,7 +255,7 @@ impl<'a> Env<'a> {
     }
 
     fn should_surface_error(&self) -> bool {
-        (!self.quick_mode || self.show_all_errors) && self.keep_errors
+        !self.quick_mode || self.show_all_errors
     }
 
     fn is_typechecker(&self) -> bool {
@@ -858,7 +855,11 @@ fn p_hint_<'a>(node: S<'a>, env: &mut Env<'a>) -> Result<ast::Hint_> {
                     raise_parsing_error(node, env, &syntax_error::direct_coeffects_reference);
                 }
             }
-            Ok(Happly(ast::Id(pos, name), vec![]))
+            if name == "_" {
+                Ok(Hwildcard)
+            } else {
+                Ok(Happly(ast::Id(pos, name), vec![]))
+            }
         }
         ShapeTypeSpecifier(c) => {
             let allows_unknown_fields = !c.ellipsis.is_missing();
@@ -1851,7 +1852,12 @@ fn p_function_call_expr<'a>(
     let recv = p_expr_with_loc(ExprLocation::CallReceiver, recv, env, None)?;
     let (args, varargs) = split_args_vararg(args, env)?;
 
-    Ok(Expr_::mk_call(recv, targs, args, varargs))
+    Ok(Expr_::mk_call(ast::CallExpr {
+        func: recv,
+        targs,
+        args,
+        unpacked_arg: varargs,
+    }))
 }
 
 fn p_function_pointer_expr<'a>(
@@ -1971,16 +1977,16 @@ fn p_pre_post_unary_decorated_expr<'a>(
             Some(TK::Await) => Ok(lift_await(pos, expr, env, location)),
             Some(TK::Readonly) => Ok(process_readonly_expr(expr)),
             Some(TK::Clone) => Ok(Expr_::mk_clone(expr)),
-            Some(TK::Print) => Ok(Expr_::mk_call(
-                Expr::new(
+            Some(TK::Print) => Ok(Expr_::mk_call(ast::CallExpr {
+                func: Expr::new(
                     (),
                     pos.clone(),
                     Expr_::mk_id(ast::Id(pos, special_functions::ECHO.into())),
                 ),
-                vec![],
-                vec![(ast::ParamKind::Pnormal, expr)],
-                None,
-            )),
+                targs: vec![],
+                args: vec![(ast::ParamKind::Pnormal, expr)],
+                unpacked_arg: None,
+            })),
             Some(TK::Dollar) => {
                 raise_parsing_error(op, env, &syntax_error::invalid_variable_name);
                 Ok(Expr_::Omitted)
@@ -2176,7 +2182,12 @@ fn p_prefixed_code_expr<'a>(
         let recv = ast::Expr::new((), pos.clone(), Expr_::mk_lfun(fun, vec![]));
 
         // Immediately invoke the lambda by wrapping in a call expression node
-        let expr = Expr_::mk_call(recv, vec![], vec![], None);
+        let expr = Expr_::mk_call(ast::CallExpr {
+            func: recv,
+            targs: vec![],
+            args: vec![],
+            unpacked_arg: None,
+        });
         ast::Expr::new((), pos, expr)
     };
 
@@ -2403,12 +2414,12 @@ fn p_awaitable_creation_expr<'a>(
         external,
         doc_comment: None,
     };
-    Ok(Expr_::mk_call(
-        Expr::new((), pos, Expr_::mk_lfun(body, vec![])),
-        vec![],
-        vec![],
-        None,
-    ))
+    Ok(Expr_::mk_call(ast::CallExpr {
+        func: Expr::new((), pos, Expr_::mk_lfun(body, vec![])),
+        targs: vec![],
+        args: vec![],
+        unpacked_arg: None,
+    }))
 }
 
 fn p_xhp_expr<'a>(
@@ -2498,7 +2509,12 @@ fn p_special_call<'a>(recv: S<'a>, args: S<'a>, e: &mut Env<'a>) -> Result<Expr_
     // PropOrMethod field in ObjGet and ClassGet
     let recv = p_expr_with_loc(ExprLocation::CallReceiver, recv, e, None)?;
     let (args, varargs) = split_args_vararg(args, e)?;
-    Ok(Expr_::mk_call(recv, vec![], args, varargs))
+    Ok(Expr_::mk_call(ast::CallExpr {
+        func: recv,
+        targs: vec![],
+        args,
+        unpacked_arg: varargs,
+    }))
 }
 
 fn p_obj_get<'a>(
@@ -2923,6 +2939,7 @@ fn p_stmt_<'a>(node: S<'a>, env: &mut Env<'a>) -> Result<ast::Stmt> {
     let new = Stmt::new;
     match &node.children {
         SwitchStatement(c) => p_switch_stmt_(env, pos, c, node),
+        MatchStatement(c) => p_match_stmt(env, pos, c, node),
         IfStatement(c) => p_if_stmt(env, pos, c, node),
         ExpressionStatement(c) => p_expression_stmt(env, pos, c, node),
         CompoundStatement(c) => handle_loop_body(pos, &c.statements, env),
@@ -2938,13 +2955,22 @@ fn p_stmt_<'a>(node: S<'a>, env: &mut Env<'a>) -> Result<ast::Stmt> {
         ForeachStatement(c) => p_foreach_stmt(env, pos, c, node),
         TryStatement(c) => p_try_stmt(env, pos, c, node),
         ReturnStatement(c) => p_return_stmt(env, pos, c, node),
-        YieldBreakStatement(_) => Ok(ast::Stmt::new(pos, ast::Stmt_::mk_yield_break())),
+        YieldBreakStatement(_) => {
+            if env.codegen() {
+                // TODO(T156821099): Once HHVM is deployed with this fix, remove
+                // the `env.codegen()` check so the typechecker understands it.
+                // (i.e. land D46999344).
+                env.saw_yield = true;
+            }
+            Ok(ast::Stmt::new(pos, ast::Stmt_::mk_yield_break()))
+        }
         EchoStatement(c) => p_echo_stmt(env, pos, c, node),
         UnsetStatement(c) => p_unset_stmt(env, pos, c, node),
         BreakStatement(_) => Ok(new(pos, S_::Break)),
         ContinueStatement(_) => Ok(new(pos, S_::Continue)),
         ConcurrentStatement(c) => p_concurrent_stmt(env, pos, c, node),
         MarkupSection(_) => p_markup(node, env),
+        DeclareLocalStatement(c) => p_declare_local_stmt(env, pos, c),
         _ => {
             raise_missing_syntax("statement", node, env);
             Ok(new(env.mk_none_pos(), S_::Noop))
@@ -3022,75 +3048,126 @@ fn p_concurrent_stmt<'a>(
     let new = Stmt::new;
 
     let keyword_pos = p_pos(&c.keyword, env);
+
+    if env.parser_options.po_unwrap_concurrent {
+        return p_stmt(&c.statement, env);
+    }
+
     let (lifted_awaits, Stmt(stmt_pos, stmt)) =
         with_new_concurrent_scope(env, |e| p_stmt(&c.statement, e))?;
     let stmt = match stmt {
         S_::Block(stmts) => {
             use ast::Bop::Eq;
             /* Reuse tmp vars from lifted_awaits, this is safe because there will
-             * always be more awaits with tmp vars than statements with assignments */
+             * always be more awaits with tmp vars than statements with assignments. */
             let mut tmp_vars = lifted_awaits
                 .iter()
                 .filter_map(|lifted_await| lifted_await.0.as_ref().map(|x| &x.1));
             let mut body_stmts = vec![];
             let mut assign_stmts = vec![];
             for n in stmts.into_iter() {
-                if !n.is_assign_expr() {
+                if !n.is_assign_expr() && !n.is_declare_local_stmt() {
                     body_stmts.push(n);
                     continue;
                 }
 
-                if let Some(tv) = tmp_vars.next() {
-                    if let Stmt(p1, S_::Expr(expr)) = n {
-                        if let Expr(_, p2, Expr_::Binop(bop)) = *expr {
+                match n {
+                    Stmt(p1, S_::Expr(expr)) => {
+                        if let Expr((), p2, Expr_::Binop(bop)) = *expr {
                             if let Binop {
                                 bop: Eq(op),
                                 lhs: e1,
                                 rhs: e2,
                             } = *bop
                             {
-                                let tmp_n = Expr::mk_lvar(&e2.1, &(tv.1));
-                                if tmp_n.lvar_name() != e2.lvar_name() {
-                                    let new_n = new(
-                                        p1.clone(),
+                                if let Some(tv) = tmp_vars.next() {
+                                    let tmp_n = Expr::mk_lvar(&e2.1, &(tv.1));
+                                    if tmp_n.lvar_name() != e2.lvar_name() {
+                                        let new_n = new(
+                                            p1.clone(),
+                                            S_::mk_expr(Expr::new(
+                                                (),
+                                                p2.clone(),
+                                                Expr_::mk_binop(Binop {
+                                                    bop: Eq(None),
+                                                    lhs: tmp_n.clone(),
+                                                    rhs: e2.clone(),
+                                                }),
+                                            )),
+                                        );
+                                        body_stmts.push(new_n);
+                                    }
+                                    let assign_stmt = new(
+                                        p1,
                                         S_::mk_expr(Expr::new(
                                             (),
-                                            p2.clone(),
+                                            p2,
                                             Expr_::mk_binop(Binop {
-                                                bop: Eq(None),
-                                                lhs: tmp_n.clone(),
-                                                rhs: e2.clone(),
+                                                bop: Eq(op),
+                                                lhs: e1,
+                                                rhs: tmp_n,
                                             }),
                                         )),
                                     );
-                                    body_stmts.push(new_n);
+                                    assign_stmts.push(assign_stmt);
+                                } else {
+                                    raise_parsing_error_pos(
+                                        &stmt_pos,
+                                        env,
+                                        &syntax_error::statement_without_await_in_concurrent_block,
+                                    );
+                                    assign_stmts.push(Stmt(
+                                        p1,
+                                        S_::Expr(Box::new(Expr(
+                                            (),
+                                            p2,
+                                            Expr_::Binop(Box::new(Binop {
+                                                bop: Eq(op),
+                                                lhs: e1,
+                                                rhs: e2,
+                                            })),
+                                        ))),
+                                    ))
                                 }
-                                let assign_stmt = new(
-                                    p1,
-                                    S_::mk_expr(Expr::new(
-                                        (),
-                                        p2,
-                                        Expr_::mk_binop(Binop {
-                                            bop: Eq(op),
-                                            lhs: e1,
-                                            rhs: tmp_n,
-                                        }),
-                                    )),
-                                );
-                                assign_stmts.push(assign_stmt);
-                                continue;
                             }
                         }
                     }
-
-                    raise_missing_syntax("assignment statement", &c.keyword, env);
-                } else {
-                    raise_parsing_error_pos(
-                        &stmt_pos,
-                        env,
-                        &syntax_error::statement_without_await_in_concurrent_block,
-                    );
-                    body_stmts.push(n)
+                    Stmt(p1, S_::DeclareLocal(box (id, hint, Some(e2)))) => {
+                        if let Some(tv) = tmp_vars.next() {
+                            let tmp_n = Expr::mk_lvar(&e2.1, &(tv.1));
+                            if tmp_n.lvar_name() != e2.lvar_name() {
+                                let new_n = new(
+                                    p1.clone(),
+                                    S_::mk_expr(Expr::new(
+                                        (),
+                                        p1.clone(),
+                                        Expr_::mk_binop(Binop {
+                                            bop: Eq(None),
+                                            lhs: tmp_n.clone(),
+                                            rhs: e2.clone(),
+                                        }),
+                                    )),
+                                );
+                                body_stmts.push(new_n);
+                            }
+                            let assign_stmt =
+                                Stmt(p1, S_::DeclareLocal(Box::new((id, hint, Some(tmp_n)))));
+                            assign_stmts.push(assign_stmt);
+                        } else {
+                            raise_parsing_error_pos(
+                                &stmt_pos,
+                                env,
+                                &syntax_error::statement_without_await_in_concurrent_block,
+                            );
+                            assign_stmts
+                                .push(Stmt(p1, S_::DeclareLocal(Box::new((id, hint, Some(e2))))))
+                        }
+                    }
+                    Stmt(p1, S_::DeclareLocal(box (id, hint, None))) => {
+                        let assign_stmt = Stmt(p1, S_::DeclareLocal(Box::new((id, hint, None))));
+                        assign_stmts.push(assign_stmt);
+                    }
+                    _ => raise_missing_syntax("assignment statement", &c.keyword, env),
                 }
             }
             body_stmts.append(&mut assign_stmts);
@@ -3128,7 +3205,12 @@ fn p_unset_stmt<'a>(
             S_::mk_expr(ast::Expr::new(
                 (),
                 pos,
-                Expr_::mk_call(unset, vec![], args, None),
+                Expr_::mk_call(ast::CallExpr {
+                    func: unset,
+                    targs: vec![],
+                    args,
+                    unpacked_arg: None,
+                }),
             )),
         ))
     };
@@ -3159,7 +3241,12 @@ fn p_echo_stmt<'a>(
             S_::mk_expr(ast::Expr::new(
                 (),
                 pos,
-                Expr_::mk_call(echo, vec![], args, None),
+                Expr_::mk_call(ast::CallExpr {
+                    func: echo,
+                    targs: vec![],
+                    args,
+                    unpacked_arg: None,
+                }),
             )),
         ))
     };
@@ -3437,6 +3524,103 @@ fn p_switch_stmt_<'a>(
     lift_awaits_in_statement(node, env, f)
 }
 
+fn p_match_stmt<'a>(
+    env: &mut Env<'a>,
+    pos: Pos,
+    c: &'a MatchStatementChildren<'a, PositionedToken<'a>, PositionedValue<'a>>,
+    node: S<'a>,
+) -> Result<ast::Stmt> {
+    let f = |env: &mut Env<'a>| -> Result<ast::Stmt> {
+        let expr = p_expr(&c.expression, env)?;
+        let arms = could_map(&c.arms, env, p_match_stmt_arm)?;
+        Ok(ast::Stmt::new(
+            pos,
+            ast::Stmt_::Match(Box::new(ast::StmtMatch { expr, arms })),
+        ))
+    };
+    lift_awaits_in_statement(node, env, f)
+}
+
+fn p_match_stmt_arm<'a>(node: S<'a>, env: &mut Env<'a>) -> Result<ast::StmtMatchArm> {
+    let c = match &node.children {
+        MatchStatementArm(c) => c,
+        _ => return missing_syntax("match statement", node, env),
+    };
+    let pat = p_pat(&c.pattern, env)?;
+    let body = p_stmt(&c.body, env)?;
+    Ok(ast::StmtMatchArm { pat, body })
+}
+
+fn p_pat<'a>(node: S<'a>, env: &mut Env<'a>) -> Result<ast::Pattern> {
+    let pos = p_pos(node, env);
+    match &node.children {
+        VariablePattern(c) => p_variable_pat(env, pos, c),
+        RefinementPattern(c) => p_refinement_pat(env, pos, c),
+        ConstructorPattern(c) => {
+            // Constructor patterns are not yet supported. Wildcard patterns
+            // are, and they're represented in the CST as constructor patterns
+            // with no members.
+            if !c.members.is_missing() {
+                raise_parsing_error(node, env, &syntax_error::destructuring_patterns_nyi);
+            }
+            if token_kind(&c.constructor) == Some(TK::Name) {
+                let name = c.constructor.text(env.source_text());
+                if !name.starts_with('_') {
+                    raise_parsing_error_pos(&pos, env, &syntax_error::wildcard_underscore(name));
+                }
+            } else {
+                raise_parsing_error(node, env, &syntax_error::constructor_patterns_nyi);
+            }
+            Ok(ast::Pattern::PVar(Box::new(ast::PatVar { pos, id: None })))
+        }
+        _ => missing_syntax("pattern", node, env),
+    }
+}
+
+fn p_variable_or_wildcard<'a>(
+    pos: Pos,
+    name: S<'a>,
+    env: &mut Env<'a>,
+) -> Result<Option<ast::Lid>> {
+    match token_kind(name) {
+        Some(TK::Variable) => {
+            raise_parsing_error_pos(&pos, env, &syntax_error::variable_patterns_nyi);
+            Ok(Some(lid_from_pos_name(pos, name, env)?))
+        }
+        Some(TK::Name) => {
+            let name = name.text(env.source_text());
+            if !name.starts_with('_') {
+                raise_parsing_error_pos(&pos, env, &syntax_error::wildcard_underscore(name));
+            }
+            Ok(None)
+        }
+        _ => missing_syntax("variable or wildcard", name, env),
+    }
+}
+
+fn p_variable_pat<'a>(
+    env: &mut Env<'a>,
+    pos: Pos,
+    c: &'a VariablePatternChildren<'_, PositionedToken<'_>, PositionedValue<'_>>,
+) -> Result<ast::Pattern> {
+    Ok(ast::Pattern::PVar(Box::new(ast::PatVar {
+        pos: pos.clone(),
+        id: p_variable_or_wildcard(pos, &c.variable, env)?,
+    })))
+}
+
+fn p_refinement_pat<'a>(
+    env: &mut Env<'a>,
+    pos: Pos,
+    c: &'a RefinementPatternChildren<'_, PositionedToken<'_>, PositionedValue<'_>>,
+) -> Result<ast::Pattern> {
+    Ok(ast::Pattern::PRefinement(Box::new(ast::PatRefinement {
+        pos: pos.clone(),
+        id: p_variable_or_wildcard(pos, &c.variable, env)?,
+        hint: p_hint(&c.specifier, env)?,
+    })))
+}
+
 fn p_markup<'a>(node: S<'a>, env: &mut Env<'a>) -> Result<ast::Stmt> {
     match &node.children {
         MarkupSection(c) => {
@@ -3464,6 +3648,27 @@ fn p_markup<'a>(node: S<'a>, env: &mut Env<'a>) -> Result<ast::Stmt> {
             Ok(ast::Stmt::new(pos, stmt_))
         }
         _ => missing_syntax("XHP markup node", node, env),
+    }
+}
+
+fn p_declare_local_stmt<'a>(
+    env: &mut Env<'a>,
+    pos: Pos,
+    c: &'a DeclareLocalStatementChildren<'a, PositionedToken<'a>, PositionedValue<'a>>,
+) -> Result<ast::Stmt> {
+    use ast::Stmt;
+    use ast::Stmt_ as S_;
+    let var = lid_from_pos_name(pos.clone(), &c.variable, env)?;
+    let hint = p_hint(&c.type_, env)?;
+    if let SimpleInitializer(c) = c.initializer.children {
+        let expr_tmp = p_expr(&c.value, env)?;
+        Ok(Stmt::new(
+            pos,
+            S_::mk_declare_local(var, hint, Some(expr_tmp)),
+        ))
+    } else {
+        assert!(c.initializer.is_missing());
+        Ok(Stmt::new(pos, S_::mk_declare_local(var, hint, None)))
     }
 }
 
@@ -3665,22 +3870,18 @@ fn rewrite_fun_ctx<'a>(
         Hint_::Hfun(ref mut hf) => {
             if let Some(ast::Contexts(ref p, ref mut hl)) = &mut hf.ctxs {
                 if let [ref mut h] = *hl.as_mut_slice() {
-                    if let Hint_::Happly(ast::Id(ref pos, s), _) = &*h.1 {
-                        if s == "_" {
-                            *h.1 = Hint_::HfunContext(name.to_string());
-                            tparams.push(ast::Tparam {
-                                variance: Variance::Invariant,
-                                name: ast::Id(h.0.clone(), format!("T/[ctx {}]", name)),
-                                parameters: vec![],
-                                constraints: vec![],
-                                reified: ReifyKind::Erased,
-                                user_attributes: Default::default(),
-                            });
-                        } else {
-                            invalid(pos);
-                        }
+                    if let Hint_::Hwildcard = &*h.1 {
+                        *h.1 = Hint_::HfunContext(name.to_string());
+                        tparams.push(ast::Tparam {
+                            variance: Variance::Invariant,
+                            name: ast::Id(h.0.clone(), format!("T/[ctx {}]", name)),
+                            parameters: vec![],
+                            constraints: vec![],
+                            reified: ReifyKind::Erased,
+                            user_attributes: Default::default(),
+                        });
                     } else {
-                        invalid(p);
+                        invalid(&h.0);
                     }
                 } else {
                     invalid(p);
@@ -4569,8 +4770,8 @@ where
     Ok((r?, saw_yield))
 }
 
-fn mk_empty_ns_env(env: &Env<'_>) -> RcOc<NamespaceEnv> {
-    RcOc::clone(&env.empty_ns_env)
+fn mk_empty_ns_env(env: &Env<'_>) -> Arc<NamespaceEnv> {
+    Arc::clone(&env.empty_ns_env)
 }
 
 fn extract_docblock<'a>(node: S<'a>, env: &Env<'_>) -> Option<DocComment> {
@@ -5824,6 +6025,7 @@ fn p_def<'a>(node: S<'a>, env: &mut Env<'a>) -> Result<Vec<ast::Def>> {
                 internal: kinds.has(modifier::INTERNAL),
                 module: None,
                 docs_url,
+                doc_comment: doc_comment_opt,
             })])
         }
         CaseTypeDeclaration(c) => {
@@ -5910,6 +6112,7 @@ fn p_def<'a>(node: S<'a>, env: &mut Env<'a>) -> Result<Vec<ast::Def>> {
                 internal: kinds.has(modifier::INTERNAL),
                 module: None,
                 docs_url,
+                doc_comment: doc_comment_opt,
             })])
         }
         ContextAliasDeclaration(c) => {
@@ -5969,6 +6172,7 @@ fn p_def<'a>(node: S<'a>, env: &mut Env<'a>) -> Result<Vec<ast::Def>> {
                 internal: false,
                 module: None,
                 docs_url: None,
+                doc_comment: doc_comment_opt,
             })])
         }
         EnumDeclaration(c) => {
@@ -6293,7 +6497,7 @@ fn post_process<'a>(env: &mut Env<'a>, program: Vec<ast::Def>, acc: &mut Vec<ast
                 _ => {
                     use file_info::Mode::*;
                     let mode = env.file_mode();
-                    env.keep_errors && env.is_typechecker() && (mode == Mstrict)
+                    env.is_typechecker() && (mode == Mstrict)
                 }
             };
             if raise_error {

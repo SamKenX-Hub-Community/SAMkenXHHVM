@@ -190,6 +190,22 @@ bool addAutoloadQueryToPackage(Package& package, const std::string& queryStr) {
   }
 }
 
+void addListToPackage(Package& package, const std::vector<std::string>& dirs,
+                     const CompilerOptions& po) {
+  namespace fs = std::filesystem;
+  std::string prefix{""};
+  if (po.repoOptionsDir != po.inputDir) {
+    auto const input = fs::path(po.inputDir);
+    auto const rdr = fs::path(po.repoOptionsDir);
+    prefix = fs::relative(po.repoOptionsDir, po.inputDir).native();
+    if (!prefix.empty() && prefix.back() != '/') prefix += '/';
+  }
+  for (auto const& dir : dirs) {
+    Logger::FInfo("adding autoload dir {}", dir);
+    package.addDirectory(prefix + dir);
+  }
+}
+
 void addInputsToPackage(Package& package, const CompilerOptions& po) {
   if (po.dirs.empty() && po.inputs.empty() && po.inputList.empty()) {
     package.addDirectory("/");
@@ -274,8 +290,7 @@ struct SymbolSets {
     // These aren't stored in the repo, but we still need to check for
     // collisions against them, so put them in the maps.
     for (auto const& kv : Native::getConstants()) {
-      assertx(kv.second.m_type != KindOfUninit ||
-              kv.second.dynamic());
+      assertx(kv.second.m_type != KindOfUninit);
       add(constants, kv.first, nullptr, "constant");
     }
   }
@@ -288,30 +303,30 @@ struct SymbolSets {
     add(units, path, path, "unit");
 
     for (auto const pce : ue.preclasses()) {
-      pce->setAttrs(pce->attrs() | AttrUnique | AttrPersistent);
+      pce->setAttrs(pce->attrs() | AttrPersistent);
       if (pce->attrs() & AttrEnum) add(enums, pce->name(), path, "enum");
       add(classes, pce->name(), path, "class", typeAliases);
     }
     for (auto& fe : ue.fevec()) {
       if (fe->attrs & AttrIsMethCaller) {
         if (addNoFail(funcs, fe->name, path, "function")) {
-          fe->attrs |= AttrUnique | AttrPersistent;
+          fe->attrs |= AttrPersistent;
         }
       } else {
-        fe->attrs |= AttrUnique | AttrPersistent;
+        fe->attrs |= AttrPersistent;
         add(funcs, fe->name, path, "function");
       }
     }
     for (auto& te : ue.typeAliases()) {
-      te->setAttrs(te->attrs() | AttrUnique | AttrPersistent);
+      te->setAttrs(te->attrs() | AttrPersistent);
       add(typeAliases, te->name(), path, "type alias", classes);
     }
     for (auto& c : ue.constants()) {
-      c.attrs |= AttrUnique | AttrPersistent;
+      c.attrs |= AttrPersistent;
       add(constants, c.name, path, "constant");
     }
     for (auto& m : ue.modules()) {
-      m.attrs |= AttrUnique | AttrPersistent;
+      m.attrs |= AttrPersistent;
       add(modules, m.name, path, "module");
     }
   }
@@ -481,6 +496,7 @@ RepoGlobalData getGlobalData() {
   gd.EmitBespokeTypeStructures = RO::EvalEmitBespokeTypeStructures;
   gd.ActiveDeployment = RO::EvalActiveDeployment;
   gd.ModuleLevelTraits = RO::EvalModuleLevelTraits;
+  gd.TreatCaseTypesAsMixed = RO::EvalTreatCaseTypesAsMixed;
 
   if (Option::ConstFoldFileBC) {
     gd.SourceRootForFileBC.emplace(RO::SourceRoot);
@@ -859,7 +875,7 @@ namespace {
   ) {
     std::vector<coro::TaskWithExecutor<void>> tasks;
     auto const declCallback = [&](auto const* d) -> coro::Task<void> {
-      auto const facts = hackc::decls_to_facts_cpp_ffi(*d, "");
+      auto const facts = hackc::decls_to_facts(*d->decls, "");
       auto summary = summary_of_facts(facts);
       callback(
         "",
@@ -917,8 +933,11 @@ std::unique_ptr<UnitIndex> computeIndex(
   Timer indexTimer(Timer::WallTime, "indexing");
 
   auto const& repoFlags = RepoOptions::forFile(po.repoOptionsDir).flags();
+  auto const& dirs = repoFlags.autoloadRepoBuildSearchDirs();
   auto const queryStr = repoFlags.autoloadQuery();
-  if (!queryStr.empty()) {
+  if (!dirs.empty()) {
+    addListToPackage(indexPackage, dirs, po);
+  } else if (!queryStr.empty()) {
     // Index the files specified by Autoload.Query
     if (!addAutoloadQueryToPackage(indexPackage, queryStr)) return nullptr;
   } else {
@@ -1155,7 +1174,9 @@ bool process(CompilerOptions &po) {
     moduleInDeployment.reserve(index->modules.size());
     for (auto const& [module, _] : index->modules) {
       assertx(!moduleInDeployment.contains(module));
-      if (packageInfo.moduleInDeployment(module, it->second)) {
+      if (packageInfo.moduleInDeployment(module,
+                                         it->second,
+                                         DeployKind::HardOrSoft)) {
         moduleInDeployment.insert(module);
       }
     }
@@ -1442,8 +1463,11 @@ bool process(CompilerOptions &po) {
     // Parse the input files specified on the command line
     addInputsToPackage(*parsePackage, po);
     auto const& repoFlags = RepoOptions::forFile(po.repoOptionsDir).flags();
+    auto const& dirs = repoFlags.autoloadRepoBuildSearchDirs();
     auto const queryStr = repoFlags.autoloadQuery();
-    if (!queryStr.empty()) {
+    if (!dirs.empty()) {
+      addListToPackage(*parsePackage, dirs, po);
+    } else if (!queryStr.empty()) {
       // Parse all the files specified by Autoload.Query
       if (!addAutoloadQueryToPackage(*parsePackage, queryStr)) return false;
     }

@@ -106,16 +106,12 @@ Program(
                     },
                     const_uses: {},
                     name: None,
-                    auto_ns_map: [],
                     is_codegen: false,
                     disable_xhp_element_mangling: false,
                 },
                 file_attributes: [],
                 mode: Mstrict,
-                name: Id(
-                    |num_type_hint.php(12:9-10),
-                    "f",
-                ),
+                name: Id(|num_type_hint.php(12:9-10), "f"),
                 fun: Fun_ {
                     span: |num_type_hint.php(12:0-14:1),
                     readonly_this: None,
@@ -356,16 +352,12 @@ Program(
                     },
                     const_uses: {},
                     name: None,
-                    auto_ns_map: [],
                     is_codegen: false,
                     disable_xhp_element_mangling: false,
                 },
                 file_attributes: [],
                 mode: Mstrict,
-                name: Id(
-                    |num_type_hint.php(16:9-12),
-                    "div",
-                ),
+                name: Id(|num_type_hint.php(16:9-12), "div"),
                 fun: Fun_ {
                     span: |num_type_hint.php(16:0-18:1),
                     readonly_this: None,
@@ -601,16 +593,12 @@ Program(
                     },
                     const_uses: {},
                     name: None,
-                    auto_ns_map: [],
                     is_codegen: false,
                     disable_xhp_element_mangling: false,
                 },
                 file_attributes: [],
                 mode: Mstrict,
-                name: Id(
-                    |num_type_hint.php(20:9-13),
-                    "cast",
-                ),
+                name: Id(|num_type_hint.php(20:9-13), "cast"),
                 fun: Fun_ {
                     span: |num_type_hint.php(20:0-22:1),
                     readonly_this: None,
@@ -886,16 +874,12 @@ Program(
                     },
                     const_uses: {},
                     name: None,
-                    auto_ns_map: [],
                     is_codegen: false,
                     disable_xhp_element_mangling: false,
                 },
                 file_attributes: [],
                 mode: Mstrict,
-                name: Id(
-                    |num_type_hint.php(36:9-14),
-                    "f_opt",
-                ),
+                name: Id(|num_type_hint.php(36:9-14), "f_opt"),
                 fun: Fun_ {
                     span: |num_type_hint.php(36:0-41:1),
                     readonly_this: None,
@@ -1040,19 +1024,16 @@ Program(
                                                 (),
                                                 |num_type_hint.php(40:9-20),
                                                 Call(
-                                                    (
-                                                        Expr(
+                                                    CallExpr {
+                                                        func: Expr(
                                                             (),
                                                             |num_type_hint.php(40:9-10),
                                                             Id(
-                                                                Id(
-                                                                    |num_type_hint.php(40:9-10),
-                                                                    "\\f",
-                                                                ),
+                                                                Id(|num_type_hint.php(40:9-10), "\\f"),
                                                             ),
                                                         ),
-                                                        [],
-                                                        [
+                                                        targs: [],
+                                                        args: [
                                                             (
                                                                 Pnormal,
                                                                 Expr(
@@ -1086,8 +1067,8 @@ Program(
                                                                 ),
                                                             ),
                                                         ],
-                                                        None,
-                                                    ),
+                                                        unpacked_arg: None,
+                                                    },
                                                 ),
                                             ),
                                         ),
@@ -1215,16 +1196,12 @@ Program(
                     },
                     const_uses: {},
                     name: None,
-                    auto_ns_map: [],
                     is_codegen: false,
                     disable_xhp_element_mangling: false,
                 },
                 file_attributes: [],
                 mode: Mstrict,
-                name: Id(
-                    |num_type_hint.php(43:9-13),
-                    "test",
-                ),
+                name: Id(|num_type_hint.php(43:9-13), "test"),
                 fun: Fun_ {
                     span: |num_type_hint.php(43:0-54:1),
                     readonly_this: None,
@@ -1254,19 +1231,16 @@ Program(
                                             (),
                                             |num_type_hint.php(44:2-9),
                                             Call(
-                                                (
-                                                    Expr(
+                                                CallExpr {
+                                                    func: Expr(
                                                         (),
                                                         |num_type_hint.php(44:2-3),
                                                         Id(
-                                                            Id(
-                                                                |num_type_hint.php(44:2-3),
-                                                                "\\f",
-                                                            ),
+                                                            Id(|num_type_hint.php(44:2-3), "\\f"),
                                                         ),
                                                     ),
-                                                    [],
-                                                    [
+                                                    targs: [],
+                                                    args: [
                                                         (
                                                             Pnormal,
                                                             Expr(
@@ -1288,8 +1262,8 @@ Program(
                                                             ),
                                                         ),
                                                     ],
-                                                    None,
-                                                ),
+                                                    unpacked_arg: None,
+                                                },
                                             ),
                                         ),
                                     ),
@@ -1301,19 +1275,16 @@ Program(
                                             (),
                                             |num_type_hint.php(45:2-13),
                                             Call(
-                                                (
-                                                    Expr(
+                                                CallExpr {
+                                                    func: Expr(
                                                         (),
                                                         |num_type_hint.php(45:2-3),
                                                         Id(
-                                                            Id(
-                                                                |num_type_hint.php(45:2-3),
-                                                                "\\f",
-                                                            ),
+                                                            Id(|num_type_hint.php(45:2-3), "\\f"),
                                                         ),
                                                     ),
-                                                    [],
-                                                    [
+                                                    targs: [],
+                                                    args: [
                                                         (
                                                             Pnormal,
                                                             Expr(
@@ -1335,8 +1306,8 @@ Program(
                                                             ),
                                                         ),
                                                     ],
-                                                    None,
-                                                ),
+                                                    unpacked_arg: None,
+                                                },
                                             ),
                                         ),
                                     ),
@@ -1348,19 +1319,16 @@ Program(
                                             (),
                                             |num_type_hint.php(46:2-11),
                                             Call(
-                                                (
-                                                    Expr(
+                                                CallExpr {
+                                                    func: Expr(
                                                         (),
                                                         |num_type_hint.php(46:2-3),
                                                         Id(
-                                                            Id(
-                                                                |num_type_hint.php(46:2-3),
-                                                                "\\f",
-                                                            ),
+                                                            Id(|num_type_hint.php(46:2-3), "\\f"),
                                                         ),
                                                     ),
-                                                    [],
-                                                    [
+                                                    targs: [],
+                                                    args: [
                                                         (
                                                             Pnormal,
                                                             Expr(
@@ -1382,8 +1350,8 @@ Program(
                                                             ),
                                                         ),
                                                     ],
-                                                    None,
-                                                ),
+                                                    unpacked_arg: None,
+                                                },
                                             ),
                                         ),
                                     ),
@@ -1395,19 +1363,16 @@ Program(
                                             (),
                                             |num_type_hint.php(47:2-11),
                                             Call(
-                                                (
-                                                    Expr(
+                                                CallExpr {
+                                                    func: Expr(
                                                         (),
                                                         |num_type_hint.php(47:2-3),
                                                         Id(
-                                                            Id(
-                                                                |num_type_hint.php(47:2-3),
-                                                                "\\f",
-                                                            ),
+                                                            Id(|num_type_hint.php(47:2-3), "\\f"),
                                                         ),
                                                     ),
-                                                    [],
-                                                    [
+                                                    targs: [],
+                                                    args: [
                                                         (
                                                             Pnormal,
                                                             Expr(
@@ -1429,8 +1394,8 @@ Program(
                                                             ),
                                                         ),
                                                     ],
-                                                    None,
-                                                ),
+                                                    unpacked_arg: None,
+                                                },
                                             ),
                                         ),
                                     ),
@@ -1442,19 +1407,16 @@ Program(
                                             (),
                                             |num_type_hint.php(49:2-13),
                                             Call(
-                                                (
-                                                    Expr(
+                                                CallExpr {
+                                                    func: Expr(
                                                         (),
                                                         |num_type_hint.php(49:2-7),
                                                         Id(
-                                                            Id(
-                                                                |num_type_hint.php(49:2-7),
-                                                                "\\f_opt",
-                                                            ),
+                                                            Id(|num_type_hint.php(49:2-7), "\\f_opt"),
                                                         ),
                                                     ),
-                                                    [],
-                                                    [
+                                                    targs: [],
+                                                    args: [
                                                         (
                                                             Pnormal,
                                                             Expr(
@@ -1476,8 +1438,8 @@ Program(
                                                             ),
                                                         ),
                                                     ],
-                                                    None,
-                                                ),
+                                                    unpacked_arg: None,
+                                                },
                                             ),
                                         ),
                                     ),
@@ -1489,19 +1451,16 @@ Program(
                                             (),
                                             |num_type_hint.php(50:2-17),
                                             Call(
-                                                (
-                                                    Expr(
+                                                CallExpr {
+                                                    func: Expr(
                                                         (),
                                                         |num_type_hint.php(50:2-7),
                                                         Id(
-                                                            Id(
-                                                                |num_type_hint.php(50:2-7),
-                                                                "\\f_opt",
-                                                            ),
+                                                            Id(|num_type_hint.php(50:2-7), "\\f_opt"),
                                                         ),
                                                     ),
-                                                    [],
-                                                    [
+                                                    targs: [],
+                                                    args: [
                                                         (
                                                             Pnormal,
                                                             Expr(
@@ -1523,8 +1482,8 @@ Program(
                                                             ),
                                                         ),
                                                     ],
-                                                    None,
-                                                ),
+                                                    unpacked_arg: None,
+                                                },
                                             ),
                                         ),
                                     ),
@@ -1536,19 +1495,16 @@ Program(
                                             (),
                                             |num_type_hint.php(51:2-15),
                                             Call(
-                                                (
-                                                    Expr(
+                                                CallExpr {
+                                                    func: Expr(
                                                         (),
                                                         |num_type_hint.php(51:2-7),
                                                         Id(
-                                                            Id(
-                                                                |num_type_hint.php(51:2-7),
-                                                                "\\f_opt",
-                                                            ),
+                                                            Id(|num_type_hint.php(51:2-7), "\\f_opt"),
                                                         ),
                                                     ),
-                                                    [],
-                                                    [
+                                                    targs: [],
+                                                    args: [
                                                         (
                                                             Pnormal,
                                                             Expr(
@@ -1570,8 +1526,8 @@ Program(
                                                             ),
                                                         ),
                                                     ],
-                                                    None,
-                                                ),
+                                                    unpacked_arg: None,
+                                                },
                                             ),
                                         ),
                                     ),
@@ -1583,19 +1539,16 @@ Program(
                                             (),
                                             |num_type_hint.php(52:2-15),
                                             Call(
-                                                (
-                                                    Expr(
+                                                CallExpr {
+                                                    func: Expr(
                                                         (),
                                                         |num_type_hint.php(52:2-7),
                                                         Id(
-                                                            Id(
-                                                                |num_type_hint.php(52:2-7),
-                                                                "\\f_opt",
-                                                            ),
+                                                            Id(|num_type_hint.php(52:2-7), "\\f_opt"),
                                                         ),
                                                     ),
-                                                    [],
-                                                    [
+                                                    targs: [],
+                                                    args: [
                                                         (
                                                             Pnormal,
                                                             Expr(
@@ -1617,8 +1570,8 @@ Program(
                                                             ),
                                                         ),
                                                     ],
-                                                    None,
-                                                ),
+                                                    unpacked_arg: None,
+                                                },
                                             ),
                                         ),
                                     ),
@@ -1630,19 +1583,16 @@ Program(
                                             (),
                                             |num_type_hint.php(53:2-16),
                                             Call(
-                                                (
-                                                    Expr(
+                                                CallExpr {
+                                                    func: Expr(
                                                         (),
                                                         |num_type_hint.php(53:2-7),
                                                         Id(
-                                                            Id(
-                                                                |num_type_hint.php(53:2-7),
-                                                                "\\f_opt",
-                                                            ),
+                                                            Id(|num_type_hint.php(53:2-7), "\\f_opt"),
                                                         ),
                                                     ),
-                                                    [],
-                                                    [
+                                                    targs: [],
+                                                    args: [
                                                         (
                                                             Pnormal,
                                                             Expr(
@@ -1662,8 +1612,8 @@ Program(
                                                             ),
                                                         ),
                                                     ],
-                                                    None,
-                                                ),
+                                                    unpacked_arg: None,
+                                                },
                                             ),
                                         ),
                                     ),
@@ -1790,16 +1740,12 @@ Program(
                     },
                     const_uses: {},
                     name: None,
-                    auto_ns_map: [],
                     is_codegen: false,
                     disable_xhp_element_mangling: false,
                 },
                 file_attributes: [],
                 mode: Mstrict,
-                name: Id(
-                    |num_type_hint.php(56:9-20),
-                    "test_switch",
-                ),
+                name: Id(|num_type_hint.php(56:9-20), "test_switch"),
                 fun: Fun_ {
                     span: |num_type_hint.php(56:0-78:1),
                     readonly_this: None,
@@ -1942,19 +1888,16 @@ Program(
                                             (),
                                             |num_type_hint.php(58:2-13),
                                             Call(
-                                                (
-                                                    Expr(
+                                                CallExpr {
+                                                    func: Expr(
                                                         (),
                                                         |num_type_hint.php(58:2-9),
                                                         Id(
-                                                            Id(
-                                                                |num_type_hint.php(58:2-9),
-                                                                "\\hh_show",
-                                                            ),
+                                                            Id(|num_type_hint.php(58:2-9), "\\hh_show"),
                                                         ),
                                                     ),
-                                                    [],
-                                                    [
+                                                    targs: [],
+                                                    args: [
                                                         (
                                                             Pnormal,
                                                             Expr(
@@ -1972,8 +1915,8 @@ Program(
                                                             ),
                                                         ),
                                                     ],
-                                                    None,
-                                                ),
+                                                    unpacked_arg: None,
+                                                },
                                             ),
                                         ),
                                     ),
@@ -2121,19 +2064,16 @@ Program(
                                                                         (),
                                                                         |num_type_hint.php(66:6-17),
                                                                         Call(
-                                                                            (
-                                                                                Expr(
+                                                                            CallExpr {
+                                                                                func: Expr(
                                                                                     (),
                                                                                     |num_type_hint.php(66:6-13),
                                                                                     Id(
-                                                                                        Id(
-                                                                                            |num_type_hint.php(66:6-13),
-                                                                                            "\\hh_show",
-                                                                                        ),
+                                                                                        Id(|num_type_hint.php(66:6-13), "\\hh_show"),
                                                                                     ),
                                                                                 ),
-                                                                                [],
-                                                                                [
+                                                                                targs: [],
+                                                                                args: [
                                                                                     (
                                                                                         Pnormal,
                                                                                         Expr(
@@ -2151,8 +2091,8 @@ Program(
                                                                                         ),
                                                                                     ),
                                                                                 ],
-                                                                                None,
-                                                                            ),
+                                                                                unpacked_arg: None,
+                                                                            },
                                                                         ),
                                                                     ),
                                                                 ),

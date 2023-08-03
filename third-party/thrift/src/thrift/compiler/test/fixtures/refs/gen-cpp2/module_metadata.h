@@ -10,7 +10,6 @@
 
 #include <thrift/lib/cpp2/gen/module_metadata_h.h>
 #include "thrift/compiler/test/fixtures/refs/gen-cpp2/module_types.h"
-#include "thrift/annotation/gen-cpp2/cpp_metadata.h"
 
 
 namespace apache {
@@ -30,6 +29,11 @@ class EnumMetadata<::cpp2::TypedEnum> {
 };
 template <>
 class StructMetadata<::cpp2::MyUnion> {
+ public:
+  static const ::apache::thrift::metadata::ThriftStruct& gen(ThriftMetadata& metadata);
+};
+template <>
+class StructMetadata<::cpp2::NonTriviallyDestructibleUnion> {
  public:
   static const ::apache::thrift::metadata::ThriftStruct& gen(ThriftMetadata& metadata);
 };
@@ -84,7 +88,17 @@ class StructMetadata<::cpp2::StructWithInternBox> {
   static const ::apache::thrift::metadata::ThriftStruct& gen(ThriftMetadata& metadata);
 };
 template <>
+class StructMetadata<::cpp2::StructWithTerseInternBox> {
+ public:
+  static const ::apache::thrift::metadata::ThriftStruct& gen(ThriftMetadata& metadata);
+};
+template <>
 class StructMetadata<::cpp2::AdaptedStructWithInternBox> {
+ public:
+  static const ::apache::thrift::metadata::ThriftStruct& gen(ThriftMetadata& metadata);
+};
+template <>
+class StructMetadata<::cpp2::AdaptedStructWithTerseInternBox> {
  public:
   static const ::apache::thrift::metadata::ThriftStruct& gen(ThriftMetadata& metadata);
 };

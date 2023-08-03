@@ -1,34 +1,26 @@
 (library
- (name typing_service_types)
+ (name tast_hashes)
  (wrapped false)
- (modules typing_service_types)
+ (modules tast_hashes)
  (libraries
-  biglist
-  core_kernel
-  errors
-  hg
+  collections
   relative_path
-  typechecker_options
-  typing_deps)
- (preprocess
-  (pps ppx_deriving.std)))
+  typing_ast)
+ (preprocess (pps ppx_yojson_conv)))
 
 (library
- (name typing_service_api)
+ (name typing_service_types)
  (wrapped false)
- (modules typing_service_delegate_sig)
+ (modules
+  typing_service_types)
  (libraries
   biglist
   core_kernel
   errors
   hg
-  job_runner
   relative_path
+  tast_hashes
   typechecker_options
-  typing_service_delegate_types
-  typing_deps
-  process
-  process_types
-  typing_service_types)
+  typing_deps)
  (preprocess
   (pps ppx_deriving.std)))

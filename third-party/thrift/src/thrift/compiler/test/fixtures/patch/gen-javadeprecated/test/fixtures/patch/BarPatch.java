@@ -31,6 +31,7 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
   private static final TField PATCH_PRIOR_FIELD_DESC = new TField("patchPrior", TType.STRUCT, (short)3);
   private static final TField ENSURE_FIELD_DESC = new TField("ensure", TType.STRUCT, (short)5);
   private static final TField PATCH_FIELD_DESC = new TField("patch", TType.STRUCT, (short)6);
+  private static final TField REMOVE_FIELD_DESC = new TField("remove", TType.LIST, (short)7);
 
   /**
    * Assigns to a (set) value.
@@ -57,11 +58,16 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
    * Patches any set value, including newly set values. Applies last.
    */
   public BarFieldPatch patch;
+  /**
+   * Removes entries, if present. Applies third.
+   */
+  public List<Short> remove;
   public static final int ASSIGN = 1;
   public static final int CLEAR = 2;
   public static final int PATCHPRIOR = 3;
   public static final int ENSURE = 5;
   public static final int PATCH = 6;
+  public static final int REMOVE = 7;
 
   // isset id assignments
   private static final int __CLEAR_ISSET_ID = 0;
@@ -81,6 +87,9 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
         new StructMetaData(TType.STRUCT, BarEnsureStruct.class)));
     tmpMetaDataMap.put(PATCH, new FieldMetaData("patch", TFieldRequirementType.DEFAULT, 
         new StructMetaData(TType.STRUCT, BarFieldPatch.class)));
+    tmpMetaDataMap.put(REMOVE, new FieldMetaData("remove", TFieldRequirementType.DEFAULT, 
+        new ListMetaData(TType.LIST, 
+            new FieldValueMetaData(TType.I16))));
     metaDataMap = Collections.unmodifiableMap(tmpMetaDataMap);
   }
 
@@ -95,13 +104,15 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
       boolean clear,
       BarFieldPatch patchPrior,
       BarEnsureStruct ensure,
-      BarFieldPatch patch) {
+      BarFieldPatch patch,
+      List<Short> remove) {
     this();
     this.clear = clear;
     setClearIsSet(true);
     this.patchPrior = patchPrior;
     this.ensure = ensure;
     this.patch = patch;
+    this.remove = remove;
   }
 
   public BarPatch(
@@ -109,7 +120,8 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
       boolean clear,
       BarFieldPatch patchPrior,
       BarEnsureStruct ensure,
-      BarFieldPatch patch) {
+      BarFieldPatch patch,
+      List<Short> remove) {
     this();
     this.assign = assign;
     this.clear = clear;
@@ -117,6 +129,7 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
     this.patchPrior = patchPrior;
     this.ensure = ensure;
     this.patch = patch;
+    this.remove = remove;
   }
 
   public static class Builder {
@@ -125,6 +138,7 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
     private BarFieldPatch patchPrior;
     private BarEnsureStruct ensure;
     private BarFieldPatch patch;
+    private List<Short> remove;
 
     BitSet __optional_isset = new BitSet(1);
 
@@ -157,6 +171,11 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
       return this;
     }
 
+    public Builder setRemove(final List<Short> remove) {
+      this.remove = remove;
+      return this;
+    }
+
     public BarPatch build() {
       BarPatch result = new BarPatch();
       result.setAssign(this.assign);
@@ -166,6 +185,7 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
       result.setPatchPrior(this.patchPrior);
       result.setEnsure(this.ensure);
       result.setPatch(this.patch);
+      result.setRemove(this.remove);
       return result;
     }
   }
@@ -192,6 +212,9 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
     }
     if (other.isSetPatch()) {
       this.patch = TBaseHelper.deepCopy(other.patch);
+    }
+    if (other.isSetRemove()) {
+      this.remove = TBaseHelper.deepCopy(other.remove);
     }
   }
 
@@ -358,6 +381,37 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
     }
   }
 
+  /**
+   * Removes entries, if present. Applies third.
+   */
+  public List<Short> getRemove() {
+    return this.remove;
+  }
+
+  /**
+   * Removes entries, if present. Applies third.
+   */
+  public BarPatch setRemove(List<Short> remove) {
+    this.remove = remove;
+    return this;
+  }
+
+  public void unsetRemove() {
+    this.remove = null;
+  }
+
+  // Returns true if field remove is set (has been assigned a value) and false otherwise
+  public boolean isSetRemove() {
+    return this.remove != null;
+  }
+
+  public void setRemoveIsSet(boolean __value) {
+    if (!__value) {
+      this.remove = null;
+    }
+  }
+
+  @SuppressWarnings("unchecked")
   public void setFieldValue(int fieldID, Object __value) {
     switch (fieldID) {
     case ASSIGN:
@@ -400,6 +454,14 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
       }
       break;
 
+    case REMOVE:
+      if (__value == null) {
+        unsetRemove();
+      } else {
+        setRemove((List<Short>)__value);
+      }
+      break;
+
     default:
       throw new IllegalArgumentException("Field " + fieldID + " doesn't exist!");
     }
@@ -421,6 +483,9 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
 
     case PATCH:
       return getPatch();
+
+    case REMOVE:
+      return getRemove();
 
     default:
       throw new IllegalArgumentException("Field " + fieldID + " doesn't exist!");
@@ -447,12 +512,14 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
 
     if (!TBaseHelper.equalsNobinary(this.isSetPatch(), that.isSetPatch(), this.patch, that.patch)) { return false; }
 
+    if (!TBaseHelper.equalsNobinary(this.isSetRemove(), that.isSetRemove(), this.remove, that.remove)) { return false; }
+
     return true;
   }
 
   @Override
   public int hashCode() {
-    return Arrays.deepHashCode(new Object[] {assign, clear, patchPrior, ensure, patch});
+    return Arrays.deepHashCode(new Object[] {assign, clear, patchPrior, ensure, patch, remove});
   }
 
   public void read(TProtocol iprot) throws TException {
@@ -506,6 +573,25 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
             TProtocolUtil.skip(iprot, __field.type);
           }
           break;
+        case REMOVE:
+          if (__field.type == TType.LIST) {
+            {
+              TList _list252 = iprot.readListBegin();
+              this.remove = new ArrayList<Short>(Math.max(0, _list252.size));
+              for (int _i253 = 0; 
+                   (_list252.size < 0) ? iprot.peekList() : (_i253 < _list252.size); 
+                   ++_i253)
+              {
+                short _elem254;
+                _elem254 = iprot.readI16();
+                this.remove.add(_elem254);
+              }
+              iprot.readListEnd();
+            }
+          } else {
+            TProtocolUtil.skip(iprot, __field.type);
+          }
+          break;
         default:
           TProtocolUtil.skip(iprot, __field.type);
           break;
@@ -546,6 +632,17 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
     if (this.patch != null) {
       oprot.writeFieldBegin(PATCH_FIELD_DESC);
       this.patch.write(oprot);
+      oprot.writeFieldEnd();
+    }
+    if (this.remove != null) {
+      oprot.writeFieldBegin(REMOVE_FIELD_DESC);
+      {
+        oprot.writeListBegin(new TList(TType.I16, this.remove.size()));
+        for (short _iter255 : this.remove)        {
+          oprot.writeI16(_iter255);
+        }
+        oprot.writeListEnd();
+      }
       oprot.writeFieldEnd();
     }
     oprot.writeFieldStop();
@@ -619,6 +716,17 @@ public class BarPatch implements TBase, java.io.Serializable, Cloneable {
       sb.append("null");
     } else {
       sb.append(TBaseHelper.toString(this.getPatch(), indent + 1, prettyPrint));
+    }
+    first = false;
+    if (!first) sb.append("," + newLine);
+    sb.append(indentStr);
+    sb.append("remove");
+    sb.append(space);
+    sb.append(":").append(space);
+    if (this.getRemove() == null) {
+      sb.append("null");
+    } else {
+      sb.append(TBaseHelper.toString(this.getRemove(), indent + 1, prettyPrint));
     }
     first = false;
     sb.append(newLine + TBaseHelper.reduceIndent(indentStr));

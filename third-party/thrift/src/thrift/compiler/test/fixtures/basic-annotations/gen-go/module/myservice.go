@@ -10,8 +10,6 @@ import (
 	"sync"
 	"fmt"
 	thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
-	cpp0 "thrift/annotation/cpp"
-
 )
 
 // (needed to ensure safety because of naive import list construction.)
@@ -21,7 +19,6 @@ var _ = sync.Mutex{}
 var _ = bytes.Equal
 var _ = context.Background
 
-var _ = cpp0.GoUnusedProtection__
 type MyService interface {
   Ping() (err error)
   GetRandomData() (_r string, err error)
@@ -30,7 +27,7 @@ type MyService interface {
   HasDataById(id int64) (_r bool, err error)
   // Parameters:
   //  - Id
-  GetDataById(id int64) (_r string, err error)
+  GoGetDataById(id int64) (_r string, err error)
   // Parameters:
   //  - Id
   //  - Data
@@ -51,7 +48,7 @@ type MyServiceClientInterface interface {
   HasDataById(id int64) (_r bool, err error)
   // Parameters:
   //  - Id
-  GetDataById(id int64) (_r string, err error)
+  GoGetDataById(id int64) (_r string, err error)
   // Parameters:
   //  - Id
   //  - Data
@@ -149,7 +146,7 @@ func (p *MyServiceClient) recvHasDataById() (value bool, err error) {
 
 // Parameters:
 //  - Id
-func (p *MyServiceClient) GetDataById(id int64) (_r string, err error) {
+func (p *MyServiceClient) GoGetDataById(id int64) (_r string, err error) {
   args := MyServiceGetDataByIdArgs{
     Id : id,
   }
@@ -312,7 +309,7 @@ func (p *MyServiceThreadsafeClient) recvHasDataById() (value bool, err error) {
 
 // Parameters:
 //  - Id
-func (p *MyServiceThreadsafeClient) GetDataById(id int64) (_r string, err error) {
+func (p *MyServiceThreadsafeClient) GoGetDataById(id int64) (_r string, err error) {
   p.Mu.Lock()
   defer p.Mu.Unlock()
   args := MyServiceGetDataByIdArgs{
@@ -442,7 +439,7 @@ func (p *MyServiceChannelClient) HasDataById(ctx context.Context, id int64) (_r 
 
 // Parameters:
 //  - Id
-func (p *MyServiceChannelClient) GetDataById(ctx context.Context, id int64) (_r string, err error) {
+func (p *MyServiceChannelClient) GoGetDataById(ctx context.Context, id int64) (_r string, err error) {
   args := MyServiceGetDataByIdArgs{
     Id : id,
   }
@@ -523,22 +520,22 @@ func (p *MyServiceProcessor) FunctionServiceMap() map[string]string {
 }
 
 func NewMyServiceProcessor(handler MyService) *MyServiceProcessor {
-  self2 := &MyServiceProcessor{handler:handler, processorMap:make(map[string]thrift.ProcessorFunction), functionServiceMap:make(map[string]string)}
-  self2.processorMap["ping"] = &myServiceProcessorPing{handler:handler}
-  self2.processorMap["getRandomData"] = &myServiceProcessorGetRandomData{handler:handler}
-  self2.processorMap["hasDataById"] = &myServiceProcessorHasDataById{handler:handler}
-  self2.processorMap["getDataById"] = &myServiceProcessorGetDataById{handler:handler}
-  self2.processorMap["putDataById"] = &myServiceProcessorPutDataById{handler:handler}
-  self2.processorMap["lobDataById"] = &myServiceProcessorLobDataById{handler:handler}
-  self2.processorMap["doNothing"] = &myServiceProcessorDoNothing{handler:handler}
-  self2.functionServiceMap["ping"] = "MyService"
-  self2.functionServiceMap["getRandomData"] = "MyService"
-  self2.functionServiceMap["hasDataById"] = "MyService"
-  self2.functionServiceMap["getDataById"] = "MyService"
-  self2.functionServiceMap["putDataById"] = "MyService"
-  self2.functionServiceMap["lobDataById"] = "MyService"
-  self2.functionServiceMap["doNothing"] = "MyService"
-  return self2
+  self1 := &MyServiceProcessor{handler:handler, processorMap:make(map[string]thrift.ProcessorFunction), functionServiceMap:make(map[string]string)}
+  self1.processorMap["ping"] = &myServiceProcessorPing{handler:handler}
+  self1.processorMap["getRandomData"] = &myServiceProcessorGetRandomData{handler:handler}
+  self1.processorMap["hasDataById"] = &myServiceProcessorHasDataById{handler:handler}
+  self1.processorMap["getDataById"] = &myServiceProcessorGetDataById{handler:handler}
+  self1.processorMap["putDataById"] = &myServiceProcessorPutDataById{handler:handler}
+  self1.processorMap["lobDataById"] = &myServiceProcessorLobDataById{handler:handler}
+  self1.processorMap["doNothing"] = &myServiceProcessorDoNothing{handler:handler}
+  self1.functionServiceMap["ping"] = "MyService"
+  self1.functionServiceMap["getRandomData"] = "MyService"
+  self1.functionServiceMap["hasDataById"] = "MyService"
+  self1.functionServiceMap["getDataById"] = "MyService"
+  self1.functionServiceMap["putDataById"] = "MyService"
+  self1.functionServiceMap["lobDataById"] = "MyService"
+  self1.functionServiceMap["doNothing"] = "MyService"
+  return self1
 }
 
 type myServiceProcessorPing struct {
@@ -753,7 +750,7 @@ func (p *myServiceProcessorGetDataById) Write(seqId int32, result thrift.Writabl
 func (p *myServiceProcessorGetDataById) Run(argStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
   args := argStruct.(*MyServiceGetDataByIdArgs)
   var __result MyServiceGetDataByIdResult
-  if retval, err := p.handler.GetDataById(args.Id); err != nil {
+  if retval, err := p.handler.GoGetDataById(args.Id); err != nil {
     switch err.(type) {
     default:
       x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing getDataById: " + err.Error(), err)

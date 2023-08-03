@@ -27,6 +27,8 @@
 #include <thrift/lib/cpp2/type/Id.h>
 #include <thrift/lib/cpp2/type/detail/Wrap.h>
 
+static_assert(FOLLY_CPLUSPLUS >= 201703L, "Thrift Patch requires C++17");
+
 namespace apache {
 namespace thrift {
 namespace op {
@@ -108,8 +110,9 @@ class BasePatch : public type::detail::EqWrap<Derived, Patch> {
 
   // Convert Static Patch to Dynamic Patch.
   protocol::Object toObject() const {
-    return protocol::asValueStruct<type::struct_c>(Base::toThrift())
-        .as_object();
+    // Pass the adapted type rather than the underlying thrift structure
+    // directly to use `adapter::encode(...)` hook
+    return protocol::asValueStruct<type::struct_c>(derived()).as_object();
   }
 
  protected:
@@ -247,7 +250,6 @@ class BaseClearPatch : public BaseAssignPatch<Patch, Derived> {
 
   /// Clears the value.
   void clear() { resetAnd().clear() = true; }
-  FOLLY_NODISCARD T& clearAnd() { return (clear(), data_); }
 };
 
 /// Base class for 'container' patch types.
@@ -258,7 +260,6 @@ class BaseClearPatch : public BaseAssignPatch<Patch, Derived> {
 template <typename Patch, typename Derived>
 class BaseContainerPatch : public BaseClearPatch<Patch, Derived> {
   using Base = BaseClearPatch<Patch, Derived>;
-  using T = typename Base::value_type;
 
  public:
   using Base::Base;
@@ -266,7 +267,6 @@ class BaseContainerPatch : public BaseClearPatch<Patch, Derived> {
   using Base::clear;
 
  protected:
-  using Base::data_;
   ~BaseContainerPatch() = default; // Abstract base class.
 };
 

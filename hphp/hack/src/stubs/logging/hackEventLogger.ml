@@ -60,13 +60,15 @@ type rollout_flags = {
   override_load_state_natively: bool;
   use_server_revision_tracker_v2: bool;
   rust_provider_backend: bool;
-  load_hack_64_distc_saved_state: bool;
-  ide_should_use_hack_64_distc: bool;
   use_hh_distc_instead_of_hulk: bool;
   consume_streaming_errors: bool;
   hh_distc_fanout_threshold: int;
   rust_elab: bool;
   ide_load_naming_table_on_disk: bool;
+  ide_naming_table_update_threshold: int;
+  ide_batch_process_changes: bool;
+  use_compressed_dep_graph: bool;
+  glean_v2: bool;
 }
 
 let flush () = ()
@@ -191,10 +193,6 @@ let client_check_bad_exit _ _ ~init_proc_stack:_ ~spinner:_ = ()
 
 let client_check_errors_file_restarted _ = ()
 
-let client_lsp_shellout
-    ~root:_ ~command_line:_ ~result_count:_ ~result_extra_telemetry:_ =
-  ()
-
 let client_lsp_method_handled
     ~root:_
     ~method_:_
@@ -218,7 +216,6 @@ let client_lsp_method_exception
     ~start_queue_time:_
     ~start_hh_server_state:_
     ~start_handle_time:_
-    ~serverless_ide_flag:_
     ~message:_
     ~data_opt:_
     ~source:_ =
@@ -228,11 +225,9 @@ let serverless_ide_bug ~message:_ ~data:_ = ()
 
 let client_lsp_exception ~root:_ ~message:_ ~data_opt:_ ~source:_ = ()
 
-let serverless_ide_startup ~component:_ ~start_time:_ = ()
+let serverless_ide_startup ?count:_ ~start_time:_ _ = ()
 
-let serverless_ide_local_files ~local_file_count:_ = ()
-
-let serverless_ide_load_naming_table ~start_time:_ = ()
+let serverless_ide_load_naming_table ~start_time:_ ~local_file_count:_ _ = ()
 
 let serverless_ide_destroy_ok _ = ()
 
@@ -368,6 +363,8 @@ let type_check_exn_bug ~path:_ ~pos:_ ~e:_ = ()
 let invariant_violation_bug ?path:_ ?pos:_ ?data:_ ?data_int:_ ?telemetry:_ _ =
   ()
 
+let decl_consistency_bug ?path:_ ?pos:_ ?data:_ _ = ()
+
 let live_squiggle_diff ~uri:_ ~reason:_ ~expected_error_count:_ _ = ()
 
 let type_check_end
@@ -423,6 +420,8 @@ let saved_state_dirty_files_ok ~start_time:_ = ()
 
 let saved_state_dirty_files_failure _ ~start_time:_ = ()
 
+let saved_state_load_naming_table_on_disk _ ~start_time:_ = ()
+
 let monitor_update_status _ _ = ()
 
 let find_svn_rev_failed _ _ = ()
@@ -472,7 +471,6 @@ let search_symbol_index
     ~results:_
     ~kind_filter:_
     ~duration:_
-    ~actype:_
     ~caller:_
     ~search_provider:_ =
   ()

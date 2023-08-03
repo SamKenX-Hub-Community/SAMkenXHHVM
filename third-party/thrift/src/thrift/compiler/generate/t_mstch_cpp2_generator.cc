@@ -74,7 +74,7 @@ bool is_annotation_blacklisted_in_fatal(const std::string& key) {
 
 bool is_complex_return(const t_type* type) {
   return type->is_container() || type->is_string_or_binary() ||
-      type->is_struct() || type->is_xception();
+      type->is_struct() || type->is_exception();
 }
 
 bool same_types(const t_type* a, const t_type* b) {
@@ -197,7 +197,7 @@ bool should_mangle_field_storage_name_in_struct(const t_struct& s) {
 }
 
 bool resolves_to_container_or_struct(const t_type* type) {
-  return type->is_container() || type->is_struct() || type->is_xception();
+  return type->is_container() || type->is_struct() || type->is_exception();
 }
 
 class cpp2_generator_context {
@@ -330,7 +330,7 @@ class cpp_mstch_program : public mstch_program {
       const t_type* alias = i->get_type();
       if (alias->is_typedef() && alias->has_annotation("cpp.type")) {
         const t_type* ttype = i->get_type()->get_true_type();
-        if ((ttype->is_struct() || ttype->is_xception()) &&
+        if ((ttype->is_struct() || ttype->is_exception()) &&
             !gen::cpp::type_resolver::find_first_adapter(*ttype)) {
           result.push_back(i);
         }
@@ -442,7 +442,7 @@ class cpp_mstch_program : public mstch_program {
   }
   mstch::node thrift_includes() {
     mstch::array a;
-    for (const auto* program : program_->get_included_programs()) {
+    for (const auto* program : program_->get_includes_for_codegen()) {
       a.push_back(make_mstch_program_cached(program, context_));
     }
     return a;
@@ -650,7 +650,7 @@ class cpp_mstch_service : public mstch_service {
             {"service:program_name", &cpp_mstch_service::program_name},
             {"service:program_qualified_name",
              &cpp_mstch_service::program_qualified_name},
-            {"service:program_path", &cpp_mstch_service::program_path},
+            {"service:autogen_path", &cpp_mstch_service::autogen_path},
             {"service:include_prefix", &cpp_mstch_service::include_prefix},
             {"service:thrift_includes", &cpp_mstch_service::thrift_includes},
             {"service:namespace_cpp2", &cpp_mstch_service::namespace_cpp2},
@@ -688,7 +688,11 @@ class cpp_mstch_service : public mstch_service {
     return get_service_namespace(service_->program()) +
         "::" + service_->program()->name();
   }
-  mstch::node program_path() { return service_->program()->path(); }
+  mstch::node autogen_path() {
+    std::string path = service_->program()->path();
+    std::replace(path.begin(), path.end(), '\\', '/');
+    return path;
+  }
   mstch::node cpp_includes() {
     return t_mstch_cpp2_generator::cpp_includes(service_->program());
   }
@@ -698,7 +702,8 @@ class cpp_mstch_service : public mstch_service {
   }
   mstch::node thrift_includes() {
     mstch::array a;
-    for (const auto* program : service_->program()->get_included_programs()) {
+    for (const auto* program :
+         service_->program()->get_includes_for_codegen()) {
       a.push_back(make_mstch_program_cached(program, context_));
     }
     return a;
@@ -1085,15 +1090,10 @@ class cpp_mstch_typedef : public mstch_typedef {
         this,
         {
             {"typedef:cpp_type", &cpp_mstch_typedef::cpp_type},
-            {"typedef:cpp_strong_type?", &cpp_mstch_typedef::cpp_strong_type},
         });
   }
   mstch::node cpp_type() {
     return cpp_context_->resolver().get_underlying_type_name(*typedef_);
-  }
-  mstch::node cpp_strong_type() {
-    return typedef_->find_structured_annotation_or_null(kCppStrongTypeUri) !=
-        nullptr;
   }
 
  private:
@@ -1285,21 +1285,8 @@ class cpp_mstch_struct : public mstch_struct {
 
     bool result = false;
     cpp2::for_each_transitive_field(struct_, [&result](const t_field* field) {
-      auto has_move_only_adapter = [](const auto* strct) {
-        if (auto adapter =
-                strct->find_structured_annotation_or_null(kCppAdapterUri)) {
-          if (auto val = adapter->get_value_from_structured_annotation_or_null(
-                  "moveOnly")) {
-            return val->get_bool();
-          }
-        }
-        return false;
-      };
-
       if (!field->get_type()->has_annotation(
-              {"cpp.noncopyable", "cpp2.noncopyable"}) &&
-          !has_move_only_adapter(field) &&
-          !has_move_only_adapter(field->get_type())) {
+              {"cpp.noncopyable", "cpp2.noncopyable"})) {
         return true;
       }
       switch (gen::cpp::find_ref_type(*field)) {
@@ -1437,16 +1424,12 @@ class cpp_mstch_struct : public mstch_struct {
   }
 
   mstch::node is_large() {
-    // Outline constructors and destructors if the struct has
-    // enough members and at least one has a non-trivial destructor
-    // (involving at least a branch and a likely deallocation).
+    // Outline constructors and destructors if the struct has at least one
+    // member with a non-trivial destructor (involving at least a branch and a
+    // likely deallocation).
     // TODO(ott): Support unions.
     if (struct_->is_exception()) {
       return true;
-    }
-    constexpr size_t kLargeStructThreshold = 4;
-    if (struct_->fields().size() <= kLargeStructThreshold) {
-      return false;
     }
     for (const auto& field : struct_->fields()) {
       const auto* resolved_typedef = field.type()->get_true_type();
@@ -1656,7 +1639,8 @@ class cpp_mstch_struct : public mstch_struct {
   mstch::node is_trivially_destructible() {
     for (const auto& field : struct_->fields()) {
       const t_type* type = field.get_type()->get_true_type();
-      if (cpp2::is_custom_type(field) || !type->is_scalar()) {
+      if (cpp2::is_ref(&field) || cpp2::is_custom_type(field) ||
+          !type->is_scalar()) {
         return false;
       }
     }
@@ -2444,6 +2428,7 @@ void t_mstch_cpp2_generator::generate_structs(const t_program* program) {
   render_to_file(prog, "module_data.h", name + "_data.h");
   render_to_file(prog, "module_data.cpp", name + "_data.cpp");
   render_to_file(prog, "module_types.h", name + "_types.h");
+  render_to_file(prog, "module_types_fwd.h", name + "_types_fwd.h");
   render_to_file(prog, "module_types.tcc", name + "_types.tcc");
 
   if (int split_count = get_split_count(options())) {

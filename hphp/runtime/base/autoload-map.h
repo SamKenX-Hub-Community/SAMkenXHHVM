@@ -35,12 +35,6 @@ struct Variant;
 struct RepoUnitInfo;
 
 struct AutoloadMap {
-
-  enum class Result {
-    Failure,
-    Success,
-  };
-
   /**
    * Keep enum values in sync with `HH\Facts\SymbolKind` in `ext_facts.php`
    */
@@ -144,19 +138,6 @@ struct AutoloadMap {
     not_reached();
   }
 
-  Array getSymbols(KindOf kind, const String& path) {
-    always_assert(kind != AutoloadMap::KindOf::TypeOrTypeAlias);
-    switch (kind) {
-      case AutoloadMap::KindOf::TypeOrTypeAlias: not_reached();
-      case AutoloadMap::KindOf::Type: return getFileTypes(path);
-      case AutoloadMap::KindOf::Function: return getFileFunctions(path);
-      case AutoloadMap::KindOf::Constant: return getFileConstants(path);
-      case AutoloadMap::KindOf::TypeAlias: return getFileTypeAliases(path);
-      case AutoloadMap::KindOf::Module: return getFileModules(path);
-    }
-    not_reached();
-  }
-
   /**
    * Map symbols to files
    */
@@ -243,12 +224,6 @@ struct FactsStore : public AutoloadMap {
       const String& baseType, const Variant& filters) = 0;
 
   /**
-   * Return all types in the repo which transitively extend the given type.
-   */
-  virtual Array getTransitiveDerivedTypes(
-    const String& baseType, const Variant& filters) = 0;
-
-  /**
    * Return all types decorated with the given attribute.
    */
   virtual Array getTypesWithAttribute(const String& attr) = 0;
@@ -267,6 +242,13 @@ struct FactsStore : public AutoloadMap {
    * Return all files decorated with the given attribute.
    */
   virtual Array getFilesWithAttribute(const String& attr) = 0;
+
+  /**
+   * Return all files decorated with the given attribute and
+   * the given value passed into that attribute.
+   */
+  virtual Array getFilesWithAttributeAndAnyValue(
+      const String& attr, const folly::dynamic& value) = 0;
 
   /**
    * Return all attributes decorating the given type.
@@ -321,19 +303,6 @@ struct FactsStore : public AutoloadMap {
    * If the given file does not have the given attribute, return an empty vec.
    */
   virtual Array getFileAttrArgs(const String& file, const String& attr) = 0;
-
-  /**
-   * Return all symbols defined in the repo, as a dict mapping each symbol
-   * name to the path where the symbol lives in the repo.
-   *
-   * If a symbol is defined in more than one path, one of the paths defining the
-   * symbol will be chosen in an unspecified manner.
-   */
-  virtual Array getAllTypes() = 0;
-  virtual Array getAllFunctions() = 0;
-  virtual Array getAllConstants() = 0;
-  virtual Array getAllTypeAliases() = 0;
-  virtual Array getAllModules() = 0;
 };
 
 } // namespace HPHP

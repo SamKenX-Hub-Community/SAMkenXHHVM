@@ -145,7 +145,7 @@ struct
     mk (reason p, ty_ x)
 
   and ty_ : decl_phase ty_ -> decl_phase ty_ = function
-    | (Tany _ | Tthis | Tmixed | Tnonnull | Tdynamic | Tvar _) as x -> x
+    | (Tany _ | Tthis | Tmixed | Twildcard | Tnonnull | Tdynamic) as x -> x
     | Tvec_or_dict (ty1, ty2) -> Tvec_or_dict (ty ty1, ty ty2)
     | Tprim _ as x -> x
     | Tgeneric (name, args) -> Tgeneric (name, List.map args ~f:ty)
@@ -244,8 +244,8 @@ struct
       ttc_is_ctx = tc.ttc_is_ctx;
     }
 
-  and user_attribute { ua_name; ua_classname_params } =
-    { ua_name = positioned_id ua_name; ua_classname_params }
+  and user_attribute { ua_name; ua_params } =
+    { ua_name = positioned_id ua_name; ua_params }
 
   and type_param t =
     {
@@ -269,6 +269,7 @@ struct
       dc_is_xhp = dc.dc_is_xhp;
       dc_has_xhp_keyword = dc.dc_has_xhp_keyword;
       dc_module = dc.dc_module;
+      dc_is_module_level_trait = dc.dc_is_module_level_trait;
       dc_name = dc.dc_name;
       dc_pos = dc.dc_pos;
       dc_extends = dc.dc_extends;

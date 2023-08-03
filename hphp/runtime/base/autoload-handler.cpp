@@ -68,7 +68,6 @@ FactsStore* getFactsForRequest() {
     return nullptr;
   }
 
-
   auto* map = factory->getForOptions(*repoOptions);
   if (!map) {
     return nullptr;
@@ -80,7 +79,7 @@ FactsStore* getFactsForRequest() {
     return map;
   } catch (const std::exception& e) {
     auto repoRoot = repoOptions->dir();
-    Logger::FInfo(
+    Logger::FError(
         "Failed to update native autoloader, not natively autoloading {}. {}\n",
         repoRoot.native(),
         e.what());
@@ -208,21 +207,15 @@ Optional<AutoloadMap::FileResult> AutoloadHandler::getFile(
   return m_map->getFile(kind, normalizeNS(clsName));
 }
 
-Array AutoloadHandler::getSymbols(const String& path,
-                                  AutoloadMap::KindOf kind) {
-  assertx(m_map);
-  return m_map->getSymbols(kind, path);
-}
-
 template <class T>
-AutoloadMap::Result
+bool
 AutoloadHandler::loadFromMapImpl(const String& clsName,
                                  AutoloadMap::KindOf kind,
                                  const T &checkExists,
                                  Variant& err) {
   auto fileRes = getFile(clsName, kind);
   if (!fileRes) {
-    return AutoloadMap::Result::Failure;
+    return false;
   }
   bool ok = false;
   // Utility for logging errors in server mode.
@@ -234,9 +227,12 @@ AutoloadHandler::loadFromMapImpl(const String& clsName,
   try {
     VMRegAnchor _;
     bool initial;
+    auto const eagerSync = RO::EvalAutoloadEagerSyncUnitCache && m_map;
     auto const unit = lookupUnit(fileRes->path.get(), fileRes->info, "",
                                  &initial, Native::s_noNativeFuncs,
-                                 RuntimeOption::TrustAutoloaderPath);
+                                 RuntimeOption::TrustAutoloaderPath,
+                                 false /* forPrefetch */,
+                                 eagerSync /* forAutoload */);
     if (unit) {
       if (initial) unit->merge();
       ok = true;
@@ -275,23 +271,19 @@ AutoloadHandler::loadFromMapImpl(const String& clsName,
   }
   if (ok && checkExists()) {
     onPostAutoload(kind, clsName);
-    return AutoloadMap::Result::Success;
+    return true;
   }
-  return AutoloadMap::Result::Failure;
+  return false;
 }
 
 template <class T>
-AutoloadMap::Result
+bool
 AutoloadHandler::loadFromMap(const String& clsName,
                              AutoloadMap::KindOf kind,
                              const T &checkExists) {
   assertx(m_map);
   Variant err{Variant::NullInit()};
-  AutoloadMap::Result res = loadFromMapImpl(clsName, kind, checkExists, err);
-  if (res == AutoloadMap::Result::Success) {
-    return AutoloadMap::Result::Success;
-  }
-  return AutoloadMap::Result::Failure;
+  return loadFromMapImpl(clsName, kind, checkExists, err);
 }
 
 bool AutoloadHandler::autoloadFunc(StringData* name) {
@@ -299,7 +291,7 @@ bool AutoloadHandler::autoloadFunc(StringData* name) {
   return m_map &&
     loadFromMap(String{name},
                 AutoloadMap::KindOf::Function,
-                FuncExistsChecker(name)) != AutoloadMap::Result::Failure;
+                FuncExistsChecker(name));
 }
 
 bool AutoloadHandler::autoloadConstant(StringData* name) {
@@ -307,14 +299,14 @@ bool AutoloadHandler::autoloadConstant(StringData* name) {
   return m_map &&
     loadFromMap(String{name},
                 AutoloadMap::KindOf::Constant,
-                ConstExistsChecker(name)) != AutoloadMap::Result::Failure;
+                ConstExistsChecker(name));
 }
 
 bool AutoloadHandler::autoloadTypeAlias(const String& name) {
   tracing::BlockNoTrace _{(m_map) ? "autoload-native" : "autoload"};
   return m_map &&
     loadFromMap(name, AutoloadMap::KindOf::TypeAlias,
-                TypeAliasExistsChecker(name)) != AutoloadMap::Result::Failure;
+                TypeAliasExistsChecker(name));
 }
 
 bool AutoloadHandler::autoloadModule(StringData* name) {
@@ -322,7 +314,7 @@ bool AutoloadHandler::autoloadModule(StringData* name) {
   return m_map &&
     loadFromMap(String{name},
                 AutoloadMap::KindOf::Module,
-                ModuleExistsChecker(name)) != AutoloadMap::Result::Failure;
+                ModuleExistsChecker(name));
 }
 
 /**
@@ -354,7 +346,7 @@ bool AutoloadHandler::autoloadType(const String& clsName) {
   }
   return m_map &&
     loadFromMap(className, AutoloadMap::KindOf::Type,
-                ClassExistsChecker(className)) != AutoloadMap::Result::Failure;
+                ClassExistsChecker(className));
 }
 
 bool AutoloadHandler::autoloadTypeOrTypeAlias(const String& clsName) {
@@ -365,7 +357,7 @@ bool AutoloadHandler::autoloadTypeOrTypeAlias(const String& clsName) {
 
   return m_map &&
     loadFromMap(className, AutoloadMap::KindOf::TypeOrTypeAlias,
-                NamedTypeExistsChecker(className)) != AutoloadMap::Result::Failure;
+                NamedTypeExistsChecker(className));
 }
 
 void AutoloadHandler::setRepoAutoloadMap(std::unique_ptr<RepoAutoloadMap> map) {

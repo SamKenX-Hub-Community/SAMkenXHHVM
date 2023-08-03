@@ -397,11 +397,15 @@ EmitBcInfo emit_bytecode(EmitUnitState& euState, UnitEmitter& ue, FuncEmitter& f
     auto const ret_assert = [&] { assertx(currentStackDepth == inst.numPop()); };
 
     auto const createcl = [&] (auto const& data) {
-      auto [_, cls] = euState.index.resolve_closure_class(
-        Context { euState.unit, nullptr, nullptr },
+      auto const rcls = euState.index.resolve_class(data.str2);
+      always_assert_flog(
+        rcls.has_value() && rcls->resolved(),
+        "A closure class ({}) failed to resolve",
         data.str2
       );
+      auto const cls = rcls->cls();
       assertx(cls->unit == euState.unit->filename);
+      assertx(is_closure(*cls));
       // Skip closures we've already recorded
       if (!euState.seenClosures.emplace(cls).second) return;
       recordClass(euState, ue, const_cast<php::Class&>(*cls));
@@ -1053,7 +1057,6 @@ void emit_init_func(FuncEmitter& fe, const php::Func& func) {
 void emit_func(EmitUnitState& state, UnitEmitter& ue,
                FuncEmitter& fe, php::Func& f) {
   FTRACE(2,  "    func {}\n", f.name->data());
-  assertx(f.attrs & AttrUnique);
   assertx(f.attrs & AttrPersistent);
   renumber_locals(f);
   emit_init_func(fe, f);
@@ -1065,7 +1068,6 @@ void emit_func(EmitUnitState& state, UnitEmitter& ue,
 void emit_class(EmitUnitState& state, UnitEmitter& ue, PreClassEmitter* pce,
                 php::Class& cls) {
   FTRACE(2, "    class: {}\n", cls.name->data());
-  assertx(cls.attrs & AttrUnique);
   assertx(cls.attrs & AttrPersistent);
   pce->init(
     std::get<0>(cls.srcInfo.loc),
@@ -1208,15 +1210,21 @@ void emit_class(EmitUnitState& state, UnitEmitter& ue, PreClassEmitter* pce,
 }
 
 void emit_typealias(UnitEmitter& ue, const php::TypeAlias& alias) {
-  assertx(alias.attrs & AttrUnique);
   assertx(alias.attrs & AttrPersistent);
   auto const te = ue.newTypeAliasEmitter(alias.name->toCppString());
+
+  assertx(!alias.typeAndValueUnion.empty());
+
+  TypeAndValueUnion tvu;
+  for (auto const& [type, value] : alias.typeAndValueUnion) {
+    tvu.emplace_back(TypeAndValue{type, value});
+  }
+
   te->init(
       std::get<0>(alias.srcInfo.loc),
       std::get<1>(alias.srcInfo.loc),
       alias.attrs,
-      alias.value,
-      alias.type,
+      std::move(tvu),
       alias.nullable,
       alias.caseType,
       alias.typeStructure,
@@ -1226,7 +1234,6 @@ void emit_typealias(UnitEmitter& ue, const php::TypeAlias& alias) {
 }
 
 void emit_constant(UnitEmitter& ue, const php::Constant& constant) {
-  assertx(constant.attrs & AttrUnique);
   assertx(constant.attrs & AttrPersistent);
   Constant c {
     constant.name,

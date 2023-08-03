@@ -22,22 +22,28 @@
 #include <tuple>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "hphp/runtime/base/datatype.h"
 #include "hphp/runtime/base/exceptions.h"
 #include "hphp/runtime/base/record-replay.h"
 #include "hphp/runtime/base/req-root.h"
 #include "hphp/runtime/base/type-array.h"
+#include "hphp/runtime/base/type-object.h"
 #include "hphp/runtime/base/type-string.h"
 #include "hphp/runtime/base/type-variant.h"
 
 namespace HPHP {
+
+struct DebuggerHook;
 
 struct Replayer {
   ~Replayer();
   String file(const String& path) const;
   static Replayer& get();
   String init(const String& path);
+  void requestInit() const;
+  void setDebuggerHook(DebuggerHook* debuggerHook);
 
   template<auto f>
   static auto wrapNativeFunc(const char* name) {
@@ -47,6 +53,8 @@ struct Replayer {
   }
 
  private:
+  struct ExternalThreadEvent;
+  struct DebuggerHook;
   template<auto f> struct WrapNativeFunc;
 
   template<typename R, typename... A, R(*f)(A...)>
@@ -57,26 +65,35 @@ struct Replayer {
     }
   };
 
+  static Object makeWaitHandle(const NativeCall& call);
   template<typename T> static void nativeArg(const String& recordedArg, T arg);
-  std::tuple<Array, String, String> popNativeCall(std::uintptr_t id);
+  NativeCall popNativeCall(std::uintptr_t id);
   template<typename T> static T unserialize(const String& recordedValue);
 
   template<typename R, typename... A>
   R replayNativeFunc(std::uintptr_t id, A&&... args) {
-    const auto [recordedArgs, recordedRet, recordedExc]{popNativeCall(id)};
+    const auto call{popNativeCall(id)};
     std::int64_t i{-1};
-    (nativeArg<A>(recordedArgs[++i].asCStrRef(), std::forward<A>(args)), ...);
-    if (recordedRet.empty()) {
+    (nativeArg<A>(call.args[++i].asCStrRef(), std::forward<A>(args)), ...);
+    if constexpr (std::is_same_v<R, Object>) {
+      if (call.waitHandle) {
+        return makeWaitHandle(call);
+      }
+    }
+    if (call.ret.empty()) {
       // NOLINTNEXTLINE(facebook-hte-ThrowNonStdExceptionIssue)
-      throw unserialize<Object>(recordedExc);
+      throw unserialize<Object>(call.exc);
     } else {
-      return unserialize<R>(recordedRet);
+      return unserialize<R>(call.ret);
     }
   }
 
+  HPHP::DebuggerHook* m_debuggerHook;
+  std::vector<std::int64_t> m_externalThreadEventOrder;
   std::unordered_map<std::string, std::string> m_files;
   std::deque<NativeCall> m_nativeCalls;
   std::unordered_map<std::string, std::uintptr_t> m_nativeFuncNames;
+  Array m_serverGlobal;
 };
 
 } // namespace HPHP

@@ -42,10 +42,15 @@ let name_type_to_kind (name_type : FileInfo.name_type) :
 let find_symbol_in_context
     ~(ctx : Provider_context.t)
     ~(get_entry_symbols : FileInfo.t -> (FileInfo.id * FileInfo.name_type) list)
-    ~(is_symbol : string -> bool) :
-    (Relative_path.t * (FileInfo.pos * FileInfo.name_type)) option =
+    ~(is_symbol : string -> bool) : (FileInfo.pos * FileInfo.name_type) option =
   Provider_context.get_entries ctx
   |> Relative_path.Map.filter_map ~f:(fun _path entry ->
+         (* CARE! This obtains names from the AST. They're usually similar to what we get from direct-decl-parser
+            (which is what's used to populate the naming table). But they disagree in cases like
+            "namespace N; namespace M {function f(){} }" where AST says "M\f" and direct-decl says "N\M\f".
+            We can therefore end in situations where if you're walking the AST and find a name, and you ask
+            for it, then Naming_provider will tell you it exists (via the Provider_context entry) but
+            Decl_provider will tell you it doesn't. *)
          let file_info =
            Ast_provider.compute_file_info
              ~popt:(Provider_context.get_popt ctx)
@@ -58,9 +63,10 @@ let find_symbol_in_context
              else
                None))
   |> Relative_path.Map.choose_opt
+  |> Option.map ~f:snd
 
 let find_const_in_context (ctx : Provider_context.t) (name : string) :
-    (Relative_path.t * (FileInfo.pos * FileInfo.name_type)) option =
+    (FileInfo.pos * FileInfo.name_type) option =
   find_symbol_in_context
     ~ctx
     ~get_entry_symbols:(fun { FileInfo.consts; _ } ->
@@ -68,7 +74,7 @@ let find_const_in_context (ctx : Provider_context.t) (name : string) :
     ~is_symbol:(String.equal name)
 
 let find_fun_in_context (ctx : Provider_context.t) (name : string) :
-    (Relative_path.t * (FileInfo.pos * FileInfo.name_type)) option =
+    (FileInfo.pos * FileInfo.name_type) option =
   find_symbol_in_context
     ~ctx
     ~get_entry_symbols:(fun { FileInfo.funs; _ } ->
@@ -92,7 +98,8 @@ let find_fun_canon_name_in_context (ctx : Provider_context.t) (name : string) :
         String.equal (Naming_sqlite.to_canon_name_key symbol_name) name)
   in
   match symbol_opt with
-  | Some (path, _pos) -> compute_fun_canon_name ctx path name
+  | Some (pos, _name_type) ->
+    compute_fun_canon_name ctx (FileInfo.get_pos_filename pos) name
   | None -> None
 
 let get_entry_symbols_for_type { FileInfo.classes; typedefs; _ } =
@@ -101,7 +108,7 @@ let get_entry_symbols_for_type { FileInfo.classes; typedefs; _ } =
   List.concat [classes; typedefs]
 
 let find_type_in_context (ctx : Provider_context.t) (name : string) :
-    (Relative_path.t * (FileInfo.pos * FileInfo.name_type)) option =
+    (FileInfo.pos * FileInfo.name_type) option =
   find_symbol_in_context
     ~ctx
     ~get_entry_symbols:get_entry_symbols_for_type
@@ -128,12 +135,16 @@ let find_type_canon_name_in_context (ctx : Provider_context.t) (name : string) :
         String.equal (Naming_sqlite.to_canon_name_key symbol_name) name)
   in
   match symbol_opt with
-  | Some (path, (_pos, name_type)) ->
-    compute_type_canon_name ctx path (name_type_to_kind name_type) name
+  | Some (pos, name_type) ->
+    compute_type_canon_name
+      ctx
+      (FileInfo.get_pos_filename pos)
+      (name_type_to_kind name_type)
+      name
   | None -> None
 
 let find_module_in_context (ctx : Provider_context.t) (name : string) :
-    (Relative_path.t * (FileInfo.pos * FileInfo.name_type)) option =
+    (FileInfo.pos * FileInfo.name_type) option =
   find_symbol_in_context
     ~ctx
     ~get_entry_symbols:(fun { FileInfo.modules; _ } ->
@@ -178,21 +189,37 @@ let find_symbol_in_context_with_suppression
     ~(find_symbol_in_context :
        Provider_context.t ->
        string ->
-       (Relative_path.t * (FileInfo.pos * FileInfo.name_type)) option)
+       (FileInfo.pos * FileInfo.name_type) option)
     ~(fallback : unit -> (FileInfo.pos * FileInfo.name_type) option)
     (name : string) : (FileInfo.pos * FileInfo.name_type) option =
-  match find_symbol_in_context ctx name with
-  | Some (_path, pos) -> Some pos
-  | None ->
-    (match fallback () with
-    | Some (pos, name_type) ->
-      (* If fallback said it thought the symbol was in ctx, but we definitively
-         know that it isn't, then the answer is None. *)
-      if is_pos_in_ctx ~ctx pos then
-        None
-      else
-        Some (pos, name_type)
-    | None -> None)
+  let from_context = find_symbol_in_context ctx name in
+  let from_fallback = fallback () in
+  match (from_context, from_fallback) with
+  | (None, None) -> None
+  | (Some (context_pos, context_name_type), None) ->
+    Some (context_pos, context_name_type)
+  | (None, Some (fallback_pos, fallback_name_type)) ->
+    (* If fallback said it thought the symbol was in ctx, but we definitively
+       know that it isn't, then the answer is None. *)
+    if is_pos_in_ctx ~ctx fallback_pos then
+      None
+    else
+      Some (fallback_pos, fallback_name_type)
+  | ( Some (context_pos, context_name_type),
+      Some (fallback_pos, fallback_name_type) ) ->
+    (* The alphabetically first filename wins *)
+    let context_fn = FileInfo.get_pos_filename context_pos in
+    let fallback_fn = FileInfo.get_pos_filename fallback_pos in
+    if Relative_path.compare context_fn fallback_fn <= 0 then
+      (* symbol is either (1) a duplicate in both context and fallback, and context is the winner,
+         or (2) not a duplicate, and both context and fallback claim it to be defined
+         in a file that's part of the context, in which case context wins.
+         This is consistent with the winnor algorithm used by hh_server --
+         see the comment for [ServerTypeCheck.do_naming]. *)
+      Some (context_pos, context_name_type)
+    else
+      (* symbol is a duplicate in both context and fallback, and fallback is the winner *)
+      Some (fallback_pos, fallback_name_type)
 
 let get_and_cache
     ~(ctx : Provider_context.t)
@@ -750,61 +777,42 @@ let resolve_position : Provider_context.t -> Pos_or_decl.t -> Pos.t =
     in
     Pos_or_decl.fill_in_filename filename pos
 
-let get_module_full_pos ctx (pos, name) =
+let get_module_full_pos_by_parsing_file ctx (pos, name) =
   match pos with
   | FileInfo.Full p -> Some p
-  | FileInfo.File ((FileInfo.Module as name_type), fn) -> begin
-    match Provider_context.get_backend ctx with
-    | Provider_backend.Decl_service { decl; _ } ->
-      Decl_service_client.Positioned.rpc_get_full_pos decl name_type name fn
-    | _ ->
-      Ast_provider.find_module_in_file ctx fn name
-      |> Option.map ~f:(fun md -> fst md.Aast.md_name)
-  end
+  | FileInfo.File (FileInfo.Module, fn) ->
+    Ast_provider.find_module_in_file ctx fn name ~full:false
+    |> Option.map ~f:(fun md -> fst md.Aast.md_name)
   | FileInfo.(File ((Fun | Class | Typedef | Const), _fn)) -> None
 
-let get_const_full_pos ctx (pos, name) =
+let get_const_full_pos_by_parsing_file ctx (pos, name) =
   match pos with
   | FileInfo.Full p -> Some p
-  | FileInfo.File ((FileInfo.Const as name_type), fn) -> begin
-    match Provider_context.get_backend ctx with
-    | Provider_backend.Decl_service { decl; _ } ->
-      Decl_service_client.Positioned.rpc_get_full_pos decl name_type name fn
-    | _ ->
-      Ast_provider.find_gconst_in_file ctx fn name
-      |> Option.map ~f:(fun ast -> fst ast.Aast.cst_name)
-  end
+  | FileInfo.File (FileInfo.Const, fn) ->
+    Ast_provider.find_gconst_in_file ctx fn name ~full:false
+    |> Option.map ~f:(fun ast -> fst ast.Aast.cst_name)
   | FileInfo.(File ((Fun | Class | Typedef | Module), _fn)) -> None
 
-let get_fun_full_pos ctx (pos, name) =
+let get_fun_full_pos_by_parsing_file ctx (pos, name) =
   match pos with
   | FileInfo.Full p -> Some p
-  | FileInfo.File ((FileInfo.Fun as name_type), fn) -> begin
-    match Provider_context.get_backend ctx with
-    | Provider_backend.Decl_service { decl; _ } ->
-      Decl_service_client.Positioned.rpc_get_full_pos decl name_type name fn
-    | _ ->
-      Ast_provider.find_fun_in_file ctx fn name
-      |> Option.map ~f:(fun fd -> fst fd.Aast.fd_name)
-  end
+  | FileInfo.File (FileInfo.Fun, fn) ->
+    Ast_provider.find_fun_in_file ctx fn name ~full:false
+    |> Option.map ~f:(fun fd -> fst fd.Aast.fd_name)
   | FileInfo.(File ((Class | Typedef | Const | Module), _fn)) -> None
 
-let get_type_full_pos ctx (pos, name) =
+let get_type_full_pos_by_parsing_file ctx (pos, name) =
   match pos with
   | FileInfo.Full p -> Some p
   | FileInfo.File (name_type, fn) ->
-    (match Provider_context.get_backend ctx with
-    | Provider_backend.Decl_service { decl; _ } ->
-      Decl_service_client.Positioned.rpc_get_full_pos decl name_type name fn
-    | _ ->
-      (match name_type with
-      | FileInfo.Class ->
-        Ast_provider.find_class_in_file ctx fn name
-        |> Option.map ~f:(fun ast -> fst ast.Aast.c_name)
-      | FileInfo.Typedef ->
-        Ast_provider.find_typedef_in_file ctx fn name
-        |> Option.map ~f:(fun ast -> fst ast.Aast.t_name)
-      | FileInfo.(Fun | Const | Module) -> None))
+    (match name_type with
+    | FileInfo.Class ->
+      Ast_provider.find_class_in_file ctx fn name ~full:false
+      |> Option.map ~f:(fun ast -> fst ast.Aast.c_name)
+    | FileInfo.Typedef ->
+      Ast_provider.find_typedef_in_file ctx fn name ~full:false
+      |> Option.map ~f:(fun ast -> fst ast.Aast.t_name)
+    | FileInfo.(Fun | Const | Module) -> None)
 
 (** This removes the name->path mapping from the naming table (i.e. the combination
 of sqlite and delta). It is an error to call this method unless name->path exists.

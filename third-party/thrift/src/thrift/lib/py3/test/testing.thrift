@@ -261,7 +261,7 @@ struct customized {
   6: map_typedef map_type;
   7: string_typedef string_type;
   8: i32 foo (cpp.name = "bar");
-  9: list<i32 (cpp.type = "uint32_t")> list_of_uint32;
+  9: list<i32_2395> list_of_uint32;
 }
 
 struct Reserved {
@@ -272,6 +272,13 @@ struct Reserved {
   5: string move; // not a keyword
   6: string inst; // not a keyword
   7: string changes; // not a keyword
+  8: string __mangled_str;
+  9: i64 __mangled_int;
+}
+
+struct __Reserved {
+  1: string __mangled_str;
+  2: i64 __mangled_int;
 }
 
 union ReservedUnion {
@@ -410,3 +417,9 @@ service ClientMetadataTestingService {
   string getHostname();
   string getMetadaField(1: string key);
 }
+
+// The following were automatically generated and may benefit from renaming.
+typedef i32 (cpp.type = "uint32_t") i32_2395
+
+struct EmptyStruct {}
+exception EmptyError {}

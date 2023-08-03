@@ -6,13 +6,11 @@ package module // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    thrift0 "thrift/annotation/thrift"
     patch "thrift/lib/thrift/patch"
     standard "thrift/lib/thrift/standard"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = thrift0.GoUnusedProtection__
 var _ = patch.GoUnusedProtection__
 var _ = standard.GoUnusedProtection__
 
@@ -173,7 +171,9 @@ if err != nil {
 }
 
 func (x *MyData) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyDataAlias MyData
+    valueAlias := (*MyDataAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -371,7 +371,9 @@ if err != nil {
 }
 
 func (x *MyDataWithCustomDefault) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyDataWithCustomDefaultAlias MyDataWithCustomDefault
+    valueAlias := (*MyDataWithCustomDefaultAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -474,8 +476,7 @@ type InnerUnion struct {
 var _ thrift.Struct = &InnerUnion{}
 
 func NewInnerUnion() *InnerUnion {
-    return (&InnerUnion{}).
-        SetInnerOptionNonCompat([]byte(""))
+    return (&InnerUnion{})
 }
 
 func (x *InnerUnion) GetInnerOptionNonCompat() []byte {
@@ -509,7 +510,7 @@ func (x *InnerUnion) writeField1(p thrift.Protocol) error {  // InnerOption
         return nil
     }
 
-    if err := p.WriteFieldBegin("innerOption", thrift.BINARY, 1); err != nil {
+    if err := p.WriteFieldBegin("innerOption", thrift.STRING, 1); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -535,7 +536,9 @@ if err != nil {
 }
 
 func (x *InnerUnion) String() string {
-    return fmt.Sprintf("%+v", x)
+    type InnerUnionAlias InnerUnion
+    valueAlias := (*InnerUnionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *InnerUnion) countSetFields() int {
@@ -642,10 +645,7 @@ type MyUnion struct {
 var _ thrift.Struct = &MyUnion{}
 
 func NewMyUnion() *MyUnion {
-    return (&MyUnion{}).
-        SetOption1NonCompat("").
-        SetOption2NonCompat(0).
-        SetOption3NonCompat(*NewInnerUnion())
+    return (&MyUnion{})
 }
 
 func (x *MyUnion) GetOption1NonCompat() *string {
@@ -678,7 +678,7 @@ func (x *MyUnion) GetOption3NonCompat() *InnerUnion {
 
 func (x *MyUnion) GetOption3() *InnerUnion {
     if !x.IsSetOption3() {
-        return NewInnerUnion()
+        return nil
     }
 
     return x.Option3
@@ -835,7 +835,9 @@ func (x *MyUnion) DefaultGetOption3() *InnerUnion {
 }
 
 func (x *MyUnion) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyUnionAlias MyUnion
+    valueAlias := (*MyUnionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *MyUnion) countSetFields() int {
@@ -1018,8 +1020,8 @@ func NewMyStruct() *MyStruct {
         SetStructValNonCompat(*NewMyData()).
         SetUnionValNonCompat(*NewMyUnion()).
         SetLateStructValNonCompat(*NewLateDefStruct()).
-        SetListMapNonCompat(make([]map[string]int32, 0)).
-        SetMapMapNonCompat(make(map[string]map[string]int32)).
+        SetListMapNonCompat(nil).
+        SetMapMapNonCompat(nil).
         SetI32WithCustomDefaultNonCompat(1).
         SetStructWithCustomDefaultNonCompat(*NewMyDataWithCustomDefault()).
         SetStructWithFieldCustomDefaultNonCompat(
@@ -1119,7 +1121,7 @@ func (x *MyStruct) GetStructValNonCompat() *MyData {
 
 func (x *MyStruct) GetStructVal() *MyData {
     if !x.IsSetStructVal() {
-        return NewMyData()
+        return nil
     }
 
     return x.StructVal
@@ -1131,7 +1133,7 @@ func (x *MyStruct) GetUnionValNonCompat() *MyUnion {
 
 func (x *MyStruct) GetUnionVal() *MyUnion {
     if !x.IsSetUnionVal() {
-        return NewMyUnion()
+        return nil
     }
 
     return x.UnionVal
@@ -1143,7 +1145,7 @@ func (x *MyStruct) GetLateStructValNonCompat() *LateDefStruct {
 
 func (x *MyStruct) GetLateStructVal() *LateDefStruct {
     if !x.IsSetLateStructVal() {
-        return NewLateDefStruct()
+        return nil
     }
 
     return x.LateStructVal
@@ -1275,7 +1277,7 @@ func (x *MyStruct) GetOptStructValNonCompat() *MyData {
 
 func (x *MyStruct) GetOptStructVal() *MyData {
     if !x.IsSetOptStructVal() {
-        return NewMyData()
+        return nil
     }
 
     return x.OptStructVal
@@ -1287,7 +1289,7 @@ func (x *MyStruct) GetOptLateStructValNonCompat() *LateDefStruct {
 
 func (x *MyStruct) GetOptLateStructVal() *LateDefStruct {
     if !x.IsSetOptLateStructVal() {
-        return NewLateDefStruct()
+        return nil
     }
 
     return x.OptLateStructVal
@@ -1299,7 +1301,7 @@ func (x *MyStruct) GetOptListValNonCompat() []int16 {
 
 func (x *MyStruct) GetOptListVal() []int16 {
     if !x.IsSetOptListVal() {
-        return make([]int16, 0)
+        return nil
     }
 
     return x.OptListVal
@@ -1311,7 +1313,7 @@ func (x *MyStruct) GetOptSetValNonCompat() []string {
 
 func (x *MyStruct) GetOptSetVal() []string {
     if !x.IsSetOptSetVal() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.OptSetVal
@@ -1323,7 +1325,7 @@ func (x *MyStruct) GetOptMapValNonCompat() map[string]string {
 
 func (x *MyStruct) GetOptMapVal() map[string]string {
     if !x.IsSetOptMapVal() {
-        return make(map[string]string)
+        return nil
     }
 
     return x.OptMapVal
@@ -1335,7 +1337,7 @@ func (x *MyStruct) GetListMapNonCompat() []map[string]int32 {
 
 func (x *MyStruct) GetListMap() []map[string]int32 {
     if !x.IsSetListMap() {
-        return make([]map[string]int32, 0)
+        return nil
     }
 
     return x.ListMap
@@ -1347,7 +1349,7 @@ func (x *MyStruct) GetMapMapNonCompat() map[string]map[string]int32 {
 
 func (x *MyStruct) GetMapMap() map[string]map[string]int32 {
     if !x.IsSetMapMap() {
-        return make(map[string]map[string]int32)
+        return nil
     }
 
     return x.MapMap
@@ -1367,7 +1369,7 @@ func (x *MyStruct) GetStructWithCustomDefaultNonCompat() *MyDataWithCustomDefaul
 
 func (x *MyStruct) GetStructWithCustomDefault() *MyDataWithCustomDefault {
     if !x.IsSetStructWithCustomDefault() {
-        return NewMyDataWithCustomDefault()
+        return nil
     }
 
     return x.StructWithCustomDefault
@@ -1379,7 +1381,7 @@ func (x *MyStruct) GetStructWithFieldCustomDefaultNonCompat() *MyData {
 
 func (x *MyStruct) GetStructWithFieldCustomDefault() *MyData {
     if !x.IsSetStructWithFieldCustomDefault() {
-        return NewMyData()
+        return NewMyStruct().StructWithFieldCustomDefault
     }
 
     return x.StructWithFieldCustomDefault
@@ -1940,7 +1942,7 @@ func (x *MyStruct) writeField_9(p thrift.Protocol) error {  // BinaryVal
         return nil
     }
 
-    if err := p.WriteFieldBegin("binaryVal", thrift.BINARY, -9); err != nil {
+    if err := p.WriteFieldBegin("binaryVal", thrift.STRING, -9); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -2196,7 +2198,7 @@ func (x *MyStruct) writeField_22(p thrift.Protocol) error {  // OptBinaryVal
         return nil
     }
 
-    if err := p.WriteFieldBegin("optBinaryVal", thrift.BINARY, -22); err != nil {
+    if err := p.WriteFieldBegin("optBinaryVal", thrift.STRING, -22); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -3144,7 +3146,9 @@ func (x *MyStruct) DefaultGetStructWithFieldCustomDefault() *MyData {
 }
 
 func (x *MyStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructAlias MyStruct
+    valueAlias := (*MyStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3653,7 +3657,9 @@ func NewLateDefStruct() *LateDefStruct {
 }
 
 func (x *LateDefStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type LateDefStructAlias LateDefStruct
+    valueAlias := (*LateDefStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3731,7 +3737,7 @@ var _ thrift.Struct = &Recursive{}
 
 func NewRecursive() *Recursive {
     return (&Recursive{}).
-        SetNodesNonCompat(make(map[string]*Recursive))
+        SetNodesNonCompat(nil)
 }
 
 func (x *Recursive) GetNodesNonCompat() map[string]*Recursive {
@@ -3740,7 +3746,7 @@ func (x *Recursive) GetNodesNonCompat() map[string]*Recursive {
 
 func (x *Recursive) GetNodes() map[string]*Recursive {
     if !x.IsSetNodes() {
-        return make(map[string]*Recursive)
+        return nil
     }
 
     return x.Nodes
@@ -3838,7 +3844,9 @@ result := mapResult
 }
 
 func (x *Recursive) String() string {
-    return fmt.Sprintf("%+v", x)
+    type RecursiveAlias Recursive
+    valueAlias := (*RecursiveAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3938,7 +3946,7 @@ func (x *Bar) GetLoopNonCompat() *Loop {
 
 func (x *Bar) GetLoop() *Loop {
     if !x.IsSetLoop() {
-        return NewLoop()
+        return nil
     }
 
     return x.Loop
@@ -4001,7 +4009,9 @@ func (x *Bar) DefaultGetLoop() *Loop {
 }
 
 func (x *Bar) String() string {
-    return fmt.Sprintf("%+v", x)
+    type BarAlias Bar
+    valueAlias := (*BarAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -4101,7 +4111,7 @@ func (x *Loop) GetBarNonCompat() *Bar {
 
 func (x *Loop) GetBar() *Bar {
     if !x.IsSetBar() {
-        return NewBar()
+        return nil
     }
 
     return x.Bar
@@ -4164,7 +4174,9 @@ func (x *Loop) DefaultGetBar() *Bar {
 }
 
 func (x *Loop) String() string {
-    return fmt.Sprintf("%+v", x)
+    type LoopAlias Loop
+    valueAlias := (*LoopAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -4253,6 +4265,7 @@ type MyDataPatch struct {
     PatchPrior *MyDataFieldPatch `thrift:"patchPrior,3" json:"patchPrior" db:"patchPrior"`
     Ensure *MyDataEnsureStruct `thrift:"ensure,5" json:"ensure" db:"ensure"`
     Patch *MyDataFieldPatch `thrift:"patch,6" json:"patch" db:"patch"`
+    Remove patch.FieldIdList `thrift:"remove,7" json:"remove" db:"remove"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &MyDataPatch{}
@@ -4262,7 +4275,8 @@ func NewMyDataPatch() *MyDataPatch {
         SetClearNonCompat(false).
         SetPatchPriorNonCompat(*NewMyDataFieldPatch()).
         SetEnsureNonCompat(*NewMyDataEnsureStruct()).
-        SetPatchNonCompat(*NewMyDataFieldPatch())
+        SetPatchNonCompat(*NewMyDataFieldPatch()).
+        SetRemoveNonCompat(patch.NewFieldIdList())
 }
 
 func (x *MyDataPatch) GetAssignNonCompat() *MyData {
@@ -4271,7 +4285,7 @@ func (x *MyDataPatch) GetAssignNonCompat() *MyData {
 
 func (x *MyDataPatch) GetAssign() *MyData {
     if !x.IsSetAssign() {
-        return NewMyData()
+        return nil
     }
 
     return x.Assign
@@ -4291,7 +4305,7 @@ func (x *MyDataPatch) GetPatchPriorNonCompat() *MyDataFieldPatch {
 
 func (x *MyDataPatch) GetPatchPrior() *MyDataFieldPatch {
     if !x.IsSetPatchPrior() {
-        return NewMyDataFieldPatch()
+        return nil
     }
 
     return x.PatchPrior
@@ -4303,7 +4317,7 @@ func (x *MyDataPatch) GetEnsureNonCompat() *MyDataEnsureStruct {
 
 func (x *MyDataPatch) GetEnsure() *MyDataEnsureStruct {
     if !x.IsSetEnsure() {
-        return NewMyDataEnsureStruct()
+        return nil
     }
 
     return x.Ensure
@@ -4315,10 +4329,22 @@ func (x *MyDataPatch) GetPatchNonCompat() *MyDataFieldPatch {
 
 func (x *MyDataPatch) GetPatch() *MyDataFieldPatch {
     if !x.IsSetPatch() {
-        return NewMyDataFieldPatch()
+        return nil
     }
 
     return x.Patch
+}
+
+func (x *MyDataPatch) GetRemoveNonCompat() patch.FieldIdList {
+    return x.Remove
+}
+
+func (x *MyDataPatch) GetRemove() patch.FieldIdList {
+    if !x.IsSetRemove() {
+        return patch.NewFieldIdList()
+    }
+
+    return x.Remove
 }
 
 func (x *MyDataPatch) SetAssignNonCompat(value MyData) *MyDataPatch {
@@ -4371,6 +4397,16 @@ func (x *MyDataPatch) SetPatch(value *MyDataFieldPatch) *MyDataPatch {
     return x
 }
 
+func (x *MyDataPatch) SetRemoveNonCompat(value patch.FieldIdList) *MyDataPatch {
+    x.Remove = value
+    return x
+}
+
+func (x *MyDataPatch) SetRemove(value patch.FieldIdList) *MyDataPatch {
+    x.Remove = value
+    return x
+}
+
 func (x *MyDataPatch) IsSetAssign() bool {
     return x.Assign != nil
 }
@@ -4385,6 +4421,10 @@ func (x *MyDataPatch) IsSetEnsure() bool {
 
 func (x *MyDataPatch) IsSetPatch() bool {
     return x.Patch != nil
+}
+
+func (x *MyDataPatch) IsSetRemove() bool {
+    return x.Remove != nil
 }
 
 func (x *MyDataPatch) writeField1(p thrift.Protocol) error {  // Assign
@@ -4483,6 +4523,27 @@ func (x *MyDataPatch) writeField6(p thrift.Protocol) error {  // Patch
     return nil
 }
 
+func (x *MyDataPatch) writeField7(p thrift.Protocol) error {  // Remove
+    if !x.IsSetRemove() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("remove", thrift.LIST, 7); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetRemoveNonCompat()
+    err := patch.WriteFieldIdList(item, p)
+if err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
 func (x *MyDataPatch) readField1(p thrift.Protocol) error {  // Assign
     result := *NewMyData()
 err := result.Read(p)
@@ -4537,6 +4598,16 @@ if err != nil {
     return nil
 }
 
+func (x *MyDataPatch) readField7(p thrift.Protocol) error {  // Remove
+    result, err := patch.ReadFieldIdList(p)
+if err != nil {
+    return err
+}
+
+    x.SetRemoveNonCompat(result)
+    return nil
+}
+
 // Deprecated: Use NewMyDataPatch().GetAssign() instead.
 var MyDataPatch_Assign_DEFAULT = NewMyDataPatch().GetAssign()
 
@@ -4582,7 +4653,9 @@ func (x *MyDataPatch) DefaultGetPatch() *MyDataFieldPatch {
 }
 
 func (x *MyDataPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyDataPatchAlias MyDataPatch
+    valueAlias := (*MyDataPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -4622,6 +4695,11 @@ func (x *MyDataPatchBuilder) Patch(value *MyDataFieldPatch) *MyDataPatchBuilder 
     return x
 }
 
+func (x *MyDataPatchBuilder) Remove(value patch.FieldIdList) *MyDataPatchBuilder {
+    x.obj.Remove = value
+    return x
+}
+
 func (x *MyDataPatchBuilder) Emit() *MyDataPatch {
     var objCopy MyDataPatch = *x.obj
     return &objCopy
@@ -4649,6 +4727,10 @@ func (x *MyDataPatch) Write(p thrift.Protocol) error {
     }
 
     if err := x.writeField6(p); err != nil {
+        return err
+    }
+
+    if err := x.writeField7(p); err != nil {
         return err
     }
 
@@ -4698,6 +4780,10 @@ func (x *MyDataPatch) Read(p thrift.Protocol) error {
             if err := x.readField6(p); err != nil {
                 return err
             }
+        case 7:  // remove
+            if err := x.readField7(p); err != nil {
+                return err
+            }
         default:
             if err := p.Skip(typ); err != nil {
                 return err
@@ -4736,7 +4822,7 @@ func (x *MyDataFieldPatch) GetData1NonCompat() *patch.StringPatch {
 
 func (x *MyDataFieldPatch) GetData1() *patch.StringPatch {
     if !x.IsSetData1() {
-        return patch.NewStringPatch()
+        return nil
     }
 
     return x.Data1
@@ -4748,7 +4834,7 @@ func (x *MyDataFieldPatch) GetData2NonCompat() *patch.I32Patch {
 
 func (x *MyDataFieldPatch) GetData2() *patch.I32Patch {
     if !x.IsSetData2() {
-        return patch.NewI32Patch()
+        return nil
     }
 
     return x.Data2
@@ -4867,7 +4953,9 @@ func (x *MyDataFieldPatch) DefaultGetData2() *patch.I32Patch {
 }
 
 func (x *MyDataFieldPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyDataFieldPatchAlias MyDataFieldPatch
+    valueAlias := (*MyDataFieldPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -5093,7 +5181,9 @@ var MyDataEnsureStruct_Data1_DEFAULT = NewMyDataEnsureStruct().GetData1()
 var MyDataEnsureStruct_Data2_DEFAULT = NewMyDataEnsureStruct().GetData2()
 
 func (x *MyDataEnsureStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyDataEnsureStructAlias MyDataEnsureStruct
+    valueAlias := (*MyDataEnsureStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -5195,6 +5285,7 @@ type MyDataWithCustomDefaultPatch struct {
     PatchPrior *MyDataWithCustomDefaultFieldPatch `thrift:"patchPrior,3" json:"patchPrior" db:"patchPrior"`
     Ensure *MyDataWithCustomDefaultEnsureStruct `thrift:"ensure,5" json:"ensure" db:"ensure"`
     Patch *MyDataWithCustomDefaultFieldPatch `thrift:"patch,6" json:"patch" db:"patch"`
+    Remove patch.FieldIdList `thrift:"remove,7" json:"remove" db:"remove"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &MyDataWithCustomDefaultPatch{}
@@ -5204,7 +5295,8 @@ func NewMyDataWithCustomDefaultPatch() *MyDataWithCustomDefaultPatch {
         SetClearNonCompat(false).
         SetPatchPriorNonCompat(*NewMyDataWithCustomDefaultFieldPatch()).
         SetEnsureNonCompat(*NewMyDataWithCustomDefaultEnsureStruct()).
-        SetPatchNonCompat(*NewMyDataWithCustomDefaultFieldPatch())
+        SetPatchNonCompat(*NewMyDataWithCustomDefaultFieldPatch()).
+        SetRemoveNonCompat(patch.NewFieldIdList())
 }
 
 func (x *MyDataWithCustomDefaultPatch) GetAssignNonCompat() *MyDataWithCustomDefault {
@@ -5213,7 +5305,7 @@ func (x *MyDataWithCustomDefaultPatch) GetAssignNonCompat() *MyDataWithCustomDef
 
 func (x *MyDataWithCustomDefaultPatch) GetAssign() *MyDataWithCustomDefault {
     if !x.IsSetAssign() {
-        return NewMyDataWithCustomDefault()
+        return nil
     }
 
     return x.Assign
@@ -5233,7 +5325,7 @@ func (x *MyDataWithCustomDefaultPatch) GetPatchPriorNonCompat() *MyDataWithCusto
 
 func (x *MyDataWithCustomDefaultPatch) GetPatchPrior() *MyDataWithCustomDefaultFieldPatch {
     if !x.IsSetPatchPrior() {
-        return NewMyDataWithCustomDefaultFieldPatch()
+        return nil
     }
 
     return x.PatchPrior
@@ -5245,7 +5337,7 @@ func (x *MyDataWithCustomDefaultPatch) GetEnsureNonCompat() *MyDataWithCustomDef
 
 func (x *MyDataWithCustomDefaultPatch) GetEnsure() *MyDataWithCustomDefaultEnsureStruct {
     if !x.IsSetEnsure() {
-        return NewMyDataWithCustomDefaultEnsureStruct()
+        return nil
     }
 
     return x.Ensure
@@ -5257,10 +5349,22 @@ func (x *MyDataWithCustomDefaultPatch) GetPatchNonCompat() *MyDataWithCustomDefa
 
 func (x *MyDataWithCustomDefaultPatch) GetPatch() *MyDataWithCustomDefaultFieldPatch {
     if !x.IsSetPatch() {
-        return NewMyDataWithCustomDefaultFieldPatch()
+        return nil
     }
 
     return x.Patch
+}
+
+func (x *MyDataWithCustomDefaultPatch) GetRemoveNonCompat() patch.FieldIdList {
+    return x.Remove
+}
+
+func (x *MyDataWithCustomDefaultPatch) GetRemove() patch.FieldIdList {
+    if !x.IsSetRemove() {
+        return patch.NewFieldIdList()
+    }
+
+    return x.Remove
 }
 
 func (x *MyDataWithCustomDefaultPatch) SetAssignNonCompat(value MyDataWithCustomDefault) *MyDataWithCustomDefaultPatch {
@@ -5313,6 +5417,16 @@ func (x *MyDataWithCustomDefaultPatch) SetPatch(value *MyDataWithCustomDefaultFi
     return x
 }
 
+func (x *MyDataWithCustomDefaultPatch) SetRemoveNonCompat(value patch.FieldIdList) *MyDataWithCustomDefaultPatch {
+    x.Remove = value
+    return x
+}
+
+func (x *MyDataWithCustomDefaultPatch) SetRemove(value patch.FieldIdList) *MyDataWithCustomDefaultPatch {
+    x.Remove = value
+    return x
+}
+
 func (x *MyDataWithCustomDefaultPatch) IsSetAssign() bool {
     return x.Assign != nil
 }
@@ -5327,6 +5441,10 @@ func (x *MyDataWithCustomDefaultPatch) IsSetEnsure() bool {
 
 func (x *MyDataWithCustomDefaultPatch) IsSetPatch() bool {
     return x.Patch != nil
+}
+
+func (x *MyDataWithCustomDefaultPatch) IsSetRemove() bool {
+    return x.Remove != nil
 }
 
 func (x *MyDataWithCustomDefaultPatch) writeField1(p thrift.Protocol) error {  // Assign
@@ -5425,6 +5543,27 @@ func (x *MyDataWithCustomDefaultPatch) writeField6(p thrift.Protocol) error {  /
     return nil
 }
 
+func (x *MyDataWithCustomDefaultPatch) writeField7(p thrift.Protocol) error {  // Remove
+    if !x.IsSetRemove() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("remove", thrift.LIST, 7); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetRemoveNonCompat()
+    err := patch.WriteFieldIdList(item, p)
+if err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
 func (x *MyDataWithCustomDefaultPatch) readField1(p thrift.Protocol) error {  // Assign
     result := *NewMyDataWithCustomDefault()
 err := result.Read(p)
@@ -5479,6 +5618,16 @@ if err != nil {
     return nil
 }
 
+func (x *MyDataWithCustomDefaultPatch) readField7(p thrift.Protocol) error {  // Remove
+    result, err := patch.ReadFieldIdList(p)
+if err != nil {
+    return err
+}
+
+    x.SetRemoveNonCompat(result)
+    return nil
+}
+
 // Deprecated: Use NewMyDataWithCustomDefaultPatch().GetAssign() instead.
 var MyDataWithCustomDefaultPatch_Assign_DEFAULT = NewMyDataWithCustomDefaultPatch().GetAssign()
 
@@ -5524,7 +5673,9 @@ func (x *MyDataWithCustomDefaultPatch) DefaultGetPatch() *MyDataWithCustomDefaul
 }
 
 func (x *MyDataWithCustomDefaultPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyDataWithCustomDefaultPatchAlias MyDataWithCustomDefaultPatch
+    valueAlias := (*MyDataWithCustomDefaultPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -5564,6 +5715,11 @@ func (x *MyDataWithCustomDefaultPatchBuilder) Patch(value *MyDataWithCustomDefau
     return x
 }
 
+func (x *MyDataWithCustomDefaultPatchBuilder) Remove(value patch.FieldIdList) *MyDataWithCustomDefaultPatchBuilder {
+    x.obj.Remove = value
+    return x
+}
+
 func (x *MyDataWithCustomDefaultPatchBuilder) Emit() *MyDataWithCustomDefaultPatch {
     var objCopy MyDataWithCustomDefaultPatch = *x.obj
     return &objCopy
@@ -5591,6 +5747,10 @@ func (x *MyDataWithCustomDefaultPatch) Write(p thrift.Protocol) error {
     }
 
     if err := x.writeField6(p); err != nil {
+        return err
+    }
+
+    if err := x.writeField7(p); err != nil {
         return err
     }
 
@@ -5640,6 +5800,10 @@ func (x *MyDataWithCustomDefaultPatch) Read(p thrift.Protocol) error {
             if err := x.readField6(p); err != nil {
                 return err
             }
+        case 7:  // remove
+            if err := x.readField7(p); err != nil {
+                return err
+            }
         default:
             if err := p.Skip(typ); err != nil {
                 return err
@@ -5678,7 +5842,7 @@ func (x *MyDataWithCustomDefaultFieldPatch) GetData1NonCompat() *patch.StringPat
 
 func (x *MyDataWithCustomDefaultFieldPatch) GetData1() *patch.StringPatch {
     if !x.IsSetData1() {
-        return patch.NewStringPatch()
+        return nil
     }
 
     return x.Data1
@@ -5690,7 +5854,7 @@ func (x *MyDataWithCustomDefaultFieldPatch) GetData2NonCompat() *patch.I32Patch 
 
 func (x *MyDataWithCustomDefaultFieldPatch) GetData2() *patch.I32Patch {
     if !x.IsSetData2() {
-        return patch.NewI32Patch()
+        return nil
     }
 
     return x.Data2
@@ -5809,7 +5973,9 @@ func (x *MyDataWithCustomDefaultFieldPatch) DefaultGetData2() *patch.I32Patch {
 }
 
 func (x *MyDataWithCustomDefaultFieldPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyDataWithCustomDefaultFieldPatchAlias MyDataWithCustomDefaultFieldPatch
+    valueAlias := (*MyDataWithCustomDefaultFieldPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -6035,7 +6201,9 @@ var MyDataWithCustomDefaultEnsureStruct_Data1_DEFAULT = NewMyDataWithCustomDefau
 var MyDataWithCustomDefaultEnsureStruct_Data2_DEFAULT = NewMyDataWithCustomDefaultEnsureStruct().GetData2()
 
 func (x *MyDataWithCustomDefaultEnsureStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyDataWithCustomDefaultEnsureStructAlias MyDataWithCustomDefaultEnsureStruct
+    valueAlias := (*MyDataWithCustomDefaultEnsureStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -6155,7 +6323,7 @@ func (x *InnerUnionPatch) GetAssignNonCompat() *InnerUnion {
 
 func (x *InnerUnionPatch) GetAssign() *InnerUnion {
     if !x.IsSetAssign() {
-        return NewInnerUnion()
+        return nil
     }
 
     return x.Assign
@@ -6175,7 +6343,7 @@ func (x *InnerUnionPatch) GetPatchPriorNonCompat() *InnerUnionFieldPatch {
 
 func (x *InnerUnionPatch) GetPatchPrior() *InnerUnionFieldPatch {
     if !x.IsSetPatchPrior() {
-        return NewInnerUnionFieldPatch()
+        return nil
     }
 
     return x.PatchPrior
@@ -6187,7 +6355,7 @@ func (x *InnerUnionPatch) GetEnsureNonCompat() *InnerUnion {
 
 func (x *InnerUnionPatch) GetEnsure() *InnerUnion {
     if !x.IsSetEnsure() {
-        return NewInnerUnion()
+        return nil
     }
 
     return x.Ensure
@@ -6199,7 +6367,7 @@ func (x *InnerUnionPatch) GetPatchNonCompat() *InnerUnionFieldPatch {
 
 func (x *InnerUnionPatch) GetPatch() *InnerUnionFieldPatch {
     if !x.IsSetPatch() {
-        return NewInnerUnionFieldPatch()
+        return nil
     }
 
     return x.Patch
@@ -6466,7 +6634,9 @@ func (x *InnerUnionPatch) DefaultGetPatch() *InnerUnionFieldPatch {
 }
 
 func (x *InnerUnionPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type InnerUnionPatchAlias InnerUnionPatch
+    valueAlias := (*InnerUnionPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -6618,7 +6788,7 @@ func (x *InnerUnionFieldPatch) GetInnerOptionNonCompat() *patch.BinaryPatch {
 
 func (x *InnerUnionFieldPatch) GetInnerOption() *patch.BinaryPatch {
     if !x.IsSetInnerOption() {
-        return patch.NewBinaryPatch()
+        return nil
     }
 
     return x.InnerOption
@@ -6681,7 +6851,9 @@ func (x *InnerUnionFieldPatch) DefaultGetInnerOption() *patch.BinaryPatch {
 }
 
 func (x *InnerUnionFieldPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type InnerUnionFieldPatchAlias InnerUnionFieldPatch
+    valueAlias := (*InnerUnionFieldPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -6788,7 +6960,7 @@ func (x *MyUnionPatch) GetAssignNonCompat() *MyUnion {
 
 func (x *MyUnionPatch) GetAssign() *MyUnion {
     if !x.IsSetAssign() {
-        return NewMyUnion()
+        return nil
     }
 
     return x.Assign
@@ -6808,7 +6980,7 @@ func (x *MyUnionPatch) GetPatchPriorNonCompat() *MyUnionFieldPatch {
 
 func (x *MyUnionPatch) GetPatchPrior() *MyUnionFieldPatch {
     if !x.IsSetPatchPrior() {
-        return NewMyUnionFieldPatch()
+        return nil
     }
 
     return x.PatchPrior
@@ -6820,7 +6992,7 @@ func (x *MyUnionPatch) GetEnsureNonCompat() *MyUnion {
 
 func (x *MyUnionPatch) GetEnsure() *MyUnion {
     if !x.IsSetEnsure() {
-        return NewMyUnion()
+        return nil
     }
 
     return x.Ensure
@@ -6832,7 +7004,7 @@ func (x *MyUnionPatch) GetPatchNonCompat() *MyUnionFieldPatch {
 
 func (x *MyUnionPatch) GetPatch() *MyUnionFieldPatch {
     if !x.IsSetPatch() {
-        return NewMyUnionFieldPatch()
+        return nil
     }
 
     return x.Patch
@@ -7099,7 +7271,9 @@ func (x *MyUnionPatch) DefaultGetPatch() *MyUnionFieldPatch {
 }
 
 func (x *MyUnionPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyUnionPatchAlias MyUnionPatch
+    valueAlias := (*MyUnionPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -7255,7 +7429,7 @@ func (x *MyUnionFieldPatch) GetOption1NonCompat() *patch.StringPatch {
 
 func (x *MyUnionFieldPatch) GetOption1() *patch.StringPatch {
     if !x.IsSetOption1() {
-        return patch.NewStringPatch()
+        return nil
     }
 
     return x.Option1
@@ -7267,7 +7441,7 @@ func (x *MyUnionFieldPatch) GetOption2NonCompat() *patch.I32Patch {
 
 func (x *MyUnionFieldPatch) GetOption2() *patch.I32Patch {
     if !x.IsSetOption2() {
-        return patch.NewI32Patch()
+        return nil
     }
 
     return x.Option2
@@ -7279,7 +7453,7 @@ func (x *MyUnionFieldPatch) GetOption3NonCompat() *InnerUnionPatch {
 
 func (x *MyUnionFieldPatch) GetOption3() *InnerUnionPatch {
     if !x.IsSetOption3() {
-        return NewInnerUnionPatch()
+        return nil
     }
 
     return x.Option3
@@ -7454,7 +7628,9 @@ func (x *MyUnionFieldPatch) DefaultGetOption3() *InnerUnionPatch {
 }
 
 func (x *MyUnionFieldPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyUnionFieldPatchAlias MyUnionFieldPatch
+    valueAlias := (*MyUnionFieldPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -7569,6 +7745,7 @@ type MyStructPatch struct {
     PatchPrior *MyStructFieldPatch `thrift:"patchPrior,3" json:"patchPrior" db:"patchPrior"`
     Ensure *MyStructEnsureStruct `thrift:"ensure,5" json:"ensure" db:"ensure"`
     Patch *MyStructFieldPatch `thrift:"patch,6" json:"patch" db:"patch"`
+    Remove patch.FieldIdList `thrift:"remove,7" json:"remove" db:"remove"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &MyStructPatch{}
@@ -7578,7 +7755,8 @@ func NewMyStructPatch() *MyStructPatch {
         SetClearNonCompat(false).
         SetPatchPriorNonCompat(*NewMyStructFieldPatch()).
         SetEnsureNonCompat(*NewMyStructEnsureStruct()).
-        SetPatchNonCompat(*NewMyStructFieldPatch())
+        SetPatchNonCompat(*NewMyStructFieldPatch()).
+        SetRemoveNonCompat(patch.NewFieldIdList())
 }
 
 func (x *MyStructPatch) GetAssignNonCompat() *MyStruct {
@@ -7587,7 +7765,7 @@ func (x *MyStructPatch) GetAssignNonCompat() *MyStruct {
 
 func (x *MyStructPatch) GetAssign() *MyStruct {
     if !x.IsSetAssign() {
-        return NewMyStruct()
+        return nil
     }
 
     return x.Assign
@@ -7607,7 +7785,7 @@ func (x *MyStructPatch) GetPatchPriorNonCompat() *MyStructFieldPatch {
 
 func (x *MyStructPatch) GetPatchPrior() *MyStructFieldPatch {
     if !x.IsSetPatchPrior() {
-        return NewMyStructFieldPatch()
+        return nil
     }
 
     return x.PatchPrior
@@ -7619,7 +7797,7 @@ func (x *MyStructPatch) GetEnsureNonCompat() *MyStructEnsureStruct {
 
 func (x *MyStructPatch) GetEnsure() *MyStructEnsureStruct {
     if !x.IsSetEnsure() {
-        return NewMyStructEnsureStruct()
+        return nil
     }
 
     return x.Ensure
@@ -7631,10 +7809,22 @@ func (x *MyStructPatch) GetPatchNonCompat() *MyStructFieldPatch {
 
 func (x *MyStructPatch) GetPatch() *MyStructFieldPatch {
     if !x.IsSetPatch() {
-        return NewMyStructFieldPatch()
+        return nil
     }
 
     return x.Patch
+}
+
+func (x *MyStructPatch) GetRemoveNonCompat() patch.FieldIdList {
+    return x.Remove
+}
+
+func (x *MyStructPatch) GetRemove() patch.FieldIdList {
+    if !x.IsSetRemove() {
+        return patch.NewFieldIdList()
+    }
+
+    return x.Remove
 }
 
 func (x *MyStructPatch) SetAssignNonCompat(value MyStruct) *MyStructPatch {
@@ -7687,6 +7877,16 @@ func (x *MyStructPatch) SetPatch(value *MyStructFieldPatch) *MyStructPatch {
     return x
 }
 
+func (x *MyStructPatch) SetRemoveNonCompat(value patch.FieldIdList) *MyStructPatch {
+    x.Remove = value
+    return x
+}
+
+func (x *MyStructPatch) SetRemove(value patch.FieldIdList) *MyStructPatch {
+    x.Remove = value
+    return x
+}
+
 func (x *MyStructPatch) IsSetAssign() bool {
     return x.Assign != nil
 }
@@ -7701,6 +7901,10 @@ func (x *MyStructPatch) IsSetEnsure() bool {
 
 func (x *MyStructPatch) IsSetPatch() bool {
     return x.Patch != nil
+}
+
+func (x *MyStructPatch) IsSetRemove() bool {
+    return x.Remove != nil
 }
 
 func (x *MyStructPatch) writeField1(p thrift.Protocol) error {  // Assign
@@ -7799,6 +8003,27 @@ func (x *MyStructPatch) writeField6(p thrift.Protocol) error {  // Patch
     return nil
 }
 
+func (x *MyStructPatch) writeField7(p thrift.Protocol) error {  // Remove
+    if !x.IsSetRemove() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("remove", thrift.LIST, 7); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetRemoveNonCompat()
+    err := patch.WriteFieldIdList(item, p)
+if err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
 func (x *MyStructPatch) readField1(p thrift.Protocol) error {  // Assign
     result := *NewMyStruct()
 err := result.Read(p)
@@ -7853,6 +8078,16 @@ if err != nil {
     return nil
 }
 
+func (x *MyStructPatch) readField7(p thrift.Protocol) error {  // Remove
+    result, err := patch.ReadFieldIdList(p)
+if err != nil {
+    return err
+}
+
+    x.SetRemoveNonCompat(result)
+    return nil
+}
+
 // Deprecated: Use NewMyStructPatch().GetAssign() instead.
 var MyStructPatch_Assign_DEFAULT = NewMyStructPatch().GetAssign()
 
@@ -7898,7 +8133,9 @@ func (x *MyStructPatch) DefaultGetPatch() *MyStructFieldPatch {
 }
 
 func (x *MyStructPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructPatchAlias MyStructPatch
+    valueAlias := (*MyStructPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -7938,6 +8175,11 @@ func (x *MyStructPatchBuilder) Patch(value *MyStructFieldPatch) *MyStructPatchBu
     return x
 }
 
+func (x *MyStructPatchBuilder) Remove(value patch.FieldIdList) *MyStructPatchBuilder {
+    x.obj.Remove = value
+    return x
+}
+
 func (x *MyStructPatchBuilder) Emit() *MyStructPatch {
     var objCopy MyStructPatch = *x.obj
     return &objCopy
@@ -7965,6 +8207,10 @@ func (x *MyStructPatch) Write(p thrift.Protocol) error {
     }
 
     if err := x.writeField6(p); err != nil {
+        return err
+    }
+
+    if err := x.writeField7(p); err != nil {
         return err
     }
 
@@ -8012,6 +8258,10 @@ func (x *MyStructPatch) Read(p thrift.Protocol) error {
             }
         case 6:  // patch
             if err := x.readField6(p); err != nil {
+                return err
+            }
+        case 7:  // remove
+            if err := x.readField7(p); err != nil {
                 return err
             }
         default:
@@ -8150,7 +8400,9 @@ if err != nil {
 var MyStructField10Patch_Assign_DEFAULT = NewMyStructField10Patch().GetAssign()
 
 func (x *MyStructField10Patch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructField10PatchAlias MyStructField10Patch
+    valueAlias := (*MyStructField10PatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -8363,7 +8615,9 @@ if err != nil {
 var MyStructField23Patch_Assign_DEFAULT = NewMyStructField23Patch().GetAssign()
 
 func (x *MyStructField23Patch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructField23PatchAlias MyStructField23Patch
+    valueAlias := (*MyStructField23PatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -8462,8 +8716,6 @@ func (x *MyStructField23Patch) Read(p thrift.Protocol) error {
 type MyStructField26Patch struct {
     Assign []int16 `thrift:"assign,1,optional" json:"assign,omitempty" db:"assign"`
     Clear bool `thrift:"clear,2" json:"clear" db:"clear"`
-    Patch map[patch.ListPatchIndex]*patch.I16Patch `thrift:"patch,3" json:"patch" db:"patch"`
-    Remove []int16 `thrift:"remove,7" json:"remove" db:"remove"`
     Prepend []int16 `thrift:"prepend,8" json:"prepend" db:"prepend"`
     Append []int16 `thrift:"append,9" json:"append" db:"append"`
 }
@@ -8473,10 +8725,8 @@ var _ thrift.Struct = &MyStructField26Patch{}
 func NewMyStructField26Patch() *MyStructField26Patch {
     return (&MyStructField26Patch{}).
         SetClearNonCompat(false).
-        SetPatchNonCompat(make(map[patch.ListPatchIndex]*patch.I16Patch)).
-        SetRemoveNonCompat(make([]int16, 0)).
-        SetPrependNonCompat(make([]int16, 0)).
-        SetAppendNonCompat(make([]int16, 0))
+        SetPrependNonCompat(nil).
+        SetAppendNonCompat(nil)
 }
 
 func (x *MyStructField26Patch) GetAssignNonCompat() []int16 {
@@ -8485,7 +8735,7 @@ func (x *MyStructField26Patch) GetAssignNonCompat() []int16 {
 
 func (x *MyStructField26Patch) GetAssign() []int16 {
     if !x.IsSetAssign() {
-        return make([]int16, 0)
+        return nil
     }
 
     return x.Assign
@@ -8499,37 +8749,13 @@ func (x *MyStructField26Patch) GetClear() bool {
     return x.Clear
 }
 
-func (x *MyStructField26Patch) GetPatchNonCompat() map[patch.ListPatchIndex]*patch.I16Patch {
-    return x.Patch
-}
-
-func (x *MyStructField26Patch) GetPatch() map[patch.ListPatchIndex]*patch.I16Patch {
-    if !x.IsSetPatch() {
-        return make(map[patch.ListPatchIndex]*patch.I16Patch)
-    }
-
-    return x.Patch
-}
-
-func (x *MyStructField26Patch) GetRemoveNonCompat() []int16 {
-    return x.Remove
-}
-
-func (x *MyStructField26Patch) GetRemove() []int16 {
-    if !x.IsSetRemove() {
-        return make([]int16, 0)
-    }
-
-    return x.Remove
-}
-
 func (x *MyStructField26Patch) GetPrependNonCompat() []int16 {
     return x.Prepend
 }
 
 func (x *MyStructField26Patch) GetPrepend() []int16 {
     if !x.IsSetPrepend() {
-        return make([]int16, 0)
+        return nil
     }
 
     return x.Prepend
@@ -8541,7 +8767,7 @@ func (x *MyStructField26Patch) GetAppendNonCompat() []int16 {
 
 func (x *MyStructField26Patch) GetAppend() []int16 {
     if !x.IsSetAppend() {
-        return make([]int16, 0)
+        return nil
     }
 
     return x.Append
@@ -8567,26 +8793,6 @@ func (x *MyStructField26Patch) SetClear(value bool) *MyStructField26Patch {
     return x
 }
 
-func (x *MyStructField26Patch) SetPatchNonCompat(value map[patch.ListPatchIndex]*patch.I16Patch) *MyStructField26Patch {
-    x.Patch = value
-    return x
-}
-
-func (x *MyStructField26Patch) SetPatch(value map[patch.ListPatchIndex]*patch.I16Patch) *MyStructField26Patch {
-    x.Patch = value
-    return x
-}
-
-func (x *MyStructField26Patch) SetRemoveNonCompat(value []int16) *MyStructField26Patch {
-    x.Remove = value
-    return x
-}
-
-func (x *MyStructField26Patch) SetRemove(value []int16) *MyStructField26Patch {
-    x.Remove = value
-    return x
-}
-
 func (x *MyStructField26Patch) SetPrependNonCompat(value []int16) *MyStructField26Patch {
     x.Prepend = value
     return x
@@ -8609,14 +8815,6 @@ func (x *MyStructField26Patch) SetAppend(value []int16) *MyStructField26Patch {
 
 func (x *MyStructField26Patch) IsSetAssign() bool {
     return x.Assign != nil
-}
-
-func (x *MyStructField26Patch) IsSetPatch() bool {
-    return x.Patch != nil
-}
-
-func (x *MyStructField26Patch) IsSetRemove() bool {
-    return x.Remove != nil
 }
 
 func (x *MyStructField26Patch) IsSetPrepend() bool {
@@ -8666,76 +8864,6 @@ func (x *MyStructField26Patch) writeField2(p thrift.Protocol) error {  // Clear
     item := x.GetClearNonCompat()
     if err := p.WriteBool(item); err != nil {
     return err
-}
-
-    if err := p.WriteFieldEnd(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
-    }
-    return nil
-}
-
-func (x *MyStructField26Patch) writeField3(p thrift.Protocol) error {  // Patch
-    if !x.IsSetPatch() {
-        return nil
-    }
-
-    if err := p.WriteFieldBegin("patch", thrift.MAP, 3); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
-    }
-
-    item := x.GetPatchNonCompat()
-    if err := p.WriteMapBegin(thrift.I32, thrift.STRUCT, len(item)); err != nil {
-    return thrift.PrependError("error writing map begin: ", err)
-}
-for k, v := range item {
-    {
-        item := k
-        err := patch.WriteListPatchIndex(item, p)
-if err != nil {
-    return err
-}
-    }
-
-    {
-        item := v
-        if err := item.Write(p); err != nil {
-    return err
-}
-    }
-}
-if err := p.WriteMapEnd(); err != nil {
-    return thrift.PrependError("error writing map end: ", err)
-}
-
-    if err := p.WriteFieldEnd(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
-    }
-    return nil
-}
-
-func (x *MyStructField26Patch) writeField7(p thrift.Protocol) error {  // Remove
-    if !x.IsSetRemove() {
-        return nil
-    }
-
-    if err := p.WriteFieldBegin("remove", thrift.LIST, 7); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
-    }
-
-    item := x.GetRemoveNonCompat()
-    if err := p.WriteListBegin(thrift.I16, len(item)); err != nil {
-    return thrift.PrependError("error writing list begin: ", err)
-}
-for _, v := range item {
-    {
-        item := v
-        if err := p.WriteI16(item); err != nil {
-    return err
-}
-    }
-}
-if err := p.WriteListEnd(); err != nil {
-    return thrift.PrependError("error writing list end: ", err)
 }
 
     if err := p.WriteFieldEnd(); err != nil {
@@ -8844,73 +8972,6 @@ if err != nil {
     return nil
 }
 
-func (x *MyStructField26Patch) readField3(p thrift.Protocol) error {  // Patch
-    _ /* keyType */, _ /* valueType */, size, err := p.ReadMapBegin()
-if err != nil {
-    return thrift.PrependError("error reading map begin: ", err)
-}
-
-mapResult := make(map[patch.ListPatchIndex]*patch.I16Patch, size)
-for i := 0; i < size; i++ {
-    var key patch.ListPatchIndex
-    {
-        result, err := patch.ReadListPatchIndex(p)
-if err != nil {
-    return err
-}
-        key = result
-    }
-
-    var value *patch.I16Patch
-    {
-        result := *patch.NewI16Patch()
-err := result.Read(p)
-if err != nil {
-    return err
-}
-        value = &result
-    }
-
-    mapResult[key] = value
-}
-
-if err := p.ReadMapEnd(); err != nil {
-    return thrift.PrependError("error reading map end: ", err)
-}
-result := mapResult
-
-    x.SetPatchNonCompat(result)
-    return nil
-}
-
-func (x *MyStructField26Patch) readField7(p thrift.Protocol) error {  // Remove
-    _ /* elemType */, size, err := p.ReadListBegin()
-if err != nil {
-    return thrift.PrependError("error reading list begin: ", err)
-}
-
-listResult := make([]int16, 0, size)
-for i := 0; i < size; i++ {
-    var elem int16
-    {
-        result, err := p.ReadI16()
-if err != nil {
-    return err
-}
-        elem = result
-    }
-    listResult = append(listResult, elem)
-}
-
-if err := p.ReadListEnd(); err != nil {
-    return thrift.PrependError("error reading list end: ", err)
-}
-result := listResult
-
-    x.SetRemoveNonCompat(result)
-    return nil
-}
-
 func (x *MyStructField26Patch) readField8(p thrift.Protocol) error {  // Prepend
     _ /* elemType */, size, err := p.ReadListBegin()
 if err != nil {
@@ -8968,7 +9029,9 @@ result := listResult
 }
 
 func (x *MyStructField26Patch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructField26PatchAlias MyStructField26Patch
+    valueAlias := (*MyStructField26PatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -8990,16 +9053,6 @@ func (x *MyStructField26PatchBuilder) Assign(value []int16) *MyStructField26Patc
 
 func (x *MyStructField26PatchBuilder) Clear(value bool) *MyStructField26PatchBuilder {
     x.obj.Clear = value
-    return x
-}
-
-func (x *MyStructField26PatchBuilder) Patch(value map[patch.ListPatchIndex]*patch.I16Patch) *MyStructField26PatchBuilder {
-    x.obj.Patch = value
-    return x
-}
-
-func (x *MyStructField26PatchBuilder) Remove(value []int16) *MyStructField26PatchBuilder {
-    x.obj.Remove = value
     return x
 }
 
@@ -9028,14 +9081,6 @@ func (x *MyStructField26Patch) Write(p thrift.Protocol) error {
     }
 
     if err := x.writeField2(p); err != nil {
-        return err
-    }
-
-    if err := x.writeField3(p); err != nil {
-        return err
-    }
-
-    if err := x.writeField7(p); err != nil {
         return err
     }
 
@@ -9081,14 +9126,6 @@ func (x *MyStructField26Patch) Read(p thrift.Protocol) error {
             if err := x.readField2(p); err != nil {
                 return err
             }
-        case 3:  // patch
-            if err := x.readField3(p); err != nil {
-                return err
-            }
-        case 7:  // remove
-            if err := x.readField7(p); err != nil {
-                return err
-            }
         case 8:  // prepend
             if err := x.readField8(p); err != nil {
                 return err
@@ -9128,8 +9165,8 @@ var _ thrift.Struct = &MyStructField27Patch{}
 func NewMyStructField27Patch() *MyStructField27Patch {
     return (&MyStructField27Patch{}).
         SetClearNonCompat(false).
-        SetRemoveNonCompat(make([]string, 0)).
-        SetAddNonCompat(make([]string, 0))
+        SetRemoveNonCompat(nil).
+        SetAddNonCompat(nil)
 }
 
 func (x *MyStructField27Patch) GetAssignNonCompat() []string {
@@ -9138,7 +9175,7 @@ func (x *MyStructField27Patch) GetAssignNonCompat() []string {
 
 func (x *MyStructField27Patch) GetAssign() []string {
     if !x.IsSetAssign() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.Assign
@@ -9158,7 +9195,7 @@ func (x *MyStructField27Patch) GetRemoveNonCompat() []string {
 
 func (x *MyStructField27Patch) GetRemove() []string {
     if !x.IsSetRemove() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.Remove
@@ -9170,7 +9207,7 @@ func (x *MyStructField27Patch) GetAddNonCompat() []string {
 
 func (x *MyStructField27Patch) GetAdd() []string {
     if !x.IsSetAdd() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.Add
@@ -9432,7 +9469,9 @@ result := setResult
 }
 
 func (x *MyStructField27Patch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructField27PatchAlias MyStructField27Patch
+    valueAlias := (*MyStructField27PatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -9569,11 +9608,11 @@ var _ thrift.Struct = &MyStructField28Patch{}
 func NewMyStructField28Patch() *MyStructField28Patch {
     return (&MyStructField28Patch{}).
         SetClearNonCompat(false).
-        SetPatchPriorNonCompat(make(map[string]*patch.StringPatch)).
-        SetAddNonCompat(make(map[string]string)).
-        SetPatchNonCompat(make(map[string]*patch.StringPatch)).
-        SetRemoveNonCompat(make([]string, 0)).
-        SetPutNonCompat(make(map[string]string))
+        SetPatchPriorNonCompat(nil).
+        SetAddNonCompat(nil).
+        SetPatchNonCompat(nil).
+        SetRemoveNonCompat(nil).
+        SetPutNonCompat(nil)
 }
 
 func (x *MyStructField28Patch) GetAssignNonCompat() map[string]string {
@@ -9582,7 +9621,7 @@ func (x *MyStructField28Patch) GetAssignNonCompat() map[string]string {
 
 func (x *MyStructField28Patch) GetAssign() map[string]string {
     if !x.IsSetAssign() {
-        return make(map[string]string)
+        return nil
     }
 
     return x.Assign
@@ -9602,7 +9641,7 @@ func (x *MyStructField28Patch) GetPatchPriorNonCompat() map[string]*patch.String
 
 func (x *MyStructField28Patch) GetPatchPrior() map[string]*patch.StringPatch {
     if !x.IsSetPatchPrior() {
-        return make(map[string]*patch.StringPatch)
+        return nil
     }
 
     return x.PatchPrior
@@ -9614,7 +9653,7 @@ func (x *MyStructField28Patch) GetAddNonCompat() map[string]string {
 
 func (x *MyStructField28Patch) GetAdd() map[string]string {
     if !x.IsSetAdd() {
-        return make(map[string]string)
+        return nil
     }
 
     return x.Add
@@ -9626,7 +9665,7 @@ func (x *MyStructField28Patch) GetPatchNonCompat() map[string]*patch.StringPatch
 
 func (x *MyStructField28Patch) GetPatch() map[string]*patch.StringPatch {
     if !x.IsSetPatch() {
-        return make(map[string]*patch.StringPatch)
+        return nil
     }
 
     return x.Patch
@@ -9638,7 +9677,7 @@ func (x *MyStructField28Patch) GetRemoveNonCompat() []string {
 
 func (x *MyStructField28Patch) GetRemove() []string {
     if !x.IsSetRemove() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.Remove
@@ -9650,7 +9689,7 @@ func (x *MyStructField28Patch) GetPutNonCompat() map[string]string {
 
 func (x *MyStructField28Patch) GetPut() map[string]string {
     if !x.IsSetPut() {
-        return make(map[string]string)
+        return nil
     }
 
     return x.Put
@@ -10218,7 +10257,9 @@ result := mapResult
 }
 
 func (x *MyStructField28Patch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructField28PatchAlias MyStructField28Patch
+    valueAlias := (*MyStructField28PatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -10382,8 +10423,6 @@ func (x *MyStructField28Patch) Read(p thrift.Protocol) error {
 type MyStructField29Patch struct {
     Assign []map[string]int32 `thrift:"assign,1,optional" json:"assign,omitempty" db:"assign"`
     Clear bool `thrift:"clear,2" json:"clear" db:"clear"`
-    Patch map[patch.ListPatchIndex]*MyStructField29Patch1 `thrift:"patch,3" json:"patch" db:"patch"`
-    Remove []map[string]int32 `thrift:"remove,7" json:"remove" db:"remove"`
     Prepend []map[string]int32 `thrift:"prepend,8" json:"prepend" db:"prepend"`
     Append []map[string]int32 `thrift:"append,9" json:"append" db:"append"`
 }
@@ -10393,10 +10432,8 @@ var _ thrift.Struct = &MyStructField29Patch{}
 func NewMyStructField29Patch() *MyStructField29Patch {
     return (&MyStructField29Patch{}).
         SetClearNonCompat(false).
-        SetPatchNonCompat(make(map[patch.ListPatchIndex]*MyStructField29Patch1)).
-        SetRemoveNonCompat(make([]map[string]int32, 0)).
-        SetPrependNonCompat(make([]map[string]int32, 0)).
-        SetAppendNonCompat(make([]map[string]int32, 0))
+        SetPrependNonCompat(nil).
+        SetAppendNonCompat(nil)
 }
 
 func (x *MyStructField29Patch) GetAssignNonCompat() []map[string]int32 {
@@ -10405,7 +10442,7 @@ func (x *MyStructField29Patch) GetAssignNonCompat() []map[string]int32 {
 
 func (x *MyStructField29Patch) GetAssign() []map[string]int32 {
     if !x.IsSetAssign() {
-        return make([]map[string]int32, 0)
+        return nil
     }
 
     return x.Assign
@@ -10419,37 +10456,13 @@ func (x *MyStructField29Patch) GetClear() bool {
     return x.Clear
 }
 
-func (x *MyStructField29Patch) GetPatchNonCompat() map[patch.ListPatchIndex]*MyStructField29Patch1 {
-    return x.Patch
-}
-
-func (x *MyStructField29Patch) GetPatch() map[patch.ListPatchIndex]*MyStructField29Patch1 {
-    if !x.IsSetPatch() {
-        return make(map[patch.ListPatchIndex]*MyStructField29Patch1)
-    }
-
-    return x.Patch
-}
-
-func (x *MyStructField29Patch) GetRemoveNonCompat() []map[string]int32 {
-    return x.Remove
-}
-
-func (x *MyStructField29Patch) GetRemove() []map[string]int32 {
-    if !x.IsSetRemove() {
-        return make([]map[string]int32, 0)
-    }
-
-    return x.Remove
-}
-
 func (x *MyStructField29Patch) GetPrependNonCompat() []map[string]int32 {
     return x.Prepend
 }
 
 func (x *MyStructField29Patch) GetPrepend() []map[string]int32 {
     if !x.IsSetPrepend() {
-        return make([]map[string]int32, 0)
+        return nil
     }
 
     return x.Prepend
@@ -10461,7 +10474,7 @@ func (x *MyStructField29Patch) GetAppendNonCompat() []map[string]int32 {
 
 func (x *MyStructField29Patch) GetAppend() []map[string]int32 {
     if !x.IsSetAppend() {
-        return make([]map[string]int32, 0)
+        return nil
     }
 
     return x.Append
@@ -10487,26 +10500,6 @@ func (x *MyStructField29Patch) SetClear(value bool) *MyStructField29Patch {
     return x
 }
 
-func (x *MyStructField29Patch) SetPatchNonCompat(value map[patch.ListPatchIndex]*MyStructField29Patch1) *MyStructField29Patch {
-    x.Patch = value
-    return x
-}
-
-func (x *MyStructField29Patch) SetPatch(value map[patch.ListPatchIndex]*MyStructField29Patch1) *MyStructField29Patch {
-    x.Patch = value
-    return x
-}
-
-func (x *MyStructField29Patch) SetRemoveNonCompat(value []map[string]int32) *MyStructField29Patch {
-    x.Remove = value
-    return x
-}
-
-func (x *MyStructField29Patch) SetRemove(value []map[string]int32) *MyStructField29Patch {
-    x.Remove = value
-    return x
-}
-
 func (x *MyStructField29Patch) SetPrependNonCompat(value []map[string]int32) *MyStructField29Patch {
     x.Prepend = value
     return x
@@ -10529,14 +10522,6 @@ func (x *MyStructField29Patch) SetAppend(value []map[string]int32) *MyStructFiel
 
 func (x *MyStructField29Patch) IsSetAssign() bool {
     return x.Assign != nil
-}
-
-func (x *MyStructField29Patch) IsSetPatch() bool {
-    return x.Patch != nil
-}
-
-func (x *MyStructField29Patch) IsSetRemove() bool {
-    return x.Remove != nil
 }
 
 func (x *MyStructField29Patch) IsSetPrepend() bool {
@@ -10604,94 +10589,6 @@ func (x *MyStructField29Patch) writeField2(p thrift.Protocol) error {  // Clear
     item := x.GetClearNonCompat()
     if err := p.WriteBool(item); err != nil {
     return err
-}
-
-    if err := p.WriteFieldEnd(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
-    }
-    return nil
-}
-
-func (x *MyStructField29Patch) writeField3(p thrift.Protocol) error {  // Patch
-    if !x.IsSetPatch() {
-        return nil
-    }
-
-    if err := p.WriteFieldBegin("patch", thrift.MAP, 3); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
-    }
-
-    item := x.GetPatchNonCompat()
-    if err := p.WriteMapBegin(thrift.I32, thrift.STRUCT, len(item)); err != nil {
-    return thrift.PrependError("error writing map begin: ", err)
-}
-for k, v := range item {
-    {
-        item := k
-        err := patch.WriteListPatchIndex(item, p)
-if err != nil {
-    return err
-}
-    }
-
-    {
-        item := v
-        if err := item.Write(p); err != nil {
-    return err
-}
-    }
-}
-if err := p.WriteMapEnd(); err != nil {
-    return thrift.PrependError("error writing map end: ", err)
-}
-
-    if err := p.WriteFieldEnd(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
-    }
-    return nil
-}
-
-func (x *MyStructField29Patch) writeField7(p thrift.Protocol) error {  // Remove
-    if !x.IsSetRemove() {
-        return nil
-    }
-
-    if err := p.WriteFieldBegin("remove", thrift.LIST, 7); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
-    }
-
-    item := x.GetRemoveNonCompat()
-    if err := p.WriteListBegin(thrift.MAP, len(item)); err != nil {
-    return thrift.PrependError("error writing list begin: ", err)
-}
-for _, v := range item {
-    {
-        item := v
-        if err := p.WriteMapBegin(thrift.STRING, thrift.I32, len(item)); err != nil {
-    return thrift.PrependError("error writing map begin: ", err)
-}
-for k, v := range item {
-    {
-        item := k
-        if err := p.WriteString(item); err != nil {
-    return err
-}
-    }
-
-    {
-        item := v
-        if err := p.WriteI32(item); err != nil {
-    return err
-}
-    }
-}
-if err := p.WriteMapEnd(); err != nil {
-    return thrift.PrependError("error writing map end: ", err)
-}
-    }
-}
-if err := p.WriteListEnd(); err != nil {
-    return thrift.PrependError("error writing list end: ", err)
 }
 
     if err := p.WriteFieldEnd(); err != nil {
@@ -10864,101 +10761,6 @@ if err != nil {
     return nil
 }
 
-func (x *MyStructField29Patch) readField3(p thrift.Protocol) error {  // Patch
-    _ /* keyType */, _ /* valueType */, size, err := p.ReadMapBegin()
-if err != nil {
-    return thrift.PrependError("error reading map begin: ", err)
-}
-
-mapResult := make(map[patch.ListPatchIndex]*MyStructField29Patch1, size)
-for i := 0; i < size; i++ {
-    var key patch.ListPatchIndex
-    {
-        result, err := patch.ReadListPatchIndex(p)
-if err != nil {
-    return err
-}
-        key = result
-    }
-
-    var value *MyStructField29Patch1
-    {
-        result := *NewMyStructField29Patch1()
-err := result.Read(p)
-if err != nil {
-    return err
-}
-        value = &result
-    }
-
-    mapResult[key] = value
-}
-
-if err := p.ReadMapEnd(); err != nil {
-    return thrift.PrependError("error reading map end: ", err)
-}
-result := mapResult
-
-    x.SetPatchNonCompat(result)
-    return nil
-}
-
-func (x *MyStructField29Patch) readField7(p thrift.Protocol) error {  // Remove
-    _ /* elemType */, size, err := p.ReadListBegin()
-if err != nil {
-    return thrift.PrependError("error reading list begin: ", err)
-}
-
-listResult := make([]map[string]int32, 0, size)
-for i := 0; i < size; i++ {
-    var elem map[string]int32
-    {
-        _ /* keyType */, _ /* valueType */, size, err := p.ReadMapBegin()
-if err != nil {
-    return thrift.PrependError("error reading map begin: ", err)
-}
-
-mapResult := make(map[string]int32, size)
-for i := 0; i < size; i++ {
-    var key string
-    {
-        result, err := p.ReadString()
-if err != nil {
-    return err
-}
-        key = result
-    }
-
-    var value int32
-    {
-        result, err := p.ReadI32()
-if err != nil {
-    return err
-}
-        value = result
-    }
-
-    mapResult[key] = value
-}
-
-if err := p.ReadMapEnd(); err != nil {
-    return thrift.PrependError("error reading map end: ", err)
-}
-result := mapResult
-        elem = result
-    }
-    listResult = append(listResult, elem)
-}
-
-if err := p.ReadListEnd(); err != nil {
-    return thrift.PrependError("error reading list end: ", err)
-}
-result := listResult
-
-    x.SetRemoveNonCompat(result)
-    return nil
-}
-
 func (x *MyStructField29Patch) readField8(p thrift.Protocol) error {  // Prepend
     _ /* elemType */, size, err := p.ReadListBegin()
 if err != nil {
@@ -11072,7 +10874,9 @@ result := listResult
 }
 
 func (x *MyStructField29Patch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructField29PatchAlias MyStructField29Patch
+    valueAlias := (*MyStructField29PatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -11094,16 +10898,6 @@ func (x *MyStructField29PatchBuilder) Assign(value []map[string]int32) *MyStruct
 
 func (x *MyStructField29PatchBuilder) Clear(value bool) *MyStructField29PatchBuilder {
     x.obj.Clear = value
-    return x
-}
-
-func (x *MyStructField29PatchBuilder) Patch(value map[patch.ListPatchIndex]*MyStructField29Patch1) *MyStructField29PatchBuilder {
-    x.obj.Patch = value
-    return x
-}
-
-func (x *MyStructField29PatchBuilder) Remove(value []map[string]int32) *MyStructField29PatchBuilder {
-    x.obj.Remove = value
     return x
 }
 
@@ -11132,14 +10926,6 @@ func (x *MyStructField29Patch) Write(p thrift.Protocol) error {
     }
 
     if err := x.writeField2(p); err != nil {
-        return err
-    }
-
-    if err := x.writeField3(p); err != nil {
-        return err
-    }
-
-    if err := x.writeField7(p); err != nil {
         return err
     }
 
@@ -11185,844 +10971,11 @@ func (x *MyStructField29Patch) Read(p thrift.Protocol) error {
             if err := x.readField2(p); err != nil {
                 return err
             }
-        case 3:  // patch
-            if err := x.readField3(p); err != nil {
-                return err
-            }
-        case 7:  // remove
-            if err := x.readField7(p); err != nil {
-                return err
-            }
         case 8:  // prepend
             if err := x.readField8(p); err != nil {
                 return err
             }
         case 9:  // append
-            if err := x.readField9(p); err != nil {
-                return err
-            }
-        default:
-            if err := p.Skip(typ); err != nil {
-                return err
-            }
-        }
-
-        if err := p.ReadFieldEnd(); err != nil {
-            return err
-        }
-    }
-
-    if err := p.ReadStructEnd(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", x), err)
-    }
-
-    return nil
-}
-
-
-type MyStructField29Patch1 struct {
-    Assign map[string]int32 `thrift:"assign,1,optional" json:"assign,omitempty" db:"assign"`
-    Clear bool `thrift:"clear,2" json:"clear" db:"clear"`
-    PatchPrior map[string]*patch.I32Patch `thrift:"patchPrior,3" json:"patchPrior" db:"patchPrior"`
-    Add map[string]int32 `thrift:"add,5" json:"add" db:"add"`
-    Patch map[string]*patch.I32Patch `thrift:"patch,6" json:"patch" db:"patch"`
-    Remove []string `thrift:"remove,7" json:"remove" db:"remove"`
-    Put map[string]int32 `thrift:"put,9" json:"put" db:"put"`
-}
-// Compile time interface enforcer
-var _ thrift.Struct = &MyStructField29Patch1{}
-
-func NewMyStructField29Patch1() *MyStructField29Patch1 {
-    return (&MyStructField29Patch1{}).
-        SetClearNonCompat(false).
-        SetPatchPriorNonCompat(make(map[string]*patch.I32Patch)).
-        SetAddNonCompat(make(map[string]int32)).
-        SetPatchNonCompat(make(map[string]*patch.I32Patch)).
-        SetRemoveNonCompat(make([]string, 0)).
-        SetPutNonCompat(make(map[string]int32))
-}
-
-func (x *MyStructField29Patch1) GetAssignNonCompat() map[string]int32 {
-    return x.Assign
-}
-
-func (x *MyStructField29Patch1) GetAssign() map[string]int32 {
-    if !x.IsSetAssign() {
-        return make(map[string]int32)
-    }
-
-    return x.Assign
-}
-
-func (x *MyStructField29Patch1) GetClearNonCompat() bool {
-    return x.Clear
-}
-
-func (x *MyStructField29Patch1) GetClear() bool {
-    return x.Clear
-}
-
-func (x *MyStructField29Patch1) GetPatchPriorNonCompat() map[string]*patch.I32Patch {
-    return x.PatchPrior
-}
-
-func (x *MyStructField29Patch1) GetPatchPrior() map[string]*patch.I32Patch {
-    if !x.IsSetPatchPrior() {
-        return make(map[string]*patch.I32Patch)
-    }
-
-    return x.PatchPrior
-}
-
-func (x *MyStructField29Patch1) GetAddNonCompat() map[string]int32 {
-    return x.Add
-}
-
-func (x *MyStructField29Patch1) GetAdd() map[string]int32 {
-    if !x.IsSetAdd() {
-        return make(map[string]int32)
-    }
-
-    return x.Add
-}
-
-func (x *MyStructField29Patch1) GetPatchNonCompat() map[string]*patch.I32Patch {
-    return x.Patch
-}
-
-func (x *MyStructField29Patch1) GetPatch() map[string]*patch.I32Patch {
-    if !x.IsSetPatch() {
-        return make(map[string]*patch.I32Patch)
-    }
-
-    return x.Patch
-}
-
-func (x *MyStructField29Patch1) GetRemoveNonCompat() []string {
-    return x.Remove
-}
-
-func (x *MyStructField29Patch1) GetRemove() []string {
-    if !x.IsSetRemove() {
-        return make([]string, 0)
-    }
-
-    return x.Remove
-}
-
-func (x *MyStructField29Patch1) GetPutNonCompat() map[string]int32 {
-    return x.Put
-}
-
-func (x *MyStructField29Patch1) GetPut() map[string]int32 {
-    if !x.IsSetPut() {
-        return make(map[string]int32)
-    }
-
-    return x.Put
-}
-
-func (x *MyStructField29Patch1) SetAssignNonCompat(value map[string]int32) *MyStructField29Patch1 {
-    x.Assign = value
-    return x
-}
-
-func (x *MyStructField29Patch1) SetAssign(value map[string]int32) *MyStructField29Patch1 {
-    x.Assign = value
-    return x
-}
-
-func (x *MyStructField29Patch1) SetClearNonCompat(value bool) *MyStructField29Patch1 {
-    x.Clear = value
-    return x
-}
-
-func (x *MyStructField29Patch1) SetClear(value bool) *MyStructField29Patch1 {
-    x.Clear = value
-    return x
-}
-
-func (x *MyStructField29Patch1) SetPatchPriorNonCompat(value map[string]*patch.I32Patch) *MyStructField29Patch1 {
-    x.PatchPrior = value
-    return x
-}
-
-func (x *MyStructField29Patch1) SetPatchPrior(value map[string]*patch.I32Patch) *MyStructField29Patch1 {
-    x.PatchPrior = value
-    return x
-}
-
-func (x *MyStructField29Patch1) SetAddNonCompat(value map[string]int32) *MyStructField29Patch1 {
-    x.Add = value
-    return x
-}
-
-func (x *MyStructField29Patch1) SetAdd(value map[string]int32) *MyStructField29Patch1 {
-    x.Add = value
-    return x
-}
-
-func (x *MyStructField29Patch1) SetPatchNonCompat(value map[string]*patch.I32Patch) *MyStructField29Patch1 {
-    x.Patch = value
-    return x
-}
-
-func (x *MyStructField29Patch1) SetPatch(value map[string]*patch.I32Patch) *MyStructField29Patch1 {
-    x.Patch = value
-    return x
-}
-
-func (x *MyStructField29Patch1) SetRemoveNonCompat(value []string) *MyStructField29Patch1 {
-    x.Remove = value
-    return x
-}
-
-func (x *MyStructField29Patch1) SetRemove(value []string) *MyStructField29Patch1 {
-    x.Remove = value
-    return x
-}
-
-func (x *MyStructField29Patch1) SetPutNonCompat(value map[string]int32) *MyStructField29Patch1 {
-    x.Put = value
-    return x
-}
-
-func (x *MyStructField29Patch1) SetPut(value map[string]int32) *MyStructField29Patch1 {
-    x.Put = value
-    return x
-}
-
-func (x *MyStructField29Patch1) IsSetAssign() bool {
-    return x.Assign != nil
-}
-
-func (x *MyStructField29Patch1) IsSetPatchPrior() bool {
-    return x.PatchPrior != nil
-}
-
-func (x *MyStructField29Patch1) IsSetAdd() bool {
-    return x.Add != nil
-}
-
-func (x *MyStructField29Patch1) IsSetPatch() bool {
-    return x.Patch != nil
-}
-
-func (x *MyStructField29Patch1) IsSetRemove() bool {
-    return x.Remove != nil
-}
-
-func (x *MyStructField29Patch1) IsSetPut() bool {
-    return x.Put != nil
-}
-
-func (x *MyStructField29Patch1) writeField1(p thrift.Protocol) error {  // Assign
-    if !x.IsSetAssign() {
-        return nil
-    }
-
-    if err := p.WriteFieldBegin("assign", thrift.MAP, 1); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
-    }
-
-    item := x.GetAssignNonCompat()
-    if err := p.WriteMapBegin(thrift.STRING, thrift.I32, len(item)); err != nil {
-    return thrift.PrependError("error writing map begin: ", err)
-}
-for k, v := range item {
-    {
-        item := k
-        if err := p.WriteString(item); err != nil {
-    return err
-}
-    }
-
-    {
-        item := v
-        if err := p.WriteI32(item); err != nil {
-    return err
-}
-    }
-}
-if err := p.WriteMapEnd(); err != nil {
-    return thrift.PrependError("error writing map end: ", err)
-}
-
-    if err := p.WriteFieldEnd(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
-    }
-    return nil
-}
-
-func (x *MyStructField29Patch1) writeField2(p thrift.Protocol) error {  // Clear
-    if err := p.WriteFieldBegin("clear", thrift.BOOL, 2); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
-    }
-
-    item := x.GetClearNonCompat()
-    if err := p.WriteBool(item); err != nil {
-    return err
-}
-
-    if err := p.WriteFieldEnd(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
-    }
-    return nil
-}
-
-func (x *MyStructField29Patch1) writeField3(p thrift.Protocol) error {  // PatchPrior
-    if !x.IsSetPatchPrior() {
-        return nil
-    }
-
-    if err := p.WriteFieldBegin("patchPrior", thrift.MAP, 3); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
-    }
-
-    item := x.GetPatchPriorNonCompat()
-    if err := p.WriteMapBegin(thrift.STRING, thrift.STRUCT, len(item)); err != nil {
-    return thrift.PrependError("error writing map begin: ", err)
-}
-for k, v := range item {
-    {
-        item := k
-        if err := p.WriteString(item); err != nil {
-    return err
-}
-    }
-
-    {
-        item := v
-        if err := item.Write(p); err != nil {
-    return err
-}
-    }
-}
-if err := p.WriteMapEnd(); err != nil {
-    return thrift.PrependError("error writing map end: ", err)
-}
-
-    if err := p.WriteFieldEnd(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
-    }
-    return nil
-}
-
-func (x *MyStructField29Patch1) writeField5(p thrift.Protocol) error {  // Add
-    if !x.IsSetAdd() {
-        return nil
-    }
-
-    if err := p.WriteFieldBegin("add", thrift.MAP, 5); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
-    }
-
-    item := x.GetAddNonCompat()
-    if err := p.WriteMapBegin(thrift.STRING, thrift.I32, len(item)); err != nil {
-    return thrift.PrependError("error writing map begin: ", err)
-}
-for k, v := range item {
-    {
-        item := k
-        if err := p.WriteString(item); err != nil {
-    return err
-}
-    }
-
-    {
-        item := v
-        if err := p.WriteI32(item); err != nil {
-    return err
-}
-    }
-}
-if err := p.WriteMapEnd(); err != nil {
-    return thrift.PrependError("error writing map end: ", err)
-}
-
-    if err := p.WriteFieldEnd(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
-    }
-    return nil
-}
-
-func (x *MyStructField29Patch1) writeField6(p thrift.Protocol) error {  // Patch
-    if !x.IsSetPatch() {
-        return nil
-    }
-
-    if err := p.WriteFieldBegin("patch", thrift.MAP, 6); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
-    }
-
-    item := x.GetPatchNonCompat()
-    if err := p.WriteMapBegin(thrift.STRING, thrift.STRUCT, len(item)); err != nil {
-    return thrift.PrependError("error writing map begin: ", err)
-}
-for k, v := range item {
-    {
-        item := k
-        if err := p.WriteString(item); err != nil {
-    return err
-}
-    }
-
-    {
-        item := v
-        if err := item.Write(p); err != nil {
-    return err
-}
-    }
-}
-if err := p.WriteMapEnd(); err != nil {
-    return thrift.PrependError("error writing map end: ", err)
-}
-
-    if err := p.WriteFieldEnd(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
-    }
-    return nil
-}
-
-func (x *MyStructField29Patch1) writeField7(p thrift.Protocol) error {  // Remove
-    if !x.IsSetRemove() {
-        return nil
-    }
-
-    if err := p.WriteFieldBegin("remove", thrift.SET, 7); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
-    }
-
-    item := x.GetRemoveNonCompat()
-    if err := p.WriteSetBegin(thrift.STRING, len(item)); err != nil {
-    return thrift.PrependError("error writing set begin: ", err)
-}
-for _, v := range item {
-    {
-        item := v
-        if err := p.WriteString(item); err != nil {
-    return err
-}
-    }
-}
-if err := p.WriteSetEnd(); err != nil {
-    return thrift.PrependError("error writing set end: ", err)
-}
-
-    if err := p.WriteFieldEnd(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
-    }
-    return nil
-}
-
-func (x *MyStructField29Patch1) writeField9(p thrift.Protocol) error {  // Put
-    if !x.IsSetPut() {
-        return nil
-    }
-
-    if err := p.WriteFieldBegin("put", thrift.MAP, 9); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
-    }
-
-    item := x.GetPutNonCompat()
-    if err := p.WriteMapBegin(thrift.STRING, thrift.I32, len(item)); err != nil {
-    return thrift.PrependError("error writing map begin: ", err)
-}
-for k, v := range item {
-    {
-        item := k
-        if err := p.WriteString(item); err != nil {
-    return err
-}
-    }
-
-    {
-        item := v
-        if err := p.WriteI32(item); err != nil {
-    return err
-}
-    }
-}
-if err := p.WriteMapEnd(); err != nil {
-    return thrift.PrependError("error writing map end: ", err)
-}
-
-    if err := p.WriteFieldEnd(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
-    }
-    return nil
-}
-
-func (x *MyStructField29Patch1) readField1(p thrift.Protocol) error {  // Assign
-    _ /* keyType */, _ /* valueType */, size, err := p.ReadMapBegin()
-if err != nil {
-    return thrift.PrependError("error reading map begin: ", err)
-}
-
-mapResult := make(map[string]int32, size)
-for i := 0; i < size; i++ {
-    var key string
-    {
-        result, err := p.ReadString()
-if err != nil {
-    return err
-}
-        key = result
-    }
-
-    var value int32
-    {
-        result, err := p.ReadI32()
-if err != nil {
-    return err
-}
-        value = result
-    }
-
-    mapResult[key] = value
-}
-
-if err := p.ReadMapEnd(); err != nil {
-    return thrift.PrependError("error reading map end: ", err)
-}
-result := mapResult
-
-    x.SetAssignNonCompat(result)
-    return nil
-}
-
-func (x *MyStructField29Patch1) readField2(p thrift.Protocol) error {  // Clear
-    result, err := p.ReadBool()
-if err != nil {
-    return err
-}
-
-    x.SetClearNonCompat(result)
-    return nil
-}
-
-func (x *MyStructField29Patch1) readField3(p thrift.Protocol) error {  // PatchPrior
-    _ /* keyType */, _ /* valueType */, size, err := p.ReadMapBegin()
-if err != nil {
-    return thrift.PrependError("error reading map begin: ", err)
-}
-
-mapResult := make(map[string]*patch.I32Patch, size)
-for i := 0; i < size; i++ {
-    var key string
-    {
-        result, err := p.ReadString()
-if err != nil {
-    return err
-}
-        key = result
-    }
-
-    var value *patch.I32Patch
-    {
-        result := *patch.NewI32Patch()
-err := result.Read(p)
-if err != nil {
-    return err
-}
-        value = &result
-    }
-
-    mapResult[key] = value
-}
-
-if err := p.ReadMapEnd(); err != nil {
-    return thrift.PrependError("error reading map end: ", err)
-}
-result := mapResult
-
-    x.SetPatchPriorNonCompat(result)
-    return nil
-}
-
-func (x *MyStructField29Patch1) readField5(p thrift.Protocol) error {  // Add
-    _ /* keyType */, _ /* valueType */, size, err := p.ReadMapBegin()
-if err != nil {
-    return thrift.PrependError("error reading map begin: ", err)
-}
-
-mapResult := make(map[string]int32, size)
-for i := 0; i < size; i++ {
-    var key string
-    {
-        result, err := p.ReadString()
-if err != nil {
-    return err
-}
-        key = result
-    }
-
-    var value int32
-    {
-        result, err := p.ReadI32()
-if err != nil {
-    return err
-}
-        value = result
-    }
-
-    mapResult[key] = value
-}
-
-if err := p.ReadMapEnd(); err != nil {
-    return thrift.PrependError("error reading map end: ", err)
-}
-result := mapResult
-
-    x.SetAddNonCompat(result)
-    return nil
-}
-
-func (x *MyStructField29Patch1) readField6(p thrift.Protocol) error {  // Patch
-    _ /* keyType */, _ /* valueType */, size, err := p.ReadMapBegin()
-if err != nil {
-    return thrift.PrependError("error reading map begin: ", err)
-}
-
-mapResult := make(map[string]*patch.I32Patch, size)
-for i := 0; i < size; i++ {
-    var key string
-    {
-        result, err := p.ReadString()
-if err != nil {
-    return err
-}
-        key = result
-    }
-
-    var value *patch.I32Patch
-    {
-        result := *patch.NewI32Patch()
-err := result.Read(p)
-if err != nil {
-    return err
-}
-        value = &result
-    }
-
-    mapResult[key] = value
-}
-
-if err := p.ReadMapEnd(); err != nil {
-    return thrift.PrependError("error reading map end: ", err)
-}
-result := mapResult
-
-    x.SetPatchNonCompat(result)
-    return nil
-}
-
-func (x *MyStructField29Patch1) readField7(p thrift.Protocol) error {  // Remove
-    _ /* elemType */, size, err := p.ReadSetBegin()
-if err != nil {
-    return thrift.PrependError("error reading set begin: ", err)
-}
-
-setResult := make([]string, 0, size)
-for i := 0; i < size; i++ {
-    var elem string
-    {
-        result, err := p.ReadString()
-if err != nil {
-    return err
-}
-        elem = result
-    }
-    setResult = append(setResult, elem)
-}
-
-if err := p.ReadSetEnd(); err != nil {
-    return thrift.PrependError("error reading set end: ", err)
-}
-result := setResult
-
-    x.SetRemoveNonCompat(result)
-    return nil
-}
-
-func (x *MyStructField29Patch1) readField9(p thrift.Protocol) error {  // Put
-    _ /* keyType */, _ /* valueType */, size, err := p.ReadMapBegin()
-if err != nil {
-    return thrift.PrependError("error reading map begin: ", err)
-}
-
-mapResult := make(map[string]int32, size)
-for i := 0; i < size; i++ {
-    var key string
-    {
-        result, err := p.ReadString()
-if err != nil {
-    return err
-}
-        key = result
-    }
-
-    var value int32
-    {
-        result, err := p.ReadI32()
-if err != nil {
-    return err
-}
-        value = result
-    }
-
-    mapResult[key] = value
-}
-
-if err := p.ReadMapEnd(); err != nil {
-    return thrift.PrependError("error reading map end: ", err)
-}
-result := mapResult
-
-    x.SetPutNonCompat(result)
-    return nil
-}
-
-func (x *MyStructField29Patch1) String() string {
-    return fmt.Sprintf("%+v", x)
-}
-
-
-// Deprecated: Use MyStructField29Patch1.Set* methods instead or set the fields directly.
-type MyStructField29Patch1Builder struct {
-    obj *MyStructField29Patch1
-}
-
-func NewMyStructField29Patch1Builder() *MyStructField29Patch1Builder {
-    return &MyStructField29Patch1Builder{
-        obj: NewMyStructField29Patch1(),
-    }
-}
-
-func (x *MyStructField29Patch1Builder) Assign(value map[string]int32) *MyStructField29Patch1Builder {
-    x.obj.Assign = value
-    return x
-}
-
-func (x *MyStructField29Patch1Builder) Clear(value bool) *MyStructField29Patch1Builder {
-    x.obj.Clear = value
-    return x
-}
-
-func (x *MyStructField29Patch1Builder) PatchPrior(value map[string]*patch.I32Patch) *MyStructField29Patch1Builder {
-    x.obj.PatchPrior = value
-    return x
-}
-
-func (x *MyStructField29Patch1Builder) Add(value map[string]int32) *MyStructField29Patch1Builder {
-    x.obj.Add = value
-    return x
-}
-
-func (x *MyStructField29Patch1Builder) Patch(value map[string]*patch.I32Patch) *MyStructField29Patch1Builder {
-    x.obj.Patch = value
-    return x
-}
-
-func (x *MyStructField29Patch1Builder) Remove(value []string) *MyStructField29Patch1Builder {
-    x.obj.Remove = value
-    return x
-}
-
-func (x *MyStructField29Patch1Builder) Put(value map[string]int32) *MyStructField29Patch1Builder {
-    x.obj.Put = value
-    return x
-}
-
-func (x *MyStructField29Patch1Builder) Emit() *MyStructField29Patch1 {
-    var objCopy MyStructField29Patch1 = *x.obj
-    return &objCopy
-}
-
-func (x *MyStructField29Patch1) Write(p thrift.Protocol) error {
-    if err := p.WriteStructBegin("MyStructField29Patch1"); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
-    }
-
-    if err := x.writeField1(p); err != nil {
-        return err
-    }
-
-    if err := x.writeField2(p); err != nil {
-        return err
-    }
-
-    if err := x.writeField3(p); err != nil {
-        return err
-    }
-
-    if err := x.writeField5(p); err != nil {
-        return err
-    }
-
-    if err := x.writeField6(p); err != nil {
-        return err
-    }
-
-    if err := x.writeField7(p); err != nil {
-        return err
-    }
-
-    if err := x.writeField9(p); err != nil {
-        return err
-    }
-
-    if err := p.WriteFieldStop(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field stop error: ", x), err)
-    }
-
-    if err := p.WriteStructEnd(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write struct end error: ", x), err)
-    }
-    return nil
-}
-
-func (x *MyStructField29Patch1) Read(p thrift.Protocol) error {
-    if _, err := p.ReadStructBegin(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
-    }
-
-    for {
-        _, typ, id, err := p.ReadFieldBegin()
-        if err != nil {
-            return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", x, id), err)
-        }
-
-        if typ == thrift.STOP {
-            break;
-        }
-
-        switch id {
-        case 1:  // assign
-            if err := x.readField1(p); err != nil {
-                return err
-            }
-        case 2:  // clear
-            if err := x.readField2(p); err != nil {
-                return err
-            }
-        case 3:  // patchPrior
-            if err := x.readField3(p); err != nil {
-                return err
-            }
-        case 5:  // add
-            if err := x.readField5(p); err != nil {
-                return err
-            }
-        case 6:  // patch
-            if err := x.readField6(p); err != nil {
-                return err
-            }
-        case 7:  // remove
-            if err := x.readField7(p); err != nil {
-                return err
-            }
-        case 9:  // put
             if err := x.readField9(p); err != nil {
                 return err
             }
@@ -12060,11 +11013,11 @@ var _ thrift.Struct = &MyStructField30Patch{}
 func NewMyStructField30Patch() *MyStructField30Patch {
     return (&MyStructField30Patch{}).
         SetClearNonCompat(false).
-        SetPatchPriorNonCompat(make(map[string]*MyStructField30Patch1)).
-        SetAddNonCompat(make(map[string]map[string]int32)).
-        SetPatchNonCompat(make(map[string]*MyStructField30Patch1)).
-        SetRemoveNonCompat(make([]string, 0)).
-        SetPutNonCompat(make(map[string]map[string]int32))
+        SetPatchPriorNonCompat(nil).
+        SetAddNonCompat(nil).
+        SetPatchNonCompat(nil).
+        SetRemoveNonCompat(nil).
+        SetPutNonCompat(nil)
 }
 
 func (x *MyStructField30Patch) GetAssignNonCompat() map[string]map[string]int32 {
@@ -12073,7 +11026,7 @@ func (x *MyStructField30Patch) GetAssignNonCompat() map[string]map[string]int32 
 
 func (x *MyStructField30Patch) GetAssign() map[string]map[string]int32 {
     if !x.IsSetAssign() {
-        return make(map[string]map[string]int32)
+        return nil
     }
 
     return x.Assign
@@ -12093,7 +11046,7 @@ func (x *MyStructField30Patch) GetPatchPriorNonCompat() map[string]*MyStructFiel
 
 func (x *MyStructField30Patch) GetPatchPrior() map[string]*MyStructField30Patch1 {
     if !x.IsSetPatchPrior() {
-        return make(map[string]*MyStructField30Patch1)
+        return nil
     }
 
     return x.PatchPrior
@@ -12105,7 +11058,7 @@ func (x *MyStructField30Patch) GetAddNonCompat() map[string]map[string]int32 {
 
 func (x *MyStructField30Patch) GetAdd() map[string]map[string]int32 {
     if !x.IsSetAdd() {
-        return make(map[string]map[string]int32)
+        return nil
     }
 
     return x.Add
@@ -12117,7 +11070,7 @@ func (x *MyStructField30Patch) GetPatchNonCompat() map[string]*MyStructField30Pa
 
 func (x *MyStructField30Patch) GetPatch() map[string]*MyStructField30Patch1 {
     if !x.IsSetPatch() {
-        return make(map[string]*MyStructField30Patch1)
+        return nil
     }
 
     return x.Patch
@@ -12129,7 +11082,7 @@ func (x *MyStructField30Patch) GetRemoveNonCompat() []string {
 
 func (x *MyStructField30Patch) GetRemove() []string {
     if !x.IsSetRemove() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.Remove
@@ -12141,7 +11094,7 @@ func (x *MyStructField30Patch) GetPutNonCompat() map[string]map[string]int32 {
 
 func (x *MyStructField30Patch) GetPut() map[string]map[string]int32 {
     if !x.IsSetPut() {
-        return make(map[string]map[string]int32)
+        return nil
     }
 
     return x.Put
@@ -12847,7 +11800,9 @@ result := mapResult
 }
 
 func (x *MyStructField30Patch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructField30PatchAlias MyStructField30Patch
+    valueAlias := (*MyStructField30PatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -13023,11 +11978,11 @@ var _ thrift.Struct = &MyStructField30Patch1{}
 func NewMyStructField30Patch1() *MyStructField30Patch1 {
     return (&MyStructField30Patch1{}).
         SetClearNonCompat(false).
-        SetPatchPriorNonCompat(make(map[string]*patch.I32Patch)).
-        SetAddNonCompat(make(map[string]int32)).
-        SetPatchNonCompat(make(map[string]*patch.I32Patch)).
-        SetRemoveNonCompat(make([]string, 0)).
-        SetPutNonCompat(make(map[string]int32))
+        SetPatchPriorNonCompat(nil).
+        SetAddNonCompat(nil).
+        SetPatchNonCompat(nil).
+        SetRemoveNonCompat(nil).
+        SetPutNonCompat(nil)
 }
 
 func (x *MyStructField30Patch1) GetAssignNonCompat() map[string]int32 {
@@ -13036,7 +11991,7 @@ func (x *MyStructField30Patch1) GetAssignNonCompat() map[string]int32 {
 
 func (x *MyStructField30Patch1) GetAssign() map[string]int32 {
     if !x.IsSetAssign() {
-        return make(map[string]int32)
+        return nil
     }
 
     return x.Assign
@@ -13056,7 +12011,7 @@ func (x *MyStructField30Patch1) GetPatchPriorNonCompat() map[string]*patch.I32Pa
 
 func (x *MyStructField30Patch1) GetPatchPrior() map[string]*patch.I32Patch {
     if !x.IsSetPatchPrior() {
-        return make(map[string]*patch.I32Patch)
+        return nil
     }
 
     return x.PatchPrior
@@ -13068,7 +12023,7 @@ func (x *MyStructField30Patch1) GetAddNonCompat() map[string]int32 {
 
 func (x *MyStructField30Patch1) GetAdd() map[string]int32 {
     if !x.IsSetAdd() {
-        return make(map[string]int32)
+        return nil
     }
 
     return x.Add
@@ -13080,7 +12035,7 @@ func (x *MyStructField30Patch1) GetPatchNonCompat() map[string]*patch.I32Patch {
 
 func (x *MyStructField30Patch1) GetPatch() map[string]*patch.I32Patch {
     if !x.IsSetPatch() {
-        return make(map[string]*patch.I32Patch)
+        return nil
     }
 
     return x.Patch
@@ -13092,7 +12047,7 @@ func (x *MyStructField30Patch1) GetRemoveNonCompat() []string {
 
 func (x *MyStructField30Patch1) GetRemove() []string {
     if !x.IsSetRemove() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.Remove
@@ -13104,7 +12059,7 @@ func (x *MyStructField30Patch1) GetPutNonCompat() map[string]int32 {
 
 func (x *MyStructField30Patch1) GetPut() map[string]int32 {
     if !x.IsSetPut() {
-        return make(map[string]int32)
+        return nil
     }
 
     return x.Put
@@ -13672,7 +12627,9 @@ result := mapResult
 }
 
 func (x *MyStructField30Patch1) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructField30Patch1Alias MyStructField30Patch1
+    valueAlias := (*MyStructField30Patch1Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -13914,7 +12871,7 @@ func (x *MyStructFieldPatch) GetStructWithCustomDefaultNonCompat() *MyDataWithCu
 
 func (x *MyStructFieldPatch) GetStructWithCustomDefault() *MyDataWithCustomDefaultPatch {
     if !x.IsSetStructWithCustomDefault() {
-        return NewMyDataWithCustomDefaultPatch()
+        return nil
     }
 
     return x.StructWithCustomDefault
@@ -13926,7 +12883,7 @@ func (x *MyStructFieldPatch) GetI32WithCustomDefaultNonCompat() *patch.I32Patch 
 
 func (x *MyStructFieldPatch) GetI32WithCustomDefault() *patch.I32Patch {
     if !x.IsSetI32WithCustomDefault() {
-        return patch.NewI32Patch()
+        return nil
     }
 
     return x.I32WithCustomDefault
@@ -13938,7 +12895,7 @@ func (x *MyStructFieldPatch) GetMapMapNonCompat() *MyStructField30Patch {
 
 func (x *MyStructFieldPatch) GetMapMap() *MyStructField30Patch {
     if !x.IsSetMapMap() {
-        return NewMyStructField30Patch()
+        return nil
     }
 
     return x.MapMap
@@ -13950,7 +12907,7 @@ func (x *MyStructFieldPatch) GetListMapNonCompat() *MyStructField29Patch {
 
 func (x *MyStructFieldPatch) GetListMap() *MyStructField29Patch {
     if !x.IsSetListMap() {
-        return NewMyStructField29Patch()
+        return nil
     }
 
     return x.ListMap
@@ -13962,7 +12919,7 @@ func (x *MyStructFieldPatch) GetOptMapValNonCompat() *MyStructField28Patch {
 
 func (x *MyStructFieldPatch) GetOptMapVal() *MyStructField28Patch {
     if !x.IsSetOptMapVal() {
-        return NewMyStructField28Patch()
+        return nil
     }
 
     return x.OptMapVal
@@ -13974,7 +12931,7 @@ func (x *MyStructFieldPatch) GetOptSetValNonCompat() *MyStructField27Patch {
 
 func (x *MyStructFieldPatch) GetOptSetVal() *MyStructField27Patch {
     if !x.IsSetOptSetVal() {
-        return NewMyStructField27Patch()
+        return nil
     }
 
     return x.OptSetVal
@@ -13986,7 +12943,7 @@ func (x *MyStructFieldPatch) GetOptListValNonCompat() *MyStructField26Patch {
 
 func (x *MyStructFieldPatch) GetOptListVal() *MyStructField26Patch {
     if !x.IsSetOptListVal() {
-        return NewMyStructField26Patch()
+        return nil
     }
 
     return x.OptListVal
@@ -13998,7 +12955,7 @@ func (x *MyStructFieldPatch) GetOptLateStructValNonCompat() *LateDefStructPatch 
 
 func (x *MyStructFieldPatch) GetOptLateStructVal() *LateDefStructPatch {
     if !x.IsSetOptLateStructVal() {
-        return NewLateDefStructPatch()
+        return nil
     }
 
     return x.OptLateStructVal
@@ -14010,7 +12967,7 @@ func (x *MyStructFieldPatch) GetOptStructValNonCompat() *MyDataPatch {
 
 func (x *MyStructFieldPatch) GetOptStructVal() *MyDataPatch {
     if !x.IsSetOptStructVal() {
-        return NewMyDataPatch()
+        return nil
     }
 
     return x.OptStructVal
@@ -14022,7 +12979,7 @@ func (x *MyStructFieldPatch) GetOptEnumValNonCompat() *MyStructField23Patch {
 
 func (x *MyStructFieldPatch) GetOptEnumVal() *MyStructField23Patch {
     if !x.IsSetOptEnumVal() {
-        return NewMyStructField23Patch()
+        return nil
     }
 
     return x.OptEnumVal
@@ -14034,7 +12991,7 @@ func (x *MyStructFieldPatch) GetOptBinaryValNonCompat() *patch.BinaryPatch {
 
 func (x *MyStructFieldPatch) GetOptBinaryVal() *patch.BinaryPatch {
     if !x.IsSetOptBinaryVal() {
-        return patch.NewBinaryPatch()
+        return nil
     }
 
     return x.OptBinaryVal
@@ -14046,7 +13003,7 @@ func (x *MyStructFieldPatch) GetOptStringValNonCompat() *patch.StringPatch {
 
 func (x *MyStructFieldPatch) GetOptStringVal() *patch.StringPatch {
     if !x.IsSetOptStringVal() {
-        return patch.NewStringPatch()
+        return nil
     }
 
     return x.OptStringVal
@@ -14058,7 +13015,7 @@ func (x *MyStructFieldPatch) GetOptDoubleValNonCompat() *patch.DoublePatch {
 
 func (x *MyStructFieldPatch) GetOptDoubleVal() *patch.DoublePatch {
     if !x.IsSetOptDoubleVal() {
-        return patch.NewDoublePatch()
+        return nil
     }
 
     return x.OptDoubleVal
@@ -14070,7 +13027,7 @@ func (x *MyStructFieldPatch) GetOptFloatValNonCompat() *patch.FloatPatch {
 
 func (x *MyStructFieldPatch) GetOptFloatVal() *patch.FloatPatch {
     if !x.IsSetOptFloatVal() {
-        return patch.NewFloatPatch()
+        return nil
     }
 
     return x.OptFloatVal
@@ -14082,7 +13039,7 @@ func (x *MyStructFieldPatch) GetOptI64ValNonCompat() *patch.I64Patch {
 
 func (x *MyStructFieldPatch) GetOptI64Val() *patch.I64Patch {
     if !x.IsSetOptI64Val() {
-        return patch.NewI64Patch()
+        return nil
     }
 
     return x.OptI64Val
@@ -14094,7 +13051,7 @@ func (x *MyStructFieldPatch) GetOptI32ValNonCompat() *patch.I32Patch {
 
 func (x *MyStructFieldPatch) GetOptI32Val() *patch.I32Patch {
     if !x.IsSetOptI32Val() {
-        return patch.NewI32Patch()
+        return nil
     }
 
     return x.OptI32Val
@@ -14106,7 +13063,7 @@ func (x *MyStructFieldPatch) GetOptI16ValNonCompat() *patch.I16Patch {
 
 func (x *MyStructFieldPatch) GetOptI16Val() *patch.I16Patch {
     if !x.IsSetOptI16Val() {
-        return patch.NewI16Patch()
+        return nil
     }
 
     return x.OptI16Val
@@ -14118,7 +13075,7 @@ func (x *MyStructFieldPatch) GetOptByteValNonCompat() *patch.BytePatch {
 
 func (x *MyStructFieldPatch) GetOptByteVal() *patch.BytePatch {
     if !x.IsSetOptByteVal() {
-        return patch.NewBytePatch()
+        return nil
     }
 
     return x.OptByteVal
@@ -14130,7 +13087,7 @@ func (x *MyStructFieldPatch) GetOptBoolValNonCompat() *patch.BoolPatch {
 
 func (x *MyStructFieldPatch) GetOptBoolVal() *patch.BoolPatch {
     if !x.IsSetOptBoolVal() {
-        return patch.NewBoolPatch()
+        return nil
     }
 
     return x.OptBoolVal
@@ -14142,7 +13099,7 @@ func (x *MyStructFieldPatch) GetLateStructValNonCompat() *LateDefStructPatch {
 
 func (x *MyStructFieldPatch) GetLateStructVal() *LateDefStructPatch {
     if !x.IsSetLateStructVal() {
-        return NewLateDefStructPatch()
+        return nil
     }
 
     return x.LateStructVal
@@ -14154,7 +13111,7 @@ func (x *MyStructFieldPatch) GetUnionValNonCompat() *MyUnionPatch {
 
 func (x *MyStructFieldPatch) GetUnionVal() *MyUnionPatch {
     if !x.IsSetUnionVal() {
-        return NewMyUnionPatch()
+        return nil
     }
 
     return x.UnionVal
@@ -14166,7 +13123,7 @@ func (x *MyStructFieldPatch) GetStructValNonCompat() *MyDataPatch {
 
 func (x *MyStructFieldPatch) GetStructVal() *MyDataPatch {
     if !x.IsSetStructVal() {
-        return NewMyDataPatch()
+        return nil
     }
 
     return x.StructVal
@@ -14178,7 +13135,7 @@ func (x *MyStructFieldPatch) GetEnumValNonCompat() *MyStructField10Patch {
 
 func (x *MyStructFieldPatch) GetEnumVal() *MyStructField10Patch {
     if !x.IsSetEnumVal() {
-        return NewMyStructField10Patch()
+        return nil
     }
 
     return x.EnumVal
@@ -14190,7 +13147,7 @@ func (x *MyStructFieldPatch) GetBinaryValNonCompat() *patch.BinaryPatch {
 
 func (x *MyStructFieldPatch) GetBinaryVal() *patch.BinaryPatch {
     if !x.IsSetBinaryVal() {
-        return patch.NewBinaryPatch()
+        return nil
     }
 
     return x.BinaryVal
@@ -14202,7 +13159,7 @@ func (x *MyStructFieldPatch) GetStringValNonCompat() *patch.StringPatch {
 
 func (x *MyStructFieldPatch) GetStringVal() *patch.StringPatch {
     if !x.IsSetStringVal() {
-        return patch.NewStringPatch()
+        return nil
     }
 
     return x.StringVal
@@ -14214,7 +13171,7 @@ func (x *MyStructFieldPatch) GetDoubleValNonCompat() *patch.DoublePatch {
 
 func (x *MyStructFieldPatch) GetDoubleVal() *patch.DoublePatch {
     if !x.IsSetDoubleVal() {
-        return patch.NewDoublePatch()
+        return nil
     }
 
     return x.DoubleVal
@@ -14226,7 +13183,7 @@ func (x *MyStructFieldPatch) GetFloatValNonCompat() *patch.FloatPatch {
 
 func (x *MyStructFieldPatch) GetFloatVal() *patch.FloatPatch {
     if !x.IsSetFloatVal() {
-        return patch.NewFloatPatch()
+        return nil
     }
 
     return x.FloatVal
@@ -14238,7 +13195,7 @@ func (x *MyStructFieldPatch) GetI64ValNonCompat() *patch.I64Patch {
 
 func (x *MyStructFieldPatch) GetI64Val() *patch.I64Patch {
     if !x.IsSetI64Val() {
-        return patch.NewI64Patch()
+        return nil
     }
 
     return x.I64Val
@@ -14250,7 +13207,7 @@ func (x *MyStructFieldPatch) GetI32ValNonCompat() *patch.I32Patch {
 
 func (x *MyStructFieldPatch) GetI32Val() *patch.I32Patch {
     if !x.IsSetI32Val() {
-        return patch.NewI32Patch()
+        return nil
     }
 
     return x.I32Val
@@ -14262,7 +13219,7 @@ func (x *MyStructFieldPatch) GetI16ValNonCompat() *patch.I16Patch {
 
 func (x *MyStructFieldPatch) GetI16Val() *patch.I16Patch {
     if !x.IsSetI16Val() {
-        return patch.NewI16Patch()
+        return nil
     }
 
     return x.I16Val
@@ -14274,7 +13231,7 @@ func (x *MyStructFieldPatch) GetByteValNonCompat() *patch.BytePatch {
 
 func (x *MyStructFieldPatch) GetByteVal() *patch.BytePatch {
     if !x.IsSetByteVal() {
-        return patch.NewBytePatch()
+        return nil
     }
 
     return x.ByteVal
@@ -14286,7 +13243,7 @@ func (x *MyStructFieldPatch) GetBoolValNonCompat() *patch.BoolPatch {
 
 func (x *MyStructFieldPatch) GetBoolVal() *patch.BoolPatch {
     if !x.IsSetBoolVal() {
-        return patch.NewBoolPatch()
+        return nil
     }
 
     return x.BoolVal
@@ -14298,7 +13255,7 @@ func (x *MyStructFieldPatch) GetStructWithFieldCustomDefaultNonCompat() *MyDataP
 
 func (x *MyStructFieldPatch) GetStructWithFieldCustomDefault() *MyDataPatch {
     if !x.IsSetStructWithFieldCustomDefault() {
-        return NewMyDataPatch()
+        return nil
     }
 
     return x.StructWithFieldCustomDefault
@@ -16153,7 +15110,9 @@ func (x *MyStructFieldPatch) DefaultGetStructWithFieldCustomDefault() *MyDataPat
 }
 
 func (x *MyStructFieldPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructFieldPatchAlias MyStructFieldPatch
+    valueAlias := (*MyStructFieldPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -16700,7 +15659,7 @@ func (x *MyStructEnsureStruct) GetStructWithCustomDefaultNonCompat() *MyDataWith
 
 func (x *MyStructEnsureStruct) GetStructWithCustomDefault() *MyDataWithCustomDefault {
     if !x.IsSetStructWithCustomDefault() {
-        return NewMyDataWithCustomDefault()
+        return nil
     }
 
     return x.StructWithCustomDefault
@@ -16724,7 +15683,7 @@ func (x *MyStructEnsureStruct) GetMapMapNonCompat() map[string]map[string]int32 
 
 func (x *MyStructEnsureStruct) GetMapMap() map[string]map[string]int32 {
     if !x.IsSetMapMap() {
-        return make(map[string]map[string]int32)
+        return nil
     }
 
     return x.MapMap
@@ -16736,7 +15695,7 @@ func (x *MyStructEnsureStruct) GetListMapNonCompat() []map[string]int32 {
 
 func (x *MyStructEnsureStruct) GetListMap() []map[string]int32 {
     if !x.IsSetListMap() {
-        return make([]map[string]int32, 0)
+        return nil
     }
 
     return x.ListMap
@@ -16748,7 +15707,7 @@ func (x *MyStructEnsureStruct) GetOptMapValNonCompat() map[string]string {
 
 func (x *MyStructEnsureStruct) GetOptMapVal() map[string]string {
     if !x.IsSetOptMapVal() {
-        return make(map[string]string)
+        return nil
     }
 
     return x.OptMapVal
@@ -16760,7 +15719,7 @@ func (x *MyStructEnsureStruct) GetOptSetValNonCompat() []string {
 
 func (x *MyStructEnsureStruct) GetOptSetVal() []string {
     if !x.IsSetOptSetVal() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.OptSetVal
@@ -16772,7 +15731,7 @@ func (x *MyStructEnsureStruct) GetOptListValNonCompat() []int16 {
 
 func (x *MyStructEnsureStruct) GetOptListVal() []int16 {
     if !x.IsSetOptListVal() {
-        return make([]int16, 0)
+        return nil
     }
 
     return x.OptListVal
@@ -16784,7 +15743,7 @@ func (x *MyStructEnsureStruct) GetOptLateStructValNonCompat() *LateDefStruct {
 
 func (x *MyStructEnsureStruct) GetOptLateStructVal() *LateDefStruct {
     if !x.IsSetOptLateStructVal() {
-        return NewLateDefStruct()
+        return nil
     }
 
     return x.OptLateStructVal
@@ -16796,7 +15755,7 @@ func (x *MyStructEnsureStruct) GetOptStructValNonCompat() *MyData {
 
 func (x *MyStructEnsureStruct) GetOptStructVal() *MyData {
     if !x.IsSetOptStructVal() {
-        return NewMyData()
+        return nil
     }
 
     return x.OptStructVal
@@ -16928,7 +15887,7 @@ func (x *MyStructEnsureStruct) GetLateStructValNonCompat() *LateDefStruct {
 
 func (x *MyStructEnsureStruct) GetLateStructVal() *LateDefStruct {
     if !x.IsSetLateStructVal() {
-        return NewLateDefStruct()
+        return nil
     }
 
     return x.LateStructVal
@@ -16940,7 +15899,7 @@ func (x *MyStructEnsureStruct) GetUnionValNonCompat() *MyUnion {
 
 func (x *MyStructEnsureStruct) GetUnionVal() *MyUnion {
     if !x.IsSetUnionVal() {
-        return NewMyUnion()
+        return nil
     }
 
     return x.UnionVal
@@ -16952,7 +15911,7 @@ func (x *MyStructEnsureStruct) GetStructValNonCompat() *MyData {
 
 func (x *MyStructEnsureStruct) GetStructVal() *MyData {
     if !x.IsSetStructVal() {
-        return NewMyData()
+        return nil
     }
 
     return x.StructVal
@@ -17084,7 +16043,7 @@ func (x *MyStructEnsureStruct) GetStructWithFieldCustomDefaultNonCompat() *MyDat
 
 func (x *MyStructEnsureStruct) GetStructWithFieldCustomDefault() *MyData {
     if !x.IsSetStructWithFieldCustomDefault() {
-        return NewMyData()
+        return nil
     }
 
     return x.StructWithFieldCustomDefault
@@ -17862,7 +16821,7 @@ func (x *MyStructEnsureStruct) writeField_22(p thrift.Protocol) error {  // OptB
         return nil
     }
 
-    if err := p.WriteFieldBegin("optBinaryVal", thrift.BINARY, -22); err != nil {
+    if err := p.WriteFieldBegin("optBinaryVal", thrift.STRING, -22); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -18122,7 +17081,7 @@ func (x *MyStructEnsureStruct) writeField_9(p thrift.Protocol) error {  // Binar
         return nil
     }
 
-    if err := p.WriteFieldBegin("binaryVal", thrift.BINARY, -9); err != nil {
+    if err := p.WriteFieldBegin("binaryVal", thrift.STRING, -9); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -18959,7 +17918,9 @@ func (x *MyStructEnsureStruct) DefaultGetStructWithFieldCustomDefault() *MyData 
 }
 
 func (x *MyStructEnsureStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructEnsureStructAlias MyStructEnsureStruct
+    valueAlias := (*MyStructEnsureStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -19464,6 +18425,7 @@ type LateDefStructPatch struct {
     PatchPrior *LateDefStructFieldPatch `thrift:"patchPrior,3" json:"patchPrior" db:"patchPrior"`
     Ensure *LateDefStructEnsureStruct `thrift:"ensure,5" json:"ensure" db:"ensure"`
     Patch *LateDefStructFieldPatch `thrift:"patch,6" json:"patch" db:"patch"`
+    Remove patch.FieldIdList `thrift:"remove,7" json:"remove" db:"remove"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &LateDefStructPatch{}
@@ -19473,7 +18435,8 @@ func NewLateDefStructPatch() *LateDefStructPatch {
         SetClearNonCompat(false).
         SetPatchPriorNonCompat(*NewLateDefStructFieldPatch()).
         SetEnsureNonCompat(*NewLateDefStructEnsureStruct()).
-        SetPatchNonCompat(*NewLateDefStructFieldPatch())
+        SetPatchNonCompat(*NewLateDefStructFieldPatch()).
+        SetRemoveNonCompat(patch.NewFieldIdList())
 }
 
 func (x *LateDefStructPatch) GetAssignNonCompat() *LateDefStruct {
@@ -19482,7 +18445,7 @@ func (x *LateDefStructPatch) GetAssignNonCompat() *LateDefStruct {
 
 func (x *LateDefStructPatch) GetAssign() *LateDefStruct {
     if !x.IsSetAssign() {
-        return NewLateDefStruct()
+        return nil
     }
 
     return x.Assign
@@ -19502,7 +18465,7 @@ func (x *LateDefStructPatch) GetPatchPriorNonCompat() *LateDefStructFieldPatch {
 
 func (x *LateDefStructPatch) GetPatchPrior() *LateDefStructFieldPatch {
     if !x.IsSetPatchPrior() {
-        return NewLateDefStructFieldPatch()
+        return nil
     }
 
     return x.PatchPrior
@@ -19514,7 +18477,7 @@ func (x *LateDefStructPatch) GetEnsureNonCompat() *LateDefStructEnsureStruct {
 
 func (x *LateDefStructPatch) GetEnsure() *LateDefStructEnsureStruct {
     if !x.IsSetEnsure() {
-        return NewLateDefStructEnsureStruct()
+        return nil
     }
 
     return x.Ensure
@@ -19526,10 +18489,22 @@ func (x *LateDefStructPatch) GetPatchNonCompat() *LateDefStructFieldPatch {
 
 func (x *LateDefStructPatch) GetPatch() *LateDefStructFieldPatch {
     if !x.IsSetPatch() {
-        return NewLateDefStructFieldPatch()
+        return nil
     }
 
     return x.Patch
+}
+
+func (x *LateDefStructPatch) GetRemoveNonCompat() patch.FieldIdList {
+    return x.Remove
+}
+
+func (x *LateDefStructPatch) GetRemove() patch.FieldIdList {
+    if !x.IsSetRemove() {
+        return patch.NewFieldIdList()
+    }
+
+    return x.Remove
 }
 
 func (x *LateDefStructPatch) SetAssignNonCompat(value LateDefStruct) *LateDefStructPatch {
@@ -19582,6 +18557,16 @@ func (x *LateDefStructPatch) SetPatch(value *LateDefStructFieldPatch) *LateDefSt
     return x
 }
 
+func (x *LateDefStructPatch) SetRemoveNonCompat(value patch.FieldIdList) *LateDefStructPatch {
+    x.Remove = value
+    return x
+}
+
+func (x *LateDefStructPatch) SetRemove(value patch.FieldIdList) *LateDefStructPatch {
+    x.Remove = value
+    return x
+}
+
 func (x *LateDefStructPatch) IsSetAssign() bool {
     return x.Assign != nil
 }
@@ -19596,6 +18581,10 @@ func (x *LateDefStructPatch) IsSetEnsure() bool {
 
 func (x *LateDefStructPatch) IsSetPatch() bool {
     return x.Patch != nil
+}
+
+func (x *LateDefStructPatch) IsSetRemove() bool {
+    return x.Remove != nil
 }
 
 func (x *LateDefStructPatch) writeField1(p thrift.Protocol) error {  // Assign
@@ -19694,6 +18683,27 @@ func (x *LateDefStructPatch) writeField6(p thrift.Protocol) error {  // Patch
     return nil
 }
 
+func (x *LateDefStructPatch) writeField7(p thrift.Protocol) error {  // Remove
+    if !x.IsSetRemove() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("remove", thrift.LIST, 7); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetRemoveNonCompat()
+    err := patch.WriteFieldIdList(item, p)
+if err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
 func (x *LateDefStructPatch) readField1(p thrift.Protocol) error {  // Assign
     result := *NewLateDefStruct()
 err := result.Read(p)
@@ -19748,6 +18758,16 @@ if err != nil {
     return nil
 }
 
+func (x *LateDefStructPatch) readField7(p thrift.Protocol) error {  // Remove
+    result, err := patch.ReadFieldIdList(p)
+if err != nil {
+    return err
+}
+
+    x.SetRemoveNonCompat(result)
+    return nil
+}
+
 // Deprecated: Use NewLateDefStructPatch().GetAssign() instead.
 var LateDefStructPatch_Assign_DEFAULT = NewLateDefStructPatch().GetAssign()
 
@@ -19793,7 +18813,9 @@ func (x *LateDefStructPatch) DefaultGetPatch() *LateDefStructFieldPatch {
 }
 
 func (x *LateDefStructPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type LateDefStructPatchAlias LateDefStructPatch
+    valueAlias := (*LateDefStructPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -19833,6 +18855,11 @@ func (x *LateDefStructPatchBuilder) Patch(value *LateDefStructFieldPatch) *LateD
     return x
 }
 
+func (x *LateDefStructPatchBuilder) Remove(value patch.FieldIdList) *LateDefStructPatchBuilder {
+    x.obj.Remove = value
+    return x
+}
+
 func (x *LateDefStructPatchBuilder) Emit() *LateDefStructPatch {
     var objCopy LateDefStructPatch = *x.obj
     return &objCopy
@@ -19860,6 +18887,10 @@ func (x *LateDefStructPatch) Write(p thrift.Protocol) error {
     }
 
     if err := x.writeField6(p); err != nil {
+        return err
+    }
+
+    if err := x.writeField7(p); err != nil {
         return err
     }
 
@@ -19909,6 +18940,10 @@ func (x *LateDefStructPatch) Read(p thrift.Protocol) error {
             if err := x.readField6(p); err != nil {
                 return err
             }
+        case 7:  // remove
+            if err := x.readField7(p); err != nil {
+                return err
+            }
         default:
             if err := p.Skip(typ); err != nil {
                 return err
@@ -19938,7 +18973,9 @@ func NewLateDefStructFieldPatch() *LateDefStructFieldPatch {
 }
 
 func (x *LateDefStructFieldPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type LateDefStructFieldPatchAlias LateDefStructFieldPatch
+    valueAlias := (*LateDefStructFieldPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -20018,7 +19055,9 @@ func NewLateDefStructEnsureStruct() *LateDefStructEnsureStruct {
 }
 
 func (x *LateDefStructEnsureStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type LateDefStructEnsureStructAlias LateDefStructEnsureStruct
+    valueAlias := (*LateDefStructEnsureStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -20094,6 +19133,7 @@ type RecursivePatch struct {
     PatchPrior *RecursiveFieldPatch `thrift:"patchPrior,3" json:"patchPrior" db:"patchPrior"`
     Ensure *RecursiveEnsureStruct `thrift:"ensure,5" json:"ensure" db:"ensure"`
     Patch *RecursiveFieldPatch `thrift:"patch,6" json:"patch" db:"patch"`
+    Remove patch.FieldIdList `thrift:"remove,7" json:"remove" db:"remove"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &RecursivePatch{}
@@ -20103,7 +19143,8 @@ func NewRecursivePatch() *RecursivePatch {
         SetClearNonCompat(false).
         SetPatchPriorNonCompat(*NewRecursiveFieldPatch()).
         SetEnsureNonCompat(*NewRecursiveEnsureStruct()).
-        SetPatchNonCompat(*NewRecursiveFieldPatch())
+        SetPatchNonCompat(*NewRecursiveFieldPatch()).
+        SetRemoveNonCompat(patch.NewFieldIdList())
 }
 
 func (x *RecursivePatch) GetAssignNonCompat() *Recursive {
@@ -20112,7 +19153,7 @@ func (x *RecursivePatch) GetAssignNonCompat() *Recursive {
 
 func (x *RecursivePatch) GetAssign() *Recursive {
     if !x.IsSetAssign() {
-        return NewRecursive()
+        return nil
     }
 
     return x.Assign
@@ -20132,7 +19173,7 @@ func (x *RecursivePatch) GetPatchPriorNonCompat() *RecursiveFieldPatch {
 
 func (x *RecursivePatch) GetPatchPrior() *RecursiveFieldPatch {
     if !x.IsSetPatchPrior() {
-        return NewRecursiveFieldPatch()
+        return nil
     }
 
     return x.PatchPrior
@@ -20144,7 +19185,7 @@ func (x *RecursivePatch) GetEnsureNonCompat() *RecursiveEnsureStruct {
 
 func (x *RecursivePatch) GetEnsure() *RecursiveEnsureStruct {
     if !x.IsSetEnsure() {
-        return NewRecursiveEnsureStruct()
+        return nil
     }
 
     return x.Ensure
@@ -20156,10 +19197,22 @@ func (x *RecursivePatch) GetPatchNonCompat() *RecursiveFieldPatch {
 
 func (x *RecursivePatch) GetPatch() *RecursiveFieldPatch {
     if !x.IsSetPatch() {
-        return NewRecursiveFieldPatch()
+        return nil
     }
 
     return x.Patch
+}
+
+func (x *RecursivePatch) GetRemoveNonCompat() patch.FieldIdList {
+    return x.Remove
+}
+
+func (x *RecursivePatch) GetRemove() patch.FieldIdList {
+    if !x.IsSetRemove() {
+        return patch.NewFieldIdList()
+    }
+
+    return x.Remove
 }
 
 func (x *RecursivePatch) SetAssignNonCompat(value Recursive) *RecursivePatch {
@@ -20212,6 +19265,16 @@ func (x *RecursivePatch) SetPatch(value *RecursiveFieldPatch) *RecursivePatch {
     return x
 }
 
+func (x *RecursivePatch) SetRemoveNonCompat(value patch.FieldIdList) *RecursivePatch {
+    x.Remove = value
+    return x
+}
+
+func (x *RecursivePatch) SetRemove(value patch.FieldIdList) *RecursivePatch {
+    x.Remove = value
+    return x
+}
+
 func (x *RecursivePatch) IsSetAssign() bool {
     return x.Assign != nil
 }
@@ -20226,6 +19289,10 @@ func (x *RecursivePatch) IsSetEnsure() bool {
 
 func (x *RecursivePatch) IsSetPatch() bool {
     return x.Patch != nil
+}
+
+func (x *RecursivePatch) IsSetRemove() bool {
+    return x.Remove != nil
 }
 
 func (x *RecursivePatch) writeField1(p thrift.Protocol) error {  // Assign
@@ -20324,6 +19391,27 @@ func (x *RecursivePatch) writeField6(p thrift.Protocol) error {  // Patch
     return nil
 }
 
+func (x *RecursivePatch) writeField7(p thrift.Protocol) error {  // Remove
+    if !x.IsSetRemove() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("remove", thrift.LIST, 7); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetRemoveNonCompat()
+    err := patch.WriteFieldIdList(item, p)
+if err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
 func (x *RecursivePatch) readField1(p thrift.Protocol) error {  // Assign
     result := *NewRecursive()
 err := result.Read(p)
@@ -20378,6 +19466,16 @@ if err != nil {
     return nil
 }
 
+func (x *RecursivePatch) readField7(p thrift.Protocol) error {  // Remove
+    result, err := patch.ReadFieldIdList(p)
+if err != nil {
+    return err
+}
+
+    x.SetRemoveNonCompat(result)
+    return nil
+}
+
 // Deprecated: Use NewRecursivePatch().GetAssign() instead.
 var RecursivePatch_Assign_DEFAULT = NewRecursivePatch().GetAssign()
 
@@ -20423,7 +19521,9 @@ func (x *RecursivePatch) DefaultGetPatch() *RecursiveFieldPatch {
 }
 
 func (x *RecursivePatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type RecursivePatchAlias RecursivePatch
+    valueAlias := (*RecursivePatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -20463,6 +19563,11 @@ func (x *RecursivePatchBuilder) Patch(value *RecursiveFieldPatch) *RecursivePatc
     return x
 }
 
+func (x *RecursivePatchBuilder) Remove(value patch.FieldIdList) *RecursivePatchBuilder {
+    x.obj.Remove = value
+    return x
+}
+
 func (x *RecursivePatchBuilder) Emit() *RecursivePatch {
     var objCopy RecursivePatch = *x.obj
     return &objCopy
@@ -20490,6 +19595,10 @@ func (x *RecursivePatch) Write(p thrift.Protocol) error {
     }
 
     if err := x.writeField6(p); err != nil {
+        return err
+    }
+
+    if err := x.writeField7(p); err != nil {
         return err
     }
 
@@ -20539,6 +19648,10 @@ func (x *RecursivePatch) Read(p thrift.Protocol) error {
             if err := x.readField6(p); err != nil {
                 return err
             }
+        case 7:  // remove
+            if err := x.readField7(p); err != nil {
+                return err
+            }
         default:
             if err := p.Skip(typ); err != nil {
                 return err
@@ -20576,7 +19689,7 @@ func (x *RecursiveField1Patch) GetAssignNonCompat() map[string]*Recursive {
 
 func (x *RecursiveField1Patch) GetAssign() map[string]*Recursive {
     if !x.IsSetAssign() {
-        return make(map[string]*Recursive)
+        return nil
     }
 
     return x.Assign
@@ -20718,7 +19831,9 @@ if err != nil {
 }
 
 func (x *RecursiveField1Patch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type RecursiveField1PatchAlias RecursiveField1Patch
+    valueAlias := (*RecursiveField1PatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -20831,7 +19946,7 @@ func (x *RecursiveFieldPatch) GetNodesNonCompat() *RecursiveField1Patch {
 
 func (x *RecursiveFieldPatch) GetNodes() *RecursiveField1Patch {
     if !x.IsSetNodes() {
-        return NewRecursiveField1Patch()
+        return nil
     }
 
     return x.Nodes
@@ -20894,7 +20009,9 @@ func (x *RecursiveFieldPatch) DefaultGetNodes() *RecursiveField1Patch {
 }
 
 func (x *RecursiveFieldPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type RecursiveFieldPatchAlias RecursiveFieldPatch
+    valueAlias := (*RecursiveFieldPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -20993,7 +20110,7 @@ func (x *RecursiveEnsureStruct) GetNodesNonCompat() map[string]*Recursive {
 
 func (x *RecursiveEnsureStruct) GetNodes() map[string]*Recursive {
     if !x.IsSetNodes() {
-        return make(map[string]*Recursive)
+        return nil
     }
 
     return x.Nodes
@@ -21091,7 +20208,9 @@ result := mapResult
 }
 
 func (x *RecursiveEnsureStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type RecursiveEnsureStructAlias RecursiveEnsureStruct
+    valueAlias := (*RecursiveEnsureStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -21180,6 +20299,7 @@ type BarPatch struct {
     PatchPrior *BarFieldPatch `thrift:"patchPrior,3" json:"patchPrior" db:"patchPrior"`
     Ensure *BarEnsureStruct `thrift:"ensure,5" json:"ensure" db:"ensure"`
     Patch *BarFieldPatch `thrift:"patch,6" json:"patch" db:"patch"`
+    Remove patch.FieldIdList `thrift:"remove,7" json:"remove" db:"remove"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &BarPatch{}
@@ -21189,7 +20309,8 @@ func NewBarPatch() *BarPatch {
         SetClearNonCompat(false).
         SetPatchPriorNonCompat(*NewBarFieldPatch()).
         SetEnsureNonCompat(*NewBarEnsureStruct()).
-        SetPatchNonCompat(*NewBarFieldPatch())
+        SetPatchNonCompat(*NewBarFieldPatch()).
+        SetRemoveNonCompat(patch.NewFieldIdList())
 }
 
 func (x *BarPatch) GetAssignNonCompat() *Bar {
@@ -21198,7 +20319,7 @@ func (x *BarPatch) GetAssignNonCompat() *Bar {
 
 func (x *BarPatch) GetAssign() *Bar {
     if !x.IsSetAssign() {
-        return NewBar()
+        return nil
     }
 
     return x.Assign
@@ -21218,7 +20339,7 @@ func (x *BarPatch) GetPatchPriorNonCompat() *BarFieldPatch {
 
 func (x *BarPatch) GetPatchPrior() *BarFieldPatch {
     if !x.IsSetPatchPrior() {
-        return NewBarFieldPatch()
+        return nil
     }
 
     return x.PatchPrior
@@ -21230,7 +20351,7 @@ func (x *BarPatch) GetEnsureNonCompat() *BarEnsureStruct {
 
 func (x *BarPatch) GetEnsure() *BarEnsureStruct {
     if !x.IsSetEnsure() {
-        return NewBarEnsureStruct()
+        return nil
     }
 
     return x.Ensure
@@ -21242,10 +20363,22 @@ func (x *BarPatch) GetPatchNonCompat() *BarFieldPatch {
 
 func (x *BarPatch) GetPatch() *BarFieldPatch {
     if !x.IsSetPatch() {
-        return NewBarFieldPatch()
+        return nil
     }
 
     return x.Patch
+}
+
+func (x *BarPatch) GetRemoveNonCompat() patch.FieldIdList {
+    return x.Remove
+}
+
+func (x *BarPatch) GetRemove() patch.FieldIdList {
+    if !x.IsSetRemove() {
+        return patch.NewFieldIdList()
+    }
+
+    return x.Remove
 }
 
 func (x *BarPatch) SetAssignNonCompat(value Bar) *BarPatch {
@@ -21298,6 +20431,16 @@ func (x *BarPatch) SetPatch(value *BarFieldPatch) *BarPatch {
     return x
 }
 
+func (x *BarPatch) SetRemoveNonCompat(value patch.FieldIdList) *BarPatch {
+    x.Remove = value
+    return x
+}
+
+func (x *BarPatch) SetRemove(value patch.FieldIdList) *BarPatch {
+    x.Remove = value
+    return x
+}
+
 func (x *BarPatch) IsSetAssign() bool {
     return x.Assign != nil
 }
@@ -21312,6 +20455,10 @@ func (x *BarPatch) IsSetEnsure() bool {
 
 func (x *BarPatch) IsSetPatch() bool {
     return x.Patch != nil
+}
+
+func (x *BarPatch) IsSetRemove() bool {
+    return x.Remove != nil
 }
 
 func (x *BarPatch) writeField1(p thrift.Protocol) error {  // Assign
@@ -21410,6 +20557,27 @@ func (x *BarPatch) writeField6(p thrift.Protocol) error {  // Patch
     return nil
 }
 
+func (x *BarPatch) writeField7(p thrift.Protocol) error {  // Remove
+    if !x.IsSetRemove() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("remove", thrift.LIST, 7); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := x.GetRemoveNonCompat()
+    err := patch.WriteFieldIdList(item, p)
+if err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
 func (x *BarPatch) readField1(p thrift.Protocol) error {  // Assign
     result := *NewBar()
 err := result.Read(p)
@@ -21464,6 +20632,16 @@ if err != nil {
     return nil
 }
 
+func (x *BarPatch) readField7(p thrift.Protocol) error {  // Remove
+    result, err := patch.ReadFieldIdList(p)
+if err != nil {
+    return err
+}
+
+    x.SetRemoveNonCompat(result)
+    return nil
+}
+
 // Deprecated: Use NewBarPatch().GetAssign() instead.
 var BarPatch_Assign_DEFAULT = NewBarPatch().GetAssign()
 
@@ -21509,7 +20687,9 @@ func (x *BarPatch) DefaultGetPatch() *BarFieldPatch {
 }
 
 func (x *BarPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type BarPatchAlias BarPatch
+    valueAlias := (*BarPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -21549,6 +20729,11 @@ func (x *BarPatchBuilder) Patch(value *BarFieldPatch) *BarPatchBuilder {
     return x
 }
 
+func (x *BarPatchBuilder) Remove(value patch.FieldIdList) *BarPatchBuilder {
+    x.obj.Remove = value
+    return x
+}
+
 func (x *BarPatchBuilder) Emit() *BarPatch {
     var objCopy BarPatch = *x.obj
     return &objCopy
@@ -21576,6 +20761,10 @@ func (x *BarPatch) Write(p thrift.Protocol) error {
     }
 
     if err := x.writeField6(p); err != nil {
+        return err
+    }
+
+    if err := x.writeField7(p); err != nil {
         return err
     }
 
@@ -21625,6 +20814,10 @@ func (x *BarPatch) Read(p thrift.Protocol) error {
             if err := x.readField6(p); err != nil {
                 return err
             }
+        case 7:  // remove
+            if err := x.readField7(p); err != nil {
+                return err
+            }
         default:
             if err := p.Skip(typ); err != nil {
                 return err
@@ -21661,7 +20854,7 @@ func (x *BarFieldPatch) GetLoopNonCompat() *LoopPatch {
 
 func (x *BarFieldPatch) GetLoop() *LoopPatch {
     if !x.IsSetLoop() {
-        return NewLoopPatch()
+        return nil
     }
 
     return x.Loop
@@ -21724,7 +20917,9 @@ func (x *BarFieldPatch) DefaultGetLoop() *LoopPatch {
 }
 
 func (x *BarFieldPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type BarFieldPatchAlias BarFieldPatch
+    valueAlias := (*BarFieldPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -21823,7 +21018,7 @@ func (x *BarEnsureStruct) GetLoopNonCompat() *Loop {
 
 func (x *BarEnsureStruct) GetLoop() *Loop {
     if !x.IsSetLoop() {
-        return NewLoop()
+        return nil
     }
 
     return x.Loop
@@ -21886,7 +21081,9 @@ func (x *BarEnsureStruct) DefaultGetLoop() *Loop {
 }
 
 func (x *BarEnsureStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type BarEnsureStructAlias BarEnsureStruct
+    valueAlias := (*BarEnsureStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -21987,7 +21184,7 @@ func (x *LoopPatch) GetAssignNonCompat() *Loop {
 
 func (x *LoopPatch) GetAssign() *Loop {
     if !x.IsSetAssign() {
-        return NewLoop()
+        return nil
     }
 
     return x.Assign
@@ -22094,7 +21291,9 @@ func (x *LoopPatch) DefaultGetAssign() *Loop {
 }
 
 func (x *LoopPatch) String() string {
-    return fmt.Sprintf("%+v", x)
+    type LoopPatchAlias LoopPatch
+    valueAlias := (*LoopPatchAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

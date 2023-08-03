@@ -65,6 +65,7 @@ type fun_elt = {
   fe_php_std_lib: bool;
   fe_support_dynamic_type: bool;
   fe_no_auto_dynamic: bool;
+  fe_no_auto_likes: bool;
 }
 [@@deriving show]
 
@@ -175,6 +176,28 @@ module Type_expansions : sig
   val positions : t -> Pos_or_decl.t list
 end
 
+(** How should we treat the wildcard character _ when localizing?
+ *  1. Generate a fresh type variable, e.g. in type argument to constructor or function,
+ *     or in a lambda parameter or return type.
+ *       Example: foo<shape('a' => _)>($myshape);
+ *       Example: ($v : vec<_>) ==> $v[0]
+ *  2. As a placeholder in a formal higher-kinded type parameter
+ *       Example: function test<T1, T2<_>>() // T2 is HK and takes a type to a type
+ *  3. Generate a fresh generic (aka Skolem variable), e.g. in `is` or `as` test
+ *       Example: if ($x is Vector<_>) { // $x has type Vector<T#1> }
+ *  4. Reject, when in a type argument to a generic parameter marked <<__Explicit>>
+ *       Example: makeVec<_>(3)  where function makeVec<<<__Explicit>> T>(T $_): void
+ *  5. Reject, because the type must be explicit.
+ *  6. (Specially for case type checking). Replace any type argument by a fresh generic.
+ *)
+type wildcard_action =
+  | Wildcard_fresh_tyvar
+  | Wildcard_fresh_generic
+  | Wildcard_higher_kinded_placeholder
+  | Wildcard_require_explicit of decl_tparam
+  | Wildcard_illegal
+  | Wildcard_fresh_generic_type_argument
+
 (** Tracks information about how a type was expanded *)
 type expand_env = {
   type_expansions: Type_expansions.t;
@@ -184,6 +207,7 @@ type expand_env = {
   substs: locl_ty SMap.t;
   this_ty: locl_ty;
   on_error: Typing_error.Reasons_callback.t option;
+  wildcard_action: wildcard_action;
 }
 
 val empty_expand_env : expand_env
@@ -203,17 +227,17 @@ val add_type_expansion_check_cycles :
 (** Returns whether there was an attempt at expanding a cyclic type. *)
 val cyclic_expansion : expand_env -> bool
 
-val get_var : 'a ty -> Ident.t option
+val get_var : locl_phase ty -> Ident.t option
 
 val get_class_type : locl_phase ty -> (pos_id * exact * locl_ty list) option
 
 val get_var_i : internal_type -> Ident.t option
 
-val is_tyvar : 'a ty -> bool
+val is_tyvar : locl_phase ty -> bool
 
 val is_tyvar_i : internal_type -> bool
 
-val is_var_v : 'a ty -> Ident.t -> bool
+val is_var_v : locl_phase ty -> Ident.t -> bool
 
 val is_generic : 'a ty -> bool
 
@@ -222,6 +246,8 @@ val is_dynamic : 'a ty -> bool
 val is_nonnull : 'a ty -> bool
 
 val is_nothing : 'a ty -> bool
+
+val is_wildcard : decl_phase ty -> bool
 
 val is_fun : 'a ty -> bool
 

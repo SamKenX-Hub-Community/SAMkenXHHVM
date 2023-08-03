@@ -17,22 +17,6 @@
   (glob_files %{project_root}/hack/test/tast/re_prefixed_string/HH_FLAGS)
   (glob_files %{project_root}/hack/test/tast/re_prefixed_string/*.php)
   (glob_files %{project_root}/hack/test/tast/re_prefixed_string/*.exp)
-  (glob_files %{project_root}/hack/test/tast/global_inference/HH_FLAGS)
-  (glob_files %{project_root}/hack/test/tast/global_inference/*.php)
-  (glob_files %{project_root}/hack/test/tast/global_inference/*.exp)
-  (glob_files %{project_root}/hack/test/tast/global_inference/params/HH_FLAGS)
-  (glob_files %{project_root}/hack/test/tast/global_inference/params/*.php)
-  (glob_files %{project_root}/hack/test/tast/global_inference/params/*.exp)
-  (glob_files
-   %{project_root}/hack/test/tast/global_inference/reinfer_types/HH_FLAGS)
-  (glob_files %{project_root}/hack/test/tast/global_inference/reinfer_types/*.php)
-  (glob_files %{project_root}/hack/test/tast/global_inference/reinfer_types/*.exp)
-  (glob_files %{project_root}/hack/test/tast/global_inference/typeparams/HH_FLAGS)
-  (glob_files %{project_root}/hack/test/tast/global_inference/typeparams/*.php)
-  (glob_files %{project_root}/hack/test/tast/global_inference/typeparams/*.exp)
-  (glob_files %{project_root}/hack/test/tast/global_inference/return/HH_FLAGS)
-  (glob_files %{project_root}/hack/test/tast/global_inference/return/*.php)
-  (glob_files %{project_root}/hack/test/tast/global_inference/return/*.exp)
   (glob_files %{project_root}/hack/test/tast/xhp_modifier/HH_FLAGS)
   (glob_files %{project_root}/hack/test/tast/xhp_modifier/*.php)
   (glob_files %{project_root}/hack/test/tast/xhp_modifier/*.exp))
@@ -41,7 +25,9 @@
    %{project_root}/hack/test/verify.py
    %{project_root}/hack/test/tast
    --program
-   %{exe:../../src/hh_single_type_check.exe})))
+   %{exe:../../src/hh_single_type_check.exe}
+   --flags
+   --everything-sdt)))
 
 (rule
  (alias tast_ordered_solving)
@@ -62,22 +48,6 @@
   (glob_files %{project_root}/hack/test/tast/re_prefixed_string/HH_FLAGS)
   (glob_files %{project_root}/hack/test/tast/re_prefixed_string/*.php)
   (glob_files %{project_root}/hack/test/tast/re_prefixed_string/*.exp)
-  (glob_files %{project_root}/hack/test/tast/global_inference/HH_FLAGS)
-  (glob_files %{project_root}/hack/test/tast/global_inference/*.php)
-  (glob_files %{project_root}/hack/test/tast/global_inference/*.exp)
-  (glob_files %{project_root}/hack/test/tast/global_inference/params/HH_FLAGS)
-  (glob_files %{project_root}/hack/test/tast/global_inference/params/*.php)
-  (glob_files %{project_root}/hack/test/tast/global_inference/params/*.exp)
-  (glob_files
-   %{project_root}/hack/test/tast/global_inference/reinfer_types/HH_FLAGS)
-  (glob_files %{project_root}/hack/test/tast/global_inference/reinfer_types/*.php)
-  (glob_files %{project_root}/hack/test/tast/global_inference/reinfer_types/*.exp)
-  (glob_files %{project_root}/hack/test/tast/global_inference/typeparams/HH_FLAGS)
-  (glob_files %{project_root}/hack/test/tast/global_inference/typeparams/*.php)
-  (glob_files %{project_root}/hack/test/tast/global_inference/typeparams/*.exp)
-  (glob_files %{project_root}/hack/test/tast/global_inference/return/HH_FLAGS)
-  (glob_files %{project_root}/hack/test/tast/global_inference/return/*.php)
-  (glob_files %{project_root}/hack/test/tast/global_inference/return/*.exp)
   (glob_files %{project_root}/hack/test/tast/xhp_modifier/HH_FLAGS)
   (glob_files %{project_root}/hack/test/tast/xhp_modifier/*.php)
   (glob_files %{project_root}/hack/test/tast/xhp_modifier/*.exp))
@@ -88,7 +58,8 @@
    --program
    %{exe:../../src/hh_single_type_check.exe}
    --flags
-   --ordered-solving)))
+   --ordered-solving
+   --everything-sdt)))
 
 (alias
  (name runtest)

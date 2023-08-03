@@ -16,10 +16,9 @@ import sys
 if sys.version_info[0] >= 3:
   long = int
 
-import thrift.annotation.thrift.ttypes
 import thrift.lib.thrift.patch.ttypes
 import thrift.lib.thrift.standard.ttypes
 
 
-from .ttypes import UTF8STRINGS, MyEnum, MyData, MyDataWithCustomDefault, InnerUnion, MyUnion, MyStruct, LateDefStruct, Recursive, Bar, Loop, MyDataPatch, MyDataFieldPatch, MyDataEnsureStruct, MyDataWithCustomDefaultPatch, MyDataWithCustomDefaultFieldPatch, MyDataWithCustomDefaultEnsureStruct, InnerUnionPatch, InnerUnionFieldPatch, MyUnionPatch, MyUnionFieldPatch, MyStructPatch, MyStructField10Patch, MyStructField23Patch, MyStructField26Patch, MyStructField27Patch, MyStructField28Patch, MyStructField29Patch, MyStructField29Patch1, MyStructField30Patch, MyStructField30Patch1, MyStructFieldPatch, MyStructEnsureStruct, LateDefStructPatch, LateDefStructFieldPatch, LateDefStructEnsureStruct, RecursivePatch, RecursiveField1Patch, RecursiveFieldPatch, RecursiveEnsureStruct, BarPatch, BarFieldPatch, BarEnsureStruct, LoopPatch
+from .ttypes import UTF8STRINGS, MyEnum, MyData, MyDataWithCustomDefault, InnerUnion, MyUnion, MyStruct, LateDefStruct, Recursive, Bar, Loop, MyDataPatch, MyDataFieldPatch, MyDataEnsureStruct, MyDataWithCustomDefaultPatch, MyDataWithCustomDefaultFieldPatch, MyDataWithCustomDefaultEnsureStruct, InnerUnionPatch, InnerUnionFieldPatch, MyUnionPatch, MyUnionFieldPatch, MyStructPatch, MyStructField10Patch, MyStructField23Patch, MyStructField26Patch, MyStructField27Patch, MyStructField28Patch, MyStructField29Patch, MyStructField30Patch, MyStructField30Patch1, MyStructFieldPatch, MyStructEnsureStruct, LateDefStructPatch, LateDefStructFieldPatch, LateDefStructEnsureStruct, RecursivePatch, RecursiveField1Patch, RecursiveFieldPatch, RecursiveEnsureStruct, BarPatch, BarFieldPatch, BarEnsureStruct, LoopPatch
 

@@ -345,13 +345,14 @@ void Operation::setObserverCallback(ObserverCallback obs_cb) {
   CHECK_THROW(state_ == OperationState::Unstarted, db::OperationStateException);
   // allow more callbacks to be set
   if (observer_callback_) {
-    auto old_obs_cb = observer_callback_;
-    observer_callback_ = [obs = obs_cb, old_obs = old_obs_cb](Operation& op) {
+    auto old_dbs_cb = std::move(observer_callback_);
+    observer_callback_ = [obs = std::move(obs_cb),
+                          old_obs = std::move(old_dbs_cb)](Operation& op) {
       obs(op);
       old_obs(op);
     };
   } else {
-    observer_callback_ = obs_cb;
+    observer_callback_ = std::move(obs_cb);
   }
 }
 
@@ -518,7 +519,8 @@ ConnectOperation* ConnectOperation::setCertValidationCallback(
     bool opPtrAsContext) {
   CHECK_THROW(
       state() == OperationState::Unstarted, db::OperationStateException);
-  conn_options_.setCertValidationCallback(callback, context, opPtrAsContext);
+  conn_options_.setCertValidationCallback(
+      std::move(callback), context, opPtrAsContext);
   return this;
 }
 
@@ -726,7 +728,7 @@ void ConnectOperation::socketActionable() {
 
   auto& handler = conn()->client()->getMysqlHandler();
   MYSQL* mysql = conn()->mysql();
-  const auto usingUnixSocket = !conn_key_.unixSocketPath.empty();
+  const auto usingUnixSocket = !conn_key_.unixSocketPath().empty();
 
   auto status = handler.tryConnect(mysql, conn_options_, conn_key_, flags_);
 
@@ -1125,7 +1127,7 @@ const std::string& FetchOperation::currentRecvGtid() const {
   return current_recv_gtid_;
 }
 
-const FetchOperation::RespAttrs& FetchOperation::currentRespAttrs() const {
+const AttributeMap& FetchOperation::currentRespAttrs() const {
   CHECK_THROW(isStreamAccessAllowed(), db::OperationStateException);
   return current_resp_attrs_;
 }
@@ -1169,8 +1171,8 @@ readNextResponseAtribute(MYSQL* mysql) {
   return folly::none;
 }
 
-FetchOperation::RespAttrs FetchOperation::readResponseAttributes() {
-  RespAttrs attrs;
+AttributeMap FetchOperation::readResponseAttributes() {
+  AttributeMap attrs;
   MYSQL* mysql = conn()->mysql();
   for (auto attr = readFirstResponseAtribute(mysql); attr;
        attr = readNextResponseAtribute(mysql)) {

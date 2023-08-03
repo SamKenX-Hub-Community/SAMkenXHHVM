@@ -95,6 +95,8 @@ fn make_86method<'arena, 'decl>(
     attrs.add(Attr::AttrNoInjection);
     attrs.set(Attr::AttrAbstract, is_abstract);
     attrs.set(Attr::AttrStatic, is_static);
+    attrs.set(Attr::AttrBuiltin, emitter.systemlib());
+    attrs.set(Attr::AttrPersistent, emitter.systemlib());
     attrs.add(Attr::from(visibility));
 
     let attributes = vec![];
@@ -840,7 +842,6 @@ pub fn emit_class<'a, 'arena, 'decl>(
     flags.set(Attr::AttrPersistent, is_systemlib);
     flags.set(Attr::AttrSealed, is_sealed);
     flags.set(Attr::AttrTrait, is_trait);
-    flags.set(Attr::AttrUnique, is_systemlib);
     flags.set(Attr::AttrEnumClass, hhbc::has_enum_class(&attributes));
     flags.set(Attr::AttrIsFoldable, hhbc::has_foldable(&attributes));
     flags.set(

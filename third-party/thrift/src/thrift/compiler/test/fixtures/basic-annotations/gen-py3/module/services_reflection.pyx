@@ -13,7 +13,6 @@ from thrift.py3.reflection cimport (
 
 import folly.iobuf as _fbthrift_iobuf
 
-cimport facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
 
 cimport module.types as _module_types
 
@@ -231,6 +230,54 @@ cdef __InterfaceSpec get_reflection__BadService(bint for_clients):
             ),
             result=int,
             result_kind=__NumberType.I32,
+            exceptions=(
+            ),
+            annotations={
+            },
+        )
+    )
+    return spec
+
+
+cdef __InterfaceSpec get_reflection__FooBarBazService(bint for_clients):
+    cdef __InterfaceSpec spec = __InterfaceSpec._fbthrift_create(
+        name="FooBarBazService",
+        annotations={
+        },
+    )
+    spec.add_method(
+        __MethodSpec._fbthrift_create(
+            name="foo",
+            arguments=(
+            ),
+            result=None,
+            result_kind=__NumberType.NOT_A_NUMBER,
+            exceptions=(
+            ),
+            annotations={
+            },
+        )
+    )
+    spec.add_method(
+        __MethodSpec._fbthrift_create(
+            name="bar",
+            arguments=(
+            ),
+            result=None,
+            result_kind=__NumberType.NOT_A_NUMBER,
+            exceptions=(
+            ),
+            annotations={
+                """go.name""": """BarNonStructured""",            },
+        )
+    )
+    spec.add_method(
+        __MethodSpec._fbthrift_create(
+            name="baz",
+            arguments=(
+            ),
+            result=None,
+            result_kind=__NumberType.NOT_A_NUMBER,
             exceptions=(
             ),
             annotations={

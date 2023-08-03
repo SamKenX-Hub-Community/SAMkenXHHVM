@@ -100,8 +100,9 @@ class Beta implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftShapis
 }
 
 /**
- * Indicates a definition/feature should only be used with permission, may only
- * work in specific contexts, and may change in incompatible ways without notice.
+ * Indicates a definition/feature should only be used with permission, may
+ * only work in specific contexts, and may change in incompatible ways without
+ * notice.
  *
  * Original thrift struct:-
  * Experimental
@@ -415,7 +416,8 @@ class Deprecated implements \IThriftSyncStruct, \IThriftStructMetadata, \IThrift
 }
 
 /**
- * Annotate a thrift structured or enum to indicate if ids or values should not be used.
+ * Annotate a thrift structured or enum to indicate if ids or values should not
+ * be used.
  * 
  * For example, you may want to mark ids as deprecated, or these ids
  * might be reserved for other use cases or annotations.
@@ -487,8 +489,9 @@ class ReserveIds implements \IThriftSyncStruct, \IThriftStructMetadata, \IThrift
    * Represents ranges of ids that cannot be used.
    * 
    * Each (key: value) pair represents the half-open range `[key, value)`,
-   * where `key` is included and `value` is not. For example the map
-   * `{10: 15, 20: 30}` represents the union of id/value ranges `[10, 15)` and `[20, 30)`
+   * where `key` is included and `value` is not. For example, the map
+   * `{10: 15, 20: 30}` represents the union of id/value ranges `[10, 15)` and
+   * `[20, 30)`.
    * 
    * Original thrift field:-
    * 2: map<i32, i32> id_ranges
@@ -591,8 +594,8 @@ class ReserveIds implements \IThriftSyncStruct, \IThriftStructMetadata, \IThrift
 
   public static function __fromShape(self::TShape $shape)[]: this {
     return new static(
-      (new Vector($shape['ids'])),
-      (new Map($shape['id_ranges'])),
+      $shape['ids'] |> new Vector($$),
+      $shape['id_ranges'] |> new Map($$),
     );
   }
 
@@ -642,131 +645,6 @@ class ReserveIds implements \IThriftSyncStruct, \IThriftStructMetadata, \IThrift
         $_container11[$_key8] = $_value12;
       }
       $this->id_ranges = $_container11;
-    }
-  }
-
-}
-
-/**
- * Indicates  a definition/feature will be removed in the next release.
- * 
- * Pleased migrate off of all @Legacy as soon as possible.
- *
- * Original thrift struct:-
- * Legacy
- */
-<<\ThriftTypeInfo(shape('uri' => 'facebook.com/thrift/annotation/Legacy'))>>
-class Legacy implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftShapishSyncStruct {
-  use \ThriftSerializationTrait;
-
-  const \ThriftStructTypes::TSpec SPEC = dict[
-    1 => shape(
-      'var' => 'message',
-      'type' => \TType::STRING,
-    ),
-  ];
-  const dict<string, int> FIELDMAP = dict[
-    'message' => 1,
-  ];
-
-  const type TConstructorShape = shape(
-    ?'message' => ?string,
-  );
-
-  const type TShape = shape(
-    'message' => string,
-  );
-  const int STRUCTURAL_ID = 2427562471238739676;
-  /**
-   * Original thrift field:-
-   * 1: string message
-   */
-  public string $message;
-
-  public function __construct(?string $message = null)[] {
-    $this->message = $message ?? '';
-  }
-
-  public static function withDefaultValues()[]: this {
-    return new static();
-  }
-
-  public static function fromShape(self::TConstructorShape $shape)[]: this {
-    return new static(
-      Shapes::idx($shape, 'message'),
-    );
-  }
-
-  public function getName()[]: string {
-    return 'Legacy';
-  }
-
-  public function clearTerseFields()[write_props]: void {
-  }
-
-  public static function getStructMetadata()[]: \tmeta_ThriftStruct {
-    return \tmeta_ThriftStruct::fromShape(
-      shape(
-        "name" => "thrift.Legacy",
-        "fields" => vec[
-          \tmeta_ThriftField::fromShape(
-            shape(
-              "id" => 1,
-              "type" => \tmeta_ThriftType::fromShape(
-                shape(
-                  "t_primitive" => \tmeta_ThriftPrimitiveType::THRIFT_STRING_TYPE,
-                )
-              ),
-              "name" => "message",
-            )
-          ),
-        ],
-        "is_union" => false,
-      )
-    );
-  }
-
-  public static function getAllStructuredAnnotations()[write_props]: \TStructAnnotations {
-    return shape(
-      'struct' => dict[
-        '\facebook\thrift\annotation\Deprecated' => \facebook\thrift\annotation\Deprecated::fromShape(
-          shape(
-          )
-        ),
-        '\facebook\thrift\annotation\Transitive' => \facebook\thrift\annotation\Transitive::fromShape(
-          shape(
-          )
-        ),
-      ],
-      'fields' => dict[
-      ],
-    );
-  }
-
-  public static function __fromShape(self::TShape $shape)[]: this {
-    return new static(
-      $shape['message'],
-    );
-  }
-
-  public function __toShape()[]: self::TShape {
-    return shape(
-      'message' => $this->message,
-    );
-  }
-  public function getInstanceKey()[write_props]: string {
-    return \TCompactSerializer::serialize($this);
-  }
-
-  public function readFromJson(string $jsonText): void {
-    $parsed = json_decode($jsonText, true);
-
-    if ($parsed === null || !($parsed is KeyedContainer<_, _>)) {
-      throw new \TProtocolException("Cannot parse the given json string.");
-    }
-
-    if (idx($parsed, 'message') !== null) {
-      $this->message = HH\FIXME\UNSAFE_CAST<mixed, string>($parsed['message']);
     }
   }
 
@@ -1266,7 +1144,7 @@ class Released implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftSh
 }
 
 /**
- * Disables @Legacy features.
+ * Disables legacy features.
  *
  * Original thrift struct:-
  * NoLegacy
@@ -1364,8 +1242,8 @@ class NoLegacy implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftSh
  * Disables @Deprecated features.
  * 
  * Should only be enabled in `test` versions, as deprecated implies removing
- * the feature will break current usage (otherwise it would be @Legacy or
- * deleted)
+ * the feature will break current usage (otherwise it would be legacy or
+ * deleted).
  *
  * Original thrift struct:-
  * NoDeprecated
@@ -1753,106 +1631,6 @@ class Mixin implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftShapi
 }
 
 /**
- * Indicates that a boolean type **may** be 'packed' in memory.
- * 
- * This allows an implementation to not allocate a full native 'bool' type, and
- * instead use a single 'isset' bit to store the value.
- * 
- * All fields that use such a type **must** be 'terse'.
- *
- * Original thrift struct:-
- * Bit
- */
-<<\ThriftTypeInfo(shape('uri' => 'facebook.com/thrift/annotation/Bit'))>>
-class Bit implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftShapishSyncStruct {
-  use \ThriftSerializationTrait;
-
-  const \ThriftStructTypes::TSpec SPEC = dict[
-  ];
-  const dict<string, int> FIELDMAP = dict[
-  ];
-
-  const type TConstructorShape = shape(
-  );
-
-  const type TShape = shape(
-  );
-  const int STRUCTURAL_ID = 957977401221134810;
-
-  public function __construct()[] {
-  }
-
-  public static function withDefaultValues()[]: this {
-    return new static();
-  }
-
-  public static function fromShape(self::TConstructorShape $shape)[]: this {
-    return new static(
-    );
-  }
-
-  public function getName()[]: string {
-    return 'Bit';
-  }
-
-  public function clearTerseFields()[write_props]: void {
-  }
-
-  public static function getStructMetadata()[]: \tmeta_ThriftStruct {
-    return \tmeta_ThriftStruct::fromShape(
-      shape(
-        "name" => "thrift.Bit",
-        "is_union" => false,
-      )
-    );
-  }
-
-  public static function getAllStructuredAnnotations()[write_props]: \TStructAnnotations {
-    return shape(
-      'struct' => dict[
-        '\facebook\thrift\annotation\Field' => \facebook\thrift\annotation\Field::fromShape(
-          shape(
-          )
-        ),
-        '\facebook\thrift\annotation\Typedef' => \facebook\thrift\annotation\Typedef::fromShape(
-          shape(
-          )
-        ),
-        '\facebook\thrift\annotation\Experimental' => \facebook\thrift\annotation\Experimental::fromShape(
-          shape(
-          )
-        ),
-      ],
-      'fields' => dict[
-      ],
-    );
-  }
-
-  public static function __fromShape(self::TShape $shape)[]: this {
-    return new static(
-    );
-  }
-
-  public function __toShape()[]: self::TShape {
-    return shape(
-    );
-  }
-  public function getInstanceKey()[write_props]: string {
-    return \TCompactSerializer::serialize($this);
-  }
-
-  public function readFromJson(string $jsonText): void {
-    $parsed = json_decode($jsonText, true);
-
-    if ($parsed === null || !($parsed is KeyedContainer<_, _>)) {
-      throw new \TProtocolException("Cannot parse the given json string.");
-    }
-
-  }
-
-}
-
-/**
  * Option to serialize thrift struct in ascending field id order.
  * 
  * This can potentially make serialized data size smaller in compact protocol,
@@ -2038,295 +1816,6 @@ class BitmaskEnum implements \IThriftSyncStruct, \IThriftStructMetadata, \IThrif
 }
 
 /**
- * Adds a default enum value (0), with the given name, if one is not
- * already defined.
- * 
- * All v1+ enums must have an explicitly defined default value (0).
- * This annotation automatically adds such a value if not already present.
- *
- * Original thrift struct:-
- * GenDefaultEnumValue
- */
-<<\ThriftTypeInfo(shape('uri' => 'facebook.com/thrift/annotation/GenDefaultEnumValue'))>>
-class GenDefaultEnumValue implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftShapishSyncStruct {
-  use \ThriftSerializationTrait;
-
-  const \ThriftStructTypes::TSpec SPEC = dict[
-    1 => shape(
-      'var' => 'name',
-      'type' => \TType::STRING,
-    ),
-  ];
-  const dict<string, int> FIELDMAP = dict[
-    'name' => 1,
-  ];
-
-  const type TConstructorShape = shape(
-    ?'name' => ?string,
-  );
-
-  const type TShape = shape(
-    'name' => string,
-  );
-  const int STRUCTURAL_ID = 2593878277785201336;
-  /**
-   * The name to use for the generated enum value.
-   * 
-   * This intentionally does **not** use the most common 'zero' enum value name,
-   * 'Default', by default; as, defining a `Default = 0` enum value explicitly
-   * is a useful means of self-documenting that setting an explicit value is
-   * never required. In which case, it is part of the API, and should not be
-   * removed in favor of an implicitly generated value.
-   * 
-   * On the other hand, 'Unspecified' clearly indicates that the requirements
-   * are not intrinsic to the enum. In which case, the relevant documentation
-   * should be consulted (e.g. the doc strings on the function or field).
-   * 
-   * Original thrift field:-
-   * 1: string name
-   */
-  public string $name;
-
-  public function __construct(?string $name = null)[] {
-    $this->name = $name ?? "Unspecified";
-  }
-
-  public static function withDefaultValues()[]: this {
-    return new static();
-  }
-
-  public static function fromShape(self::TConstructorShape $shape)[]: this {
-    return new static(
-      Shapes::idx($shape, 'name'),
-    );
-  }
-
-  public function getName()[]: string {
-    return 'GenDefaultEnumValue';
-  }
-
-  public function clearTerseFields()[write_props]: void {
-  }
-
-  public static function getStructMetadata()[]: \tmeta_ThriftStruct {
-    return \tmeta_ThriftStruct::fromShape(
-      shape(
-        "name" => "thrift.GenDefaultEnumValue",
-        "fields" => vec[
-          \tmeta_ThriftField::fromShape(
-            shape(
-              "id" => 1,
-              "type" => \tmeta_ThriftType::fromShape(
-                shape(
-                  "t_primitive" => \tmeta_ThriftPrimitiveType::THRIFT_STRING_TYPE,
-                )
-              ),
-              "name" => "name",
-            )
-          ),
-        ],
-        "is_union" => false,
-      )
-    );
-  }
-
-  public static function getAllStructuredAnnotations()[write_props]: \TStructAnnotations {
-    return shape(
-      'struct' => dict[
-        '\facebook\thrift\annotation\Enum' => \facebook\thrift\annotation\Enum::fromShape(
-          shape(
-          )
-        ),
-        '\facebook\thrift\annotation\Program' => \facebook\thrift\annotation\Program::fromShape(
-          shape(
-          )
-        ),
-        '\facebook\thrift\annotation\Beta' => \facebook\thrift\annotation\Beta::fromShape(
-          shape(
-          )
-        ),
-      ],
-      'fields' => dict[
-      ],
-    );
-  }
-
-  public static function __fromShape(self::TShape $shape)[]: this {
-    return new static(
-      $shape['name'],
-    );
-  }
-
-  public function __toShape()[]: self::TShape {
-    return shape(
-      'name' => $this->name,
-    );
-  }
-  public function getInstanceKey()[write_props]: string {
-    return \TCompactSerializer::serialize($this);
-  }
-
-  public function readFromJson(string $jsonText): void {
-    $parsed = json_decode($jsonText, true);
-
-    if ($parsed === null || !($parsed is KeyedContainer<_, _>)) {
-      throw new \TProtocolException("Cannot parse the given json string.");
-    }
-
-    if (idx($parsed, 'name') !== null) {
-      $this->name = HH\FIXME\UNSAFE_CAST<mixed, string>($parsed['name']);
-    }
-  }
-
-}
-
-/**
- * Adds a typedef of {enum}Set that is sutable for storing a `packed` set of
- * values for the annotated enum.
- * 
- * Any enum with this annotation must only have values between 1 and 32 inclusive.
- * 
- * For example:
- *   @thrift.GenEnumSet
- *   enum Flag {
- *     Option1 = 1,
- *     ...
- *   }
- * 
- * Generates the equivalent of:
- *   @cpp.Adapter("::apache::thrift::EnumSetAdapter<::ns::Flag>")
- *   ...
- *   typedef i32 FlagSet
- * 
- * `FlagSet` can then be used like a normal typedef.
- *
- * Original thrift struct:-
- * GenEnumSet
- */
-<<\ThriftTypeInfo(shape('uri' => 'facebook.com/thrift/annotation/GenEnumSet'))>>
-class GenEnumSet implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftShapishSyncStruct {
-  use \ThriftSerializationTrait;
-
-  const \ThriftStructTypes::TSpec SPEC = dict[
-    1 => shape(
-      'var' => 'name',
-      'type' => \TType::STRING,
-    ),
-  ];
-  const dict<string, int> FIELDMAP = dict[
-    'name' => 1,
-  ];
-
-  const type TConstructorShape = shape(
-    ?'name' => ?string,
-  );
-
-  const type TShape = shape(
-    'name' => string,
-  );
-  const int STRUCTURAL_ID = 2593878277785201336;
-  /**
-   * If a custom name is not provided, `{EnumName}Set` is used.
-   * 
-   * Original thrift field:-
-   * 1: string name
-   */
-  public string $name;
-
-  public function __construct(?string $name = null)[] {
-    $this->name = $name ?? '';
-  }
-
-  public static function withDefaultValues()[]: this {
-    return new static();
-  }
-
-  public static function fromShape(self::TConstructorShape $shape)[]: this {
-    return new static(
-      Shapes::idx($shape, 'name'),
-    );
-  }
-
-  public function getName()[]: string {
-    return 'GenEnumSet';
-  }
-
-  public function clearTerseFields()[write_props]: void {
-  }
-
-  public static function getStructMetadata()[]: \tmeta_ThriftStruct {
-    return \tmeta_ThriftStruct::fromShape(
-      shape(
-        "name" => "thrift.GenEnumSet",
-        "fields" => vec[
-          \tmeta_ThriftField::fromShape(
-            shape(
-              "id" => 1,
-              "type" => \tmeta_ThriftType::fromShape(
-                shape(
-                  "t_primitive" => \tmeta_ThriftPrimitiveType::THRIFT_STRING_TYPE,
-                )
-              ),
-              "name" => "name",
-            )
-          ),
-        ],
-        "is_union" => false,
-      )
-    );
-  }
-
-  public static function getAllStructuredAnnotations()[write_props]: \TStructAnnotations {
-    return shape(
-      'struct' => dict[
-        '\facebook\thrift\annotation\Enum' => \facebook\thrift\annotation\Enum::fromShape(
-          shape(
-          )
-        ),
-        '\facebook\thrift\annotation\BitmaskEnum' => \facebook\thrift\annotation\BitmaskEnum::fromShape(
-          shape(
-          )
-        ),
-        '\facebook\thrift\annotation\Transitive' => \facebook\thrift\annotation\Transitive::fromShape(
-          shape(
-          )
-        ),
-      ],
-      'fields' => dict[
-      ],
-    );
-  }
-
-  public static function __fromShape(self::TShape $shape)[]: this {
-    return new static(
-      $shape['name'],
-    );
-  }
-
-  public function __toShape()[]: self::TShape {
-    return shape(
-      'name' => $this->name,
-    );
-  }
-  public function getInstanceKey()[write_props]: string {
-    return \TCompactSerializer::serialize($this);
-  }
-
-  public function readFromJson(string $jsonText): void {
-    $parsed = json_decode($jsonText, true);
-
-    if ($parsed === null || !($parsed is KeyedContainer<_, _>)) {
-      throw new \TProtocolException("Cannot parse the given json string.");
-    }
-
-    if (idx($parsed, 'name') !== null) {
-      $this->name = HH\FIXME\UNSAFE_CAST<mixed, string>($parsed['name']);
-    }
-  }
-
-}
-
-/**
  * Enables all released v1 features.
  *
  * Original thrift struct:-
@@ -2471,10 +1960,6 @@ class v1beta implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftShap
     return shape(
       'struct' => dict[
         '\facebook\thrift\annotation\v1' => \facebook\thrift\annotation\v1::fromShape(
-          shape(
-          )
-        ),
-        '\facebook\thrift\annotation\GenDefaultEnumValue' => \facebook\thrift\annotation\GenDefaultEnumValue::fromShape(
           shape(
           )
         ),

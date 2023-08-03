@@ -40,7 +40,8 @@ val set_tyvars_variance_in_callable :
 
 val has_accept_disposable_attribute : ('a, 'b) Aast.fun_param -> bool
 
-val add_decl_errors : Decl_defs.decl_error list -> unit
+val add_decl_errors :
+  env:Typing_env_types.env -> Decl_defs.decl_error list -> unit
 
 val with_timeout :
   Typing_env_types.env ->
@@ -50,21 +51,10 @@ val with_timeout :
 
 val reify_kind : Aast.reify_kind -> Aast.reify_kind
 
-val merge_hint_with_decl_hint :
-  Typing_env_types.env ->
-  Nast.xhp_attr_hint option ->
-  Typing_defs.decl_ty option ->
-  Typing_defs.decl_ty option
-
-(** During the decl phase we can, for global inference, add "improved type hints".
-   That is we can say that some missing type hints are in fact global tyvars.
-   In that case to get the real type hint we must merge the type hint present
-   in the ast with the one we created during the decl phase. This function does
-   exactly this for the return type, the parameters and the variadic parameters.
-  *)
-val merge_decl_header_with_hints :
+(** Convert a function signature hint (method or toplevel function) into a bunch
+    of decl_tys. *)
+val hint_fun_decl :
   params:Nast.fun_param list ->
   ret:Nast.type_hint ->
-  Typing_defs.decl_ty Typing_defs_core.fun_type option ->
   Typing_env_types.env ->
   Typing_defs.decl_ty option * Typing_defs.decl_ty option list

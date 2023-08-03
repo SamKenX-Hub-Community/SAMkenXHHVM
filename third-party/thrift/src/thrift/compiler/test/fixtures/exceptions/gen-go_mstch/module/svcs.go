@@ -7,18 +7,18 @@ package module // [[[ program thrift source path ]]]
 import (
     "context"
     "fmt"
+    "sync"
 
-    thrift0 "thrift/annotation/thrift"
 
     "thrift/lib/go/thrift"
 )
 
-var _ = thrift0.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = context.Background
 var _ = fmt.Printf
 var _ = thrift.ZERO
+var _ = sync.Mutex{}
 
 
 
@@ -65,6 +65,7 @@ func (c *RaiserChannelClient) Open() error {
 // Deprecated: Use RaiserChannelClient instead.
 type RaiserClient struct {
     chClient *RaiserChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ RaiserClientInterface = &RaiserClient{}
@@ -209,7 +210,9 @@ func newReqRaiserDoBland() *reqRaiserDoBland {
 }
 
 func (x *reqRaiserDoBland) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqRaiserDoBlandAlias reqRaiserDoBland
+    valueAlias := (*reqRaiserDoBlandAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -289,7 +292,9 @@ func newRespRaiserDoBland() *respRaiserDoBland {
 }
 
 func (x *respRaiserDoBland) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respRaiserDoBlandAlias respRaiserDoBland
+    valueAlias := (*respRaiserDoBlandAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -374,7 +379,9 @@ func newReqRaiserDoRaise() *reqRaiserDoRaise {
 }
 
 func (x *reqRaiserDoRaise) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqRaiserDoRaiseAlias reqRaiserDoRaise
+    valueAlias := (*reqRaiserDoRaiseAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -462,7 +469,7 @@ func (x *respRaiserDoRaise) GetBNonCompat() *Banal {
 
 func (x *respRaiserDoRaise) GetB() *Banal {
     if !x.IsSetB() {
-        return NewBanal()
+        return nil
     }
 
     return x.B
@@ -474,7 +481,7 @@ func (x *respRaiserDoRaise) GetFNonCompat() *Fiery {
 
 func (x *respRaiserDoRaise) GetF() *Fiery {
     if !x.IsSetF() {
-        return NewFiery()
+        return nil
     }
 
     return x.F
@@ -486,7 +493,7 @@ func (x *respRaiserDoRaise) GetSNonCompat() *Serious {
 
 func (x *respRaiserDoRaise) GetS() *Serious {
     if !x.IsSetS() {
-        return NewSerious()
+        return nil
     }
 
     return x.S
@@ -661,7 +668,9 @@ func (x *respRaiserDoRaise) DefaultGetS() *Serious {
 }
 
 func (x *respRaiserDoRaise) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respRaiserDoRaiseAlias respRaiserDoRaise
+    valueAlias := (*respRaiserDoRaiseAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -794,7 +803,9 @@ func newReqRaiserGet200() *reqRaiserGet200 {
 }
 
 func (x *reqRaiserGet200) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqRaiserGet200Alias reqRaiserGet200
+    valueAlias := (*reqRaiserGet200Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -920,7 +931,9 @@ if err != nil {
 }
 
 func (x *respRaiserGet200) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respRaiserGet200Alias respRaiserGet200
+    valueAlias := (*respRaiserGet200Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1018,7 +1031,9 @@ func newReqRaiserGet500() *reqRaiserGet500 {
 }
 
 func (x *reqRaiserGet500) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqRaiserGet500Alias reqRaiserGet500
+    valueAlias := (*reqRaiserGet500Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1116,7 +1131,7 @@ func (x *respRaiserGet500) GetFNonCompat() *Fiery {
 
 func (x *respRaiserGet500) GetF() *Fiery {
     if !x.IsSetF() {
-        return NewFiery()
+        return nil
     }
 
     return x.F
@@ -1128,7 +1143,7 @@ func (x *respRaiserGet500) GetBNonCompat() *Banal {
 
 func (x *respRaiserGet500) GetB() *Banal {
     if !x.IsSetB() {
-        return NewBanal()
+        return nil
     }
 
     return x.B
@@ -1140,7 +1155,7 @@ func (x *respRaiserGet500) GetSNonCompat() *Serious {
 
 func (x *respRaiserGet500) GetS() *Serious {
     if !x.IsSetS() {
-        return NewSerious()
+        return nil
     }
 
     return x.S
@@ -1351,7 +1366,9 @@ func (x *respRaiserGet500) DefaultGetS() *Serious {
 }
 
 func (x *respRaiserGet500) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respRaiserGet500Alias respRaiserGet500
+    valueAlias := (*respRaiserGet500Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1560,7 +1577,7 @@ func (p *procFuncRaiserDoBland) Write(seqId int32, result thrift.WritableStruct,
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("DoBland", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("doBland", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -1622,7 +1639,7 @@ func (p *procFuncRaiserDoRaise) Write(seqId int32, result thrift.WritableStruct,
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("DoRaise", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("doRaise", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -1681,7 +1698,7 @@ func (p *procFuncRaiserGet200) Write(seqId int32, result thrift.WritableStruct, 
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Get200", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("get200", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -1744,7 +1761,7 @@ func (p *procFuncRaiserGet500) Write(seqId int32, result thrift.WritableStruct, 
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Get500", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("get500", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {

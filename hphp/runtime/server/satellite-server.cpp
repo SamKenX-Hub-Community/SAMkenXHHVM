@@ -48,8 +48,6 @@ SatelliteServerInfo::SatelliteServerInfo(const IniSetting::Map& ini,
                       RuntimeOption::RequestTimeoutSeconds, false));
   m_reqInitFunc = Config::GetString(ini, hdf, "RequestInitFunction", "", false);
   m_reqInitDoc = Config::GetString(ini, hdf, "RequestInitDocument", "", false);
-  m_password = Config::GetString(ini, hdf, "Password", "", false);
-  m_passwords = Config::GetSet(ini, hdf, "Passwords", m_passwords, false);
   m_alwaysReset = Config::GetBool(ini, hdf, "AlwaysReset", false, false);
   m_functions = Config::GetSet(ini, hdf, "Functions", m_functions, false);
 
@@ -63,21 +61,7 @@ SatelliteServerInfo::SatelliteServerInfo(const IniSetting::Map& ini,
   }
 
   std::string type = Config::GetString(ini, hdf, "Type", "", false);
-  if (type == "InternalPageServer") {
-    m_type = SatelliteServer::Type::KindOfInternalPageServer;
-    std::vector<std::string> urls;
-    urls = Config::GetStrVector(ini, hdf, "URLs", urls, false);
-    for (unsigned int i = 0; i < urls.size(); i++) {
-      m_urls.insert(format_pattern(urls[i], true));
-    }
-    if (Config::GetBool(ini, hdf, "BlockMainServer", true, false)) {
-      InternalURLs.insert(m_urls.begin(), m_urls.end());
-    }
-  } else if (type == "RPCServer") {
-    m_type = SatelliteServer::Type::KindOfRPCServer;
-  } else {
-    m_type = SatelliteServer::Type::Unknown;
-  }
+  m_type = SatelliteServer::Type::Unknown;
 }
 
 bool SatelliteServerInfo::checkMainURL(const std::string& path) {
@@ -92,55 +76,6 @@ bool SatelliteServerInfo::checkMainURL(const std::string& path) {
   }
   return true;
 }
-
-///////////////////////////////////////////////////////////////////////////////
-// InternalPageServer: Server + allowed URL checking
-
-struct InternalPageServer : SatelliteServer {
-  explicit InternalPageServer(std::shared_ptr<SatelliteServerInfo> info)
-    : m_allowedURLs(info->getURLs()) {
-    m_server = ServerFactoryRegistry::createServer
-      (RuntimeOption::ServerType, info->getServerIP(), info->getPort(),
-       info->getThreadCount());
-    m_server->setRequestHandlerFactory<HttpRequestHandler>(
-      info->getTimeoutSeconds().count());
-    m_server->setUrlChecker(std::bind(&InternalPageServer::checkURL, this,
-                                      std::placeholders::_1));
-  }
-
-  void start() override {
-    m_server->start();
-  }
-  void stop() override {
-    m_server->stop();
-    m_server->waitForEnd();
-  }
-  size_t getMaxThreadCount() override {
-    return m_server->getActiveWorker();
-  }
-  int getActiveWorker() override {
-    return m_server->getActiveWorker();
-  }
-  int getQueuedJobs() override {
-    return m_server->getQueuedJobs();
-  }
-
-private:
-  bool checkURL(const std::string &path) const {
-    String url(path.c_str(), path.size(), CopyString);
-    for (const auto &allowed : m_allowedURLs) {
-      Variant ret = preg_match
-        (String(allowed.c_str(), allowed.size(), CopyString), url);
-      if (ret.toInt64() > 0) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  ServerPtr m_server;
-  std::set<std::string> m_allowedURLs;
-};
 
 ///////////////////////////////////////////////////////////////////////////////
 // RPCServer: Server + RPCRequestHandler
@@ -186,12 +121,6 @@ SatelliteServer::Create(std::shared_ptr<SatelliteServerInfo> info) {
   std::unique_ptr<SatelliteServer> satellite;
   if (info->getPort()) {
     switch (info->getType()) {
-    case Type::KindOfInternalPageServer:
-      satellite.reset(new InternalPageServer(info));
-      break;
-    case Type::KindOfRPCServer:
-      satellite.reset(new RPCServer(info));
-      break;
     case Type::KindOfXboxServer:
       satellite.reset(new RPCServer(info));
       break;

@@ -93,7 +93,8 @@ namespace HH {
   /**
    * Creates a `dict` from a `KeyedTraversable`, preserving keys and order.
    */
-  function dict<Tk as arraykey, Tv>(
+  <<__NoAutoLikes>>
+  function dict<<<__NoAutoBound>> Tk as arraykey, Tv>(
     KeyedTraversable<Tk, Tv> $arr,
   )[]: dict<Tk, Tv>;
 
@@ -101,18 +102,22 @@ namespace HH {
    * Creates a `vec` from a `Traversable`, preserving order. Keys are not
    * preserved.
    */
+  <<__NoAutoLikes>>
   function vec<Tv>(Traversable<Tv> $arr)[]: vec<Tv>;
 
   /**
    * Create a `keyset` from a `Traversable` of strings or ints, preserving order.
    * Keys are not preserved.
    */
-  function keyset<Tv as arraykey>(Traversable<Tv> $arr)[]: keyset<Tv>;
+  <<__NoAutoLikes>>
+  function keyset<<<__NoAutoBound>> Tv as arraykey>(Traversable<Tv> $arr)[]: keyset<Tv>;
 
-  function darray<Tk as arraykey, Tv>(
+  <<__NoAutoLikes>>
+  function darray<<<__NoAutoBound>> Tk as arraykey, Tv>(
     KeyedTraversable<Tk, Tv> $arr,
   )[]: darray<Tk, Tv>;
 
+  <<__NoAutoLikes>>
   function varray<Tv>(Traversable<Tv> $arr)[]: varray<Tv>;
 
   function is_php_array(readonly mixed $input)[]: bool;

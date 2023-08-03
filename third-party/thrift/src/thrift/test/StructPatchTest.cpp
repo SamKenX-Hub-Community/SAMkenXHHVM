@@ -20,6 +20,8 @@
 #include <thrift/lib/cpp2/op/Patch.h>
 #include <thrift/lib/cpp2/op/Testing.h>
 #include <thrift/lib/cpp2/op/detail/StructPatch.h>
+#include <thrift/lib/cpp2/protocol/Patch.h>
+#include <thrift/lib/cpp2/protocol/Serializer.h>
 #include <thrift/lib/cpp2/type/Testing.h>
 #include <thrift/lib/thrift/gen-cpp2/patch_types.h>
 #include <thrift/test/gen-cpp2/StructPatchTest_fatal_types.h>
@@ -333,7 +335,6 @@ TEST(StructPatchTest, OptionalFields) {
   MyStructPatch optPatch = testOptPatch();
 
   MyStruct actual;
-  std::optional<std::string> optStr;
 
   // Applying a value patch to void does nothing.
   test::expectPatch(optPatch, {}, {});
@@ -347,9 +348,7 @@ TEST(StructPatchTest, OptionalFields) {
   patch.patchIfSet<ident::doubleVal>().apply(actual.optDoubleVal());
   patch.patchIfSet<ident::stringVal>().apply(actual.optStringVal());
   patch.patchIfSet<ident::structVal>().apply(actual.optStructVal());
-  patch.patchIfSet<ident::stringVal>().apply(optStr);
   EXPECT_EQ(actual, MyStruct{});
-  EXPECT_FALSE(optStr.has_value());
 
   // Applying a value patch to values, patches.
   actual.optBoolVal().ensure();
@@ -361,9 +360,6 @@ TEST(StructPatchTest, OptionalFields) {
   actual.optDoubleVal().ensure();
   actual.optStringVal() = "hi";
   actual.optStructVal().ensure().data1() = "Ba";
-  optStr = "hi";
-  test::expectPatch(
-      patch.patchIfSet<ident::stringVal>(), optStr, "_hi_", "__hi__");
 
   MyStruct expected1, expected2;
   expected1.optBoolVal() = true;
@@ -395,7 +391,6 @@ TEST(StructPatchTest, OptionalFields) {
   patch.patchIfSet<ident::doubleVal>().apply(actual.optDoubleVal());
   patch.patchIfSet<ident::stringVal>().apply(actual.optStringVal());
   patch.patchIfSet<ident::structVal>().apply(actual.optStructVal());
-  patch.patchIfSet<ident::stringVal>().apply(optStr);
   EXPECT_EQ(*actual.optBoolVal(), true);
   EXPECT_EQ(*actual.optByteVal(), 2);
   EXPECT_EQ(*actual.optI16Val(), 2);
@@ -406,7 +401,6 @@ TEST(StructPatchTest, OptionalFields) {
   EXPECT_EQ(*actual.optStringVal(), "_hi_");
   ASSERT_TRUE(actual.optStructVal().has_value());
   EXPECT_EQ(*actual.optStructVal()->data1(), "BaNa");
-  EXPECT_EQ(*optStr, "_hi_");
 }
 
 TEST(StructPatchTest, ListPatch) {
@@ -423,22 +417,6 @@ TEST(StructPatchTest, ListPatch) {
       actual,
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
       {1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 7, 8, 9, 10});
-
-  ListPatch erasePatch;
-  erasePatch.erase(1);
-  test::expectPatch(
-      erasePatch,
-      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
-      {2, 3, 4, 5, 6, 7, 8, 9, 10});
-
-  ListPatch removePatch;
-  removePatch.remove({1, 2, 3, 4});
-  test::expectPatch(
-      removePatch, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, {5, 6, 7, 8, 9, 10});
-
-  ListPatch elementPatch;
-  elementPatch.patchAt(0) += 1;
-  test::expectPatch(elementPatch, {1, 2, 3}, {2, 2, 3}, {3, 2, 3});
 }
 
 TEST(StructPatchTest, ListDequePatch) {
@@ -455,22 +433,6 @@ TEST(StructPatchTest, ListDequePatch) {
       actual,
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
       {1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 7, 8, 9, 10});
-
-  ListDequePatch erasePatch;
-  erasePatch.erase(1);
-  test::expectPatch(
-      erasePatch,
-      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
-      {2, 3, 4, 5, 6, 7, 8, 9, 10});
-
-  ListDequePatch removePatch;
-  removePatch.remove({1, 2, 3, 4});
-  test::expectPatch(
-      removePatch, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, {5, 6, 7, 8, 9, 10});
-
-  ListDequePatch elementPatch;
-  elementPatch.patchAt(0) += 1;
-  test::expectPatch(elementPatch, {1, 2, 3}, {2, 2, 3}, {3, 2, 3});
 }
 
 TEST(StructPatchTest, SetPatch) {
@@ -486,6 +448,7 @@ TEST(StructPatchTest, SetPatch) {
 
   auto assignPatch = SetPatch::createAssign({"a", "d", "e"});
   assignPatch.erase("a");
+  assignPatch.erase("f");
   assignPatch.emplace("a");
   assignPatch.insert("b");
   assignPatch.add({"c"});
@@ -496,7 +459,9 @@ TEST(StructPatchTest, SetPatch) {
 
 TEST(StructPatchTest, MapPatch) {
   MapPatch patch;
-  patch.put({{"a", "1"}, {"b", "2"}});
+  patch.patchByKey("a") += "2";
+  patch.put({{"a", "1"}, {"b", "2"}, {"e", "5"}});
+  patch.erase("e");
   patch.insert_or_assign("b", "3");
   patch.insert_or_assign("c", "4");
 
@@ -508,16 +473,25 @@ TEST(StructPatchTest, MapPatch) {
   assignPatch.put({{"a", "1"}, {"b", "2"}});
   assignPatch.insert_or_assign("b", "3");
   assignPatch.insert_or_assign("c", "4");
-  EXPECT_EQ(
-      *assignPatch.toThrift().assign(),
-      (std::map<std::string, std::string>(
-          {{"a", "1"}, {"b", "3"}, {"c", "4"}})));
+  test::expectPatch(assignPatch, {}, {{"a", "1"}, {"b", "3"}, {"c", "4"}});
+  assignPatch.patchByKey("a") += "2";
+  test::expectPatch(assignPatch, {}, {{"a", "12"}, {"b", "3"}, {"c", "4"}});
 
   MapPatch addPatch;
   addPatch.add({{"a", "1"}, {"b", "2"}});
   test::expectPatch(addPatch, {}, {{"a", "1"}, {"b", "2"}});
   test::expectPatch(
       addPatch, {{"a", "0"}, {"c", "3"}}, {{"a", "0"}, {"b", "2"}, {"c", "3"}});
+
+  // "a" is already added. It's no-op to add it again into the Patch.
+  addPatch.add({{"a", "3"}});
+  test::expectPatch(addPatch, {}, {{"a", "1"}, {"b", "2"}});
+  addPatch.erase("a");
+  test::expectPatch(
+      addPatch, {{"a", "0"}, {"c", "3"}}, {{"b", "2"}, {"c", "3"}});
+  addPatch.add({{"a", "4"}});
+  test::expectPatch(
+      addPatch, {{"a", "0"}, {"c", "3"}}, {{"a", "4"}, {"b", "2"}, {"c", "3"}});
 
   MapPatch putPatch;
   putPatch.put({{"a", "1"}, {"b", "2"}});
@@ -561,12 +535,23 @@ TEST(StructPatchTest, MapPatch) {
   ensuredElementPatch.ensureAndPatchByKey("k") += "1";
   ensuredElementPatch.add({{"w", "2"}});
   ensuredElementPatch.ensureAndPatchByKey("w") += "1";
+  ensuredElementPatch.erase("b");
+  ensuredElementPatch.ensureAndPatchByKey("b") += "2";
 
   test::expectPatch(
       ensuredElementPatch,
       {{"a", "0"}},
-      {{"a", "0"}, {"k", "1"}, {"w", "21"}},
-      {{"a", "0"}, {"k", "11"}, {"w", "211"}});
+      {{"a", "0"}, {"b", "2"}, {"k", "1"}, {"w", "21"}},
+      {{"a", "0"}, {"b", "2"}, {"k", "11"}, {"w", "211"}});
+}
+
+TEST(StructPatchTest, MapPatchMerge) {
+  std::vector<MapPatch::value_type> vec;
+  vec.push_back({});
+  vec.push_back({});
+  for (char c = 'a'; c <= 'z'; ++c) {
+    vec.back().insert({{c}, {c}});
+  }
 
   MapPatch patchMerging1, patchMerging2;
   patchMerging2.patchByKey("d") += "2";
@@ -713,8 +698,6 @@ TEST(UnionPatchTest, Ensure) {
 
   MyUnion expected;
   expected.option1_ref() = "hi";
-  EXPECT_EQ(
-      patch.toThrift(), decltype(patch)::createEnsure(expected).toThrift());
 
   // Empty -> expected
   MyUnion actual;
@@ -758,7 +741,7 @@ TEST(UnionPatchTest, Patch) {
 TEST(UnionPatchTest, PatchIfSet) {
   MyUnionPatch patch;
   patch.patchIfSet<ident::option1>() = "Hi";
-  patch.ensure().option1_ref() = "Bye";
+  patch.ensure<ident::option1>("Bye");
   patch.patchIfSet<ident::option1>() += " World!";
 
   MyUnion hi, bye;
@@ -1020,6 +1003,43 @@ TEST(StructPatchTest, EnsureStructValPatchable) {
   EXPECT_EQ(foo.structVal(), data);
 }
 
+TEST(StructPatchTest, AssignAndPatch) {
+  {
+    MyStructPatch patch;
+    MyStruct myStruct;
+    myStruct.optStringVal() = "1";
+    patch = myStruct;
+    patch.patchIfSet<ident::optStringVal>() += "2";
+
+    MyStruct foo;
+    foo.optStringVal() = "3";
+    patch.apply(foo);
+    EXPECT_EQ(foo.optStringVal(), "12");
+  }
+  {
+    MyStructPatch patch;
+    MyStruct myStruct;
+    myStruct.optStringVal() = "1";
+    patch = myStruct;
+    patch.patchIfSet<ident::optStringVal>().clear();
+
+    MyStruct foo;
+    foo.optStringVal() = "3";
+    patch.apply(foo);
+    EXPECT_FALSE(foo.optStringVal().has_value());
+  }
+  {
+    MyStructPatch patch;
+    patch.assign({});
+    patch.patchIfSet<ident::stringVal>() += "1";
+
+    MyStruct foo;
+    foo.stringVal() = "2";
+    patch.apply(foo);
+    EXPECT_EQ(foo.stringVal(), "1");
+  }
+}
+
 TEST(StructPatchTest, EnsureOptStructValPatchable) {
   MyData data;
   data.data2() = 42;
@@ -1035,6 +1055,17 @@ TEST(StructPatchTest, EnsureOptStructValPatchable) {
   patch.patchIfSet<ident::optStructVal>().ensure<ident::data2>(42);
   patch.apply(foo);
   EXPECT_EQ(foo.optStructVal(), data);
+}
+
+TEST(StructPatchTest, PatchOptField) {
+  MyStructPatch patch;
+  patch.patchIfSet<ident::optI32Val>().clear();
+  patch.patchIfSet<ident::optI32Val>() = 0;
+
+  MyStruct foo;
+  foo.optI32Val() = 0;
+  patch.apply(foo);
+  EXPECT_FALSE(foo.optI32Val().has_value());
 }
 
 TEST(StructPatchTest, IncludePatch) {
@@ -1054,12 +1085,12 @@ TEST(StructPatchTest, IncludePatch) {
 
 TEST(StructPatchTest, RequiredFieldPatch) {
   WithRequiredFieldsPatch patch;
-  patch.ensure<ident::requrired_int>() = 10;
+  patch.patch<ident::required_int>() = 10;
 
   WithRequiredFields data;
   patch.apply(data);
 
-  EXPECT_EQ(*data.requrired_int(), 10);
+  EXPECT_EQ(*data.required_int(), 10);
 }
 
 TEST(PatchTest, IsPatch) {
@@ -1093,6 +1124,65 @@ TEST(PatchTest, IsPatch) {
     using value_type = bool;
   };
   static_assert(!is_patch_v<CounterfeitBoolPatch>);
+}
+
+TEST(PatchTest, StructRemove) {
+  MyStructPatch patch;
+  patch.patch<ident::optI16Val>().clear();
+  patch.patchIfSet<ident::optI32Val>().clear();
+  patch.patchIfSet<ident::i16Val>().clear();
+
+  MyStruct obj;
+  obj.optI16Val() = 16;
+  obj.optI32Val() = 32;
+  obj.optI64Val() = 64;
+  obj.i16Val() = 160;
+  obj.i32Val() = 320;
+
+  protocol::Value value =
+      protocol::asValueStruct<type::struct_t<MyStruct>>(obj);
+
+  protocol::applyPatch(patch.toObject(), value);
+
+  auto buffer = protocol::serializeValue<CompactProtocolWriter>(value);
+
+  MyStruct patched;
+  CompactSerializer::deserialize(buffer.get(), patched);
+
+  EXPECT_FALSE(patched.optI16Val().has_value());
+  EXPECT_FALSE(patched.optI32Val().has_value());
+  EXPECT_EQ(patched.optI64Val(), 64);
+  EXPECT_EQ(patched.i16Val(), 0);
+  EXPECT_EQ(patched.i32Val(), 320);
+
+  std::set<FieldId> ids;
+
+  EXPECT_TRUE(patch.toThrift().remove()->empty());
+  auto remove = patch.toObject().at(static_cast<FieldId>(op::PatchOp::Remove));
+  for (auto id : remove.as_list()) {
+    ids.insert(static_cast<FieldId>(id.as_i16()));
+  }
+  EXPECT_EQ(
+      ids,
+      (std::set{
+          op::get_field_id<MyStruct, ident::optI16Val>::value,
+          op::get_field_id<MyStruct, ident::optI32Val>::value,
+      }));
+}
+
+TEST(PatchTest, StructRemoveSerialization) {
+  using test::patch::IncludePatchStruct;
+  IncludePatchStruct s;
+  s.patch()->patch<ident::data3>().clear();
+
+  // Do a round-trip and check PatchOp::Remove field.
+  auto t = CompactSerializer::deserialize<IncludePatchStruct>(
+      CompactSerializer::serialize<std::string>(s));
+
+  EXPECT_TRUE(s.patch()->toThrift().remove()->empty());
+  EXPECT_EQ(
+      t.patch()->toThrift().remove(),
+      std::unordered_set{static_cast<FieldId>(3)});
 }
 
 } // namespace

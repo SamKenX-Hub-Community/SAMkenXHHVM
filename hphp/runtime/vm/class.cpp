@@ -49,8 +49,8 @@
 #include "hphp/runtime/vm/vm-regs.h"
 
 #include "hphp/runtime/ext/collections/ext_collections.h"
+#include "hphp/runtime/ext/core/ext_core_closure.h"
 #include "hphp/runtime/ext/string/ext_string.h"
-#include "hphp/runtime/ext/std/ext_std_closure.h"
 
 #include "hphp/util/check-size.h"
 #include "hphp/util/logger.h"
@@ -73,6 +73,7 @@ const StaticString s_86sinit("86sinit");
 const StaticString s_86linit("86linit");
 const StaticString s_86ctor("86ctor");
 const StaticString s_86metadata("86metadata");
+const StaticString s_86productAttributionData("86productAttributionData");
 const StaticString s_86reified_prop("86reified_prop");
 const StaticString s_86reifiedinit("86reifiedinit");
 const StaticString s___MockClass("__MockClass");
@@ -936,7 +937,7 @@ void Class::initSProps() const {
           );
         }
         if (RuntimeOption::EvalEnforceGenericsUB > 0) {
-          for (auto const& ub : sProp.ubs) {
+          for (auto const& ub : sProp.ubs.m_constraints) {
             if (ub.isCheckable()) {
               ub.verifyStaticProperty(&val, this, sProp.cls, sProp.name);
             }
@@ -1004,7 +1005,7 @@ void Class::checkPropInitialValues() const {
     auto tv = rval.tv();
     if (tc.isCheckable()) tc.verifyProperty(&tv, this, prop.cls, prop.name);
     if (RuntimeOption::EvalEnforceGenericsUB > 0) {
-      for (auto const& ub : prop.ubs) {
+      for (auto const& ub : prop.ubs.m_constraints) {
         if (ub.isCheckable()) {
           ub.verifyProperty(&tv, this, prop.cls, prop.name);
         }
@@ -1081,11 +1082,11 @@ void Class::checkPropTypeRedefinition(Slot slot) const {
   }
 
   if (RuntimeOption::EvalEnforceGenericsUB > 0 &&
-      (!prop.ubs.empty() || !oldProp.ubs.empty())) {
+      (!prop.ubs.isTop() || !oldProp.ubs.isTop())) {
     std::vector<TypeConstraint> newTCs = {newTC};
-    for (auto const& ub : prop.ubs) newTCs.push_back(ub);
+    for (auto const& ub : prop.ubs.m_constraints) newTCs.push_back(ub);
     std::vector<TypeConstraint> oldTCs = {oldTC};
-    for (auto const& ub : oldProp.ubs) oldTCs.push_back(ub);
+    for (auto const& ub : oldProp.ubs.m_constraints) oldTCs.push_back(ub);
 
     for (auto const& ub : newTCs) {
       if (std::none_of(oldTCs.begin(), oldTCs.end(),
@@ -1190,7 +1191,6 @@ TypedValue* Class::getSPropData(Slot index) const {
 
 ///////////////////////////////////////////////////////////////////////////////
 // Property lookup and accessibility.
-MemberLookupContext::MemberLookupContext(const Class* cls): MemberLookupContext(cls, (const StringData*) nullptr) {}
 
 MemberLookupContext::MemberLookupContext(const Class* cls,
                                          const Func* func)
@@ -1199,20 +1199,16 @@ MemberLookupContext::MemberLookupContext(const Class* cls,
 
 MemberLookupContext::MemberLookupContext(const Class* cls,
                                          const StringData* moduleName) {
-  if (cls) {
-    m_data = cls;
-  } else {
-    m_data = moduleName;
-  }
+  m_class = cls;
+  m_moduleName = moduleName;
 }
 
 const Class* MemberLookupContext::cls() const {
-  return m_data.left();
+  return m_class;
 }
 
 const StringData* MemberLookupContext::moduleName() const {
-  if (auto const cls = m_data.left()) return cls->moduleName();
-  return m_data.right();
+  return m_moduleName;
 }
 
 Class::PropSlotLookup Class::getDeclPropSlot(
@@ -1406,7 +1402,7 @@ Class::PropValLookup Class::getSPropIgnoreLateInit(
 
           auto res = skipCheck ? true : decl.typeConstraint.assertCheck(sProp);
           if (RuntimeOption::EvalEnforceGenericsUB >= 2) {
-            for (auto const& ub : decl.ubs) {
+            for (auto const& ub : decl.ubs.m_constraints) {
               if (ub.isCheckable() && !ub.isSoft()) {
                 res = res && ub.assertCheck(sProp);
               }
@@ -2189,6 +2185,9 @@ void Class::setMethods() {
   }
 
   static_assert(AttrPublic < AttrProtected && AttrProtected < AttrPrivate, "");
+
+  auto isPublicTrait = (attrs() & AttrTrait) && !(attrs() & AttrInternal);
+
   // Overlay/append this class's public/protected methods onto/to those of the
   // parent.
   for (size_t methI = 0; methI < m_preClass->numMethods(); ++methI) {
@@ -2203,6 +2202,15 @@ void Class::setMethods() {
          */
         continue;
       }
+    }
+    // Public traits cannot define internal methods.  Enforcing this property
+    // is especially important for traits labelled <<__ModuleLevelTraits>>
+    // (which are enforced to be public), as the jit would not handle correctly
+    // a call into an internal method of a <<__ModuleLevelTrait>>
+    if (isPublicTrait && method->isInternal()) {
+      raise_error(
+        "Trait %s is public and therefore cannot define the internal method %s",
+        m_preClass->name()->data(), method->name()->data());
     }
 
     MethodMapBuilder::iterator it2 = builder.find(method->name());
@@ -3021,9 +3029,21 @@ void Class::setProperties() {
         m_allFlags.m_hasDeepInitProps = true;
       }
 
+      auto isPublicTrait = isTrait(this) && !(isInternal());
+
       auto addNewProp = [&] {
         Prop prop;
         initProp(prop, preProp);
+
+        // Public traits cannot define internal properties.  Enforcing this
+        // is especially important for traits labelled <<__ModuleLevelTraits>>
+        // (which are enforced to be public), as the jit would not handle correctly
+        // accesses to internal properties of a <<__ModuleLevelTrait>>
+        if (isPublicTrait && prop.isInternal()) {
+          raise_error(
+             "Trait %s is public and therefore cannot define the internal property %s",
+             m_preClass->name()->data(), prop.name->data());
+        }
 
         curPropMap.add(preProp->name(), prop);
         curPropMap[serializationIdx++].serializationIdx = curPropMap.size() - 1;
@@ -3082,8 +3102,8 @@ void Class::setProperties() {
         if (RuntimeOption::EvalCheckPropTypeHints > 0 &&
             !(preProp->attrs() & AttrNoBadRedeclare) &&
             (tc.maybeInequivalentForProp(prop.typeConstraint) ||
-             !preProp->upperBounds().empty() ||
-             !prop.ubs.empty())) {
+             !preProp->upperBounds().isTop() ||
+             !prop.ubs.isTop())) {
           // If this property isn't obviously not redeclaring a property in
           // the parent, we need to check that when we initialize the class.
           prop.attrs = Attr(prop.attrs & ~AttrNoBadRedeclare);
@@ -3495,7 +3515,7 @@ void Class::checkPrePropVal(XProp& prop, const PreClass::Prop* preProp) {
     if (!tc.alwaysPasses(&tv)) return false;
     if (RuntimeOption::EvalEnforceGenericsUB > 0) {
       auto& ubs = const_cast<PreClass::UpperBoundVec&>(preProp->upperBounds());
-      for (auto& ub : ubs) {
+      for (auto& ub : ubs.m_constraints) {
         if (!ub.alwaysPasses(&tv)) return false;
       }
     }
@@ -3529,7 +3549,7 @@ void Class::initProp(XProp& prop, const PreClass::Prop* preProp) {
   prop.repoAuthType        = preProp->repoAuthType();
 
   // If type constraint has soft or nullable flags, apply them to upper-bounds.
-  for (auto &ub : prop.ubs) applyFlagsToUB(ub, prop.typeConstraint);
+  for (auto &ub : prop.ubs.m_constraints) applyFlagsToUB(ub, prop.typeConstraint);
   // Check if this property's initial value needs to be type checked at
   // runtime.
   checkPrePropVal(prop, preProp);
@@ -4754,11 +4774,11 @@ void setupClass(Class* newClass, NamedType* nameList) {
 
   if (debug) {
     if (newClass->isBuiltin()) {
-      assertx(newClass->isUnique());
+      assertx(newClass->isPersistent());
       for (auto i = newClass->numMethods(); i--;) {
         auto const func = newClass->getMethod(i);
         if (func->isCPPBuiltin() && func->isStatic()) {
-          assertx(func->isUnique());
+          assertx(func->isPersistent());
         }
       }
     }
@@ -5005,6 +5025,12 @@ void handleModuleBoundaryViolation(const Class* cls, const Func* caller) {
   if (!cls || !caller) return;
   if (will_symbol_raise_module_boundary_violation(cls, caller)) {
     raiseModuleBoundaryViolation(cls, caller->moduleName());
+  }
+  if (RO::EvalEnforceDeployment) {
+    auto const& packageInfo = g_context->getPackageInfo();
+    if (will_symbol_raise_deployment_boundary_violation(packageInfo, *cls)) {
+      raiseDeploymentBoundaryViolation(cls);
+    }
   }
 }
 } // namespace

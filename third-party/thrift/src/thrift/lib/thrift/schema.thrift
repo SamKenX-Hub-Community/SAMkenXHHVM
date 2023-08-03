@@ -55,9 +55,8 @@ typedef set<id.ValueId> AnnotationIds (py3.hidden)
  * An instance of an annotation, applied to some definition.
  */
 struct StructuredAnnotation {
-  1: string name;
-  2: string uri;
-  3: map<string, protocol.Value> fields;
+  1: standard.TypeUri type;
+  2: map<string, protocol.Value> fields;
 } (py3.hidden)
 
 /**
@@ -211,6 +210,30 @@ struct DefinitionAttrs {
 
   /** The release state associated with this definition. */
   5: ReleaseState releaseState;
+
+  /** Information about the documentation preceding the definition. */
+  6: DocBlock docs;
+
+  /** The source range containing the definition (excluding its docblock). */
+  7: SourceRange sourceRange;
+} (py3.hidden)
+
+// A lightweight source range that can be resolved into the file name,
+// line and column when the schema is produced from an IDL file.
+struct SourceRange {
+  1: id.ProgramId programId;
+  2: i32 beginLine;
+  3: i32 beginColumn;
+  4: i32 endLine;
+  5: i32 endColumn;
+} (py3.hidden)
+
+/**
+ * Information about the comment preceding a definition (like this one!).
+ */
+struct DocBlock {
+  1: string contents;
+  2: SourceRange sourceRange;
 } (py3.hidden)
 
 /**

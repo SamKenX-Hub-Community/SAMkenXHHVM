@@ -130,7 +130,12 @@ struct XboxWorker
       *s_xbox_prev_req_init_doc = reqInitDoc;
 
       job->onRequestStart(job->getStartTimer());
-      createRequestHandler()->run(job);
+
+      auto const handler = createRequestHandler();
+      if (auto ctx = job->detachCliContext()) {
+        handler->setCliContext(std::move(ctx).value());
+      }
+      handler->run(job);
       destroyRequestHandler();
       job->decRefCount();
     } catch (...) {
@@ -144,8 +149,6 @@ private:
     }
     if (RuntimeOption::XboxServerLogInfo) XboxRequestHandler::Info = true;
     s_xbox_request_handler->setServerInfo(*s_xbox_server_info);
-    s_xbox_request_handler->setReturnEncodeType(
-      RPCRequestHandler::ReturnEncodeType::Internal);
     return s_xbox_request_handler.get();
   }
 
@@ -228,6 +231,9 @@ struct XboxTask : SweepableResourceData {
   XboxTask(const String& message, const String& reqInitDoc = "") {
     m_job = new XboxTransport(message.toCppString(), reqInitDoc.toCppString());
     m_job->incRefCount();
+    if (cli_supports_clone()) {
+      m_job->setCliContext(cli_clone_context());
+    }
   }
 
   XboxTask(const XboxTask&) = delete;

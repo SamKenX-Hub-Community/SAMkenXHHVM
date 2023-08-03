@@ -195,7 +195,7 @@ APCHandle::Pair APCObject::ConstructSlow(ObjectData* objectData,
       } else {
         // Private.
         auto* ctx = Class::lookup(cls.get());
-        if (ctx && ctx->attrs() & AttrUnique) {
+        if (ctx && ctx->attrs() & AttrPersistent) {
           prop->ctx = ctx;
         } else {
           prop->ctx = makeStaticString(cls.get());
@@ -398,8 +398,11 @@ Object APCObject::createObjectSlow(bool pure) const {
         }
       }
 
+      assertx(ctx);
       auto val = prop->val ? prop->val->toLocal(pure) : init_null();
-      obj->setProp(MemberLookupContext(const_cast<Class*>(ctx)), key, *val.asTypedValue());
+      obj->setProp(
+        MemberLookupContext(const_cast<Class*>(ctx), ctx->moduleName()),
+        key, *val.asTypedValue());
     }
   }
 

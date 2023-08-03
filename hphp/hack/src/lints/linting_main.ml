@@ -28,7 +28,6 @@ let typed_linters =
     Linter_sketchy_null_check.handler;
     Linter_truthiness_test.handler;
     Linter_redundant_generics.handler;
-    Linter_as_invalid_type.handler;
     Linter_class_overrides_trait.handler;
     Linter_expr_tree_types.handler;
     Linter_nullsafe_not_needed.handler;
@@ -46,9 +45,9 @@ let typed_linters =
   ]
   @ Linting_service.typed_linters
 
-let lint_tast ctx ast =
-  (Tast_visitor.iter_with typed_linters)#go ctx ast;
-  Linting_service.lint_tast ctx ast
+let lint_tast ctx (tast : Tast.program) =
+  (Tast_visitor.iter_with typed_linters)#go ctx tast;
+  Linting_service.lint_tast ctx tast
 
 (* Most lint rules are easier to write against the named AST. However, some
  * things that we want to lint for are discarded / simplified by the time we
@@ -81,21 +80,8 @@ let lint ctx fn content =
   Typing_deps.trace := false;
   Errors.ignore_ (fun () ->
       let parser_return = parse_and_lint fn content ctx in
-      let { Parser_return.file_mode; comments; ast; _ } = parser_return in
-      let (funs, classes, typedefs, consts, modules) = Nast.get_defs ast in
+      let { Parser_return.file_mode; ast = full_ast; _ } = parser_return in
       (* naming and typing currently don't produce any lint errors *)
-      let fi =
-        {
-          FileInfo.file_mode;
-          funs;
-          classes;
-          typedefs;
-          consts;
-          modules;
-          comments = Some comments;
-          hash = None;
-        }
-      in
       (* PHP files generate declarations via some fairly error-prone regexps,
        * so only try to lint Hack files *)
       match file_mode with
@@ -109,18 +95,16 @@ let lint ctx fn content =
         lint_nast ctx fn parser_return;
 
         (* Get Typed AST and run TAST linters *)
-        let ctx =
-          Provider_context.map_tcopt
-            ~f:(fun tcopt ->
-              (* Sound type-based linters require agreement between TAST
-                 definition under dynamic and normal assumptions. So we apply
-                 the linter with the dynamic definitions produced. *)
-              if TypecheckerOptions.enable_sound_dynamic tcopt then
-                GlobalOptions.{ tcopt with tco_tast_under_dynamic = true }
-              else
-                tcopt)
-            ctx
+        let (_, tast) =
+          Typing_check_job.calc_errors_and_tast ctx fn ~full_ast
         in
-        let (tast, _) = Typing_check_utils.type_file ctx fn fi in
-        lint_tast ctx tast);
+        (* collect both the dynamic TAST and non-dynamic TAST in a big list,
+           that's what linting expects! *)
+        let tasts =
+          Tast.tasts_as_list tast
+          |> Tast_with_dynamic.collect
+          |> Tast_with_dynamic.all
+          |> List.concat
+        in
+        lint_tast ctx tasts);
   Typing_deps.trace := orig_trace

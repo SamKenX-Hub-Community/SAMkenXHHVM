@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<ca9973b2ae1880e49d4a2b69762617cd>>
+// @generated SignedSource<<792c74b8f3cef5d315ed84c1ef179b2e>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -102,12 +102,12 @@ where
         }
     }
 }
-impl<T> Transform for ocamlrep::rc::RcOc<T>
+impl<T> Transform for std::sync::Arc<T>
 where
     T: Transform,
 {
     fn traverse(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
-        if let Some(x) = ocamlrep::rc::RcOc::get_mut(self) {
+        if let Some(x) = std::sync::Arc::get_mut(self) {
             x.transform(env, &mut pass.clone());
         }
     }
@@ -237,9 +237,11 @@ impl Transform for Stmt_ {
             Stmt_::Using(ref mut __binding_0) => __binding_0.transform(env, pass),
             Stmt_::For(ref mut __binding_0) => __binding_0.transform(env, pass),
             Stmt_::Switch(ref mut __binding_0) => __binding_0.transform(env, pass),
+            Stmt_::Match(ref mut __binding_0) => __binding_0.transform(env, pass),
             Stmt_::Foreach(ref mut __binding_0) => __binding_0.transform(env, pass),
             Stmt_::Try(ref mut __binding_0) => __binding_0.transform(env, pass),
             Stmt_::Noop => {}
+            Stmt_::DeclareLocal(ref mut __binding_0) => __binding_0.transform(env, pass),
             Stmt_::Block(ref mut __binding_0) => __binding_0.transform(env, pass),
             _ => {}
         }
@@ -342,6 +344,110 @@ impl Transform for FinallyBlock {
     fn traverse(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
         match self {
             FinallyBlock(ref mut __binding_0) => __binding_0.transform(env, pass),
+        }
+    }
+}
+impl Transform for StmtMatch {
+    fn transform(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        let mut in_pass = pass.clone();
+        if let Break(..) = pass.on_ty_stmt_match_top_down(env, self) {
+            return;
+        }
+        self.traverse(env, pass);
+        in_pass.on_ty_stmt_match_bottom_up(env, self);
+    }
+    fn traverse(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        match self {
+            StmtMatch {
+                expr: ref mut __binding_0,
+                arms: ref mut __binding_1,
+            } => {
+                {
+                    __binding_0.transform(env, pass)
+                }
+                { __binding_1.transform(env, pass) }
+            }
+        }
+    }
+}
+impl Transform for StmtMatchArm {
+    fn transform(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        let mut in_pass = pass.clone();
+        if let Break(..) = pass.on_ty_stmt_match_arm_top_down(env, self) {
+            return;
+        }
+        self.traverse(env, pass);
+        in_pass.on_ty_stmt_match_arm_bottom_up(env, self);
+    }
+    fn traverse(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        match self {
+            StmtMatchArm {
+                pat: ref mut __binding_0,
+                body: ref mut __binding_1,
+            } => {
+                {
+                    __binding_0.transform(env, pass)
+                }
+                { __binding_1.transform(env, pass) }
+            }
+        }
+    }
+}
+impl Transform for Pattern {
+    fn transform(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        let mut in_pass = pass.clone();
+        if let Break(..) = pass.on_ty_pattern_top_down(env, self) {
+            return;
+        }
+        self.traverse(env, pass);
+        in_pass.on_ty_pattern_bottom_up(env, self);
+    }
+    fn traverse(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        match self {
+            Pattern::PVar(ref mut __binding_0) => __binding_0.transform(env, pass),
+            Pattern::PRefinement(ref mut __binding_0) => __binding_0.transform(env, pass),
+        }
+    }
+}
+impl Transform for PatVar {
+    fn transform(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        let mut in_pass = pass.clone();
+        if let Break(..) = pass.on_ty_pat_var_top_down(env, self) {
+            return;
+        }
+        self.traverse(env, pass);
+        in_pass.on_ty_pat_var_bottom_up(env, self);
+    }
+    fn traverse(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        match self {
+            PatVar {
+                id: ref mut __binding_1,
+                ..
+            } => __binding_1.transform(env, pass),
+        }
+    }
+}
+impl Transform for PatRefinement {
+    fn transform(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        let mut in_pass = pass.clone();
+        if let Break(..) = pass.on_ty_pat_refinement_top_down(env, self) {
+            return;
+        }
+        self.traverse(env, pass);
+        in_pass.on_ty_pat_refinement_bottom_up(env, self);
+    }
+    fn traverse(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        match self {
+            PatRefinement {
+                id: ref mut __binding_1,
+                hint: ref mut __binding_2,
+                ..
+            } => {
+                {
+                    __binding_1.transform(env, pass)
+                }
+                { __binding_2.transform(env, pass) }
+            }
         }
     }
 }
@@ -974,6 +1080,37 @@ impl Transform for Targ {
                     __binding_0.transform(env, pass)
                 }
                 { __binding_1.transform(env, pass) }
+            }
+        }
+    }
+}
+impl Transform for CallExpr {
+    fn transform(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        let mut in_pass = pass.clone();
+        if let Break(..) = pass.on_ty_call_expr_top_down(env, self) {
+            return;
+        }
+        self.traverse(env, pass);
+        in_pass.on_ty_call_expr_bottom_up(env, self);
+    }
+    fn traverse(&mut self, env: &Env, pass: &mut (impl Pass + Clone)) {
+        match self {
+            CallExpr {
+                func: ref mut __binding_0,
+                targs: ref mut __binding_1,
+                args: ref mut __binding_2,
+                unpacked_arg: ref mut __binding_3,
+            } => {
+                {
+                    __binding_0.transform(env, pass)
+                }
+                {
+                    __binding_1.transform(env, pass)
+                }
+                {
+                    __binding_2.transform(env, pass)
+                }
+                { __binding_3.transform(env, pass) }
             }
         }
     }
@@ -1678,6 +1815,7 @@ impl Transform for Typedef {
                 internal: ref mut __binding_14,
                 module: ref mut __binding_15,
                 docs_url: ref mut __binding_16,
+                doc_comment: ref mut __binding_17,
                 ..
             } => {
                 {
@@ -1727,7 +1865,10 @@ impl Transform for Typedef {
                 {
                     __binding_15.transform(env, pass)
                 }
-                { __binding_16.transform(env, pass) }
+                {
+                    __binding_16.transform(env, pass)
+                }
+                { __binding_17.transform(env, pass) }
             }
         }
     }
@@ -2076,6 +2217,7 @@ impl Transform for Hint_ {
             Hint_::Hany => {}
             Hint_::Herr => {}
             Hint_::Hmixed => {}
+            Hint_::Hwildcard => {}
             Hint_::Hnonnull => {}
             Hint_::Habstr(ref mut __binding_0, ref mut __binding_1) => {
                 {

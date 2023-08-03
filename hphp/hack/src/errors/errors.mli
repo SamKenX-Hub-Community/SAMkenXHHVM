@@ -12,20 +12,6 @@ type error = (Pos.t, Pos_or_decl.t) User_error.t [@@deriving eq, show]
 type finalized_error = (Pos.absolute, Pos.absolute) User_error.t
 [@@deriving eq, show]
 
-(* The analysis phase that the error is coming from. *)
-type phase =
-  | Naming
-  | Typing
-[@@deriving eq]
-
-module PhaseMap : sig
-  include Reordered_argument_collections.Map_S with type key = phase
-
-  val pp : (Format.formatter -> 'a -> unit) -> Format.formatter -> 'a t -> unit
-
-  val show : (Format.formatter -> 'a -> unit) -> 'a t -> string
-end
-
 type format =
   | Context
   | Raw
@@ -45,13 +31,11 @@ module ErrorSet : Caml.Set.S with type elt := error
 module FinalizedErrorSet : Caml.Set.S with type elt := finalized_error
 
 (** [t] is an efficient for use inside hh_server or other places that compute errors,
-which also supports incremental updates based on file/phase.
+which also supports incremental updates based on file.
 But it should not be transferred to other processes such as [hh_client] since they
 for instance won't know the Hhi path that was used, and hence can't print errors.
 They should use [finalized_error list] instead. *)
 val sort_and_finalize : t -> finalized_error list
-
-val phases_up_to_excl : phase -> phase list
 
 module Parsing : Error_category.S
 
@@ -88,10 +72,6 @@ val fixme_present : Pos.t -> int -> bool
 
 val code_agnostic_fixme : bool ref
 
-val phase_to_string : phase -> string
-
-val phase_of_string : string -> phase option
-
 val convert_errors_to_string :
   ?include_filename:bool -> error list -> string list
 
@@ -123,12 +103,11 @@ val run_and_check_for_errors : (unit -> 'a) -> 'a * bool
 val do_ : ?apply_fixmes:bool -> ?drop_fixmed:bool -> (unit -> 'a) -> t * 'a
 
 (** Return the list of errors caused by the function passed as parameter
-    along with its result.
-    The phase parameter determine the phase of the returned errors. *)
+    along with its result. *)
 val do_with_context :
-  ?drop_fixmed:bool -> Relative_path.t -> phase -> (unit -> 'a) -> t * 'a
+  ?drop_fixmed:bool -> Relative_path.t -> (unit -> 'a) -> t * 'a
 
-val run_in_context : Relative_path.t -> phase -> (unit -> 'a) -> 'a
+val run_in_context : Relative_path.t -> (unit -> 'a) -> 'a
 
 (** Turn on lazy decl mode for the duration of the closure.
     This runs without returning the original state,
@@ -157,11 +136,10 @@ val merge : t -> t -> t
 
 val merge_into_current : t -> unit
 
-(** [incremental_update ~old ~new_ ~rechecked phase] is for updating errors.
-It starts with [old], removes every error in [rechecked]+[phase],
+(** [incremental_update ~old ~new_ ~rechecked] is for updating errors.
+It starts with [old], removes every error in [rechecked],
 then adds every error mentioned in [new_]. *)
-val incremental_update :
-  old:t -> new_:t -> rechecked:Relative_path.Set.t -> phase -> t
+val incremental_update : old:t -> new_:t -> rechecked:Relative_path.Set.t -> t
 
 val empty : t
 
@@ -182,8 +160,7 @@ val drop_fixmed_errors :
 
 val drop_fixmed_errors_in_files : t -> t
 
-(** Default applied phase is Typing. *)
-val from_file_error_list : ?phase:phase -> (Relative_path.t * error) list -> t
+val from_file_error_list : (Relative_path.t * error) list -> t
 
 val per_file_error_count : ?drop_fixmed:bool -> per_file_errors -> int
 
@@ -194,22 +171,20 @@ val iter_error_list : ?drop_fixmed:bool -> (error -> unit) -> t -> unit
 
 val fold_errors :
   ?drop_fixmed:bool ->
-  ?phase:phase ->
   t ->
   init:'a ->
-  f:(Relative_path.t -> phase -> error -> 'a -> 'a) ->
+  f:(Relative_path.t -> error -> 'a -> 'a) ->
   'a
 
 val fold_errors_in :
   ?drop_fixmed:bool ->
-  ?phase:phase ->
   t ->
   file:Relative_path.t ->
   init:'a ->
   f:(error -> 'a -> 'a) ->
   'a
 
-val get_failed_files : t -> phase -> Relative_path.Set.t
+val get_failed_files : t -> Relative_path.Set.t
 
 val as_telemetry : t -> Telemetry.t
 
@@ -232,6 +207,18 @@ val internal_error : Pos.t -> string -> unit
 val unimplemented_feature : Pos.t -> string -> unit
 
 val experimental_feature : Pos.t -> string -> unit
+
+(* The intention is to introduce invariant violations with `report_to_user`
+   set to `false` initially. Then we observe and confirm that the invariant is
+   not repeatedly violated. Only then, we set it to `true` in a subsequent
+   release. This should prevent us from blocking users unexpectedly while
+   gradually introducing signal for unexpected compiler states. *)
+val invariant_violation :
+  Pos.t -> Telemetry.t -> string -> report_to_user:bool -> unit
+
+val exception_occurred : Pos.t -> Exception.t -> unit
+
+val typechecker_timeout : Pos.t -> string -> int -> unit
 
 val method_is_not_dynamically_callable :
   Pos.t ->

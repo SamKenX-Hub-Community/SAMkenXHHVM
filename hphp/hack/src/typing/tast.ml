@@ -83,7 +83,7 @@ type program = (ty, saved_env) Aast.program [@@deriving show]
 
 type def = (ty, (saved_env[@hash.ignore])) Aast.def [@@deriving hash]
 
-type def_list = def list [@@deriving hash]
+type def_with_dynamic = def Tast_with_dynamic.t [@@deriving hash]
 
 type expr = (ty, saved_env) Aast.expr
 
@@ -139,6 +139,34 @@ type gconst = (ty, saved_env) Aast.gconst
 
 type module_def = (ty, saved_env) Aast.module_def
 
+type call_expr = (ty, saved_env) Aast.call_expr
+
+type by_names = {
+  fun_tasts: def Tast_with_dynamic.t SMap.t;
+  class_tasts: def Tast_with_dynamic.t SMap.t;
+  typedef_tasts: def SMap.t;
+  gconst_tasts: def SMap.t;
+  module_tasts: def SMap.t;
+}
+
+let empty_by_names =
+  {
+    fun_tasts = SMap.empty;
+    class_tasts = SMap.empty;
+    typedef_tasts = SMap.empty;
+    gconst_tasts = SMap.empty;
+    module_tasts = SMap.empty;
+  }
+
+let tasts_as_list
+    ({ fun_tasts; class_tasts; typedef_tasts; gconst_tasts; module_tasts } :
+      by_names) : def Tast_with_dynamic.t list =
+  SMap.values fun_tasts
+  @ SMap.values class_tasts
+  @ List.map ~f:Tast_with_dynamic.mk_without_dynamic (SMap.values typedef_tasts)
+  @ List.map ~f:Tast_with_dynamic.mk_without_dynamic (SMap.values gconst_tasts)
+  @ List.map ~f:Tast_with_dynamic.mk_without_dynamic (SMap.values module_tasts)
+
 let empty_saved_env tcopt : saved_env =
   {
     tcopt;
@@ -191,8 +219,9 @@ let nast_converter =
         let targs =
           List.map ~f:(fun hint -> ((), super#on_hint () hint)) hints
         in
-        let id = ((), pos, Aast.Id (pos, name)) in
-        Aast.Call (id, targs, [(Ast_defs.Pnormal, ex)], None)
+        let func = ((), pos, Aast.Id (pos, name)) in
+        let args = [(Ast_defs.Pnormal, ex)] in
+        Aast.Call { func; targs; args; unpacked_arg = None }
       in
       match src with
       | Aast.UnsafeCast hints ->

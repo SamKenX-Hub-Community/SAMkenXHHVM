@@ -33,7 +33,6 @@ use hackrs_test_utils::store::make_shallow_decl_store;
 use hhvm_options::HhvmOptions;
 use multifile_rust as multifile;
 use naming_provider::SqliteNamingTable;
-use ocamlrep::rc::RcOc;
 use options::Hhvm;
 use options::ParserOptions;
 use parking_lot::Mutex;
@@ -75,6 +74,12 @@ pub(crate) struct SingleFileOpts {
 
     #[command(flatten)]
     hhvm_options: HhvmOptions,
+
+    /// Unwrap concurrent blocks as a regular sequence of awaits.
+    ///
+    /// Currently, used only for infer/textual.
+    #[clap(long, action, hide(true))]
+    pub(crate) unwrap_concurrent: bool,
 
     /// The level of verbosity (can be set multiple times)
     #[clap(long = "verbose", action(clap::ArgAction::Count))]
@@ -144,6 +149,7 @@ pub(crate) fn native_env(filepath: RelativePath, opts: &SingleFileOpts) -> Resul
     let hhvm_config = hhvm_options.to_config()?;
     let parser_options = ParserOptions {
         po_auto_namespace_map: auto_namespace_map().collect(),
+        po_unwrap_concurrent: opts.unwrap_concurrent,
         ..hhvm_config::parser_options(&hhvm_config)?
     };
     let hhbc_flags = hhvm_config::hhbc_flags(&hhvm_config)?;
@@ -153,7 +159,9 @@ pub(crate) fn native_env(filepath: RelativePath, opts: &SingleFileOpts) -> Resul
         hhbc_flags,
         hhvm: Hhvm {
             include_roots: Default::default(),
+            renamable_functions: Default::default(),
             parser_options,
+            jit_enable_rename_function: hhvm_config::jit_enable_rename_function(&hhvm_config)?,
         },
         flags: opts.env_flags.clone(),
     })
@@ -169,7 +177,7 @@ pub(crate) fn process_single_file(
         eprintln!("processing file: {}", filepath.display());
     }
     let filepath = RelativePath::make(Prefix::Dummy, filepath);
-    let source_text = SourceText::make(RcOc::new(filepath.clone()), &content);
+    let source_text = SourceText::make(Arc::new(filepath.clone()), &content);
     let env = native_env(filepath, opts)?;
     let mut output = Vec::new();
     let decl_arena = bumpalo::Bump::new();
@@ -193,7 +201,7 @@ pub(crate) fn compile_from_text(hackc_opts: &mut crate::Opts, w: &mut impl Write
             .with_context(|| format!("Unable to read file '{}'", path.display()))?;
         let env = hackc_opts.native_env(path)?;
         let decl_arena = bumpalo::Bump::new();
-        let text = SourceText::make(RcOc::new(env.filepath.clone()), &source_text);
+        let text = SourceText::make(Arc::new(env.filepath.clone()), &source_text);
         let decl_provider = SelfProvider::wrap_existing_provider(
             None,
             env.to_decl_parser_options(),
@@ -211,7 +219,7 @@ fn compile_impl<'d>(
     source_text: Vec<u8>,
     decl_provider: Option<Arc<dyn DeclProvider<'d> + 'd>>,
 ) -> Result<Vec<u8>> {
-    let text = SourceText::make(RcOc::new(env.filepath.clone()), &source_text);
+    let text = SourceText::make(Arc::new(env.filepath.clone()), &source_text);
     let mut hhas = Vec::new();
     compile::from_text(
         &mut hhas,

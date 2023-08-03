@@ -55,7 +55,6 @@ type t =
       pos: Pos.t;
       name: string;
       prev_pos: Pos.t;
-      prev_name: string;
     }
   | Unbound_name of {
       pos: Pos.t;
@@ -283,6 +282,13 @@ type t =
   | Tparam_non_shadowing_reuse of {
       pos: Pos.t;
       tparam_name: string;
+    }
+  | Dynamic_hint_disallowed of Pos.t
+  | Illegal_typed_local of {
+      join: bool;
+      id_pos: Pos.t;
+      id_name: string;
+      def_pos: Pos.t;
     }
 
 val to_user_error : t -> (Pos.t, Pos_or_decl.t) User_error.t

@@ -99,6 +99,12 @@ class parser {
     throw parse_error();
   }
 
+  // Reports a recoverable error without aborting the parse process.
+  template <typename... T>
+  void report_error(fmt::format_string<T...> msg, T&&... args) {
+    diags_.error(token_.range.begin, msg, std::forward<T>(args)...);
+  }
+
   source_range expect_and_consume(token_kind expected) {
     auto range = token_.range;
     if (token_.kind != expected) {
@@ -114,37 +120,48 @@ class parser {
   bool parse_program() {
     consume_token();
     try {
+      if (auto attrs = parse_package_and_directives()) {
+        auto loc = attrs->loc;
+        parse_definition(loc, std::move(attrs));
+      }
       while (token_.kind != tok::eof) {
         auto begin = token_.range.begin;
         auto attrs = parse_attributes();
-        switch (token_.kind) {
-          case tok::kw_include:
-          case tok::kw_cpp_include:
-          case tok::kw_hs_include:
-            actions_.on_program_doctext();
-            parse_include();
-            actions_.on_standard_header(begin, std::move(attrs));
-            break;
-          case tok::kw_package: {
-            actions_.on_program_doctext();
-            parse_package(begin, std::move(attrs));
-            break;
-          }
-          case tok::kw_namespace:
-            actions_.on_program_doctext();
-            parse_namespace();
-            actions_.on_standard_header(begin, std::move(attrs));
-            break;
-          default:
-            parse_definition(begin, std::move(attrs));
-            break;
-        }
+        parse_definition(begin, std::move(attrs));
       }
       actions_.on_program();
     } catch (const parse_error&) {
       return false; // The error has already been reported.
     }
     return true;
+  }
+
+  std::unique_ptr<attributes> parse_package_and_directives() {
+    while (token_.kind != tok::eof) {
+      auto begin = token_.range.begin;
+      switch (token_.kind) {
+        case tok::kw_include:
+        case tok::kw_cpp_include:
+        case tok::kw_hs_include:
+          actions_.on_program_doctext();
+          parse_include();
+          break;
+        case tok::kw_namespace:
+          actions_.on_program_doctext();
+          parse_namespace();
+          break;
+        default: {
+          auto attrs = parse_attributes();
+          if (token_.kind != tok::kw_package) {
+            return attrs;
+          }
+          actions_.on_program_doctext();
+          parse_package(begin, std::move(attrs));
+          break;
+        }
+      }
+    }
+    return {};
   }
 
   // include: ("include" | "cpp_include" | "hs_include") string_literal [";"]
@@ -249,6 +266,7 @@ class parser {
 
   // attributes: [doctext] structured_annotation*
   std::unique_ptr<attributes> parse_attributes() {
+    auto loc = token_.range.begin;
     auto doc = actions_.on_doctext();
     auto annotations = node_list<t_const>();
     while (token_.kind == '@') {
@@ -256,14 +274,13 @@ class parser {
     }
     return doc || !annotations.empty()
         ? std::make_unique<attributes>(
-              attributes{std::move(doc), std::move(annotations), {}})
+              attributes{loc, std::move(doc), std::move(annotations), {}})
         : nullptr;
   }
 
   boost::optional<comment> try_parse_inline_doc() {
-    auto loc = token_.range.begin;
     return token_.kind == tok::inline_doc
-        ? actions_.on_inline_doc(loc, consume_token().string_value())
+        ? actions_.on_inline_doc(token_.range, consume_token().string_value())
         : boost::optional<comment>();
   }
 
@@ -333,10 +350,10 @@ class parser {
 
   // service:
   //   attributes
-  //   "service" identifier extends? "{" function_or_performs* "}"
+  //   "service" identifier ["extends" identifier] "{"
+  //     (function | performs)*
+  //   "}"
   //   [deprecated_annotations]
-  //
-  // extends: "extends" identifier
   void parse_service(source_location loc, std::unique_ptr<attributes> attrs) {
     auto range = range_tracker(loc, end_);
     expect_and_consume(tok::kw_service);
@@ -345,7 +362,7 @@ class parser {
     if (try_consume_token(tok::kw_extends)) {
       base = parse_identifier();
     }
-    auto functions = parse_braced_function_list();
+    auto functions = parse_interface_body();
     try_parse_deprecated_annotations(attrs);
     actions_.on_service(
         range, std::move(attrs), name, base, std::move(functions));
@@ -353,23 +370,23 @@ class parser {
 
   // interaction:
   //   attributes
-  //   "interaction" identifier "{" function_or_performs* "}"
+  //   "interaction" identifier "{" (function | performs)* "}"
   //   [deprecated_annotations]
   void parse_interaction(
       source_location loc, std::unique_ptr<attributes> attrs) {
     auto range = range_tracker(loc, end_);
     expect_and_consume(tok::kw_interaction);
     auto name = parse_identifier();
-    auto functions = parse_braced_function_list();
+    auto functions = parse_interface_body();
     try_parse_deprecated_annotations(attrs);
     actions_.on_interaction(
         range, std::move(attrs), name, std::move(functions));
   }
 
-  // function_or_performs:
-  //     function comma_or_semicolon?
-  //   | "performs" type comma_or_semicolon
-  t_function_list parse_braced_function_list() {
+  // interface_body: "{" (function | performs)* "}
+  // function: function comma_or_semicolon?
+  // performs: "performs" identifier ";"
+  t_function_list parse_interface_body() {
     expect_and_consume('{');
     auto functions = t_function_list();
     while (token_.kind != '}') {
@@ -381,11 +398,9 @@ class parser {
       // Parse performs.
       auto range = track_range();
       consume_token();
-      auto type = parse_type();
-      if (!try_parse_comma_or_semicolon()) {
-        report_expected("`,` or `;`");
-      }
-      functions.emplace_back(actions_.on_performs(range, type));
+      auto interaction_name = parse_identifier();
+      expect_and_consume(';');
+      functions.emplace_back(actions_.on_performs(range, interaction_name));
     }
     expect_and_consume('}');
     return functions;
@@ -419,13 +434,9 @@ class parser {
         break;
     }
 
-    auto return_type = parse_return_type();
+    auto ret = parse_return_type();
     auto name = parse_identifier();
-
-    // Parse arguments.
-    expect_and_consume('(');
-    auto params = parse_field_list(')');
-    expect_and_consume(')');
+    auto params = parse_param_list();
 
     auto throws = try_parse_throws();
     try_parse_deprecated_annotations(attrs);
@@ -433,60 +444,94 @@ class parser {
         range,
         std::move(attrs),
         qual,
-        std::move(return_type),
+        std::move(ret),
         name,
         std::move(params),
         std::move(throws));
   }
 
-  // return_type: (return_type_element ",")* return_type_element
+  // return_type: [interaction_name ","] basic_return_type
+  // interaction_name: maybe_qualified_id
   //
-  // return_type_element: type | stream_return_type | sink_return_type | "void"
+  // basic_return_type:
+  //     type
+  //   | "void"
+  //   | [initial_response_type ","] (sink | stream)
   //
-  // stream_return_type: "stream" "<" type_throws_spec ">"
-  // sink_return_type: "sink" "<" type_throws_spec "," type_throws_spec ">"
-  // type_throws_spec: type throws?
-  std::vector<t_type_ref> parse_return_type() {
-    auto return_type = std::vector<t_type_ref>();
-    auto parse_type_throws = [this]() -> type_throws_spec {
-      auto type = parse_type();
-      auto throws = try_parse_throws();
-      return {std::move(type), std::move(throws)};
-    };
-    do {
-      auto range = track_range();
-      auto type = t_type_ref();
-      switch (token_.kind) {
-        case tok::kw_void:
-          type = t_base_type::t_void();
-          consume_token();
-          break;
-        case tok::kw_stream: {
-          consume_token();
-          expect_and_consume('<');
-          auto response = parse_type_throws();
-          expect_and_consume('>');
-          type = actions_.on_stream_return_type(range, std::move(response));
-          break;
-        }
-        case tok::kw_sink: {
-          consume_token();
-          expect_and_consume('<');
-          auto sink = parse_type_throws();
-          expect_and_consume(',');
-          auto final_response = parse_type_throws();
-          expect_and_consume('>');
-          type = actions_.on_sink_return_type(
-              range, std::move(sink), std::move(final_response));
-          break;
-        }
-        default:
-          type = parse_type();
-          break;
+  // initial_response_type: type
+  return_type parse_return_type() {
+    auto ret = return_type();
+    if (token_.kind == tok::identifier) {
+      // Parse a type or an interaction.
+      auto range = token_.range;
+      auto name = consume_token().string_value();
+      ret.types.push_back(actions_.on_type(range, name, {}));
+      if (!try_consume_token(',')) {
+        return ret;
       }
-      return_type.push_back(std::move(type));
-    } while (try_consume_token(','));
-    return return_type;
+    }
+    bool is_void = false;
+    switch (token_.kind) {
+      case tok::kw_void:
+        is_void = true;
+        ret.types.push_back(t_base_type::t_void());
+        consume_token();
+        break;
+      case tok::kw_sink:
+        ret.sink_or_stream = parse_sink();
+        return ret;
+      case tok::kw_stream:
+        ret.sink_or_stream = parse_stream();
+        return ret;
+      default:
+        ret.types.push_back(parse_type());
+        break;
+    }
+    if (!try_consume_token(',')) {
+      return ret;
+    }
+    if (is_void) {
+      report_error("cannot use 'void' as an initial response type");
+    }
+    switch (token_.kind) {
+      case tok::kw_sink:
+        ret.sink_or_stream = parse_sink();
+        break;
+      case tok::kw_stream:
+        ret.sink_or_stream = parse_stream();
+        break;
+      default:
+        report_expected("'sink' or 'stream' after the initial response type");
+    }
+    return ret;
+  }
+
+  // sink: "sink" "<" type [throws], type [throws] ">"
+  std::unique_ptr<t_sink> parse_sink() {
+    auto range = track_range();
+    consume_token();
+    expect_and_consume('<');
+    auto sink = parse_type_throws();
+    expect_and_consume(',');
+    auto final_response = parse_type_throws();
+    expect_and_consume('>');
+    return actions_.on_sink(range, std::move(sink), std::move(final_response));
+  }
+
+  // stream: "stream" "<" type [throws] ">"
+  std::unique_ptr<t_stream_response> parse_stream() {
+    auto range = track_range();
+    consume_token();
+    expect_and_consume('<');
+    auto response = parse_type_throws();
+    expect_and_consume('>');
+    return actions_.on_stream(range, std::move(response));
+  }
+
+  type_throws_spec parse_type_throws() {
+    auto type = parse_type();
+    auto throws = try_parse_throws();
+    return {std::move(type), std::move(throws)};
   }
 
   // throws: "throws" "(" field* ")"
@@ -494,10 +539,7 @@ class parser {
     if (!try_consume_token(tok::kw_throws)) {
       return {};
     }
-    expect_and_consume('(');
-    auto exceptions = parse_field_list(')');
-    expect_and_consume(')');
-    return actions_.on_throws(std::move(exceptions));
+    return actions_.on_throws(parse_param_list());
   }
 
   // typedef:
@@ -518,7 +560,7 @@ class parser {
     auto range = range_tracker(loc, end_);
     expect_and_consume(tok::kw_struct);
     auto name = parse_identifier();
-    auto fields = parse_braced_field_list();
+    auto fields = parse_field_list();
     try_parse_deprecated_annotations(attrs);
     actions_.on_struct(range, std::move(attrs), name, std::move(fields));
   }
@@ -529,7 +571,7 @@ class parser {
     auto range = range_tracker(loc, end_);
     expect_and_consume(tok::kw_union);
     auto name = parse_identifier();
-    auto fields = parse_braced_field_list();
+    auto fields = parse_field_list();
     try_parse_deprecated_annotations(attrs);
     actions_.on_union(range, std::move(attrs), name, std::move(fields));
   }
@@ -570,35 +612,50 @@ class parser {
     }
     expect_and_consume(tok::kw_exception);
     auto name = parse_identifier();
-    auto fields = parse_braced_field_list();
+    auto fields = parse_field_list();
     try_parse_deprecated_annotations(attrs);
     actions_.on_exception(
         range, std::move(attrs), safety, kind, blame, name, std::move(fields));
   }
 
-  t_field_list parse_braced_field_list() {
+  t_field_list parse_field_list() {
     expect_and_consume('{');
-    auto fields = parse_field_list('}');
+    auto fields = t_field_list();
+    while (token_.kind != '}') {
+      fields.emplace_back(parse_field(field_kind::field));
+    }
     expect_and_consume('}');
     return fields;
   }
 
-  t_field_list parse_field_list(token_kind delimiter) {
-    auto fields = t_field_list();
-    while (token_.kind != delimiter) {
-      fields.emplace_back(parse_field());
+  t_field_list parse_param_list() {
+    expect_and_consume('(');
+    auto params = t_field_list();
+    while (token_.kind != ')') {
+      params.emplace_back(parse_field(field_kind::param));
     }
-    return fields;
+    expect_and_consume(')');
+    return params;
   }
 
-  // field:
-  //   attributes field_id? field_qualifier? type identifier
-  //     field_value? annotations comma_or_semicolon? inline_doc?
+  enum class field_kind { field, param };
+
+  // Parses a field or a parameter.
   //
-  // field_id: integer ":"
+  // field:
+  //   attributes
+  //   field_id ":" [field_qualifier] type identifier
+  //     [default_value] annotations [';'] [inline_doc]
+  //
+  // parameter ::=
+  //   attributes
+  //   field_id ":" type identifier [default_value]
+  //     annotations [','] [inline_doc]
+  //
+  // field_id: integer
   // field_qualifier: "required" | "optional"
-  // field_value: "=" const_value
-  std::unique_ptr<t_field> parse_field() {
+  // default_value: "=" const_value
+  std::unique_ptr<t_field> parse_field(field_kind kind) {
     auto range = track_range();
     auto attrs = parse_attributes();
 
@@ -610,11 +667,19 @@ class parser {
     }
 
     // Parse the field qualifier.
-    auto qual = t_field_qualifier();
+    auto qual = t_field_qualifier::none;
+    auto qual_tok = token_;
     if (try_consume_token(tok::kw_optional)) {
       qual = t_field_qualifier::optional;
     } else if (try_consume_token(tok::kw_required)) {
       qual = t_field_qualifier::required;
+    }
+    if (qual != t_field_qualifier::none && kind == field_kind::param) {
+      diags_.warning(
+          qual_tok.range.begin,
+          "'{}' is not permitted on a parameter",
+          to_string(qual_tok.kind));
+      qual = t_field_qualifier::none;
     }
 
     auto type = parse_type();
@@ -627,7 +692,17 @@ class parser {
     }
 
     try_parse_deprecated_annotations(attrs);
-    try_parse_comma_or_semicolon();
+    if (token_.kind == ',' || token_.kind == ';') {
+      // Use to_tok instead of a token_kind ctor to work around an MSVC bug
+      // (https://godbolt.org/z/8f6GE9545).
+      token_kind delimiter =
+          kind == field_kind::field ? to_tok(';') : to_tok(',');
+      if (token_.kind != delimiter) {
+        diags_.warning(
+            token_.range.begin, "unexpected '{}'", to_string(token_.kind));
+      }
+      consume_token();
+    }
     auto doc = try_parse_inline_doc();
     return actions_.on_field(
         range,

@@ -653,7 +653,7 @@ static bool arrayFitsSpec(const ArrayData* arr, ArraySpec spec) {
   switch (type.tag()) {
     case A::Tag::Tuple:
       if (arr->size() != type.size()) return false;
-      // fall through
+      [[fallthrough]];
     case A::Tag::Packed: {
       int64_t k = 0;
       auto const tuple = type.tag() == A::Tag::Tuple;
@@ -831,7 +831,7 @@ Type typeFromTV(tv_rval tv, const Class* ctx) {
     // now. If this changes, then this will need to specialize on sub object
     // types instead.
     if (!(cls->attrs() & AttrNoOverrideRegular) ||
-        (!(cls->attrs() & AttrUnique) && (!ctx || !ctx->classof(cls)))) {
+        (!(cls->attrs() & AttrPersistent) && (!ctx || !ctx->classof(cls)))) {
       return TObj;
     }
     return Type::ExactObj(cls);
@@ -1041,15 +1041,18 @@ Type typeFromTCImpl(const HPHP::TypeConstraint& tc,
     bool persistent = false;
     if (auto const alias = TypeAlias::lookup(tc.typeName(), &persistent)) {
       if (persistent && !alias->invalid) {
-        auto ty = [&]{
-          if (alias->klass) {
-            if (interface_supports_non_objects(alias->klass->name())) {
-              return TInitCell;
+        auto ty = TBottom;
+        for (auto const& [type, klass] : alias->typeAndClassUnion()) {
+          if (klass) {
+            if (interface_supports_non_objects(klass->name())) {
+              ty |= TInitCell;
+            } else {
+              ty |= Type::SubObj(klass);
             }
-            return Type::SubObj(alias->klass);
+          } else {
+            ty |= atToType(type);
           }
-          return atToType(alias->type);
-        }();
+        }
         if (alias->nullable) ty |= TInitNull;
         return ty;
       }
@@ -1062,7 +1065,7 @@ Type typeFromTCImpl(const HPHP::TypeConstraint& tc,
   return base;
 }
 
-}
+} // namespace
 
 Type typeFromPropTC(const HPHP::TypeConstraint& tc,
                     const Class* propCls,
@@ -1098,7 +1101,7 @@ Type typeFromFuncParam(const Func* func, uint32_t paramId) {
     auto& ubs = const_cast<Func::ParamUBMap&>(func->paramUBs());
     auto it = ubs.find(paramId);
     if (it != ubs.end()) {
-      for (auto& ub : it->second) {
+      for (auto& ub : it->second.m_constraints) {
         // FIXME: doesn't seem right to update these structures at runtime,
         // but we do the same in VerifyParamType.
         applyFlagsToUB(ub, tc);
