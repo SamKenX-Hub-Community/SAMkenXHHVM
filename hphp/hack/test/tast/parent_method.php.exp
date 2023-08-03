@@ -23,10 +23,10 @@
       c_namespace =
       { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
         ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-        ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
-      c_user_attributes = []; c_file_attributes = []; c_docs_url = None; 
-      c_enum = None; c_doc_comment = None; c_emit_id = None; c_internal = false; 
-      c_module = None });
+        ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+      c_user_attributes = [{ ua_name = ([3:7-8], "__SupportDynamicType"); ua_params = [] }]; 
+      c_file_attributes = []; c_docs_url = None; c_enum = None; c_doc_comment = None; 
+      c_emit_id = None; c_internal = false; c_module = None });
   (Class
      { c_span = [6:1-10:2]; c_annotation = (); c_mode = Mstrict; c_final = false; 
        c_is_xhp = false; c_has_xhp_keyword = false; c_kind = (Cclass Concrete); 
@@ -43,7 +43,11 @@
           { fb_ast =
             [([8:5-18],
               (Expr
-                 ((void), [8:5-17], (Call ((((function(int $i): void)), [8:5-14], (Class_const (((C), [8:5-11], CIparent), ([8:13-14], "f")))), [], [(Pnormal, ((int), [8:15-16], (Int "3")))], None)))))
+                 ((void), [8:5-17],
+                  (Call
+                     { func = (((function(int $i): void)), [8:5-14], (Class_const (((C), [8:5-11], CIparent), ([8:13-14], "f")))); 
+                       targs = []; args = [(Pnormal, ((int), [8:15-16], (Int "3")))]; 
+                       unpacked_arg = None }))))
               ]
             };
           m_fun_kind = FSync; m_user_attributes = []; m_readonly_ret = None; 
@@ -54,7 +58,7 @@
        c_namespace =
        { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
          ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-         ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
-       c_user_attributes = []; c_file_attributes = []; c_docs_url = None; 
-       c_enum = None; c_doc_comment = None; c_emit_id = None; c_internal = false; 
-       c_module = None })
+         ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+       c_user_attributes = [{ ua_name = ([6:7-8], "__SupportDynamicType"); ua_params = [] }]; 
+       c_file_attributes = []; c_docs_url = None; c_enum = None; c_doc_comment = None; 
+       c_emit_id = None; c_internal = false; c_module = None })

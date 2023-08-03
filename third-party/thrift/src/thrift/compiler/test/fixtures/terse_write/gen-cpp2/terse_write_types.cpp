@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::facebook::thrift::test::terse_write::MyEnum>::size;
+#endif
 folly::Range<::facebook::thrift::test::terse_write::MyEnum const*> const TEnumTraits<::facebook::thrift::test::terse_write::MyEnum>::values = folly::range(TEnumDataStorage<::facebook::thrift::test::terse_write::MyEnum>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::facebook::thrift::test::terse_write::MyEnum>::names = folly::range(TEnumDataStorage<::facebook::thrift::test::terse_write::MyEnum>::names);
 
@@ -28,14 +30,6 @@ bool TEnumTraits<::facebook::thrift::test::terse_write::MyEnum>::findValue(folly
 
 }} // apache::thrift
 
-namespace facebook { namespace thrift { namespace test { namespace terse_write {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _MyEnum_EnumMapFactory::ValuesToNamesMapType _MyEnum_VALUES_TO_NAMES = _MyEnum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}}} // facebook::thrift::test::terse_write
 
 namespace apache {
 namespace thrift {
@@ -136,7 +130,9 @@ void TccStructTraits<::facebook::thrift::test::terse_write::MyUnion>::translateF
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::facebook::thrift::test::terse_write::MyUnion::Type>::size;
+#endif
 folly::Range<::facebook::thrift::test::terse_write::MyUnion::Type const*> const TEnumTraits<::facebook::thrift::test::terse_write::MyUnion::Type>::values = folly::range(TEnumDataStorage<::facebook::thrift::test::terse_write::MyUnion::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::facebook::thrift::test::terse_write::MyUnion::Type>::names = folly::range(TEnumDataStorage<::facebook::thrift::test::terse_write::MyUnion::Type>::names);
 
@@ -1203,7 +1199,7 @@ TerseStructWithCustomDefault::TerseStructWithCustomDefault() :
       __fbthrift_field_enum_field( ::facebook::thrift::test::terse_write::MyEnum::ME1),
       __fbthrift_field_list_field(std::initializer_list<::std::int16_t>{static_cast<::std::int16_t>(1)}),
       __fbthrift_field_set_field(std::initializer_list<::std::int16_t>{static_cast<::std::int16_t>(1)}),
-      __fbthrift_field_map_field(std::initializer_list<std::pair<const ::std::int16_t, ::std::int16_t>>{{static_cast<::std::int16_t>(1), static_cast<::std::int16_t>(1)}}) {
+      __fbthrift_field_map_field(std::initializer_list<::std::map<::std::int16_t, ::std::int16_t>::value_type>{{static_cast<::std::int16_t>(1), static_cast<::std::int16_t>(1)}}) {
 }
 
 

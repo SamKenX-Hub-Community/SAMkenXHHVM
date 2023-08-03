@@ -20,6 +20,7 @@
 #include "hphp/runtime/base/dummy-resource.h"
 #include "hphp/runtime/base/string-data.h"
 #include "hphp/runtime/base/typed-value.h"
+#include "hphp/hhbbc/bc.h"
 
 namespace HPHP {
 
@@ -32,28 +33,37 @@ Object TestObject;
 template <DataType DT>
 TypedValue createTestTypedValue() {
   switch (DT) {
-    case DataType::PersistentDict:
-      return make_tv<DataType::PersistentDict>(staticEmptyDictArray());
+    case DataType::PersistentDict: {
+      Array d = make_dict_array(
+        "key1", 42,
+        "key2", 3.14,
+        "key3", "Salutations, earth!"
+      );
+      auto const sd = ArrayData::GetScalarArray(d);
+      return make_tv<DataType::PersistentDict>(sd);
+    }
     case DataType::Dict: {
       Array d = make_dict_array(
         "key1", 1,
         "key2", 2.718,
         "key3", "Hello, world!"
       );
-      return make_tv<DataType::Dict>(d.get());
+      return make_tv<DataType::Dict>(d.get()->copy());
     }
-    case DataType::PersistentVec:
-      return make_tv<DataType::PersistentVec>(staticEmptyVec());
+    case DataType::PersistentVec: {
+      Array v = make_vec_array(42, 3.14, "This is not a pipe");
+      auto const sv = ArrayData::GetScalarArray(v);
+      return make_tv<DataType::PersistentVec>(sv);
+    }
     case DataType::Vec: {
       Array v = make_vec_array(1, 2, 3);
-      return make_tv<DataType::Vec>(v.get());
-      break;
+      return make_tv<DataType::Vec>(v.get()->copy());
     }
     case DataType::PersistentKeyset:
       return make_tv<DataType::PersistentKeyset>(staticEmptyKeysetArray());
     case DataType::Keyset: {
       Array k = make_keyset_array(1, 2, 3);
-      return make_tv<DataType::Keyset>(k.get());
+      return make_tv<DataType::Keyset>(k.get()->copy());
     }
     case DataType::PersistentString:
       return make_tv<DataType::PersistentString>(StringData::MakeStatic("Hello, world!"));
@@ -116,6 +126,7 @@ DATATYPES
 #undef DT
 
 void takeTypedValueRef(TypedValue& UNUSED tv) { return; }
+void takeTypedValuePtr(TypedValue* UNUSED tv) { return; }
 
 // TypedValue subtypes
 void takeVariant(Variant UNUSED v) { return; }
@@ -135,6 +146,10 @@ void buildTypedValues() {
     auto tv = createTestTypedValue<DataType::Int64>();
     takeTypedValueRef(tv);
   }
+  {
+    auto tv = createTestTypedValue<DataType::Int64>();
+    takeTypedValuePtr(&tv);
+  }
   takeVariant(Variant(42));
   takeVarNR(VarNR(2.718));
 }
@@ -142,32 +157,131 @@ void buildTypedValues() {
 // Other values
 
 void takeStringData(StringData* UNUSED v) { return; }
+void takeConstPtrToStringData(StringData* UNUSED const v) { return; }
+void takePtrToConstStringData(const StringData* UNUSED v) { return; }
 void takeString(String UNUSED v) { return; }
+void takePtrToString(String* UNUSED v) { return; }
 void takeStaticString(StaticString UNUSED v) { return; }
 void takeStrNR(StrNR UNUSED v) { return; }
 void takeResource(Resource UNUSED v) { return; }
+void takePtrToResource(Resource* UNUSED v) { return; }
 void takeObject(Object UNUSED v) { return; }
 void takeReqPtr(req::ptr<ObjectData> UNUSED v) { return; }
 void takeOptional(Optional<String> UNUSED v) { return; }
 void takeLowPtr(LowPtr<Class> UNUSED v) { return; }
+void takeLowPtrRef(const LowPtr<Class> UNUSED &v) { return; }
 void takeLowStrPtr(LowStrPtr UNUSED v) { return; }
 void takeExtension(Extension UNUSED v) { return; }
+void takeArrayData(ArrayData UNUSED *v) { return; }
+void takeArrayVec(Array UNUSED v) { return; }
+void takeArrayDict(Array UNUSED v) { return; }
+void takeArrayKeyset(Array UNUSED v) { return; }
+void takeFunc(const Func UNUSED *v) { return; }
+void takeClass(Class UNUSED *v) { return; }
+void takeLazyClassData(LazyClassData UNUSED v) { return; }
+void takeObjectData(ObjectData* UNUSED v) { return; }
+
+void takeHhbcOp(Op UNUSED v) { return; }
+void takeHhbbcBytecode(HHBBC::Bytecode UNUSED v) { return; }
 
 void buildOtherValues() {
   TestObject = SystemLib::AllocInvalidArgumentExceptionObject("This is a test exception object for lldb");
+  Array vec = make_vec_array(1, 2, 3, 4);
+  Array dict = make_dict_array(0x0123cafe, true, 302, "Salutations, earth!", 2, 3.14, "key4", 2.718, "key5", "Hello, world!");
+  Array keyset = make_keyset_array(1, "cats", 2, 3, "cats", 2, 3, "dogs", 42);
+  auto sd = StringData::MakeStatic("hello");
+  auto s = String("hello");
+  auto rsc = Resource(req::make<DummyResource>());
+  auto cls = TestObject->getVMClass();
+  auto lp = LowPtr(cls);
+  auto func = cls->getCtor();
+  auto lazy_cls = LazyClassData::create(StringData::MakeStatic("SpecialLazyClass"));
 
-  takeStringData(StringData::MakeStatic("hello"));
-  takeString(String("hello"));
+  takeStringData(sd);
+  takeConstPtrToStringData(sd);
+  takePtrToConstStringData(sd);
+  takeString(s);
+  takePtrToString(&s);
   takeStaticString(StaticString("hello"));
   takeStrNR(StrNR(StringData::MakeStatic("hello")));
-  takeResource(Resource(req::make<DummyResource>()));
+  takeResource(rsc);
+  takePtrToResource(&rsc);
   takeObject(TestObject);
-  takeReqPtr(*reinterpret_cast<req::ptr<ObjectData> *>(&TestObject)); // Want to its sole private member m_obj
+  takeReqPtr(*reinterpret_cast<req::ptr<ObjectData> *>(&TestObject)); // Want to get its sole private member m_obj
   takeOptional(Optional<String>("hello"));
   takeOptional(Optional<String>());
-  takeLowPtr(LowPtr(TestObject->getVMClass()));
+  takeLowPtr(lp);
+  takeLowPtrRef(lp);
   takeLowStrPtr(LowStrPtr(StringData::MakeStatic("hello")));
   takeExtension(Extension("test-extension", "0.5", "test-oncall"));
+  takeArrayData(vec.get());
+  takeArrayVec(vec);
+  takeArrayDict(dict);
+  takeArrayKeyset(keyset);
+  takeFunc(func);
+  takeClass(cls);
+  takeLazyClassData(lazy_cls);
+  takeObjectData(TestObject.get());
+
+  takeHhbcOp(Op::Nop);
+  takeHhbcOp(Op::Int);
+  takeHhbcOp(Op::CGetL);
+  takeHhbcOp(Op::NewObjD);
+  takeHhbcOp(Op::QueryM);
+
+  takeHhbbcBytecode(HHBBC::bc::Nop {});
+  takeHhbbcBytecode(HHBBC::bc::Int { 42 });
+  auto nl = NamedLocal { 1, 2 };
+  takeHhbbcBytecode(HHBBC::bc::CGetL { nl });
+}
+
+// Utility tests
+
+void takeHHVMString(String UNUSED v) { return; }
+void takeCharPtr(char const* UNUSED v) { return; }
+
+void buildValuesForUtilityTests() {
+  auto sd = StringData::MakeStatic("hello");
+  takeHHVMString(String("Most excellent"));
+  takeCharPtr("Very excellent");
+  takeStaticString(StaticString("cats and dogs"));
+  takeStrNR(StrNR(StaticString("lions and tigers")));
+  takeStringData(sd);
+}
+
+// nameof tests
+
+void buildValuesForNameofTests() {
+  TestObject = SystemLib::AllocInvalidArgumentExceptionObject("This is a test exception object for lldb");
+  auto lazy_cls = LazyClassData::create(StringData::MakeStatic("SpecialLazyClass"));
+  auto func = TestObject->getVMClass()->getCtor();
+
+  takeClass(TestObject->getVMClass());
+  takeLazyClassData(lazy_cls);
+  takeObject(TestObject);
+  takeObjectData(TestObject.get());
+  takeFunc(func);
+}
+
+// sizeof tests
+void takeArray(Array UNUSED v) { return; }
+
+void buildValuesForSizeofTests() {
+  Array d = make_dict_array(
+    "key1", 42,
+    "key2", 3.14,
+    "key3", "Salutations, earth!"
+  );
+  takeArray(d);
+  takeArrayData(d.get());
+
+  Array v = make_vec_array(1, 2, 3, 4, 5);
+  takeArray(v);
+  takeArrayData(v.get());
+
+  Array k = make_keyset_array(1, 2);
+  takeArray(k);
+  takeArrayData(k.get());
 }
 
 } // namespace lldb_test
@@ -180,15 +294,21 @@ int main(int argc, char** argv) {
   SCOPE_EXIT { HPHP::hphp_process_exit(); };
 
   if (argc < 2) {
-    std::cout << "Specify what to run (options: \"typed-values\", \"other-values\")" << std::endl;
+    std::cout << "Specify what to run (options: \"typed-values\", \"other-values\", \"nameof-values\", \"sizeof-values\", \"utility\")" << std::endl;
     return 1;
   }
   if (!strcmp(argv[1], "typed-values")) {
     HPHP::lldb_test::buildTypedValues();
   } else if (!strcmp(argv[1], "other-values")) {
     HPHP::lldb_test::buildOtherValues();
+  } else if (!strcmp(argv[1], "nameof-values")) {
+    HPHP::lldb_test::buildValuesForNameofTests();
+  } else if (!strcmp(argv[1], "sizeof-values")) {
+    HPHP::lldb_test::buildValuesForSizeofTests();
+  } else if (!strcmp(argv[1], "utility")) {
+    HPHP::lldb_test::buildValuesForUtilityTests();
   } else {
-    std::cout << "Invalid option (options: \"typed-values\", \"other-values\"" << std::endl;
+    std::cout << "Invalid option (options: \"typed-values\", \"other-values\", \"nameof-values\", \"sizeof-values\", \"utility\"" << std::endl;
     return 1;
   }
   return 0;

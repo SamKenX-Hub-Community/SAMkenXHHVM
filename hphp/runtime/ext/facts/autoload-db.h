@@ -54,7 +54,7 @@ struct AutoloadDB {
   /**
    * Function which returns a reference to an AutoloadDB.
    */
-  using Handle = folly::Function<std::shared_ptr<AutoloadDB>() const>;
+  using Opener = folly::Function<std::shared_ptr<AutoloadDB>() const>;
 
   struct KindAndFlags {
     TypeKind m_kind;
@@ -207,6 +207,9 @@ struct AutoloadDB {
 
   virtual std::vector<std::filesystem::path> getFilesWithAttribute(
       std::string_view attributeName) = 0;
+  virtual std::vector<std::filesystem::path> getFilesWithAttributeAndAnyValue(
+      std::string_view attributeName,
+      const folly::dynamic& attributeValue) = 0;
 
   // Functions
   virtual void insertFunction(
@@ -243,16 +246,6 @@ struct AutoloadDB {
    * Returns results in the form of a lazy generator.
    */
   virtual MultiResult<PathAndHash> getAllPathsAndHashes() = 0;
-
-  /**
-   * Return a list of all symbols and paths defined in the given root.
-   *
-   * Returns results in the form of a lazy generator.
-   */
-  virtual MultiResult<SymbolPath> getAllTypePaths() = 0;
-  virtual MultiResult<SymbolPath> getAllFunctionPaths() = 0;
-  virtual MultiResult<SymbolPath> getAllConstantPaths() = 0;
-  virtual MultiResult<SymbolPath> getAllModulePaths() = 0;
 
   virtual void insertClock(const Clock& clock) = 0;
   virtual Clock getClock() = 0;

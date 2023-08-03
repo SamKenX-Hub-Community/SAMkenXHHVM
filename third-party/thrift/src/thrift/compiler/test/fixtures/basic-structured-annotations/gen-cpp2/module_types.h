@@ -151,14 +151,6 @@ template <> struct TEnumTraits<::test::fixtures::basic-structured-annotations::M
 
 }} // apache::thrift
 
-namespace test { namespace fixtures { namespace basic-structured-annotations {
-
-using _MyEnum_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<MyEnum>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _MyEnum_EnumMapFactory::ValuesToNamesMapType _MyEnum_VALUES_TO_NAMES;
-#endif
-}}} // test::fixtures::basic-structured-annotations
 
 // END declare_enums
 // BEGIN forward_declare
@@ -236,10 +228,8 @@ class structured_annotation_inline final  {
 
  public:
 
-  structured_annotation_inline() :
-      __fbthrift_field_count(),
-      __fbthrift_field_name(apache::thrift::StringTraits<std::string>::fromStringLiteral("abacaba")) {
-  }
+  structured_annotation_inline();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   structured_annotation_inline(apache::thrift::FragileConstructor, ::std::int64_t count__arg, ::std::string name__arg);
@@ -251,6 +241,9 @@ class structured_annotation_inline final  {
 
   structured_annotation_inline& operator=(structured_annotation_inline&&) noexcept;
   structured_annotation_inline& operator=(const structured_annotation_inline& src);
+
+  ~structured_annotation_inline();
+
  private:
   ::std::int64_t __fbthrift_field_count;
  private:
@@ -442,9 +435,8 @@ class structured_annotation_with_default final  {
 
  public:
 
-  structured_annotation_with_default() :
-      __fbthrift_field_name(apache::thrift::StringTraits<std::string>::fromStringLiteral("abacabadabacaba")) {
-  }
+  structured_annotation_with_default();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   structured_annotation_with_default(apache::thrift::FragileConstructor, ::std::string name__arg);
@@ -456,6 +448,9 @@ class structured_annotation_with_default final  {
 
   structured_annotation_with_default& operator=(structured_annotation_with_default&&) noexcept;
   structured_annotation_with_default& operator=(const structured_annotation_with_default& src);
+
+  ~structured_annotation_with_default();
+
  private:
   ::std::string __fbthrift_field_name;
  private:
@@ -748,8 +743,8 @@ class structured_annotation_recursive final  {
 
  public:
 
-  structured_annotation_recursive() {
-  }
+  structured_annotation_recursive();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   structured_annotation_recursive(apache::thrift::FragileConstructor, ::std::string name__arg, ::std::unique_ptr<::test::fixtures::basic-structured-annotations::structured_annotation_recursive> recurse__arg, ::test::fixtures::basic-structured-annotations::structured_annotation_forward forward__arg);
@@ -760,6 +755,9 @@ class structured_annotation_recursive final  {
 
   structured_annotation_recursive& operator=(structured_annotation_recursive&&) noexcept;
   structured_annotation_recursive& operator=(const structured_annotation_recursive& src);
+
+  ~structured_annotation_recursive();
+
  private:
   ::std::string __fbthrift_field_name;
  private:
@@ -993,8 +991,8 @@ class structured_annotation_nested final  {
 
  public:
 
-  structured_annotation_nested() {
-  }
+  structured_annotation_nested();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   structured_annotation_nested(apache::thrift::FragileConstructor, ::std::string name__arg, ::test::fixtures::basic-structured-annotations::structured_annotation_with_default nest__arg);
@@ -1006,6 +1004,9 @@ class structured_annotation_nested final  {
 
   structured_annotation_nested& operator=(structured_annotation_nested&&) noexcept;
   structured_annotation_nested& operator=(const structured_annotation_nested& src);
+
+  ~structured_annotation_nested();
+
  private:
   ::std::string __fbthrift_field_name;
  private:
@@ -1202,10 +1203,8 @@ class MyStruct final  {
 
  public:
 
-  MyStruct() :
-      __fbthrift_field_annotated_field(),
-      __fbthrift_field_annotated_nested() {
-  }
+  MyStruct();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   MyStruct(apache::thrift::FragileConstructor, ::std::int64_t annotated_field__arg, ::test::fixtures::basic-structured-annotations::annotated_inline_string annotated_type__arg, ::std::string annotated_recursive__arg, ::std::int64_t annotated_nested__arg);
@@ -1217,6 +1216,9 @@ class MyStruct final  {
 
   MyStruct& operator=(MyStruct&&) noexcept;
   MyStruct& operator=(const MyStruct& src);
+
+  ~MyStruct();
+
  private:
   ::std::int64_t __fbthrift_field_annotated_field;
  private:

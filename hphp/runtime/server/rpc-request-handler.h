@@ -17,6 +17,7 @@
 #pragma once
 
 #include "hphp/runtime/server/access-log.h"
+#include "hphp/runtime/server/cli-server.h"
 #include "hphp/runtime/server/server.h"
 #include "hphp/runtime/base/execution-context.h"
 
@@ -29,12 +30,6 @@ struct Transport;
 
 struct RPCRequestHandler : RequestHandler {
   static AccessLog &GetAccessLog() { return s_accessLog; }
-
-  enum class ReturnEncodeType {
-    Json      = 1,
-    Serialize = 2,
-    Internal  = 3,
-  };
 
   RPCRequestHandler(int timeout, bool info);
   ~RPCRequestHandler() override;
@@ -56,24 +51,23 @@ struct RPCRequestHandler : RequestHandler {
 
   time_t getLastResetTime() const { return m_lastReset; }
 
-  void setReturnEncodeType(ReturnEncodeType et) { m_returnEncodeType = et; }
-  ReturnEncodeType getReturnEncodeType() const { return m_returnEncodeType; }
+  void setCliContext(CLIContext&& ctx) override {
+    m_cli.emplace(std::move(ctx));
+  }
 private:
   ExecutionContext *m_context;
   std::shared_ptr<SatelliteServerInfo> m_serverInfo;
   int m_requestsSinceReset;
   bool m_reset;
   bool m_logResets;
-  ReturnEncodeType m_returnEncodeType;
   time_t m_lastReset;
+  Optional<CLIContext> m_cli;
 
   void initState();
   bool needReset() const;
-  bool ignoreParams() const;
 
   bool executePHPFunction(Transport *transport,
-                          SourceRootInfo &sourceRootInfo,
-                          ReturnEncodeType returnEncodeType);
+                          SourceRootInfo &sourceRootInfo);
 
   std::string getSourceFilename(const std::string &path,
                                 SourceRootInfo &sourceRootInfo);

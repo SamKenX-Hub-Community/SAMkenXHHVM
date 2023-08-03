@@ -268,11 +268,23 @@ struct ClsConstInfo {
   size_t refinements = 0;
 };
 
+using ResolvedConstants = CompactVector<std::pair<size_t, ClsConstInfo>>;
+
+//////////////////////////////////////////////////////////////////////
+
+struct PropInitInfo {
+  TypedValue val;
+  bool satisfies;
+  bool deepInit;
+};
+using ResolvedPropInits = CompactVector<std::pair<size_t, PropInitInfo>>;
+
 //////////////////////////////////////////////////////////////////////
 
 // private types
 struct ClassInfo;
-struct UnresolvedClassMaker;
+struct FuncInfo2;
+struct FuncFamily2;
 
 //////////////////////////////////////////////////////////////////////
 
@@ -543,6 +555,12 @@ struct Class {
   size_t hash() const { return val.toOpaque(); }
 
   /*
+   * Make an unresolved Class representing the given name. Mainly
+   * meant for tests.
+   */
+  static Class makeUnresolved(SString n) { return Class { n }; };
+
+  /*
    * NB: Serd-ing a Class only encodes the name. Deserializing it
    * always produces a name-only unresolved class, regardless of the
    * original. If necessary, the Class must be manually resolved
@@ -571,7 +589,6 @@ private:
   friend struct ::HPHP::HHBBC::Index;
   friend struct ::HPHP::HHBBC::PublicSPropMutations;
   friend struct ::HPHP::HHBBC::ClassInfo;
-  friend struct ::HPHP::HHBBC::UnresolvedClassMaker;
   Either<SString,ClassInfo*> val;
 };
 
@@ -630,6 +647,32 @@ struct Func {
   uint32_t maxNonVariadicParams() const;
 
   /*
+   * Return if the function supports async eager return.
+   */
+  TriBool supportsAsyncEagerReturn() const;
+
+  /*
+   * Returns the number of inout parameters expected by func (if known).
+   */
+  Optional<uint32_t> lookupNumInoutParams() const;
+
+  /*
+   * Returns the parameter preparation kind (if known) for parameter
+   * `paramId' on this function.
+   */
+  PrepKind lookupParamPrep(uint32_t paramId) const;
+
+  /*
+   * Returns whether the function's return value is readonly
+   */
+  TriBool lookupReturnReadonly() const;
+
+  /*
+   * Returns whether the function is marked as readonly
+   */
+  TriBool lookupReadonlyThis() const;
+
+  /*
    * Coeffects
    */
   const RuntimeCoeffects* requiredCoeffects() const;
@@ -642,21 +685,30 @@ struct Func {
 private:
   friend struct ::HPHP::HHBBC::Index;
   struct FuncName {
-    explicit FuncName(SString n) : name{n} {}
-    bool operator==(FuncName o) const { return name == o.name; }
     SString name;
   };
   struct MethodName {
-    bool operator==(MethodName o) const { return name == o.name; }
     SString name;
   };
+  struct Fun {
+    const FuncInfo* finfo;
+  };
+  struct Fun2 {
+    const FuncInfo2* finfo;
+  };
   struct Method {
-    const php::Func* func;
+    const FuncInfo* finfo;
+  };
+  struct Method2{
+    const FuncInfo2* finfo;
   };
   // Like Method, but the method is not guaranteed to actually exist
   // (this only matters for things like exactFunc()).
   struct MethodOrMissing {
-    const php::Func* func;
+    const FuncInfo* finfo;
+  };
+  struct MethodOrMissing2 {
+    const FuncInfo2* finfo;
   };
   // Method/Func is known to not exist
   struct Missing {
@@ -667,6 +719,10 @@ private:
     FuncFamily* family;
     bool regularOnly;
   };
+  struct MethodFamily2 {
+    const FuncFamily2* family;
+    bool regularOnly;
+  };
   // Simultaneously a group of func families. Any data must be
   // intersected across all of the func families in the list. Used for
   // method resolution on a DCls where isIsect() is true.
@@ -674,14 +730,23 @@ private:
     CompactVector<FuncFamily*> families;
     bool regularOnly{false};
   };
+  struct Isect2 {
+    CompactVector<const FuncFamily2*> families;
+    bool regularOnly{false};
+  };
   using Rep = boost::variant< FuncName
                             , MethodName
-                            , FuncInfo*
+                            , Fun
+                            , Fun2
                             , Method
+                            , Method2
                             , MethodFamily
+                            , MethodFamily2
                             , MethodOrMissing
+                            , MethodOrMissing2
                             , Missing
                             , Isect
+                            , Isect2
                             >;
 
 private:
@@ -709,14 +774,13 @@ std::string show(const Class&);
  */
 struct TypeMapping {
   LSString name;
-  LSString value;
   // If an enum, this is the same value as name. Otherwise it's the
   // first enum encountered when resolving a type-alias.
   LSString firstEnum;
-  AnnotType type;
+  php::TypeAlias::TypeAndValueUnion typeAndValueUnion;
   bool nullable;
   template <typename SerDe> void serde(SerDe& sd) {
-    sd(name)(value)(firstEnum)(type)(nullable);
+    sd(name)(firstEnum)(typeAndValueUnion)(nullable);
   }
 };
 
@@ -906,14 +970,6 @@ struct Index {
     lookup_extra_methods(const php::Class*) const;
 
   /*
-   * Find a res::Class for a given php::Class.
-   *
-   * Returns std::nullopt if the given php::Class is not actually
-   * definable.
-   */
-  Optional<res::Class> resolve_class(const php::Class*) const;
-
-  /*
    * Resolve the given class name to a res::Class.
    *
    * Returns std::nullopt if no such class with that name exists, or
@@ -922,44 +978,20 @@ struct Index {
   Optional<res::Class> resolve_class(SString name) const;
 
   /*
-   * Resolve the given class name to a name-only res::Class. This is
-   * meant for use in tests.
-   */
-  res::Class resolve_class_name_only(SString name) const;
-
-  /*
    * Find a type-alias with the given name. If a nullptr is returned,
    * then no type-alias exists with that name.
    */
   const php::TypeAlias* lookup_type_alias(SString name) const;
 
   /*
-   * Try to resolve self/parent types for the given context
+   * Resolve the given php::Func, which can be a function or
+   * method. resolved() is guaranteed to be true for the returned
+   * res::Func.
    */
-  Optional<res::Class> selfCls(const Context& ctx) const;
-  Optional<res::Class> parentCls(const Context& ctx) const;
-
-  /*
-   * Resolve a closure class.
-   *
-   * Returns both a resolved Class, and the actual php::Class for the
-   * closure.
-   */
-  std::pair<res::Class, const php::Class*>
-    resolve_closure_class(Context ctx, SString name) const;
-
-  /*
-   * Return a resolved class for a builtin class.
-   *
-   * Pre: `name' must be the name of a class defined in a systemlib.
-   */
-  res::Class builtin_class(SString name) const;
+  res::Func resolve_func_or_method(const php::Func&) const;
 
   /*
    * Try to resolve a function named `name'.
-   *
-   * Returns std::nullopt if no such function with that name is known
-   * to exist.
    */
   res::Func resolve_func(SString name) const;
 
@@ -988,15 +1020,10 @@ struct Index {
 
   /*
    * Return a resolved class representing the base class of a wait
-   * handle (this will be a sub-class of Awaitable).
+   * handle (this will be a sub-class of Awaitable). This is stored in
+   * the Index as it is typically cached.
    */
   res::Class wait_handle_class() const;
-
-  /*
-   * Returns true if the type constraint can contain a reified type
-   * Currently, only classes and interfaces are supported
-   */
-  bool could_have_reified_type(Context ctx, const TypeConstraint& tc) const;
 
   /*
    * Lookup metadata about the constant access `cls'::`name', in the
@@ -1052,7 +1079,7 @@ struct Index {
   /*
    * Return true if the return value of the function might depend on arg.
    */
-  bool func_depends_on_arg(const php::Func* func, int arg) const;
+  bool func_depends_on_arg(const php::Func* func, size_t arg) const;
 
   /*
    * If func is effect-free when called with args, and it returns a constant,
@@ -1066,8 +1093,6 @@ struct Index {
    * context insensitive way.  Returns TInitCell at worst.
    */
   Type lookup_return_type(Context, MethodsInfo*, res::Func,
-                          Dep dep = Dep::ReturnTy) const;
-  Type lookup_return_type(Context, MethodsInfo*, const php::Func*,
                           Dep dep = Dep::ReturnTy) const;
 
   /*
@@ -1090,7 +1115,7 @@ struct Index {
    * refinements done to that type.
    *
    * This function does not register a dependency on the return type
-   * information.
+   * information, so should not be used during analysis.
    *
    * Nothing may be writing to the index when this function is used,
    * but concurrent readers are allowed.
@@ -1110,27 +1135,6 @@ struct Index {
   CompactVector<Type>
     lookup_closure_use_vars(const php::Func*,
                             bool move = false) const;
-
-  /*
-   * Returns the parameter preparation kind (if known) for parameter
-   * `paramId' on the given resolved Func.
-   */
-  PrepKind lookup_param_prep(Context, res::Func, uint32_t paramId) const;
-
-  /*
-   * Returns the number of inout parameters expected by func (if known).
-   */
-  Optional<uint32_t> lookup_num_inout_params(Context, res::Func) const;
-
-  /*
-   * Returns whether the function's return value is readonly
-   */
-  TriBool lookup_return_readonly(Context, res::Func) const;
-
-  /*
-   * Returns whether the function is marked as readonly
-   */
-  TriBool lookup_readonly_this(Context, res::Func) const;
 
   /*
    * Returns the control-flow insensitive inferred private instance
@@ -1217,6 +1221,7 @@ struct Index {
    * Must be called in single-threaded context.
    */
   void use_class_dependencies(bool f);
+  bool using_class_dependencies() const;
 
   /*
    * Merge the type `val' into the known type for static property
@@ -1244,19 +1249,6 @@ struct Index {
                                     bool mustBeReadOnly = false) const;
 
   /*
-   * Initialize the initial types for public static properties. This should be
-   * done after rewriting initial property values, as that affects the types.
-   */
-  void init_public_static_prop_types();
-
-  /*
-   * Initialize the initial "may have bad initial value" bit for
-   * properties. By initially setting this before analysis, we save
-   * redundant re-analyzes.
-   */
-  void preinit_bad_initial_prop_values();
-
-  /*
    * Attempt to pre-resolve as many type-structures as possible in
    * type-constants and type-aliases.
    */
@@ -1272,10 +1264,9 @@ struct Index {
    * Merges the set of Contexts that depended on the constants defined
    * by this 86cinit.
    */
-  void refine_class_constants(
-    const Context& ctx,
-    const CompactVector<std::pair<size_t, ClsConstInfo>>& resolved,
-    DependencyContextSet& deps);
+  void refine_class_constants(const Context& ctx,
+                              const ResolvedConstants& resolved,
+                              DependencyContextSet& deps);
 
   /*
    * Refine the types of the constants defined by a function, based on
@@ -1350,19 +1341,6 @@ struct Index {
   void record_public_static_mutations(const php::Func& func,
                                       PublicSPropMutations mutations);
 
-
-  /*
-   * If we resolve the intial value of a public property, we need to
-   * tell the refine_public_statics phase about it, because the init
-   * value won't be included in the mutations any more.
-   *
-   * Note that we can't modify the initial value here, because other
-   * threads might be reading it (via loookup_public_static), so we
-   * set a flag to tell us to update it during the next
-   * refine_public_statics pass.
-   */
-  void update_static_prop_init_val(const php::Class* cls,
-                                   SString name) const;
   /*
    * After a round of analysis with all the public static property mutations
    * being recorded with record_public_static_mutations, the types can be
@@ -1377,42 +1355,25 @@ struct Index {
   void refine_public_statics(DependencyContextSet& deps);
 
   /*
-   * Refine whether the given class has properties with initial values which
-   * might violate their type-hints.
-   *
-   * No other threads should be calling functions on this Index when this
-   * function is called.
+   * Update the initial values for properties inferred from
+   * 86[p/s]init functions during analysis. The modification of the
+   * relevant php::Prop instances must be done here when we know
+   * nobody else is reading them.
    */
-  void refine_bad_initial_prop_values(const php::Class* cls,
-                                      bool value,
-                                      DependencyContextSet& deps);
-
-  /*
-   * Return true if the resolved function supports async eager return.
-   */
-  TriBool supports_async_eager_return(res::Func rfunc) const;
+  void update_prop_initial_values(const Context&,
+                                  const ResolvedPropInits&,
+                                  DependencyContextSet&);
 
   /*
    * Return true if the function is effect free.
    */
   bool is_effect_free(Context, res::Func rfunc) const;
-  bool is_effect_free(Context, const php::Func* func) const;
+
+  /*
+   * Like is_effect_free, but does not register a dependency, so not
+   * appropriate during analysis.
+   */
   bool is_effect_free_raw(const php::Func* func) const;
-
-  /*
-   * Do any necessary fixups to a return type.
-   *
-   * Note that eg for an async function it will map Type to
-   * WaitH<Type>.
-   */
-  void fixup_return_type(const php::Func*, Type&) const;
-
-  /*
-   * Return true if we know for sure that one php::Class must derive
-   * from another at runtime, in all possible instantiations.
-   */
-  bool must_be_derived_from(const php::Class*,
-                            const php::Class*) const;
 
   struct IndexData;
 private:
@@ -1426,7 +1387,7 @@ private:
   bool visit_every_dcls_cls(const DCls&, const F&) const;
 
   template <typename P, typename G>
-  static res::Func rfunc_from_dcls(const DCls&, SString, const P&, const G&);
+  res::Func rfunc_from_dcls(const DCls&, SString, const P&, const G&) const;
 
 private:
   std::unique_ptr<IndexData> const m_data;
@@ -1438,21 +1399,25 @@ private:
  * Used for collecting all mutations of public static property types.
  */
 struct PublicSPropMutations {
+  explicit PublicSPropMutations(bool enabled = true);
 private:
   friend struct Index;
 
   struct KnownKey {
-    bool operator<(KnownKey o) const {
-      if (cinfo != o.cinfo) return cinfo < o.cinfo;
-      return prop < o.prop;
-    }
-
     ClassInfo* cinfo;
     SString prop;
+    bool operator==(const KnownKey& o) const {
+      return cinfo == o.cinfo && prop == o.prop;
+    }
+    struct Hasher {
+      size_t operator()(const KnownKey& k) const {
+        return folly::hash::hash_combine(k.cinfo, k.prop);
+      }
+    };
   };
 
-  using UnknownMap = std::map<SString,Type>;
-  using KnownMap = std::map<KnownKey,Type>;
+  using UnknownMap = SStringToOneT<Type>;
+  using KnownMap = hphp_fast_map<KnownKey, Type, KnownKey::Hasher>;
 
   // Public static property mutations are actually rare, so defer allocating the
   // maps until we actually see one.
@@ -1462,6 +1427,7 @@ private:
     KnownMap m_known;
   };
   std::unique_ptr<Data> m_data;
+  bool m_enabled;
 
   Data& get();
 

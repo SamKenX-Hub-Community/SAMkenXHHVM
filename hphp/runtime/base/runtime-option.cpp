@@ -101,7 +101,7 @@ RepoOptions RepoOptions::s_defaults;
 
 namespace {
 
-#ifdef FACEBOOK
+#ifdef HHVM_FACEBOOK
 const static bool s_PHP7_default = false;
 #else
 const static bool s_PHP7_default = true;
@@ -367,15 +367,17 @@ void RepoOptionsFlags::initParserFlags(hackc::ParserFlags& flags) const {
   flags.enable_xhp_class_modifier = EnableXHPClassModifier;
 }
 
+void RepoOptionsFlags::calcCachedQuery() {
+  if (Query.empty()) return;
+  try {
+    m_cachedQuery = folly::parseJson(Query);
+  } catch (const folly::json::parse_error& e) { /* swallow error */ }
+}
+
 const RepoOptions& RepoOptions::forFile(const std::string& path) {
   tracing::BlockNoTrace _{"repo-options"};
 
-  std::string fpath{path};
-  if (boost::starts_with(fpath, "/:")) return defaults();
-
-  auto const isParentOf = [] (const std::filesystem::path& p1, const std::string& p2) {
-    return boost::starts_with(std::filesystem::path{p2}, p1.parent_path());
-  };
+  if (boost::starts_with(path, "/:")) return defaults();
 
   // Fast path: we have an active request and it has cached a RepoOptions
   // which has not been modified. It can cause us to miss out on
@@ -390,13 +392,19 @@ const RepoOptions& RepoOptions::forFile(const std::string& path) {
       // Don't bother checking if the file is changed. This cache is request
       // local and within any given request we want to use a consistent version
       // of the RepoOptions anyway.
-      if (isParentOf(opts->path(), fpath)) return *opts;
+      if (boost::starts_with(std::filesystem::path{path}, opts->dir())) {
+        return *opts;
+      }
     }
   }
 
+  auto const isParentOf = [] (const std::filesystem::path& p1, const std::string& p2) {
+    return boost::starts_with(std::filesystem::path{p2}, p1.parent_path());
+  };
+
   // Wrap filesystem accesses if needed to proxy info from cli server client.
   Stream::Wrapper* wrapper = nullptr;
-  if (get_cli_ucred()) {
+  if (is_cli_server_mode()) {
     wrapper = Stream::getWrapperFromURI(path);
     if (wrapper && !wrapper->isNormalFileStream()) wrapper = nullptr;
   }
@@ -412,7 +420,6 @@ const RepoOptions& RepoOptions::forFile(const std::string& path) {
     if (fd < 0) return std::nullopt;
     auto file = req::make<PlainFile>(fd);
     return file->read();
-
   };
 
   auto const set = [&] (
@@ -454,21 +461,21 @@ const RepoOptions& RepoOptions::forFile(const std::string& path) {
   //          optimization.
   if (RuntimeOption::EvalCachePerRepoOptionsPath) {
     if (!s_lastSeenRepoConfig->empty() &&
-        isParentOf(*s_lastSeenRepoConfig, fpath)) {
+        isParentOf(*s_lastSeenRepoConfig, path)) {
       if (auto const r = test(*s_lastSeenRepoConfig)) return *r;
       s_lastSeenRepoConfig->clear();
     }
 
     // If the last seen path isn't set yet or is no longer accurate try checking
     // other cached paths before falling back to the filesystem.
-    walkDirTree(fpath, [&] (const std::string& path) {
+    walkDirTree(path, [&] (const std::string& path) {
       return (ret = test(path)) != nullptr;
     });
   }
 
   if (ret) return *ret;
 
-  walkDirTree(fpath, [&] (const std::string& path) {
+  walkDirTree(path, [&] (const std::string& path) {
     RepoOptionStats st(path, wrapper);
     if (st.missing()) return false;
     RepoOptionCache::const_accessor rpathAcc;
@@ -495,6 +502,57 @@ AUTOLOADFLAGS()
 #undef E
   mangleForKey(packageInfo().mangleForCacheKey(), raw);
   m_flags.m_sha1 = SHA1{string_sha1(raw)};
+}
+
+namespace {
+std::string getCacheBreakerSchemaHash(std::string_view root,
+                                      const RepoOptionsFlags& flags) {
+  std::string optsHash = RO::EvalIncludeReopOptionsInFactsCacheBreaker
+      ? flags.cacheKeySha1().toString()
+      : flags.getFactsCacheBreaker();
+
+  if (RO::ServerExecutionMode()) {
+    Logger::FInfo("Native Facts DB cache breaker:\n"
+                  " Version: {}\n"
+                  " Root: {}\n"
+                  " RepoOpts hash: {}",
+                  Facts::kSchemaVersion,
+                  root,
+                  optsHash);
+  }
+  std::string rootHash = string_sha1(root);
+  optsHash.resize(10);
+  rootHash.resize(10);
+  return folly::to<std::string>(Facts::kSchemaVersion, '_', optsHash, '_',
+                                rootHash);
+}
+}
+
+constexpr std::string_view kEUIDPlaceholder = "%{euid}";
+constexpr std::string_view kSchemaPlaceholder = "%{schema}";
+void RepoOptions::calcAutoloadDB() {
+  namespace fs = std::filesystem;
+
+  if (RO::AutoloadDBPath.empty()) return;
+  std::string pathTemplate{RuntimeOption::AutoloadDBPath};
+
+  auto const euidIdx = pathTemplate.find(kEUIDPlaceholder);
+  if (euidIdx != std::string::npos) {
+    pathTemplate.replace(
+        euidIdx, kEUIDPlaceholder.size(), folly::to<std::string>(geteuid()));
+  }
+
+  auto const schemaIdx = pathTemplate.find(kSchemaPlaceholder);
+  if (schemaIdx != std::string::npos) {
+    pathTemplate.replace(
+        schemaIdx,
+        kSchemaPlaceholder.size(),
+        getCacheBreakerSchemaHash(m_repo.native(), m_flags));
+  }
+
+  fs::path dbPath = pathTemplate;
+  if (dbPath.is_relative()) dbPath = m_repo / dbPath;
+  m_autoloadDB = fs::absolute(dbPath);
 }
 
 const RepoOptions& RepoOptions::defaults() {
@@ -555,6 +613,8 @@ AUTOLOADFLAGS();
   if (!m_path.empty()) m_repo = std::filesystem::canonical(m_path.parent_path());
   m_flags.m_packageInfo = PackageInfo::fromFile(m_repo / kPackagesToml);
   calcCacheKey();
+  calcAutoloadDB();
+  m_flags.calcCachedQuery();
 }
 
 void RepoOptions::initDefaults(const Hdf& hdf, const IniSettingMap& ini) {
@@ -591,7 +651,6 @@ std::string RuntimeOption::PidFile = "www.pid";
 
 bool RuntimeOption::ServerMode = false;
 
-bool RuntimeOption::EnableHipHopSyntax = true;
 bool RuntimeOption::EnableXHP = true;
 bool RuntimeOption::EnableIntrinsicsExtension = false;
 bool RuntimeOption::CheckSymLink = true;
@@ -599,7 +658,6 @@ bool RuntimeOption::TrustAutoloaderPath = false;
 bool RuntimeOption::EnableArgsInBacktraces = true;
 bool RuntimeOption::EnableZendIniCompat = true;
 bool RuntimeOption::TimeoutsUseWallTime = true;
-bool RuntimeOption::CheckFlushOnUserClose = true;
 bool RuntimeOption::EvalAuthoritativeMode = false;
 bool RuntimeOption::DumpPreciseProfData = true;
 uint32_t RuntimeOption::EvalInitialStaticStringTableSize =
@@ -805,13 +863,10 @@ std::string RuntimeOption::XboxServerInfoReqInitDoc;
 bool RuntimeOption::XboxServerInfoAlwaysReset = false;
 bool RuntimeOption::XboxServerLogInfo = false;
 std::string RuntimeOption::XboxProcessMessageFunc = "xbox_process_message";
-std::string RuntimeOption::XboxPassword;
-std::set<std::string> RuntimeOption::XboxPasswords;
 
 std::string RuntimeOption::SourceRoot = Process::GetCurrentDirectory() + '/';
 std::vector<std::string> RuntimeOption::IncludeSearchPaths;
 std::map<std::string, std::string> RuntimeOption::IncludeRoots;
-bool RuntimeOption::AutoloadEnabled;
 bool RuntimeOption::AutoloadEnableExternFactExtractor;
 std::string RuntimeOption::AutoloadDBPath;
 bool RuntimeOption::AutoloadDBCanCreate;
@@ -830,8 +885,6 @@ std::string RuntimeOption::ErrorDocument500;
 std::string RuntimeOption::FatalErrorMessage;
 std::string RuntimeOption::FontPath;
 bool RuntimeOption::EnableStaticContentFromDisk = true;
-bool RuntimeOption::EnableOnDemandUncompress = true;
-bool RuntimeOption::EnableStaticContentMMap = true;
 
 bool RuntimeOption::Utf8izeReplace = true;
 
@@ -847,6 +900,7 @@ hphp_string_imap<std::string> RuntimeOption::StaticFileExtensions;
 hphp_string_imap<std::string> RuntimeOption::PhpFileExtensions;
 std::set<std::string> RuntimeOption::ForbiddenFileExtensions;
 std::vector<std::shared_ptr<FilesMatch>> RuntimeOption::FilesMatches;
+std::set<std::string> RuntimeOption::RenamableFunctions;
 
 bool RuntimeOption::WhitelistExec = false;
 bool RuntimeOption::WhitelistExecWarningOnly = false;
@@ -1108,6 +1162,16 @@ Optional<std::filesystem::path> RuntimeOption::GetHomePath(
   return std::nullopt;
 }
 
+bool RuntimeOption::funcIsRenamable(const StringData* name) {
+  if (RO::EvalJitEnableRenameFunction == 0) return false;
+  if (RO::EvalJitEnableRenameFunction == 2) {
+    return RO::RenamableFunctions.find(name->data()) !=
+      RO::RenamableFunctions.end();
+  } else {
+    return true;
+  }
+}
+
 std::string RuntimeOption::GetDefaultUser() {
   if (SandboxDefaultUserFile.empty()) return {};
 
@@ -1227,12 +1291,11 @@ bool RuntimeOption::EnablePregErrorLog = true;
 
 bool RuntimeOption::SimpleXMLEmptyNamespaceMatchesAll = false;
 
-bool RuntimeOption::EnableHotProfiler = true;
 int RuntimeOption::ProfilerTraceBuffer = 2000000;
 double RuntimeOption::ProfilerTraceExpansion = 1.2;
 int RuntimeOption::ProfilerMaxTraceBuffer = 0;
 
-#ifdef FACEBOOK
+#ifdef HHVM_FACEBOOK
 bool RuntimeOption::EnableFb303Server = false;
 int RuntimeOption::Fb303ServerPort = 0;
 std::string RuntimeOption::Fb303ServerIP;
@@ -1462,18 +1525,12 @@ static std::vector<std::string> getTierOverwrites(IniSetting::Map& ini,
 void RuntimeOption::ReadSatelliteInfo(
     const IniSettingMap& ini,
     const Hdf& hdf,
-    std::vector<std::shared_ptr<SatelliteServerInfo>>& infos,
-    std::string& xboxPassword,
-    std::set<std::string>& xboxPasswords) {
+    std::vector<std::shared_ptr<SatelliteServerInfo>>& infos) {
   auto ss_callback = [&] (const IniSettingMap &ini_ss, const Hdf &hdf_ss,
                          const std::string &ini_ss_key) {
     auto satellite = std::make_shared<SatelliteServerInfo>(ini_ss, hdf_ss,
                                                            ini_ss_key);
     infos.push_back(satellite);
-    if (satellite->getType() == SatelliteServer::Type::KindOfRPCServer) {
-      xboxPassword = satellite->getPassword();
-      xboxPasswords = satellite->getPasswords();
-    }
   };
   Config::Iterate(ss_callback, ini, hdf, "Satellites");
 }
@@ -1641,7 +1698,7 @@ void RuntimeOption::Load(
         ErrorLogFileData(LogFile, LogFileSymLink, LogFilePeriodMultiplier);
     }
     if (Config::GetBool(ini, config, "Log.AlwaysPrintStackTraces")) {
-      Logger::SetTheLogger(Logger::DEFAULT, new ExtendedLogger());
+      Logger::SetTheLogger(Logger::DEFAULT, std::make_unique<ExtendedLogger>());
       ExtendedLogger::EnabledByDefault = true;
     }
 
@@ -1897,13 +1954,9 @@ void RuntimeOption::Load(
   }
   {
     // Eval
-    Config::Bind(EnableHipHopSyntax, ini, config, "Eval.EnableHipHopSyntax",
-                 EnableHipHopSyntax);
     Config::Bind(EnableXHP, ini, config, "Eval.EnableXHP", EnableXHP);
     Config::Bind(TimeoutsUseWallTime, ini, config, "Eval.TimeoutsUseWallTime",
                  true);
-    Config::Bind(CheckFlushOnUserClose, ini, config,
-                 "Eval.CheckFlushOnUserClose", true);
     Config::Bind(EvalInitialTypeTableSize, ini, config,
                  "Eval.InitialNamedEntityTableSize",
                  EvalInitialTypeTableSize);
@@ -2152,7 +2205,7 @@ void RuntimeOption::Load(
     Config::Bind(ServerIP, ini, config, "Server.IP");
     Config::Bind(ServerFileSocket, ini, config, "Server.FileSocket");
 
-#ifdef FACEBOOK
+#ifdef HHVM_FACEBOOK
     //Do not cause slowness on startup -- except for Facebook
     if (GetServerPrimaryIPv4().empty() && GetServerPrimaryIPv6().empty()) {
       throw std::runtime_error("Unable to resolve the server's "
@@ -2410,7 +2463,6 @@ void RuntimeOption::Load(
     }
     IncludeSearchPaths.insert(IncludeSearchPaths.begin(), ".");
 
-    Config::Bind(AutoloadEnabled, ini, config, "Autoload.Enabled", true);
     Config::Bind(AutoloadDBPath, ini, config, "Autoload.DB.Path");
     Config::Bind(AutoloadEnableExternFactExtractor, ini, config,
                  "Autoload.EnableExternFactExtractor", true);
@@ -2458,13 +2510,6 @@ void RuntimeOption::Load(
       Config::GetString(ini, config, "Server.FontPath"));
     Config::Bind(EnableStaticContentFromDisk, ini, config,
                  "Server.EnableStaticContentFromDisk", true);
-    Config::Bind(EnableOnDemandUncompress, ini, config,
-                 "Server.EnableOnDemandUncompress", true);
-    Config::Bind(EnableStaticContentMMap, ini, config,
-                 "Server.EnableStaticContentMMap", true);
-    if (EnableStaticContentMMap) {
-      EnableOnDemandUncompress = true;
-    }
     Config::Bind(Utf8izeReplace, ini, config, "Server.Utf8izeReplace", true);
 
     Config::Bind(RequestInitFunction, ini, config,
@@ -2488,6 +2533,7 @@ void RuntimeOption::Load(
                  "Server.ForbiddenFileExtensions");
     Config::Bind(LockCodeMemory, ini, config, "Server.LockCodeMemory", false);
     Config::Bind(MaxArrayChain, ini, config, "Server.MaxArrayChain", INT_MAX);
+    Config::Bind(RenamableFunctions, ini, config, "Eval.RenamableFunctions");
     if (MaxArrayChain != INT_MAX) {
       // VanillaDict needs a higher threshold to avoid false-positives.
       // (and we always use VanillaDict)
@@ -2564,8 +2610,7 @@ void RuntimeOption::Load(
     IpBlocks = std::make_shared<IpBlockMap>(ini, config);
   }
   {
-    ReadSatelliteInfo(ini, config, SatelliteServerInfos,
-                      XboxPassword, XboxPasswords);
+    ReadSatelliteInfo(ini, config, SatelliteServerInfos);
   }
   {
     // Xbox
@@ -2712,8 +2757,6 @@ void RuntimeOption::Load(
                  12 * 6); // 12 hours
     StatsSlotDuration = std::max(1u, StatsSlotDuration);
     StatsMaxSlot = std::max(2u, StatsMaxSlot);
-    Config::Bind(EnableHotProfiler, ini, config, "Stats.EnableHotProfiler",
-                 true);
     Config::Bind(ProfilerTraceBuffer, ini, config, "Stats.ProfilerTraceBuffer",
                  2000000);
     Config::Bind(ProfilerTraceExpansion, ini, config,
@@ -2769,7 +2812,7 @@ void RuntimeOption::Load(
     Config::Bind(SimpleXMLEmptyNamespaceMatchesAll, ini, config,
                  "SimpleXML.EmptyNamespaceMatchesAll", false);
   }
-#ifdef FACEBOOK
+#ifdef HHVM_FACEBOOK
   {
     // Fb303Server
     Config::Bind(EnableFb303Server, ini, config, "Fb303Server.Enable",

@@ -33,9 +33,15 @@ namespace HPHP::jit {
 void MethProfile::reportMeth(const Class* cls, const Func* meth,
                              const Func* callerFunc) {
   auto const checkModule = [&](const Func* f) {
-    return Module::warningsEnabled(f) &&
-           callerFunc &&
-           will_symbol_raise_module_boundary_violation(f, callerFunc);
+    if (!Module::warningsEnabled(f)) return false;
+    if (callerFunc &&
+        will_symbol_raise_module_boundary_violation(f, callerFunc)) {
+      return true;
+    }
+    return cls && will_symbol_raise_deployment_boundary_violation(
+      g_context->getPackageInfo(),
+      *cls
+    );
   };
 
   auto val = methValue();
@@ -58,13 +64,13 @@ void MethProfile::reportMeth(const Class* cls, const Func* meth,
       }
       if (checkModule(meth)) return;
       setMeth(curMeth, Tag::UniqueMeth);
-      // fall through
+      [[fallthrough]];
     case Tag::UniqueMeth:
       if (curMeth == meth) return;
       if (checkModule(meth)) return;
       curMeth = curMeth->baseCls()->getMethod(curMeth->methodSlot());
       setMeth(curMeth, Tag::BaseMeth);
-      // fall through
+      [[fallthrough]];
     case Tag::BaseMeth: {
       assertx(curMeth->baseCls() == curMeth->cls());
       if (curMeth->baseCls() == meth->baseCls()) return;

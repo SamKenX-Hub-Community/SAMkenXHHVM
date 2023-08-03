@@ -17,19 +17,21 @@
   client_find_refs_print
   client_get_definition
   client_highlight_refs
+  code_actions_cli_lib
   count_imprecise_types
+  custom_error_types
   decl_parser_options
   default_injector_config
   dep_hash_to_symbol
   direct_decl_parser
   direct_decl_utils
   gen_deps
-  glean_dependency_graph_convert
   hhi
   hhi_get
   naming_ast_print
   memtrace
-  package
+  package_info
+  package_config
   parent
   rust_provider_backend_stubs
   refactor_sd
@@ -40,13 +42,12 @@
   server_code_actions_services
   server_file_outline
   server_find_refs
-  server_global_inference
   server_go_to
   server_highlight_refs
   server_symbol_info_service_utils
+  server_type_hierarchy
   shape_analysis
   sys_utils
-  tast_typecheck
   temp_file
   typing
   utils_core
@@ -65,7 +66,6 @@
   default_injector_config
   hhi
   sys_utils
-  tast_typecheck
   temp_file
   typing
   utils_core
@@ -84,6 +84,7 @@
   hhi
   search
   server_autocomplete_services
+  server_search
   string
   sys_utils
   utils_core))
@@ -167,7 +168,7 @@
   direct_decl_parser
   file_provider
   ocamlrep_marshal_ffi
-  package
+  package_info
   ppxlib.print_diff
   provider_context
   provider_utils

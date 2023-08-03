@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test::fixtures::enumstrict::EmptyEnum>::size;
+#endif
 folly::Range<::test::fixtures::enumstrict::EmptyEnum const*> const TEnumTraits<::test::fixtures::enumstrict::EmptyEnum>::values = {};
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test::fixtures::enumstrict::EmptyEnum>::names = {};
 
@@ -28,18 +30,12 @@ bool TEnumTraits<::test::fixtures::enumstrict::EmptyEnum>::findValue(folly::Stri
 
 }} // apache::thrift
 
-namespace test { namespace fixtures { namespace enumstrict {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _EmptyEnum_EnumMapFactory::ValuesToNamesMapType _EmptyEnum_VALUES_TO_NAMES = _EmptyEnum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // test::fixtures::enumstrict
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test::fixtures::enumstrict::MyEnum>::size;
+#endif
 folly::Range<::test::fixtures::enumstrict::MyEnum const*> const TEnumTraits<::test::fixtures::enumstrict::MyEnum>::values = folly::range(TEnumDataStorage<::test::fixtures::enumstrict::MyEnum>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test::fixtures::enumstrict::MyEnum>::names = folly::range(TEnumDataStorage<::test::fixtures::enumstrict::MyEnum>::names);
 
@@ -53,18 +49,12 @@ bool TEnumTraits<::test::fixtures::enumstrict::MyEnum>::findValue(folly::StringP
 
 }} // apache::thrift
 
-namespace test { namespace fixtures { namespace enumstrict {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _MyEnum_EnumMapFactory::ValuesToNamesMapType _MyEnum_VALUES_TO_NAMES = _MyEnum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // test::fixtures::enumstrict
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test::fixtures::enumstrict::MyBigEnum>::size;
+#endif
 folly::Range<::test::fixtures::enumstrict::MyBigEnum const*> const TEnumTraits<::test::fixtures::enumstrict::MyBigEnum>::values = folly::range(TEnumDataStorage<::test::fixtures::enumstrict::MyBigEnum>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test::fixtures::enumstrict::MyBigEnum>::names = folly::range(TEnumDataStorage<::test::fixtures::enumstrict::MyBigEnum>::names);
 
@@ -78,14 +68,6 @@ bool TEnumTraits<::test::fixtures::enumstrict::MyBigEnum>::findValue(folly::Stri
 
 }} // apache::thrift
 
-namespace test { namespace fixtures { namespace enumstrict {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _MyBigEnum_EnumMapFactory::ValuesToNamesMapType _MyBigEnum_VALUES_TO_NAMES = _MyBigEnum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // test::fixtures::enumstrict
 
 namespace apache {
 namespace thrift {

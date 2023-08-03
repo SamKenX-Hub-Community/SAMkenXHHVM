@@ -70,8 +70,14 @@ struct Env {
     , prevBlocks()
     // TODO(#5703534): this is using a different TransContext than actual
     // translation will use.
-    , unit(TransContext{TransIDSet{}, 0 /* optIndex */, kind, sk, nullptr},
-           std::make_unique<AnnotationData>())
+    , unit(TransContext{
+              TransIDSet{}
+            , 0 /* optIndex */
+            , kind
+            , sk
+            , nullptr
+            , sk.packageInfo()}
+          , std::make_unique<AnnotationData>())
     , irgs(unit, nullptr, 0, nullptr)
     , numJmps(0)
     , numBCInstrs(maxBCInstrs)
@@ -275,7 +281,7 @@ bool traceThroughJmp(Env& env) {
 
   // We only trace through unconditional jumps and conditional jumps with const
   // inputs while inlining.
-  if (!isUnconditionalJmp(env.inst.op()) &&
+  if (!(isUnconditionalJmp(env.inst.op()) || isInterceptableJmp(env.inst.op())) &&
       !(env.inlining && isConditionalJmp(env.inst.op()) &&
         irgen::publicTopType(env.irgs, BCSPRelOffset{0}).hasConstVal())) {
     return false;
@@ -305,7 +311,7 @@ bool traceThroughJmp(Env& env) {
   // Ok we're good. For unconditional jumps, just set env.sk to the dest. For
   // known conditional jumps we have to consume the const value on the top of
   // the stack and figure out which branch to go to.
-  if (isUnconditionalJmp(env.inst.op())) {
+  if (isUnconditionalJmp(env.inst.op()) || isInterceptableJmp(env.inst.op())) {
     env.sk.setOffset(env.sk.offset() + offset);
   } else {
     auto value = irgen::popC(env.irgs);

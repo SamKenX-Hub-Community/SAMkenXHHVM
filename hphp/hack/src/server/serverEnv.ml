@@ -179,7 +179,6 @@ type saved_state_delta = {
 type env = {
   naming_table: Naming_table.t;
   deps_mode: Typing_deps_mode.t; [@opaque]
-  typing_service: typing_service;
   tcopt: TypecheckerOptions.t;
   popt: ParserOptions.t;
   gleanopt: GleanOptions.t;
@@ -274,8 +273,6 @@ type env = {
   last_recheck_loop_stats_for_actual_work: RecheckLoopStats.t option; [@opaque]
   local_symbol_table: SearchUtils.si_env; [@opaque]
       (** Symbols for locally changed files *)
-  package_info: Package.Info.t; [@opaque]
-      (** Function for determining which package a module belongs to *)
 }
 [@@deriving show]
 
@@ -352,12 +349,6 @@ and dirty_deps = {
   clean_local_deps: Typing_deps.DepSet.t;
       (** Those deps have already been checked against their interaction with
           dirty_master_deps. Storing them here to avoid checking it over and over *)
-}
-
-(** Remote typing service. *)
-and typing_service = {
-  delegate_state: Typing_service_delegate_types.state; [@opaque]
-  enabled: bool;
 }
 
 (** When using prechecked files we split initial typechecking in two phases

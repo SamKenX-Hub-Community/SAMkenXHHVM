@@ -13,21 +13,37 @@
 
 namespace some { namespace valid { namespace ns {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr bool const module_constants::aBool_;
+#endif
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr ::std::int8_t const module_constants::aByte_;
+#endif
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr ::std::int16_t const module_constants::a16BitInt_;
+#endif
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr ::std::int32_t const module_constants::a32BitInt_;
+#endif
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr ::std::int64_t const module_constants::a64BitInt_;
+#endif
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr float const module_constants::aFloat_;
+#endif
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr double const module_constants::aDouble_;
+#endif
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr char const * const module_constants::aString_;
+#endif
 
 ::std::vector<bool> const& module_constants::aList() {
   static folly::Indestructible<::std::vector<bool>> const instance{std::initializer_list<bool>{true,
@@ -36,12 +52,12 @@ constexpr char const * const module_constants::aString_;
 }
 
 ::std::map<::std::string, ::std::int32_t> const& module_constants::anEmptyMap() {
-  static folly::Indestructible<::std::map<::std::string, ::std::int32_t>> const instance{std::initializer_list<std::pair<const ::std::string, ::std::int32_t>>{}};
+  static folly::Indestructible<::std::map<::std::string, ::std::int32_t>> const instance{std::initializer_list<::std::map<::std::string, ::std::int32_t>::value_type>{}};
   return *instance;
 }
 
 ::std::map<::std::int32_t, ::std::string> const& module_constants::aMap() {
-  static folly::Indestructible<::std::map<::std::int32_t, ::std::string>> const instance{std::initializer_list<std::pair<const ::std::int32_t, ::std::string>>{{static_cast<::std::int32_t>(1), apache::thrift::StringTraits<std::string>::fromStringLiteral("foo")},
+  static folly::Indestructible<::std::map<::std::int32_t, ::std::string>> const instance{std::initializer_list<::std::map<::std::int32_t, ::std::string>::value_type>{{static_cast<::std::int32_t>(1), apache::thrift::StringTraits<std::string>::fromStringLiteral("foo")},
   {static_cast<::std::int32_t>(2), apache::thrift::StringTraits<std::string>::fromStringLiteral("bar")}}};
   return *instance;
 }
@@ -67,10 +83,10 @@ constexpr char const * const module_constants::aString_;
 }
 
 ::std::vector<::std::map<::std::string, ::std::int32_t>> const& module_constants::states() {
-  static folly::Indestructible<::std::vector<::std::map<::std::string, ::std::int32_t>>> const instance{std::initializer_list<::std::map<::std::string, ::std::int32_t>>{std::initializer_list<std::pair<const ::std::string, ::std::int32_t>>{{apache::thrift::StringTraits<std::string>::fromStringLiteral("San Diego"), static_cast<::std::int32_t>(3211000)},
+  static folly::Indestructible<::std::vector<::std::map<::std::string, ::std::int32_t>>> const instance{std::initializer_list<::std::map<::std::string, ::std::int32_t>>{std::initializer_list<::std::map<::std::string, ::std::int32_t>::value_type>{{apache::thrift::StringTraits<std::string>::fromStringLiteral("San Diego"), static_cast<::std::int32_t>(3211000)},
   {apache::thrift::StringTraits<std::string>::fromStringLiteral("Sacramento"), static_cast<::std::int32_t>(479600)},
   {apache::thrift::StringTraits<std::string>::fromStringLiteral("SF"), static_cast<::std::int32_t>(837400)}},
-  std::initializer_list<std::pair<const ::std::string, ::std::int32_t>>{{apache::thrift::StringTraits<std::string>::fromStringLiteral("New York"), static_cast<::std::int32_t>(8406000)},
+  std::initializer_list<::std::map<::std::string, ::std::int32_t>::value_type>{{apache::thrift::StringTraits<std::string>::fromStringLiteral("New York"), static_cast<::std::int32_t>(8406000)},
   {apache::thrift::StringTraits<std::string>::fromStringLiteral("Albany"), static_cast<::std::int32_t>(98400)}}}};
   return *instance;
 }
@@ -82,7 +98,9 @@ constexpr char const * const module_constants::aString_;
   return *instance;
 }
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr ::std::int32_t const module_constants::AnIntegerEnum2_;
+#endif
 
 ::std::vector<::std::int32_t> const& module_constants::AnIntegerEnum2() {
   static folly::Indestructible<::std::vector<::std::int32_t>> const instance{std::initializer_list<::std::int32_t>{static_cast<::std::int32_t>(2),
@@ -90,8 +108,12 @@ constexpr ::std::int32_t const module_constants::AnIntegerEnum2_;
   return *instance;
 }
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr ::some::valid::ns::MyEnumA const module_constants::constEnumA_;
+#endif
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr ::some::valid::ns::MyEnumA const module_constants::constEnumB_;
+#endif
 
 }}} // some::valid::ns

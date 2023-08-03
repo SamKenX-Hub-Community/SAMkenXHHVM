@@ -12,11 +12,14 @@ use ir::instr::HasLocals;
 use ir::instr::HasOperands;
 use ir::instr::Hhbc;
 use ir::instr::IteratorArgs;
+use ir::instr::MemberOp;
 use ir::instr::MemoGet;
+use ir::instr::MemoGetEager;
 use ir::instr::Predicate;
 use ir::instr::Special;
 use ir::instr::Terminator;
 use ir::instr::Textual;
+use ir::type_struct::TypeStruct;
 use ir::BareThisOp;
 use ir::Call;
 use ir::Constant;
@@ -44,6 +47,7 @@ use itertools::Itertools;
 
 use super::func_builder::FuncBuilderEx as _;
 use crate::class::IsStatic;
+use crate::func::lookup_constant;
 use crate::func::lookup_constant_string;
 use crate::func::FuncInfo;
 use crate::hack;
@@ -97,8 +101,10 @@ impl LowerInstrs<'_> {
             Hhbc::Add(..) => hack::Hhbc::Add,
             Hhbc::AddElemC(..) => hack::Hhbc::AddElemC,
             Hhbc::AddNewElemC(..) => hack::Hhbc::AddNewElemC,
+            Hhbc::Await(..) => hack::Hhbc::Await,
             Hhbc::AwaitAll(..) => hack::Hhbc::AwaitAll,
             Hhbc::CastKeyset(..) => hack::Hhbc::CastKeyset,
+            Hhbc::CastString(..) => hack::Hhbc::CastString,
             Hhbc::CastVec(..) => hack::Hhbc::CastVec,
             Hhbc::ClassGetC(..) => hack::Hhbc::ClassGetC,
             Hhbc::ClassHasReifiedGenerics(..) => hack::Hhbc::ClassHasReifiedGenerics,
@@ -118,6 +124,7 @@ impl LowerInstrs<'_> {
             Hhbc::GetClsRGProp(..) => hack::Hhbc::GetClsRGProp,
             Hhbc::GetMemoKeyL(..) => hack::Hhbc::GetMemoKeyL,
             Hhbc::HasReifiedParent(..) => hack::Hhbc::HasReifiedParent,
+            Hhbc::Idx(..) => hack::Hhbc::Idx,
             Hhbc::IsLateBoundCls(..) => hack::Hhbc::IsLateBoundCls,
             Hhbc::IsTypeC(_, IsTypeOp::ArrLike, _) => hack::Hhbc::IsTypeArrLike,
             Hhbc::IsTypeC(_, IsTypeOp::Bool, _) => hack::Hhbc::IsTypeBool,
@@ -135,6 +142,7 @@ impl LowerInstrs<'_> {
             Hhbc::IsTypeC(_, IsTypeOp::Scalar, _) => hack::Hhbc::IsTypeScalar,
             Hhbc::IsTypeC(_, IsTypeOp::Str, _) => hack::Hhbc::IsTypeStr,
             Hhbc::IsTypeC(_, IsTypeOp::Vec, _) => hack::Hhbc::IsTypeVec,
+            Hhbc::LazyClassFromClass(..) => hack::Hhbc::LazyClassFromClass,
             Hhbc::Modulo(..) => hack::Hhbc::Modulo,
             Hhbc::Mul(..) => hack::Hhbc::Mul,
             Hhbc::NewDictArray(..) => hack::Hhbc::NewDictArray,
@@ -180,6 +188,7 @@ impl LowerInstrs<'_> {
                     },
                 )
             }
+            Instr::MemberOp(member_op) => self.handle_member_op(builder, member_op),
             Instr::Terminator(term) => {
                 let hhbc = self.handle_terminator_with_builtin(term)?;
                 builder.emit_hhbc_builtin(hhbc, instr.operands(), loc);
@@ -187,6 +196,41 @@ impl LowerInstrs<'_> {
             }
             _ => None,
         }
+    }
+
+    fn handle_member_op(
+        &self,
+        builder: &mut FuncBuilder<'_>,
+        member_op: &MemberOp,
+    ) -> Option<Instr> {
+        use ir::instr::BaseOp;
+
+        match member_op.base_op {
+            BaseOp::BaseSC {
+                mode,
+                readonly,
+                loc,
+            } => {
+                let mut operands = member_op.operands.iter().copied();
+                let locals = member_op.locals.iter().copied();
+                let intermediates = member_op.intermediate_ops.iter().cloned();
+
+                let prop = operands.next().unwrap();
+                let base = operands.next().unwrap();
+                if let Some(propname) = lookup_constant_string(&builder.func, prop) {
+                    // Convert BaseSC w/ constant string to BaseST
+                    let pid = PropId::new(propname);
+                    let mut mop = MemberOpBuilder::base_st(base, pid, mode, readonly, loc);
+                    mop.operands.extend(operands);
+                    mop.locals.extend(locals);
+                    mop.intermediate_ops.extend(intermediates);
+                    return Some(Instr::MemberOp(mop.final_op(member_op.final_op.clone())));
+                }
+            }
+            _ => {}
+        }
+
+        None
     }
 
     fn check_prop(&self, builder: &mut FuncBuilder<'_>, _pid: PropId, _loc: LocId) -> Instr {
@@ -354,6 +398,15 @@ impl LowerInstrs<'_> {
         Instr::tombstone()
     }
 
+    fn memo_get_eager(&self, builder: &mut FuncBuilder<'_>, mge: MemoGetEager) -> Instr {
+        // MemoGetEager is the async version of MemoGet.  Ignore the async edge
+        // and just treat it as a MemoGet.
+        self.memo_get(
+            builder,
+            MemoGet::new(mge.eager_edge(), mge.no_value_edge(), &mge.locals, mge.loc),
+        )
+    }
+
     fn memo_set(
         &self,
         builder: &mut FuncBuilder<'_>,
@@ -364,6 +417,18 @@ impl LowerInstrs<'_> {
         let mut ops = self.compute_memo_ops(builder, locals, loc);
         ops.push(vid);
         builder.hhbc_builtin(hack::Hhbc::MemoSet, &ops, loc)
+    }
+
+    fn memo_set_eager(
+        &self,
+        builder: &mut FuncBuilder<'_>,
+        vid: ValueId,
+        locals: &[LocalId],
+        loc: LocId,
+    ) -> Instr {
+        // MemoSetEager is the async version of MemoSet. Ignore the async edge
+        // and just treat it as a MemoSet.
+        self.memo_set(builder, vid, locals, loc)
     }
 
     fn verify_out_type(
@@ -570,10 +635,6 @@ impl TransformInstr for LowerInstrs<'_> {
             Instr::Hhbc(Hhbc::InitProp(vid, pid, op, loc)) => {
                 self.init_prop(builder, vid, pid, op, loc)
             }
-            Instr::Hhbc(Hhbc::InstanceOfD(vid, cid, loc)) => {
-                let cid = builder.emit_constant(Constant::String(cid.id));
-                builder.hack_builtin(Builtin::IsType, &[vid, cid], loc)
-            }
             Instr::Hhbc(Hhbc::IsTypeStructC([obj, ts], op, loc)) => {
                 let builtin = hack::Hhbc::IsTypeStructC;
                 let op = match op {
@@ -581,8 +642,13 @@ impl TransformInstr for LowerInstrs<'_> {
                     TypeStructResolveOp::Resolve => 1,
                     _ => unreachable!(),
                 };
-                let op = builder.emit_constant(Constant::Int(op));
-                builder.hhbc_builtin(builtin, &[obj, ts, op], loc)
+                match rewrite_constant_type_check(builder, obj, ts, loc) {
+                    Some(null_check) => null_check,
+                    None => {
+                        let op = builder.emit_constant(Constant::Int(op));
+                        builder.hhbc_builtin(builtin, &[obj, ts, op], loc)
+                    }
+                }
             }
             Instr::Hhbc(Hhbc::LateBoundCls(loc)) => match *self.func_info {
                 FuncInfo::Method(ref mi) => match mi.is_static {
@@ -608,6 +674,9 @@ impl TransformInstr for LowerInstrs<'_> {
             }
             Instr::Hhbc(Hhbc::MemoSet(vid, locals, loc)) => {
                 self.memo_set(builder, vid, &locals, loc)
+            }
+            Instr::Hhbc(Hhbc::MemoSetEager(vid, locals, loc)) => {
+                self.memo_set_eager(builder, vid, &locals, loc)
             }
             Instr::Hhbc(Hhbc::NewStructDict(names, values, loc)) => {
                 let args = names
@@ -640,6 +709,13 @@ impl TransformInstr for LowerInstrs<'_> {
             Instr::Hhbc(Hhbc::NewObjS(clsref, loc)) => {
                 let cls = self.emit_special_cls_ref(builder, clsref, loc);
                 Instr::Hhbc(Hhbc::NewObj(cls, loc))
+            }
+            Instr::Hhbc(Hhbc::SelfCls(loc)) if self.func_info.declared_in_trait() => {
+                // In a trait, turn the `self` keyword into the fresh parameter we add
+                // to the type signatures.
+                let lid = builder.strings.intern_str("self");
+                let lid = LocalId::Named(lid);
+                Instr::Hhbc(Hhbc::CGetL(lid, loc))
             }
             Instr::Hhbc(Hhbc::VerifyOutType(vid, lid, loc)) => {
                 self.verify_out_type(builder, vid, lid, loc)
@@ -675,6 +751,7 @@ impl TransformInstr for LowerInstrs<'_> {
             }
             Instr::Terminator(Terminator::IterNext(args)) => self.iter_next(builder, args),
             Instr::Terminator(Terminator::MemoGet(memo)) => self.memo_get(builder, memo),
+            Instr::Terminator(Terminator::MemoGetEager(memo)) => self.memo_get_eager(builder, memo),
             Instr::Terminator(Terminator::RetM(ops, loc)) => {
                 // ret a, b;
                 // =>
@@ -812,4 +889,31 @@ fn rewrite_nullsafe_call(
 fn iter_var_name(id: ir::IterId, strings: &ir::StringInterner) -> LocalId {
     let name = strings.intern_str(format!("iter{}", id.idx));
     LocalId::Named(name)
+}
+
+/// `is_type_struct_c` is used to type-check (among other things) against _unresolved_ but known
+/// class name and for `is null`/`is nonnull` checks. This transformation detects such _constant_
+/// type-checks and rewrites them using a simpler form.
+fn rewrite_constant_type_check(
+    builder: &mut FuncBuilder<'_>,
+    obj: ValueId,
+    typestruct: ValueId,
+    loc: LocId,
+) -> Option<Instr> {
+    let typestruct = lookup_constant(&builder.func, typestruct)?;
+    let typestruct = match typestruct {
+        Constant::Array(tv) => TypeStruct::try_from_typed_value(tv, &builder.strings)?,
+        _ => return None,
+    };
+    match typestruct {
+        TypeStruct::Null => Some(builder.hhbc_builtin(hack::Hhbc::IsTypeNull, &[obj], loc)),
+        TypeStruct::Nonnull => {
+            let is_null = builder.emit_hhbc_builtin(hack::Hhbc::IsTypeNull, &[obj], loc);
+            Some(builder.hhbc_builtin(hack::Hhbc::Not, &[is_null], loc))
+        }
+        TypeStruct::Unresolved(clsid) => {
+            let instr = Instr::Hhbc(Hhbc::InstanceOfD(obj, clsid, loc));
+            Some(instr)
+        }
+    }
 }

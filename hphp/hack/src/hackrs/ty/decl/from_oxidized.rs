@@ -83,14 +83,23 @@ fn tshape_field_name_from_decl<P: Pos>(
     }
 }
 
+impl From<&obr::typing_defs::UserAttributeParam<'_>> for ty::UserAttributeParam {
+    fn from(attr: &obr::typing_defs::UserAttributeParam<'_>) -> Self {
+        use obr::typing_defs::UserAttributeParam as UAP;
+        match *attr {
+            UAP::Classname(cn) => Self::Classname(cn.into()),
+            UAP::EnumClassLabel(l) => Self::EnumClassLabel(l.into()),
+            UAP::String(s) => Self::String(s.into()),
+            UAP::Int(i) => Self::Int(i.into()),
+        }
+    }
+}
+
 impl<P: Pos> From<&obr::typing_defs::UserAttribute<'_>> for ty::UserAttribute<P> {
     fn from(attr: &obr::typing_defs::UserAttribute<'_>) -> Self {
         Self {
             name: attr.name.into(),
-            classname_params: (attr.classname_params.iter())
-                .copied()
-                .map(Into::into)
-                .collect(),
+            params: (attr.params.iter()).map(Into::into).collect(),
         }
     }
 }
@@ -138,6 +147,7 @@ impl<R: Reason> From<&obr::typing_defs::Ty<'_>> for Ty<R> {
                 Tapply(Box::new((pos_id.into(), slice(tys))))
             }
             typing_defs_core::Ty_::Tmixed => Tmixed,
+            typing_defs_core::Ty_::Twildcard => Twildcard,
             typing_defs_core::Ty_::Tlike(ty) => Tlike(ty.into()),
             typing_defs_core::Ty_::Tany(_) => Tany,
             typing_defs_core::Ty_::Tnonnull => Tnonnull,
@@ -146,16 +156,18 @@ impl<R: Reason> From<&obr::typing_defs::Ty<'_>> for Ty<R> {
             typing_defs_core::Ty_::Tprim(prim) => Tprim(*prim),
             typing_defs_core::Ty_::Tfun(ft) => Tfun(Box::new(ft.into())),
             typing_defs_core::Ty_::Ttuple(tys) => Ttuple(slice(tys)),
-            typing_defs_core::Ty_::Tshape(&(_, kind, fields)) => Tshape(Box::new((
-                kind.into(),
-                fields
-                    .iter()
-                    .map(|(name, ty)| {
-                        let (field_name_pos, name) = tshape_field_name_from_decl(name.0);
-                        (name, decl_shape_field_type(field_name_pos, ty))
-                    })
-                    .collect(),
-            ))),
+            typing_defs_core::Ty_::Tshape(&typing_defs_core::ShapeType(_, kind, fields)) => {
+                Tshape(Box::new(ty::ShapeType(
+                    kind.into(),
+                    fields
+                        .iter()
+                        .map(|(name, ty)| {
+                            let (field_name_pos, name) = tshape_field_name_from_decl(name.0);
+                            (name, decl_shape_field_type(field_name_pos, ty))
+                        })
+                        .collect(),
+                )))
+            }
             typing_defs_core::Ty_::Trefinement(&(ty, cr)) => {
                 Trefinement(Box::new(decl::TrefinementType {
                     ty: ty.into(),
@@ -166,7 +178,6 @@ impl<R: Reason> From<&obr::typing_defs::Ty<'_>> for Ty<R> {
                     },
                 }))
             }
-            typing_defs_core::Ty_::Tvar(ident) => Tvar(ident.into()),
             typing_defs_core::Ty_::Tgeneric(&(pos_id, tys)) => {
                 Tgeneric(Box::new((pos_id.into(), slice(tys))))
             }
@@ -180,7 +191,8 @@ impl<R: Reason> From<&obr::typing_defs::Ty<'_>> for Ty<R> {
             | typing_defs_core::Ty_::Tnewtype(_)
             | typing_defs_core::Ty_::Tdependent(_)
             | typing_defs_core::Ty_::Tclass(_)
-            | typing_defs_core::Ty_::Tneg(_) => {
+            | typing_defs_core::Ty_::Tneg(_)
+            | typing_defs_core::Ty_::Tvar(_) => {
                 unreachable!("Not used in decl tys")
             }
         };
@@ -481,6 +493,7 @@ impl<R: Reason> From<&obr::shallow_decl_defs::FunDecl<'_>> for shallow::FunDecl<
             php_std_lib: sf.php_std_lib,
             support_dynamic_type: sf.support_dynamic_type,
             no_auto_dynamic: sf.no_auto_dynamic,
+            no_auto_likes: sf.no_auto_likes,
         }
     }
 }
@@ -669,6 +682,7 @@ impl<R: Reason> From<&obr::decl_defs::DeclClassType<'_>> for folded::FoldedClass
             has_xhp_keyword,
             support_dynamic_type,
             module,
+            is_module_level_trait,
             tparams,
             where_constraints,
             substs,
@@ -706,6 +720,7 @@ impl<R: Reason> From<&obr::decl_defs::DeclClassType<'_>> for folded::FoldedClass
             support_dynamic_type: *support_dynamic_type,
             enum_type: enum_type.map(Into::into),
             module: module.map(Into::into),
+            is_module_level_trait: *is_module_level_trait,
             tparams: slice(tparams),
             where_constraints: slice(where_constraints),
             substs: map(substs.iter()),

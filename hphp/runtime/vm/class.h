@@ -58,6 +58,7 @@ extern const StaticString s_86sinit;
 extern const StaticString s_86linit;
 extern const StaticString s_86ctor;
 extern const StaticString s_86metadata;
+extern const StaticString s_86productAttributionData;
 extern const StaticString s_86reified_prop;
 extern const StaticString s_86reifiedinit;
 extern const StaticString s_coeffects_var;
@@ -73,17 +74,18 @@ struct StringData;
 struct c_Awaitable;
 
 struct MemberLookupContext {
-  explicit MemberLookupContext(const Class*); // used when we know the class is nonnull, or we are okay with module being null
   MemberLookupContext(const Class*, const Func*);
   MemberLookupContext(const Class*, const StringData*);
 
   const Class* cls() const;
   const StringData* moduleName() const;
 private:
-  Either<const Class*, const StringData*> m_data;
+  const Class* m_class;
+  const StringData* m_moduleName;
 };
 
-static const MemberLookupContext nullctx = MemberLookupContext(nullptr);
+static const MemberLookupContext nullctx =
+  MemberLookupContext(nullptr, (StringData*)nullptr);
 
 namespace collections {
 struct CollectionsExtension;

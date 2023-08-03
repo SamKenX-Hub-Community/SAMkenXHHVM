@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include <thrift/compiler/ast/node_list.h>
 #include <thrift/compiler/ast/t_node.h>
 #include <thrift/compiler/lib/uri.h>
 
@@ -29,6 +30,7 @@ namespace thrift {
 namespace compiler {
 
 class t_const;
+class t_program;
 
 /**
  * The (pre)release state for a given t_named.
@@ -68,8 +70,11 @@ class t_named : public t_node {
   const std::string& name() const noexcept { return name_; }
   void set_name(const std::string& name) { name_ = name; }
 
-  const std::vector<const t_const*>& structured_annotations() const noexcept {
-    return structured_annotations_raw_;
+  node_list_view<const t_const> structured_annotations() const {
+    return structured_annotations_;
+  }
+  node_list_view<t_const> structured_annotations() {
+    return structured_annotations_;
   }
   void add_structured_annotation(std::unique_ptr<t_const> annot);
 
@@ -92,23 +97,25 @@ class t_named : public t_node {
   t_release_state release_state() const noexcept { return release_state_; }
   void set_release_state(t_release_state state) { release_state_ = state; }
 
+  // The program this node appears in. Will be null for base types.
+  //  Also null for definitions where no one has found value in tracking this
+  //  yet, like enum values.
+  const t_program* program() const { return program_; }
+
  protected:
-  // t_named is abstract.
-  t_named() = default;
-  explicit t_named(std::string name) : name_(std::move(name)) {}
+  explicit t_named(const t_program* program = nullptr, std::string name = "");
+  t_named(const t_named& named);
 
   // TODO(afuller): make private.
   std::string name_;
+  const t_program* program_;
 
  private:
   bool generated_ = false;
   t_release_state release_state_ = t_release_state::unspecified;
   std::string uri_;
   bool explicit_uri_ = false;
-  std::vector<std::shared_ptr<const t_const>> structured_annotations_;
-
-  // TODO(ytj): use thrift.uri --> t_const map for structured annotation
-  std::vector<const t_const*> structured_annotations_raw_;
+  std::vector<std::unique_ptr<t_const>> structured_annotations_;
 
   // TODO(afuller): Remove everything below this comment. It is only provided
   // for backwards compatibility.

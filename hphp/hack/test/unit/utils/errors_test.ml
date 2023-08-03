@@ -52,35 +52,27 @@ let test_do () =
 
 let expected_unsorted =
   {|File "/FileWithErrors.php", line 1, characters 4-7:
-This value is not a valid key type for this container (Typing[4324])
+Duplicate record field `C2_Type` (NastCheck[3083])
   File "/C2", line 0, characters 0-0:
-  This container is C2_Type
-  File "/K2", line 0, characters 0-0:
-  K2_Type cannot be used as a key for C2_Type
+  Previous field is here
 
 File "/FileWithErrors.php", line 1, characters 4-7:
-This value is not a valid key type for this container (Typing[4324])
+Duplicate record field `C1_Type` (NastCheck[3083])
   File "/C1", line 0, characters 0-0:
-  This container is C1_Type
-  File "/K1", line 0, characters 0-0:
-  K1_Type cannot be used as a key for C1_Type
+  Previous field is here
 
 File "/FileWithErrors.php", line 0, characters 0-0:
  (Parsing[1002])
 
 File "/FileWithErrors.php", line 1, characters 4-7:
-This value is not a valid key type for this container (Typing[4324])
+Duplicate record field `C2_Type` (NastCheck[3083])
   File "/C2", line 0, characters 0-0:
-  This container is C2_Type
-  File "/K2", line 0, characters 0-0:
-  K2_Type cannot be used as a key for C2_Type
+  Previous field is here
 
 File "/FileWithErrors.php", line 1, characters 4-7:
-This value is not a valid key type for this container (Typing[4324])
+Duplicate record field `C1_Type` (NastCheck[3083])
   File "/C1", line 0, characters 0-0:
-  This container is C1_Type
-  File "/K1", line 0, characters 0-0:
-  K1_Type cannot be used as a key for C1_Type
+  Previous field is here
 
 |}
 
@@ -89,18 +81,14 @@ let expected_sorted =
  (Parsing[1002])
 
 File "/FileWithErrors.php", line 1, characters 4-7:
-This value is not a valid key type for this container (Typing[4324])
+Duplicate record field `C1_Type` (NastCheck[3083])
   File "/C1", line 0, characters 0-0:
-  This container is C1_Type
-  File "/K1", line 0, characters 0-0:
-  K1_Type cannot be used as a key for C1_Type
+  Previous field is here
 
 File "/FileWithErrors.php", line 1, characters 4-7:
-This value is not a valid key type for this container (Typing[4324])
+Duplicate record field `C2_Type` (NastCheck[3083])
   File "/C2", line 0, characters 0-0:
-  This container is C2_Type
-  File "/K2", line 0, characters 0-0:
-  K2_Type cannot be used as a key for C2_Type
+  Previous field is here
 
 |}
 
@@ -137,59 +125,30 @@ let test_get_sorted_error_list () =
   let container_pos2 =
     Pos.make_from (create_path "C2") |> Pos_or_decl.of_raw_pos
   in
-  let key_pos1 = Pos.make_from (create_path "K1") |> Pos_or_decl.of_raw_pos in
-  let key_pos2 = Pos.make_from (create_path "K2") |> Pos_or_decl.of_raw_pos in
   let (errors, ()) =
-    Errors.do_with_context file_with_errors Errors.Typing (fun () ->
-        Typing_error_utils.add_typing_error
-          Typing_error.(
-            primary
-            @@ Primary.Invalid_arraykey
-                 {
-                   pos = err_pos;
-                   ctxt = `read;
-                   container_pos = container_pos2;
-                   container_ty_name = lazy "C2_Type";
-                   key_pos = key_pos2;
-                   key_ty_name = lazy "K2_Type";
-                 });
-        Typing_error_utils.add_typing_error
-          Typing_error.(
-            primary
-            @@ Primary.Invalid_arraykey
-                 {
-                   pos = err_pos;
-                   ctxt = `read;
-                   container_pos = container_pos1;
-                   container_ty_name = lazy "C1_Type";
-                   key_pos = key_pos1;
-                   key_ty_name = lazy "K1_Type";
-                 });
+    Errors.do_with_context file_with_errors (fun () ->
+        Errors.add_error
+          Nast_check_error.(
+            to_user_error
+            @@ Repeated_record_field_name
+                 { pos = err_pos; name = "C2_Type"; prev_pos = container_pos2 });
+        Errors.add_error
+          Nast_check_error.(
+            to_user_error
+            @@ Repeated_record_field_name
+                 { pos = err_pos; name = "C1_Type"; prev_pos = container_pos1 });
+
         error_in "FileWithErrors.php";
-        Typing_error_utils.add_typing_error
-          Typing_error.(
-            primary
-            @@ Primary.Invalid_arraykey
-                 {
-                   pos = err_pos;
-                   ctxt = `read;
-                   container_pos = container_pos2;
-                   container_ty_name = lazy "C2_Type";
-                   key_pos = key_pos2;
-                   key_ty_name = lazy "K2_Type";
-                 });
-        Typing_error_utils.add_typing_error
-          Typing_error.(
-            primary
-            @@ Primary.Invalid_arraykey
-                 {
-                   pos = err_pos;
-                   ctxt = `read;
-                   container_pos = container_pos1;
-                   container_ty_name = lazy "C1_Type";
-                   key_pos = key_pos1;
-                   key_ty_name = lazy "K1_Type";
-                 });
+        Errors.add_error
+          Nast_check_error.(
+            to_user_error
+            @@ Repeated_record_field_name
+                 { pos = err_pos; name = "C2_Type"; prev_pos = container_pos2 });
+        Errors.add_error
+          Nast_check_error.(
+            to_user_error
+            @@ Repeated_record_field_name
+                 { pos = err_pos; name = "C1_Type"; prev_pos = container_pos1 });
         ())
   in
   Asserter.String_asserter.assert_equals
@@ -290,23 +249,22 @@ let test_phases () =
   let a_path = create_path "A" in
   let (errors, ()) =
     Errors.do_ (fun () ->
-        Errors.run_in_context a_path Errors.Typing (fun () ->
+        Errors.run_in_context a_path (fun () ->
             Errors.add_error
               Parsing_error.(
                 to_user_error
                 @@ Parsing_error
                      { pos = Pos.make_from a_path; msg = ""; quickfixes = [] }));
-        Errors.run_in_context a_path Errors.Typing (fun () ->
-            Typing_error_utils.add_typing_error
-              Typing_error.(
-                primary
-                @@ Primary.Generic_unify
-                     { pos = Pos.make_from a_path; msg = "" }));
+        Errors.run_in_context a_path (fun () ->
+            Errors.add_error
+              Nast_check_error.(
+                to_user_error @@ Entrypoint_arguments (Pos.make_from a_path)));
         ())
   in
   let expected =
     "File \"/A\", line 0, characters 0-0:\n (Parsing[1002])\n\n"
-    ^ "File \"/A\", line 0, characters 0-0:\n (Typing[4116])\n\n"
+    ^ "File \"/A\", line 0, characters 0-0:
+`__EntryPoint` functions cannot take arguments. (NastCheck[3085])\n\n"
   in
   Asserter.String_asserter.assert_equals
     expected
@@ -318,19 +276,19 @@ let test_incremental_update () =
   let a_path = create_path "A" in
   let b_path = create_path "B" in
   let (foo_error_a, ()) =
-    Errors.do_with_context a_path Errors.Typing (fun () ->
+    Errors.do_with_context a_path (fun () ->
         error_in "foo1";
         error_in "foo2";
         ())
   in
   let (bar_error_a, ()) =
-    Errors.do_with_context a_path Errors.Typing (fun () ->
+    Errors.do_with_context a_path (fun () ->
         error_in "bar1";
         error_in "bar2";
         ())
   in
   let (baz_error_b, ()) =
-    Errors.do_with_context b_path Errors.Typing (fun () ->
+    Errors.do_with_context b_path (fun () ->
         error_in "baz1";
         error_in "baz2";
         ())
@@ -340,7 +298,6 @@ let test_incremental_update () =
       ~old:foo_error_a
       ~new_:bar_error_a
       ~rechecked:(Relative_path.Set.singleton a_path)
-      Errors.Typing
   in
   let expected =
     "File \"/bar2\", line 0, characters 0-0:\n (Parsing[1002])\n\n"
@@ -356,7 +313,6 @@ let test_incremental_update () =
       ~old:foo_error_a
       ~new_:baz_error_b
       ~rechecked:(Relative_path.Set.singleton b_path)
-      Errors.Typing
   in
   let expected =
     "File \"/foo1\", line 0, characters 0-0:\n (Parsing[1002])\n\n"
@@ -374,7 +330,6 @@ let test_incremental_update () =
       ~old:foo_error_a
       ~new_:Errors.empty
       ~rechecked:(Relative_path.Set.singleton a_path)
-      Errors.Typing
   in
   Asserter.Bool_asserter.assert_equals
     true
@@ -455,8 +410,7 @@ let test_performance () =
     | n ->
       let path = string_of_int n ^ ".php" in
       let (errors, ()) =
-        Errors.(do_with_context (create_path path) Typing) (fun () ->
-            error_in path)
+        Errors.do_with_context (create_path path) (fun () -> error_in path)
       in
       (* note argument order: small first, big second *)
       aux (Errors.merge errors acc) (n - 1)

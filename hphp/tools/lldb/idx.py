@@ -2,6 +2,7 @@
 
 import lldb
 import shlex
+import sys
 import typing
 
 try:
@@ -11,10 +12,17 @@ except ModuleNotFoundError:
     import hhvm_lldb.utils as utils
 
 
-def at(ptr: lldb.SBValue, idx: int) -> typing.Optional[lldb.SBValue]:
+def at(ptr: lldb.SBValue, idx: typing.Union[int, lldb.SBValue]) -> typing.Optional[lldb.SBValue]:
     """ Access ptr[idx] """
+
+    if isinstance(idx, lldb.SBValue):
+        idx = idx.unsigned
+
     val = ptr.GetChildAtIndex(idx, lldb.eDynamicDontRunTarget, True)
-    if not val.IsValid():
+
+    utils.debug_print(f"idx.at(ptr={ptr} ({ptr.type.name}), idx={idx}) = {val.unsigned} (0x{val.unsigned:x}) (error={val.GetError()})")
+
+    if val.GetError().Fail():
         return None
     return val
 
@@ -32,6 +40,7 @@ def atomic_low_ptr_vector_at(av: lldb.SBValue, idx: int, hasher=None) -> typing.
     Returns:
         av[ix] if valid, otherwise None
     """
+    utils.debug_print("atomic_low_ptr_vector_at()")
 
     if hasher:
         # TODO implement
@@ -59,6 +68,8 @@ def fixed_vector_at(fv: lldb.SBValue, idx: int, hasher=None) -> typing.Optional[
     Returns:
         fv[ix] if valid, otherwise None
     """
+    utils.debug_print("fixed_vector_at()")
+
     if hasher is not None:
         # TODO implement
         raise NotImplementedError("hasher argument currently unused")
@@ -80,21 +91,33 @@ def compact_vector_at(cv: lldb.SBValue, idx: int, hasher=None) -> typing.Optiona
 
     See hphp/util/compact-vector.h
     """
+    utils.debug_print("compact_vector_at()")
 
     if hasher is not None:
         # TODO implement
         raise NotImplementedError("hasher argument currently unused")
 
-    if utils.get(cv, "m_data").unsigned == 0:  # null ptr
+    m_data = utils.get(cv, "m_data")
+    if utils.is_nullptr(m_data):
         return None
 
-    sz = utils.get(cv, "m_data", "m_len").unsigned
+    sz = utils.get(m_data, "m_len").unsigned
     if idx >= sz:
         return None
 
-    inner = cv.type.template_argument(0)
-    elems = (utils.get(cv, "m_data").Cast(utils.Type('char').GetPointerType())
-             + utils.get(cv, "elems_offset").Cast(inner.GetPointerType()))
+    inner = cv.type.template_args[0]
+    try:
+        offset = utils.get(cv, "elems_offset")
+    except Exception:
+        # LLDB apparently has issues getting static members
+        # of types with templates so do this manually instead
+        offset = inner.size if inner.size > m_data.type.size else m_data.type.size
+
+    raw_ptr = utils.unsigned_cast(m_data, utils.Type("char", cv.target).GetPointerType())
+    # utils.unsigned_cast won't work here because that function attempts to create
+    # a value by evaluating an expression, and LLDB has issues looking up templated types,
+    # even though we have a handle to the type via inner!
+    elems = utils.ptr_add(raw_ptr, offset).Cast(inner.GetPointerType())
     return at(elems, idx)
 
 
@@ -105,6 +128,124 @@ def idx_accessors():
         "HPHP::CompactVector": compact_vector_at,
         "HPHP::FixedVector": fixed_vector_at,
     }
+
+def _unaligned_tv_at_pos_to_tv(base: lldb.SBValue, idx: int) -> lldb.SBValue:
+    utv_type = utils.Type("HPHP::UnalignedTypedValue", base.target)
+    offset = utv_type.size * idx
+
+    utils.debug_print(f"Loading UnalignedTypedValue (base address: 0x{base.load_addr:x}, offset: {offset})")
+
+    # TODO(michristensen) I believe that creating a child at offset is the preferred way of
+    # doing this, but it's not currently working (it's being filled with garbage).
+    # utv = base.CreateChildAtOffset('[' + str(idx) + ']', offset, utv_type)
+
+    utv = base.CreateValueFromAddress('[' + str(idx) + ']', base.load_addr + offset, utv_type)
+
+    # Note that we're returning a lldb.SBValue, rather than printing the string,
+    # because this is used by a synthetic child provider, and lldb will call the
+    # pretty printer associated with it automatically.
+    return utv
+
+def _aligned_tv_at_pos_to_tv(base: lldb.SBValue, idx: int) -> lldb.SBValue:
+    target = base.target
+    quot = idx // 8
+    rem = idx % 8
+    chunk = base.load_addr + utils.Type("HPHP::PackedBlock", target).size * quot
+
+    val_type = utils.Type("HPHP::Value", target)
+    valaddr = chunk + val_type.size * (1 + rem)
+    val = base.CreateValueFromAddress("val", valaddr, val_type)
+
+    ty_type = utils.Type("HPHP::DataType", target)
+    tyaddr = chunk + rem
+    ty = base.CreateValueFromAddress("datatype", tyaddr, ty_type)
+
+    data = val.GetData()
+    success = data.Append(ty.data)
+    assert success, "Couldn't construct a raw TypedValue"
+
+    tv_type = utils.Type("HPHP::TypedValue", base.target)
+    tv = base.CreateValueFromData('[' + str(idx) + ']', data, tv_type)
+
+    return tv
+
+def vec_at(base: lldb.SBValue, idx: int) -> lldb.SBValue:
+    # base is a generic pointer to the start of the array of typed values
+    try:
+        if utils.Global('HPHP::VanillaVec::stores_unaligned_typed_values', base.target):
+            return _unaligned_tv_at_pos_to_tv(base, idx)
+        else:
+            return _aligned_tv_at_pos_to_tv(base, idx)
+    except Exception as ex:
+        print(f"error while trying to get element #{idx} of vec {str(base)}: {ex}", file=sys.stderr)
+        return None
+
+def dict_at(base, idx) -> (str, lldb.SBValue):
+    vde_type = utils.Type("HPHP::VanillaDictElm", base.target)
+    utils.debug_print(f"Dict base address (i.e. first element): 0x{base.load_addr:x}")
+    offset = vde_type.size * idx
+    elt = base.CreateValueFromAddress("val", base.load_addr + offset, vde_type)
+    utils.debug_print(f"Element #{idx} address: 0x{elt.load_addr:x}")
+
+    try:
+        if utils.get(elt, "data", "m_type").signed == utils.Global("HPHP::kInvalidDataType", base.target).signed:
+            rawkey = key = '<deleted>'
+        elif utils.get(elt, "data", "m_aux", "u_hash").signed < 0:
+            ikey = utils.get(elt, "ikey").signed
+            rawkey = key = ikey
+        else:
+            skey = utils.get(elt, "skey")
+            rawkey = utils.string_data_val(skey)
+            key = f'"{rawkey}"'
+    except Exception as e:
+        print(f"Failed to get dictionary key with error: {str(e)}", file=sys.stderr)
+        rawkey = key = '<invalid>'
+
+    utils._Current_key = rawkey
+
+    try:
+        data_raw = utils.get(elt, "data")
+        tv_type = utils.Type("HPHP::TypedValue", base.target)
+        # Cast because data_raw is a TypedValueAux, and we'd like it to
+        # just be presented as a TypedValue.
+        data = data_raw.Cast(tv_type)
+        # Clone so we can rename it; the name will be used on the
+        # left-hand side of the typed value representation, e.g.:
+        #   "mykey" = { Double, 3.14 }
+        data = data.Clone(str(key))
+    except Exception as e:
+        print(f"Failed to get dictionary value with error: {str(e)}", file=sys.stderr)
+        data = None
+    finally:
+        utils._Current_key = None
+
+    return data
+
+def keyset_at(base, idx):
+    vde_type = utils.Type("HPHP::VanillaKeysetElm", base.target)
+    utils.debug_print(f"Keyset base address (i.e. first element): 0x{base.load_addr:x}")
+    offset = vde_type.size * idx
+    elt = base.CreateValueFromAddress("val", base.load_addr + offset, vde_type)
+    utils.debug_print(f"Element #{idx} address: 0x{elt.load_addr:x}")
+
+    try:
+        if utils.get(elt, "tv", "m_type").signed == utils.Global("HPHP::kInvalidDataType", base.target).signed:
+            key = '<deleted>'
+        else:
+            key_raw = utils.get(elt, "tv")
+            tv_type = utils.Type("HPHP::TypedValue", base.target)
+            # Cast because data_raw is a TypedValueAux, and we'd like it to
+            # just be presented as a TypedValue
+            key = key_raw.Cast(tv_type)
+            # Clone so I can rename it (specifically, I don't want anything
+            # showing up as the 'index' portion of the listing, so it doesn't
+            # look like a vec).
+            key = key.Clone("")
+    except Exception as e:
+        print(f"Failed to get keyset entry with error: {str(e)}", file=sys.stderr)
+        key = None
+
+    return key
 
 
 def idx(container: lldb.SBValue, index, hasher=None):

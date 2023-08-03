@@ -6,11 +6,9 @@ package module // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    thrift0 "thrift/annotation/thrift"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = thrift0.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
@@ -73,11 +71,15 @@ if err != nil {
 }
 
 func (x *Fiery) String() string {
-    return fmt.Sprintf("%+v", x)
+    type FieryAlias Fiery
+    valueAlias := (*FieryAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *Fiery) Error() string {
-    return x.String()
+    type FieryAlias Fiery
+    valueAlias := (*FieryAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -230,11 +232,15 @@ if err != nil {
 var Serious_Sonnet_DEFAULT = NewSerious().GetSonnet()
 
 func (x *Serious) String() string {
-    return fmt.Sprintf("%+v", x)
+    type SeriousAlias Serious
+    valueAlias := (*SeriousAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *Serious) Error() string {
-    return x.String()
+    type SeriousAlias Serious
+    valueAlias := (*SeriousAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -419,11 +425,15 @@ if err != nil {
 }
 
 func (x *ComplexFieldNames) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ComplexFieldNamesAlias ComplexFieldNames
+    valueAlias := (*ComplexFieldNamesAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *ComplexFieldNames) Error() string {
-    return x.String()
+    type ComplexFieldNamesAlias ComplexFieldNames
+    valueAlias := (*ComplexFieldNamesAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -621,11 +631,15 @@ if err != nil {
 }
 
 func (x *CustomFieldNames) String() string {
-    return fmt.Sprintf("%+v", x)
+    type CustomFieldNamesAlias CustomFieldNames
+    valueAlias := (*CustomFieldNamesAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *CustomFieldNames) Error() string {
-    return x.String()
+    type CustomFieldNamesAlias CustomFieldNames
+    valueAlias := (*CustomFieldNamesAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -823,11 +837,15 @@ if err != nil {
 }
 
 func (x *ExceptionWithPrimitiveField) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ExceptionWithPrimitiveFieldAlias ExceptionWithPrimitiveField
+    valueAlias := (*ExceptionWithPrimitiveFieldAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *ExceptionWithPrimitiveField) Error() string {
-    return x.String()
+    type ExceptionWithPrimitiveFieldAlias ExceptionWithPrimitiveField
+    valueAlias := (*ExceptionWithPrimitiveFieldAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1025,11 +1043,15 @@ if err != nil {
 }
 
 func (x *ExceptionWithStructuredAnnotation) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ExceptionWithStructuredAnnotationAlias ExceptionWithStructuredAnnotation
+    valueAlias := (*ExceptionWithStructuredAnnotationAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *ExceptionWithStructuredAnnotation) Error() string {
-    return x.String()
+    type ExceptionWithStructuredAnnotationAlias ExceptionWithStructuredAnnotation
+    valueAlias := (*ExceptionWithStructuredAnnotationAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1135,11 +1157,15 @@ func NewBanal() *Banal {
 }
 
 func (x *Banal) String() string {
-    return fmt.Sprintf("%+v", x)
+    type BanalAlias Banal
+    valueAlias := (*BanalAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *Banal) Error() string {
-    return x.String()
+    type BanalAlias Banal
+    valueAlias := (*BanalAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

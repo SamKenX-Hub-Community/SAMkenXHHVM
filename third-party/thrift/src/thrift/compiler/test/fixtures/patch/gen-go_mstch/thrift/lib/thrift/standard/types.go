@@ -6,13 +6,9 @@ package standard // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    thrift0 "thrift/annotation/thrift"
-    java "thrift/annotation/java"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = thrift0.GoUnusedProtection__
-var _ = java.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
@@ -220,14 +216,13 @@ func StandardProtocolPtr(v StandardProtocol) *StandardProtocol {
 type TypeUri struct {
     Uri *Uri `thrift:"uri,1" json:"uri" db:"uri"`
     TypeHashPrefixSha2_256 ByteString `thrift:"typeHashPrefixSha2_256,2" json:"typeHashPrefixSha2_256" db:"typeHashPrefixSha2_256"`
+    ScopedName *string `thrift:"scopedName,3" json:"scopedName" db:"scopedName"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &TypeUri{}
 
 func NewTypeUri() *TypeUri {
-    return (&TypeUri{}).
-        SetUriNonCompat(NewUri()).
-        SetTypeHashPrefixSha2_256NonCompat(NewByteString())
+    return (&TypeUri{})
 }
 
 func (x *TypeUri) GetUriNonCompat() *Uri {
@@ -254,6 +249,18 @@ func (x *TypeUri) GetTypeHashPrefixSha2_256() ByteString {
     return x.TypeHashPrefixSha2_256
 }
 
+func (x *TypeUri) GetScopedNameNonCompat() *string {
+    return x.ScopedName
+}
+
+func (x *TypeUri) GetScopedName() string {
+    if !x.IsSetScopedName() {
+        return ""
+    }
+
+    return *x.ScopedName
+}
+
 func (x *TypeUri) SetUriNonCompat(value Uri) *TypeUri {
     x.Uri = &value
     return x
@@ -274,12 +281,26 @@ func (x *TypeUri) SetTypeHashPrefixSha2_256(value ByteString) *TypeUri {
     return x
 }
 
+func (x *TypeUri) SetScopedNameNonCompat(value string) *TypeUri {
+    x.ScopedName = &value
+    return x
+}
+
+func (x *TypeUri) SetScopedName(value *string) *TypeUri {
+    x.ScopedName = value
+    return x
+}
+
 func (x *TypeUri) IsSetUri() bool {
     return x.Uri != nil
 }
 
 func (x *TypeUri) IsSetTypeHashPrefixSha2_256() bool {
     return x.TypeHashPrefixSha2_256 != nil
+}
+
+func (x *TypeUri) IsSetScopedName() bool {
+    return x.ScopedName != nil
 }
 
 func (x *TypeUri) writeField1(p thrift.Protocol) error {  // Uri
@@ -308,13 +329,33 @@ func (x *TypeUri) writeField2(p thrift.Protocol) error {  // TypeHashPrefixSha2_
         return nil
     }
 
-    if err := p.WriteFieldBegin("typeHashPrefixSha2_256", thrift.BINARY, 2); err != nil {
+    if err := p.WriteFieldBegin("typeHashPrefixSha2_256", thrift.STRING, 2); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
     item := x.GetTypeHashPrefixSha2_256NonCompat()
     err := WriteByteString(item, p)
 if err != nil {
+    return err
+}
+
+    if err := p.WriteFieldEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *TypeUri) writeField3(p thrift.Protocol) error {  // ScopedName
+    if !x.IsSetScopedName() {
+        return nil
+    }
+
+    if err := p.WriteFieldBegin("scopedName", thrift.STRING, 3); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
+    }
+
+    item := *x.GetScopedNameNonCompat()
+    if err := p.WriteString(item); err != nil {
     return err
 }
 
@@ -344,11 +385,26 @@ if err != nil {
     return nil
 }
 
+func (x *TypeUri) readField3(p thrift.Protocol) error {  // ScopedName
+    result, err := p.ReadString()
+if err != nil {
+    return err
+}
+
+    x.SetScopedNameNonCompat(result)
+    return nil
+}
+
 // Deprecated: Use NewTypeUri().GetUri() instead.
 var TypeUri_Uri_DEFAULT = NewTypeUri().GetUri()
 
+// Deprecated: Use NewTypeUri().GetScopedName() instead.
+var TypeUri_ScopedName_DEFAULT = NewTypeUri().GetScopedName()
+
 func (x *TypeUri) String() string {
-    return fmt.Sprintf("%+v", x)
+    type TypeUriAlias TypeUri
+    valueAlias := (*TypeUriAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *TypeUri) countSetFields() int {
@@ -357,6 +413,9 @@ func (x *TypeUri) countSetFields() int {
         count++
     }
     if (x.IsSetTypeHashPrefixSha2_256()) {
+        count++
+    }
+    if (x.IsSetScopedName()) {
         count++
     }
     return count
@@ -388,6 +447,11 @@ func (x *TypeUriBuilder) TypeHashPrefixSha2_256(value ByteString) *TypeUriBuilde
     return x
 }
 
+func (x *TypeUriBuilder) ScopedName(value *string) *TypeUriBuilder {
+    x.obj.ScopedName = value
+    return x
+}
+
 func (x *TypeUriBuilder) Emit() *TypeUri {
     var objCopy TypeUri = *x.obj
     return &objCopy
@@ -406,6 +470,10 @@ func (x *TypeUri) Write(p thrift.Protocol) error {
     }
 
     if err := x.writeField2(p); err != nil {
+        return err
+    }
+
+    if err := x.writeField3(p); err != nil {
         return err
     }
 
@@ -441,6 +509,10 @@ func (x *TypeUri) Read(p thrift.Protocol) error {
             }
         case 2:  // typeHashPrefixSha2_256
             if err := x.readField2(p); err != nil {
+                return err
+            }
+        case 3:  // scopedName
+            if err := x.readField3(p); err != nil {
                 return err
             }
         default:
@@ -485,24 +557,7 @@ type TypeName struct {
 var _ thrift.Struct = &TypeName{}
 
 func NewTypeName() *TypeName {
-    return (&TypeName{}).
-        SetBoolTypeNonCompat(0).
-        SetByteTypeNonCompat(0).
-        SetI16TypeNonCompat(0).
-        SetI32TypeNonCompat(0).
-        SetI64TypeNonCompat(0).
-        SetFloatTypeNonCompat(0).
-        SetDoubleTypeNonCompat(0).
-        SetStringTypeNonCompat(0).
-        SetBinaryTypeNonCompat(0).
-        SetEnumTypeNonCompat(*NewTypeUri()).
-        SetTypedefTypeNonCompat(*NewTypeUri()).
-        SetStructTypeNonCompat(*NewTypeUri()).
-        SetUnionTypeNonCompat(*NewTypeUri()).
-        SetExceptionTypeNonCompat(*NewTypeUri()).
-        SetListTypeNonCompat(0).
-        SetSetTypeNonCompat(0).
-        SetMapTypeNonCompat(0)
+    return (&TypeName{})
 }
 
 func (x *TypeName) GetBoolTypeNonCompat() *Void {
@@ -619,7 +674,7 @@ func (x *TypeName) GetEnumTypeNonCompat() *TypeUri {
 
 func (x *TypeName) GetEnumType() *TypeUri {
     if !x.IsSetEnumType() {
-        return NewTypeUri()
+        return nil
     }
 
     return x.EnumType
@@ -631,7 +686,7 @@ func (x *TypeName) GetTypedefTypeNonCompat() *TypeUri {
 
 func (x *TypeName) GetTypedefType() *TypeUri {
     if !x.IsSetTypedefType() {
-        return NewTypeUri()
+        return nil
     }
 
     return x.TypedefType
@@ -643,7 +698,7 @@ func (x *TypeName) GetStructTypeNonCompat() *TypeUri {
 
 func (x *TypeName) GetStructType() *TypeUri {
     if !x.IsSetStructType() {
-        return NewTypeUri()
+        return nil
     }
 
     return x.StructType
@@ -655,7 +710,7 @@ func (x *TypeName) GetUnionTypeNonCompat() *TypeUri {
 
 func (x *TypeName) GetUnionType() *TypeUri {
     if !x.IsSetUnionType() {
-        return NewTypeUri()
+        return nil
     }
 
     return x.UnionType
@@ -667,7 +722,7 @@ func (x *TypeName) GetExceptionTypeNonCompat() *TypeUri {
 
 func (x *TypeName) GetExceptionType() *TypeUri {
     if !x.IsSetExceptionType() {
-        return NewTypeUri()
+        return nil
     }
 
     return x.ExceptionType
@@ -1566,7 +1621,9 @@ var TypeName_SetType_DEFAULT = NewTypeName().GetSetType()
 var TypeName_MapType_DEFAULT = NewTypeName().GetMapType()
 
 func (x *TypeName) String() string {
-    return fmt.Sprintf("%+v", x)
+    type TypeNameAlias TypeName
+    valueAlias := (*TypeNameAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *TypeName) countSetFields() int {

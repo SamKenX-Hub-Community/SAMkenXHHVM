@@ -9,8 +9,6 @@
 #include <thrift/lib/cpp2/gen/module_types_h.h>
 
 
-#include "thrift/annotation/gen-cpp2/cpp_types.h"
-#include "thrift/annotation/gen-cpp2/thrift_types.h"
 #include "thrift/compiler/test/fixtures/frozen-struct/gen-cpp2/include1_types.h"
 #include "thrift/compiler/test/fixtures/frozen-struct/gen-cpp2/include2_types.h"
 
@@ -142,14 +140,6 @@ template <> struct TEnumTraits<::some::ns::EnumB> {
 
 }} // apache::thrift
 
-namespace some { namespace ns {
-
-using _EnumB_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<EnumB>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _EnumB_EnumMapFactory::ValuesToNamesMapType _EnumB_VALUES_TO_NAMES;
-#endif
-}} // some::ns
 
 // END declare_enums
 // BEGIN forward_declare

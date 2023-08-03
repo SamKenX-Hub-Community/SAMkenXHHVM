@@ -8,75 +8,6 @@
 
 module Error_code = Error_codes.Typing
 
-module Eval_result : sig
-  (* The type representing the result of evaluating a `Typing_error.t` to
-     some atomic result type `'a` whilst retaining information about
-     intersections of errors *)
-  type 'a t
-
-  val to_string : 'a t -> ('a -> string) -> string
-
-  (* Given some predicate telling us whether an atomic error is suppressed,
-     filter the result to ensure that we don't report intersections of errors
-     where at least one error would not be reported (meaning that none should
-     be reported).
-
-     If there is some component of the  result which is suppressed, we will
-     get at most one atomic result back. If not, we may get back arbitrary
-     intersections of errors.
-
-     examples
-
-     1) suppress_intersection
-         (Intersect
-           [ Intersect
-               [ Intersect
-                  [ Single 2
-                  ; Single 3
-                  ]
-                ; Single 1
-                ]
-            ; Single 4
-            ]
-          ) ~is_suppressed:(fun x -> x = 2)
-          === Single 2
-
-      2) suppress_intersection (Single 2) ~is_suppressed:(fun x -> x = 2)
-         === Single 2
-
-
-      3) suppress_intersection
-          ( Intersect
-             [ Single 1
-             ; Intersect
-                [ Single 3
-                ; Intersect
-                   [ Single 4
-                   ; Single 5
-                   ]
-                ]
-             ]
-          )  ~is_suppressed:(fun x -> x = 2)
-          === Intersect
-                [ Single 1
-                ; Intersect
-                   [ Single 3
-                   ; Intersect
-                      [ Single 4
-                      ; Single 5
-                      ]
-                   ]
-                ]
-  *)
-  val suppress_intersection : 'a t -> is_suppressed:('a -> bool) -> 'a t
-
-  val iter : 'a t -> f:('a -> unit) -> unit
-end
-
-module Error : sig
-  type t
-end
-
 module Primary : sig
   module Shape : sig
     type t =
@@ -171,6 +102,11 @@ module Primary : sig
           ty_name: string Lazy.t;
           is_enum_class: bool;
           trail: Pos_or_decl.t list;
+        }
+      | Enum_type_bad_case_type of {
+          pos: Pos.t;
+          ty_name: string Lazy.t;
+          case_type_decl_pos: Pos_or_decl.t;
         }
       | Enum_constant_type_bad of {
           pos: Pos.t;
@@ -329,7 +265,6 @@ module Primary : sig
           with_value_pos: Pos.t;
           without_value_pos_opt: Pos.t option;
         }
-      | Missing_assign of Pos.t
       | Non_void_annotation_on_return_void_function of {
           is_async: bool;
           hint_pos: Pos.t;
@@ -417,6 +352,22 @@ module Primary : sig
     [@@deriving show]
   end
 
+  module CaseType : sig
+    type t =
+      | Overlapping_variant_types of {
+          pos: Pos.t;
+          name: string;
+          tag: string;
+          why: Pos_or_decl.t Message.t list Lazy.t;
+        }
+      | Unrecoverable_variant_type of {
+          pos: Pos.t;
+          name: string;
+          hints: (Pos.t * string) list;
+        }
+    [@@deriving show]
+  end
+
   (** Specific error information readily transformable into a user error *)
   type t =
     (* == Factorised errors ================================================= *)
@@ -429,31 +380,8 @@ module Primary : sig
     | Shape of Shape.t
     | Wellformedness of Wellformedness.t
     | Xhp of Xhp.t
+    | CaseType of CaseType.t
     (* == Primary only ====================================================== *)
-    | Exception_occurred of {
-        pos: Pos.t;
-        exn: Exception.t;
-      }
-    (* The intention is to introduce invariant violations with `report_to_user`
-       set to `false` initially. Then we observe and confirm that the invariant is
-       not repeatedly violated. Only then, we set it to `true` in a subsequent
-       release. This should prevent us from blocking users unexpectedly while
-       gradually introducing signal for unexpected compiler states. *)
-    | Invariant_violation of {
-        pos: Pos.t;
-        telemetry: Telemetry.t;
-        desc: string;
-        report_to_user: bool;
-      }
-    | Internal_error of {
-        pos: Pos.t;
-        msg: string;
-      }
-    | Typechecker_timeout of {
-        pos: Pos.t;
-        fn_name: string;
-        seconds: int;
-      }
     | Unresolved_tyvar of Pos.t
     | Unify_error of {
         pos: Pos.t;
@@ -619,6 +547,7 @@ module Primary : sig
       }
     | Null_member of {
         pos: Pos.t;
+        obj_pos_opt: Pos.t option;
         ctxt: [ `read | `write ];
         kind: [ `method_ | `property ];
         member_name: string;
@@ -774,11 +703,6 @@ module Primary : sig
         class_id: string;
         id: string;
       }
-    | Generic_at_runtime of {
-        pos: Pos.t;
-        prefix: string;
-      }
-    | Generics_not_allowed of Pos.t
     | Trivial_strict_eq of {
         pos: Pos.t;
         result: bool;
@@ -817,15 +741,6 @@ module Primary : sig
         class_pos: Pos.t;
         class_name: string;
       }
-    | Local_variable_modified_and_used of {
-        pos: Pos.t;
-        pos_useds: Pos.t list;
-      }
-    | Local_variable_modified_twice of {
-        pos: Pos.t;
-        pos_modifieds: Pos.t list;
-      }
-    | Assign_during_case of Pos.t
     | Invalid_classname of Pos.t
     | Illegal_type_structure of {
         pos: Pos.t;
@@ -849,7 +764,6 @@ module Primary : sig
         class_self: string;
         class_subclass: string;
       }
-    | Lateinit_with_default of Pos.t
     | Unserializable_type of {
         pos: Pos.t;
         message: string;
@@ -1195,10 +1109,6 @@ module Primary : sig
         pos: Pos.t;
         name: string;
       }
-    | Read_before_write of {
-        pos: Pos.t;
-        member_name: string;
-      }
     | Implement_abstract of {
         pos: Pos.t;
         is_final: bool;
@@ -1380,11 +1290,21 @@ module Primary : sig
         kind: [ `meth | `prop ];
       }
   [@@deriving show]
-
-  val to_user_error : t -> (Pos.t, Pos_or_decl.t) User_error.t option
 end
 
-module Secondary : sig
+module rec Error : sig
+  type t =
+    | Primary of Primary.t
+    | Apply of Callback.t * t
+    | Apply_reasons of Reasons_callback.t * Secondary.t
+    | Assert_in_current_decl of Secondary.t * Pos_or_decl.ctx
+    | Multiple of t list
+    | Union of t list
+    | Intersection of t list
+    | With_code of t * Error_code.t
+end
+
+and Secondary : sig
   (** Specific error information which needs to be given a primary position from
        the AST being typed to be transformable into a user error.
        This can be done via applying a [Reasons_callback.t] using
@@ -1404,9 +1324,7 @@ module Secondary : sig
         class_name: string;
         class_pos: Pos_or_decl.t;
         member_name: string;
-        closest_member_name: string option;
         hint: ([ `instance | `static ] * Pos_or_decl.t * string) option;
-        quickfixes: Pos.t Quickfix.t list;
       }
     | Type_arity_mismatch of {
         pos: Pos_or_decl.t;
@@ -1441,7 +1359,9 @@ module Secondary : sig
     (* == Secondary only ====================================================== *)
     | Violated_constraint of {
         cstrs: (Pos_or_decl.t * Pos_or_decl.t Message.t) list;
-        reasons: Pos_or_decl.t Message.t list Lazy.t;
+        ty_sub: Typing_defs_core.internal_type;
+        ty_sup: Typing_defs_core.internal_type;
+        is_coeffect: bool;
       }
     | Concrete_const_interface_override of {
         pos: Pos_or_decl.t;
@@ -1486,7 +1406,6 @@ module Secondary : sig
         pos: Pos_or_decl.t;
         name: string;
         decl_pos: Pos_or_decl.t;
-        shape_lit_pos: Pos.t option;
       }
     | Shape_fields_unknown of {
         pos: Pos_or_decl.t;
@@ -1630,7 +1549,11 @@ module Secondary : sig
         ty_name: string Lazy.t;
         dynamic_part: Pos_or_decl.t Message.t list Lazy.t;
       }
-    | Subtyping_error of Pos_or_decl.t Message.t list Lazy.t
+    | Subtyping_error of {
+        ty_sub: Typing_defs_core.internal_type;
+        ty_sup: Typing_defs_core.internal_type;
+        is_coeffect: bool;
+      }
     | Method_not_dynamically_callable of {
         pos: Pos_or_decl.t;
         parent_pos: Pos_or_decl.t;
@@ -1673,9 +1596,16 @@ module Secondary : sig
   [@@deriving show]
 end
 
-module Callback : sig
+and Callback : sig
   (** A mechanism to apply transformations to primary errors *)
-  type t [@@deriving show]
+  type t =
+    | Always of Primary.t
+    | Of_primary of Primary.t
+    | With_claim_as_reason of t * Primary.t
+    | With_code of Error_code.t * Pos.t Quickfix.t list
+    | Retain_code of t
+    | With_side_effect of t * (unit -> unit)
+  [@@deriving show]
   (* -- Constructors -------------------------------------------------------- *)
 
   (** Ignore any arguments and always return the given base error *)
@@ -1745,29 +1675,42 @@ module Callback : sig
   val using_error : Pos.t -> has_await:bool -> t
 end
 
-module Reasons_callback : sig
+and Reasons_callback : sig
   (** A mechanism to apply transformations to secondary errors *)
-  type t [@@deriving show]
+  type op =
+    | Append
+    | Prepend
+  [@@deriving show]
 
-  (** Evaluate the `Reasons_callback.t` to a `(Pos.t,Pos_or_decl.t) User_error.t`
-      for use in error reporting.
+  type component =
+    | Code
+    | Reasons
+    | Quickfixes
+  [@@deriving show]
 
-      The optional code, claim, reasons, and quickfixes are the 'starting' values
-      of the user error and may be ignored or override the defaults specified in
-      the callback.
+  type t =
+    | Always of Error.t
+    | Of_error of Error.t
+    | Of_callback of Callback.t * Pos.t Message.t Lazy.t
+    | Retain of t * component
+    | Incoming_reasons of t * op
+    | With_code of t * Error_code.t
+    | With_reasons of t * Pos_or_decl.t Message.t list Lazy.t
+    | Add_quickfixes of t * Pos.t Quickfix.t list
+    | Add_reason of t * op * Pos_or_decl.t Message.t Lazy.t
+    | From_on_error of
+        ((?code:int ->
+         ?quickfixes:Pos.t Quickfix.t list ->
+         Pos_or_decl.t Message.t list ->
+         unit)
+        [@show.opaque])
+        [@ocaml.deprecated
+          "This constructor will be removed. Please use the provided combinators for constructing error callbacks."]
+    | Prepend_on_apply of t * Secondary.t
+    | Assert_in_current_decl of Error_code.t * Pos_or_decl.ctx
+    | Drop_reasons_on_apply of t
+  [@@deriving show]
 
-      We don't require any of these since a reasons callback has both a code
-      and claim by construction and we can use the empty list as the default for
-      both reasons and quickfixes.
-  *)
-  val apply :
-    ?code:Error_code.t ->
-    ?claim:Pos.t Message.t Lazy.t ->
-    ?reasons:Pos_or_decl.t Message.t list Lazy.t ->
-    ?quickfixes:Pos.t Quickfix.t list ->
-    t ->
-    current_span:Pos.t ->
-    (Pos.t, Pos_or_decl.t) User_error.t Eval_result.t
   (* -- Constructors -------------------------------------------------------- *)
 
   (** Construct a `Reasons_callback.t` from a side-effecting function. This is
@@ -1806,6 +1749,11 @@ module Reasons_callback : sig
       `User_error.t` that is obtained when the callback is applied
   *)
   val with_reasons : t -> reasons:Pos_or_decl.t Message.t list Lazy.t -> t
+
+  (** Add a `quickfix` to the `User_error.t` generated when the callback is
+      applied
+  *)
+  val add_quickfixes : t -> Pos.t Quickfix.t list -> t
 
   (** Add the `reason` to the start of current list of reasons *)
   val prepend_reason : t -> reason:Pos_or_decl.t Message.t Lazy.t -> t
@@ -1931,17 +1879,16 @@ module Reasons_callback : sig
     Pos_or_decl.ctx -> t
 end
 
-type t = Error.t [@@deriving show]
+type t = Error.t
+
+val pp : Format.formatter -> t -> unit
+
+val show : t -> string
 
 (** Iterate over an error calling `on_prim` and `on_snd` when each `Primary.t`
      and `Secondary.t` error is encountered, respectively. *)
 val iter :
   t -> on_prim:(Primary.t -> unit) -> on_snd:(Secondary.t -> unit) -> unit
-
-(** Evaluate an error to a `User_error.t` for error reporting; we return an
-    option to model ignoring errors *)
-val to_user_error :
-  t -> current_span:Pos.t -> (Pos.t, Pos_or_decl.t) User_error.t Eval_result.t
 
 (* -- Constructors -------------------------------------------------------- *)
 
@@ -1974,6 +1921,9 @@ val wellformedness : Primary.Wellformedness.t -> t
 
 (** Lift a `Primary.Xhp.t` error to a `Typing_error.t` *)
 val xhp : Primary.Xhp.t -> t
+
+(** Lift a `Primary.CaseType.t` error to a `Typing_error.t` *)
+val casetype : Primary.CaseType.t -> t
 
 (** Apply a the `Reasons_callback.t` to the supplied `Secondary.t` error, using
     the reasons and error code associated with that error *)
@@ -2012,3 +1962,5 @@ val both : t -> t -> t
 
 (** Modify the code that will be reported when evaluated to a `User_error.t`  *)
 val with_code : t -> code:Error_code.t -> t
+
+val count : t -> int

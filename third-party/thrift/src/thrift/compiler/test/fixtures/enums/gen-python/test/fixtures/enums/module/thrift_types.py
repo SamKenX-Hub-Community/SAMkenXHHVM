@@ -12,8 +12,6 @@ import thrift.python.types as _fbthrift_python_types
 import thrift.python.exceptions as _fbthrift_python_exceptions
 
 
-import facebook.thrift.annotation.thrift.thrift_types
-
 
 class SomeStruct(metaclass=_fbthrift_python_types.StructMeta):
     _fbthrift_SPEC = (
@@ -150,7 +148,6 @@ class Metasyntactic(_fbthrift_python_types.Enum, int):
     BAR = 2
     BAZ = 3
     BAX = 4
-    Unspecified = 0
     @staticmethod
     def __get_thrift_name__() -> str:
         return "module.Metasyntactic"
@@ -174,12 +171,12 @@ class Metasyntactic(_fbthrift_python_types.Enum, int):
     def _to_py_deprecated(self):
         return self.value
 class MyEnum1(_fbthrift_python_types.Enum, int):
+    ME1_0 = 0
     ME1_1 = 1
     ME1_2 = 2
     ME1_3 = 3
     ME1_5 = 5
     ME1_6 = 6
-    ME1_0 = 0
     @staticmethod
     def __get_thrift_name__() -> str:
         return "module.MyEnum1"
@@ -262,7 +259,6 @@ class MyEnum4(_fbthrift_python_types.Enum, int):
     ME4_B = 2147483646
     ME4_C = 2147483647
     ME4_D = -2147483648
-    Unspecified = 0
     @staticmethod
     def __get_thrift_name__() -> str:
         return "module.MyEnum4"
@@ -289,7 +285,6 @@ class MyBitmaskEnum1(_fbthrift_python_types.Enum, int):
     ONE = 1
     TWO = 2
     FOUR = 4
-    Unspecified = 0
     @staticmethod
     def __get_thrift_name__() -> str:
         return "module.MyBitmaskEnum1"
@@ -316,7 +311,6 @@ class MyBitmaskEnum2(_fbthrift_python_types.Enum, int):
     ONE = 1
     TWO = 2
     FOUR = 4
-    Unspecified = 0
     @staticmethod
     def __get_thrift_name__() -> str:
         return "module.MyBitmaskEnum2"

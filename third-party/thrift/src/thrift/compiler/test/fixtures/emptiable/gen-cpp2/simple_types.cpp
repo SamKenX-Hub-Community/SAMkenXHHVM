@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::apache::thrift::test::MyEnum>::size;
+#endif
 folly::Range<::apache::thrift::test::MyEnum const*> const TEnumTraits<::apache::thrift::test::MyEnum>::values = folly::range(TEnumDataStorage<::apache::thrift::test::MyEnum>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::apache::thrift::test::MyEnum>::names = folly::range(TEnumDataStorage<::apache::thrift::test::MyEnum>::names);
 
@@ -28,14 +30,6 @@ bool TEnumTraits<::apache::thrift::test::MyEnum>::findValue(folly::StringPiece n
 
 }} // apache::thrift
 
-namespace apache { namespace thrift { namespace test {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _MyEnum_EnumMapFactory::ValuesToNamesMapType _MyEnum_VALUES_TO_NAMES = _MyEnum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // apache::thrift::test
 
 namespace apache {
 namespace thrift {

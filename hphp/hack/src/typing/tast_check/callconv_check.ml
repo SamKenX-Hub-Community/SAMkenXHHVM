@@ -51,6 +51,7 @@ let check_types env (_, p, te) =
               Reason.to_string ("This is " ^ ty_str) (get_reason ty1))
         in
         Typing_error_utils.add_typing_error
+          ~env:(Env.tast_env_as_typing_env env)
           Typing_error.(
             primary @@ Primary.Inout_argument_bad_type { pos = p; reasons })
     (* Other invalid expressions are caught in Nast_check. *)
@@ -64,11 +65,11 @@ let handler =
 
     method! at_expr env =
       function
-      | (_, _, Call (_, _, te, _)) ->
+      | (_, _, Call { args; _ }) ->
         List.iter
           ~f:(function
             | (Ast_defs.Pnormal, _) -> ()
             | (Ast_defs.Pinout _, e) -> check_types env e)
-          te
+          args
       | _ -> ()
   end

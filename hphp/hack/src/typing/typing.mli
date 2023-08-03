@@ -26,6 +26,7 @@ val stmt : Typing_env_types.env -> Nast.stmt -> Typing_env_types.env * Tast.stmt
 val bind_params :
   Typing_env_types.env ->
   ?can_read_globals:bool ->
+  no_auto_likes:bool ->
   Aast_defs.contexts option ->
   Typing_defs.locl_ty option list ->
   Nast.fun_param list ->
@@ -93,3 +94,11 @@ val check_function_dynamically_callable :
   Typing_defs.decl_ty option list ->
   Typing_defs.locl_ty ->
   Typing_env_types.env * Tast.fun_param list * Tast.stmt list * Tast.ty
+
+val refine_hint :
+  pos:Pos.t ->
+  reason:Typing_reason.t ->
+  Typing_env_types.env ->
+  Typing_defs.locl_ty ->
+  Aast.hint ->
+  Typing_env_types.env * Typing_defs.locl_ty

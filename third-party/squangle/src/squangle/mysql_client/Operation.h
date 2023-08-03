@@ -243,20 +243,17 @@ class ConnectionOptions {
   }
 
   // Provide a Connection Attribute to be passed in the connection handshake
-  ConnectionOptions& setAttribute(
-      const std::string& attr,
-      const std::string& value) {
-    attributes_[attr] = value;
+  ConnectionOptions& setAttribute(std::string_view attr, std::string value) {
+    attributes_[attr] = std::move(value);
     return *this;
   }
 
   // MySQL 5.6 connection attributes.  Sent at time of connect.
-  const std::unordered_map<std::string, std::string>& getAttributes() const {
+  const AttributeMap& getAttributes() const {
     return attributes_;
   }
 
-  ConnectionOptions& setAttributes(
-      const std::unordered_map<std::string, std::string>& attributes) {
+  ConnectionOptions& setAttributes(const AttributeMap& attributes) {
     for (auto& [key, value] : attributes) {
       attributes_[key] = value;
     }
@@ -379,7 +376,7 @@ class ConnectionOptions {
       CertValidatorCallback callback,
       const void* context,
       bool opPtrAsContext) {
-    certValidationCallback_ = callback;
+    certValidationCallback_ = std::move(callback);
     opPtrAsCertValidationContext_ = opPtrAsContext;
     certValidationContext_ = opPtrAsCertValidationContext_ ? nullptr : context;
     return *this;
@@ -403,7 +400,7 @@ class ConnectionOptions {
   Duration total_timeout_;
   Duration query_timeout_;
   std::shared_ptr<SSLOptionsProviderBase> ssl_options_provider_;
-  std::unordered_map<std::string, std::string> attributes_;
+  AttributeMap attributes_;
   folly::Optional<CompressionAlgorithm> compression_lib_;
   bool use_checksum_ = false;
   uint32_t max_attempts_ = 1;
@@ -528,8 +525,7 @@ class Operation : public std::enable_shared_from_this<Operation> {
     return std::move(*user_data_);
   }
 
-  Operation* setAttributes(
-      const std::unordered_map<std::string, std::string>& attributes) {
+  Operation* setAttributes(const AttributeMap& attributes) {
     CHECK_THROW(
         state() == OperationState::Unstarted, db::OperationStateException);
     for (const auto& [key, value] : attributes) {
@@ -538,8 +534,7 @@ class Operation : public std::enable_shared_from_this<Operation> {
     return this;
   }
 
-  Operation* setAttributes(
-      std::unordered_map<std::string, std::string>&& attributes) {
+  Operation* setAttributes(AttributeMap&& attributes) {
     CHECK_THROW(
         state() == OperationState::Unstarted, db::OperationStateException);
     for (auto& [key, value] : attributes) {
@@ -555,7 +550,7 @@ class Operation : public std::enable_shared_from_this<Operation> {
     return this;
   }
 
-  const std::unordered_map<std::string, std::string>& getAttributes() const {
+  const AttributeMap& getAttributes() const {
     return attributes_;
   }
 
@@ -781,7 +776,7 @@ class Operation : public std::enable_shared_from_this<Operation> {
   std::string mysql_normalize_error_;
 
   // Connection or query attributes (depending on the Operation type)
-  std::unordered_map<std::string, std::string> attributes_;
+  AttributeMap attributes_;
 
   // This mutex protects the operation cancel process when the state
   // is being checked in `run` and the operation is being cancelled in other
@@ -865,14 +860,14 @@ class ConnectOperation : public Operation {
   ~ConnectOperation() override;
 
   void setCallback(ConnectCallback cb) {
-    connect_callback_ = cb;
+    connect_callback_ = std::move(cb);
   }
 
   const std::string& database() const {
-    return conn_key_.db_name;
+    return conn_key_.db_name();
   }
   const std::string& user() const {
-    return conn_key_.user;
+    return conn_key_.user();
   }
 
   const ConnectionKey& getConnectionKey() const {
@@ -1104,8 +1099,7 @@ class ConnectOperation : public Operation {
 // the state.
 class FetchOperation : public Operation {
  public:
-  using RespAttrs = std::unordered_map<std::string, std::string>;
-
+  using RespAttrs = AttributeMap;
   ~FetchOperation() override = default;
   void mustSucceed() override;
 
@@ -1341,7 +1335,7 @@ class MultiQueryStreamOperation : public FetchOperation {
 
   template <typename C>
   void setCallback(C cb) {
-    stream_callback_ = cb;
+    stream_callback_ = std::move(cb);
   }
 
  private:
@@ -1388,7 +1382,7 @@ class QueryOperation : public FetchOperation {
   ~QueryOperation() override = default;
 
   void setCallback(QueryCallback cb) {
-    buffered_query_callback_ = cb;
+    buffered_query_callback_ = std::move(cb);
   }
 
   // Steal all rows.  Only valid if there is no callback.  Inefficient
@@ -1484,7 +1478,7 @@ class MultiQueryOperation : public FetchOperation {
   // every RowBatch and once, with nullptr for the RowBatch,
   // indicating the query is complete.
   void setCallback(MultiQueryCallback cb) {
-    buffered_query_callback_ = cb;
+    buffered_query_callback_ = std::move(cb);
   }
 
   // Steal all rows. Only valid if there is no callback. Inefficient
@@ -1568,7 +1562,7 @@ class SpecialOperation : public Operation {
   explicit SpecialOperation(ConnectionProxy&& conn)
       : Operation(std::move(conn)) {}
   void setCallback(SpecialOperationCallback callback) {
-    callback_ = callback;
+    callback_ = std::move(callback);
   }
 
  protected:

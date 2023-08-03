@@ -99,9 +99,11 @@ type fun_elt = {
   fe_internal: bool;  (** Top-level functions have limited visibilities *)
   fe_type: decl_ty;
   fe_pos: Pos_or_decl.t;
+  (* TODO: ideally these should be packed flags *)
   fe_php_std_lib: bool;
   fe_support_dynamic_type: bool;
   fe_no_auto_dynamic: bool;
+  fe_no_auto_likes: bool;
 }
 [@@deriving show]
 
@@ -314,6 +316,28 @@ end = struct
   let cyclic_expansion exps = !(exps.cyclic_expansion)
 end
 
+(** How should we treat the wildcard character _ when localizing?
+ *  1. Generate a fresh type variable, e.g. in type argument to constructor or function,
+ *     or in a lambda parameter or return type.
+ *       Example: foo<shape('a' => _)>($myshape);
+ *       Example: ($v : vec<_>) ==> $v[0]
+ *  2. As a placeholder in a formal higher-kinded type parameter
+ *       Example: function test<T1, T2<_>>() // T2 is HK and takes a type to a type
+ *  3. Generate a fresh generic (aka Skolem variable), e.g. in `is` or `as` test
+ *       Example: if ($x is Vector<_>) { // $x has type Vector<T#1> }
+ *  4. Reject, when in a type argument to a generic parameter marked <<__Explicit>>
+ *       Example: makeVec<_>(3)  where function makeVec<<<__Explicit>> T>(T $_): void
+ *  5. Reject, because the type must be explicit.
+ *  6. (Specially for case type checking). Replace any type argument by a fresh generic.
+ *)
+type wildcard_action =
+  | Wildcard_fresh_tyvar
+  | Wildcard_fresh_generic
+  | Wildcard_higher_kinded_placeholder
+  | Wildcard_require_explicit of decl_tparam
+  | Wildcard_illegal
+  | Wildcard_fresh_generic_type_argument
+
 (** Tracks information about how a type was expanded *)
 type expand_env = {
   type_expansions: Type_expansions.t;
@@ -326,6 +350,7 @@ type expand_env = {
        * set to an expression dependent type if appropriate
        *)
   on_error: Typing_error.Reasons_callback.t option;
+  wildcard_action: wildcard_action;
 }
 
 let empty_expand_env =
@@ -336,6 +361,7 @@ let empty_expand_env =
     this_ty =
       mk (Reason.none, Tgeneric (Naming_special_names.Typehints.this, []));
     on_error = None;
+    wildcard_action = Wildcard_fresh_tyvar;
   }
 
 let empty_expand_env_with_on_error on_error =
@@ -387,6 +413,11 @@ let is_dynamic t =
 let is_nothing t =
   match get_node t with
   | Tunion [] -> true
+  | _ -> false
+
+let is_wildcard t =
+  match get_node t with
+  | Twildcard -> true
   | _ -> false
 
 let is_nonnull t =
@@ -642,6 +673,7 @@ let ty_con_ordinal_ : type a. a ty_ -> int = function
   | Tmixed -> 102
   | Tlike _ -> 103
   | Trefinement _ -> 104
+  | Twildcard -> 105
   (* exist in both phases *)
   | Tany _ -> 0
   | Toption t -> begin
@@ -702,9 +734,10 @@ let rec ty__compare : type a. ?normalize_lists:bool -> a ty_ -> a ty_ -> int =
       | n -> n
     end
     | (Tmixed, Tmixed) -> 0
+    | (Twildcard, Twildcard) -> 0
     | (Tlike ty1, Tlike ty2) -> ty_compare ty1 ty2
-    | ((Tthis | Tapply _ | Tmixed | Tlike _), _)
-    | (_, (Tthis | Tapply _ | Tmixed | Tlike _)) ->
+    | ((Tthis | Tapply _ | Tmixed | Twildcard | Tlike _), _)
+    | (_, (Tthis | Tapply _ | Tmixed | Twildcard | Tlike _)) ->
       ty_con_ordinal_ ty_1 - ty_con_ordinal_ ty_2
     (* Both or in Localized Phase *)
     | (Tprim ty1, Tprim ty2) -> Aast_defs.compare_tprim ty1 ty2
@@ -787,11 +820,24 @@ let rec ty__compare : type a. ?normalize_lists:bool -> a ty_ -> a ty_ -> int =
     match ty_compare ty1 ty2 with
     | 0 -> Bool.compare optional1 optional2
     | n -> n
+  and user_attribute_param_compare p1 p2 =
+    let dest_user_attribute_param p =
+      match p with
+      | Classname s -> (0, s)
+      | EnumClassLabel s -> (1, s)
+      | String s -> (2, s)
+      | Int i -> (3, i)
+    in
+    let (id1, s1) = dest_user_attribute_param p1 in
+    let (id2, s2) = dest_user_attribute_param p2 in
+    match Int.compare id1 id2 with
+    | 0 -> String.compare s1 s2
+    | n -> n
   and user_attribute_compare ua1 ua2 =
-    let { ua_name = name1; ua_classname_params = params1 } = ua1 in
-    let { ua_name = name2; ua_classname_params = params2 } = ua2 in
+    let { ua_name = name1; ua_params = params1 } = ua1 in
+    let { ua_name = name2; ua_params = params2 } = ua2 in
     match String.compare (snd name1) (snd name2) with
-    | 0 -> List.compare String.compare params1 params2
+    | 0 -> List.compare user_attribute_param_compare params1 params2
     | n -> n
   and user_attributes_compare ual1 ual2 =
     List.compare user_attribute_compare ual1 ual2

@@ -68,6 +68,17 @@ let string_list
   let value = List.map ~f:(fun s -> Hh_json.JSON_String s) value in
   (key, Hh_json.JSON_Array value) :: telemetry
 
+let string_list_opt
+    ?(truncate_list : int option)
+    ?(truncate_each_string : int option)
+    ~(key : string)
+    ~(value : string list option)
+    (telemetry : t) : t =
+  match value with
+  | None -> (key, Hh_json.JSON_Null) :: telemetry
+  | Some value ->
+    string_list ?truncate_list ?truncate_each_string telemetry ~key ~value
+
 let object_list ~(key : string) ~(value : t list) (telemetry : t) : t =
   let value = List.map ~f:to_json value in
   (key, Hh_json.JSON_Array value) :: telemetry
@@ -107,9 +118,13 @@ let object_opt ~(key : string) ~(value : t option) (telemetry : t) : t =
   | None -> (key, Hh_json.JSON_Null) :: telemetry
   | Some value -> object_ ~key ~value telemetry
 
-let duration ?(key : string = "duration") ~(start_time : float) (telemetry : t)
-    : t =
-  let seconds = Unix.gettimeofday () -. start_time in
+let duration
+    ?(key : string = "duration")
+    ~(start_time : float)
+    ?(end_time : float option)
+    (telemetry : t) : t =
+  let end_time = Option.value end_time ~default:(Unix.gettimeofday ()) in
+  let seconds = end_time -. start_time in
   let ms = int_of_float (1000.0 *. seconds) in
   (key, Hh_json.int_ ms) :: telemetry
 

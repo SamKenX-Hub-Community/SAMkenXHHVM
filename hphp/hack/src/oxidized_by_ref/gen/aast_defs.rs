@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<f9256bf09b1bc3690b68a2e9d4062371>>
+// @generated SignedSource<<9463edb28e4293cfb775a3f35d621929>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -261,6 +261,18 @@ pub enum Stmt_<'a, Ex, En> {
             Option<DefaultCase<'a, Ex, En>>,
         ),
     ),
+    /// Match statement.
+    ///
+    ///     match ($x) {
+    ///       _: FooClass => {
+    ///         foo($x);
+    ///       }
+    ///       _ => {
+    ///         bar();
+    ///       }
+    ///     }
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    Match(&'a StmtMatch<'a, Ex, En>),
     /// For-each loop.
     ///
     ///     foreach ($items as $item) { ... }
@@ -300,6 +312,11 @@ pub enum Stmt_<'a, Ex, En> {
     ///     while (true) ;
     ///     if ($foo) {} // the else is Noop here
     Noop,
+    /// Declare a local variable with the given type and optional initial value
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    #[rust_to_ocaml(name = "Declare_local")]
+    #[rust_to_ocaml(inline_tuple)]
+    DeclareLocal(&'a (&'a Lid<'a>, &'a Hint<'a>, Option<&'a Expr<'a, Ex, En>>)),
     /// Block, a list of statements in curly braces.
     ///
     ///     { $foo = 42; }
@@ -451,6 +468,148 @@ pub struct FinallyBlock<'a, Ex, En>(
 );
 impl<'a, Ex: TrivialDrop, En: TrivialDrop> TrivialDrop for FinallyBlock<'a, Ex, En> {}
 arena_deserializer::impl_deserialize_in_arena!(FinallyBlock<'arena, Ex, En>);
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    FromOcamlRepIn,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
+#[serde(bound(
+    deserialize = "Ex: 'de + arena_deserializer::DeserializeInArena<'de>, En: 'de + arena_deserializer::DeserializeInArena<'de>"
+))]
+#[rust_to_ocaml(and)]
+#[rust_to_ocaml(prefix = "sm_")]
+#[repr(C)]
+pub struct StmtMatch<'a, Ex, En> {
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    pub expr: &'a Expr<'a, Ex, En>,
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    pub arms: &'a [&'a StmtMatchArm<'a, Ex, En>],
+}
+impl<'a, Ex: TrivialDrop, En: TrivialDrop> TrivialDrop for StmtMatch<'a, Ex, En> {}
+arena_deserializer::impl_deserialize_in_arena!(StmtMatch<'arena, Ex, En>);
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    FromOcamlRepIn,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
+#[serde(bound(
+    deserialize = "Ex: 'de + arena_deserializer::DeserializeInArena<'de>, En: 'de + arena_deserializer::DeserializeInArena<'de>"
+))]
+#[rust_to_ocaml(and)]
+#[rust_to_ocaml(prefix = "sma_")]
+#[repr(C)]
+pub struct StmtMatchArm<'a, Ex, En> {
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    pub pat: Pattern<'a>,
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    pub body: &'a Stmt<'a, Ex, En>,
+}
+impl<'a, Ex: TrivialDrop, En: TrivialDrop> TrivialDrop for StmtMatchArm<'a, Ex, En> {}
+arena_deserializer::impl_deserialize_in_arena!(StmtMatchArm<'arena, Ex, En>);
+
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Deserialize,
+    Eq,
+    FromOcamlRepIn,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
+#[rust_to_ocaml(and)]
+#[repr(C, u8)]
+pub enum Pattern<'a> {
+    /// Variable patterns
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    PVar(&'a PatVar<'a>),
+    /// Refinement patterns
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    PRefinement(&'a PatRefinement<'a>),
+}
+impl<'a> TrivialDrop for Pattern<'a> {}
+arena_deserializer::impl_deserialize_in_arena!(Pattern<'arena>);
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    FromOcamlRepIn,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
+#[rust_to_ocaml(and)]
+#[rust_to_ocaml(prefix = "pv_")]
+#[repr(C)]
+pub struct PatVar<'a> {
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    #[rust_to_ocaml(attr = "transform.opaque")]
+    pub pos: &'a Pos<'a>,
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    pub id: Option<&'a Lid<'a>>,
+}
+impl<'a> TrivialDrop for PatVar<'a> {}
+arena_deserializer::impl_deserialize_in_arena!(PatVar<'arena>);
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    FromOcamlRepIn,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
+#[rust_to_ocaml(and)]
+#[rust_to_ocaml(prefix = "pr_")]
+#[repr(C)]
+pub struct PatRefinement<'a> {
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    #[rust_to_ocaml(attr = "transform.opaque")]
+    pub pos: &'a Pos<'a>,
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    pub id: Option<&'a Lid<'a>>,
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    pub hint: &'a Hint<'a>,
+}
+impl<'a> TrivialDrop for PatRefinement<'a> {}
+arena_deserializer::impl_deserialize_in_arena!(PatRefinement<'arena>);
 
 #[derive(
     Clone,
@@ -911,15 +1070,7 @@ pub enum Expr_<'a, Ex, En> {
     ///     // lowered to:
     ///     (async () ==> { return 1; })()
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
-    #[rust_to_ocaml(inline_tuple)]
-    Call(
-        &'a (
-            &'a Expr<'a, Ex, En>,
-            &'a [&'a Targ<'a, Ex>],
-            &'a [(ast_defs::ParamKind<'a>, &'a Expr<'a, Ex, En>)],
-            Option<&'a Expr<'a, Ex, En>>,
-        ),
-    ),
+    Call(&'a CallExpr<'a, Ex, En>),
     /// A reference to a function or method.
     ///
     ///     foo_fun<>
@@ -1827,6 +1978,42 @@ pub type TypeHint_<'a> = Option<&'a Hint<'a>>;
     deserialize = "Ex: 'de + arena_deserializer::DeserializeInArena<'de>, En: 'de + arena_deserializer::DeserializeInArena<'de>"
 ))]
 #[rust_to_ocaml(and)]
+#[repr(C)]
+pub struct CallExpr<'a, Ex, En> {
+    /// function
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    pub func: &'a Expr<'a, Ex, En>,
+    /// explicit type annotations
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    pub targs: &'a [&'a Targ<'a, Ex>],
+    /// positional args, plus their calling convention
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    pub args: &'a [(ast_defs::ParamKind<'a>, &'a Expr<'a, Ex, En>)],
+    /// unpacked arg
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    pub unpacked_arg: Option<&'a Expr<'a, Ex, En>>,
+}
+impl<'a, Ex: TrivialDrop, En: TrivialDrop> TrivialDrop for CallExpr<'a, Ex, En> {}
+arena_deserializer::impl_deserialize_in_arena!(CallExpr<'arena, Ex, En>);
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    FromOcamlRepIn,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
+#[serde(bound(
+    deserialize = "Ex: 'de + arena_deserializer::DeserializeInArena<'de>, En: 'de + arena_deserializer::DeserializeInArena<'de>"
+))]
+#[rust_to_ocaml(and)]
 #[rust_to_ocaml(prefix = "ua_")]
 #[repr(C)]
 pub struct UserAttribute<'a, Ex, En> {
@@ -2465,6 +2652,8 @@ pub struct Typedef<'a, Ex, En> {
     pub module: Option<Sid<'a>>,
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
     pub docs_url: Option<&'a str>,
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    pub doc_comment: Option<&'a DocComment<'a>>,
 }
 impl<'a, Ex: TrivialDrop, En: TrivialDrop> TrivialDrop for Typedef<'a, Ex, En> {}
 arena_deserializer::impl_deserialize_in_arena!(Typedef<'arena, Ex, En>);
@@ -2920,6 +3109,7 @@ pub enum Hint_<'a> {
     Hany,
     Herr,
     Hmixed,
+    Hwildcard,
     Hnonnull,
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
     #[rust_to_ocaml(inline_tuple)]

@@ -25,22 +25,6 @@ module Cls = Decl_provider.Class
 module SN = Naming_special_names
 module Profile = Typing_toplevel_profile
 
-(* The following function enables us to retrieve the class header from the
-   shared mem. Note that it only returns a non None value if
-   global inference is on *)
-let get_decl_method_header tcopt cls method_id ~is_static =
-  let is_global_inference_on = TCO.global_inference tcopt in
-  if is_global_inference_on then
-    match Cls.get_any_method ~is_static cls method_id with
-    | Some { ce_type = (lazy ty); _ } -> begin
-      match get_node ty with
-      | Tfun fun_type -> Some fun_type
-      | _ -> None
-    end
-    | _ -> None
-  else
-    None
-
 let is_literal_with_trivially_inferable_type (_, _, e) =
   Option.is_some @@ Decl_utils.infer_const e
 
@@ -51,9 +35,7 @@ let method_dynamically_callable env cls m params_decl_ty return =
    * to call it from a dynamic context (eg. under dyn..dyn->dyn assumptions).
    * The code below must be kept in sync with with the method_def checks.
    *)
-  let make_dynamic pos =
-    Typing_make_type.dynamic (Reason.Rsupport_dynamic_type pos)
-  in
+  let make_dynamic pos = MakeType.dynamic (Reason.Rsupport_dynamic_type pos) in
   let dynamic_return_ty = make_dynamic (get_pos ret_locl_ty) in
   let dynamic_return_info =
     Typing_env_return_info.
@@ -62,24 +44,32 @@ let method_dynamically_callable env cls m params_decl_ty return =
   let (env, param_tys) =
     Typing_param.make_param_local_tys
       ~dynamic_mode:true
+      ~no_auto_likes:false
       env
       params_decl_ty
       m.m_params
   in
   let (env, dynamic_params) =
-    Typing.bind_params env m.m_ctxs param_tys m.m_params
+    Typing.bind_params ~no_auto_likes:false env m.m_ctxs param_tys m.m_params
   in
   let pos = fst m.m_name in
   let env = set_tyvars_variance_in_callable env dynamic_return_ty param_tys in
   let env = Typing_dynamic.add_require_dynamic_bounds env cls in
   let env =
     if Cls.get_support_dynamic_type cls then
+      let this_local = Env.get_local env this in
       let this_ty =
-        Typing_make_type.intersection
+        MakeType.intersection
           (Reason.Rsupport_dynamic_type Pos_or_decl.none)
-          [Env.get_local env this; make_dynamic Pos_or_decl.none]
+          [this_local.Typing_local_types.ty; make_dynamic Pos_or_decl.none]
       in
-      Env.set_local env this this_ty Pos.none
+      Env.set_local
+        ~is_defined:true
+        ~bound_ty:this_local.Typing_local_types.bound_ty
+        env
+        this
+        this_ty
+        Pos.none
     else
       env
   in
@@ -103,13 +93,14 @@ let method_dynamically_callable env cls m params_decl_ty return =
           m.m_body
           m.m_fun_kind)
       (fun env_and_dynamic_body error ->
-        Errors.method_is_not_dynamically_callable
-          pos
-          (snd m.m_name)
-          (Cls.name cls)
-          (Env.get_support_dynamic_type env)
-          None
-          (Some error);
+        if not @@ TCO.everything_sdt env.genv.tcopt then
+          Errors.method_is_not_dynamically_callable
+            pos
+            (snd m.m_name)
+            (Cls.name cls)
+            (Env.get_support_dynamic_type env)
+            None
+            (Some error);
         env_and_dynamic_body)
   in
   (env, dynamic_params, dynamic_body, dynamic_return_ty)
@@ -150,25 +141,19 @@ let method_def ~is_disposable env cls m =
   Profile.measure_elapsed_time_and_report tcopt (Some env) m.m_name @@ fun () ->
   Errors.run_with_span m.m_span @@ fun () ->
   with_timeout env m.m_name @@ fun env ->
-  FunUtils.check_params m.m_params;
+  let err_opt = FunUtils.check_params m.m_params in
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) err_opt;
   let method_name = Ast_defs.get_id m.m_name in
   let is_ctor = String.equal method_name SN.Members.__construct in
   let env =
     if is_ctor then
-      Typing_env.env_with_constructor_droot_member env
+      Env.env_with_constructor_droot_member env
     else
-      Typing_env.env_with_method_droot_member env method_name ~static:m.m_static
+      Env.env_with_method_droot_member env method_name ~static:m.m_static
   in
   let initial_env = env in
   (* reset the expression dependent display ids for each method body *)
   Reason.expr_display_id_map := IMap.empty;
-  let decl_header =
-    get_decl_method_header
-      (Env.get_tcopt env)
-      cls
-      method_name
-      ~is_static:m.m_static
-  in
   let pos = fst m.m_name in
   let env = Env.open_tyvars env (fst m.m_name) in
   let env = Env.reinitialize_locals env in
@@ -186,6 +171,16 @@ let method_def ~is_disposable env cls m =
     else
       env
   in
+  let no_auto_likes =
+    Naming_attributes.mem SN.UserAttributes.uaNoAutoLikes m.m_user_attributes
+  in
+  let env =
+    if no_auto_likes then
+      Env.set_no_auto_likes env true
+    else
+      env
+  in
+  let env = Env.load_cross_packages_from_attr env m.m_user_attributes in
   let (env, cap_ty, unsafe_cap_ty) =
     Typing_coeffects.type_capability env m.m_ctxs m.m_unsafe_ctxs (fst m.m_name)
   in
@@ -201,11 +196,18 @@ let method_def ~is_disposable env cls m =
       m.m_tparams
       m.m_where_constraints
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
   let env =
     match Env.get_self_ty env with
     | Some ty when not (Env.is_static env) ->
-      Env.set_local env this (MakeType.this (get_reason ty)) Pos.none
+      (* The $this variable isn't a typed local, and so doesn't have a bound type. *)
+      Env.set_local
+        ~is_defined:true
+        ~bound_ty:None
+        env
+        this
+        (MakeType.this (get_reason ty))
+        Pos.none
     | _ -> env
   in
   let env =
@@ -216,13 +218,12 @@ let method_def ~is_disposable env cls m =
   in
   let env = Env.clear_params env in
   let (ret_decl_ty, params_decl_ty) =
-    merge_decl_header_with_hints ~params:m.m_params ~ret:m.m_ret decl_header env
+    hint_fun_decl ~params:m.m_params ~ret:m.m_ret env
   in
   (* Is sound dynamic enabled, and the function not a constructor
    * and marked <<__SupportDynamicType>> explicitly or implicitly? *)
   let sdt_method =
-    TypecheckerOptions.enable_sound_dynamic
-      (Provider_context.get_tcopt (Env.get_ctx env))
+    TCO.enable_sound_dynamic (Provider_context.get_tcopt (Env.get_ctx env))
     && (not env.inside_constructor)
     && Env.get_support_dynamic_type env
   in
@@ -251,9 +252,13 @@ let method_def ~is_disposable env cls m =
       ret_decl_ty
   in
   let sound_dynamic_check_saved_env = env in
+  let no_auto_likes =
+    Naming_attributes.mem SN.UserAttributes.uaNoAutoLikes m.m_user_attributes
+  in
   let (env, param_tys) =
     Typing_param.make_param_local_tys
       ~dynamic_mode:false
+      ~no_auto_likes
       env
       params_decl_ty
       m.m_params
@@ -266,7 +271,13 @@ let method_def ~is_disposable env cls m =
       (MakeType.capability (get_reason cap_ty) SN.Capabilities.accessGlobals)
   in
   let (env, typed_params) =
-    Typing.bind_params env ~can_read_globals m.m_ctxs param_tys m.m_params
+    Typing.bind_params
+      env
+      ~can_read_globals
+      ~no_auto_likes
+      m.m_ctxs
+      param_tys
+      m.m_params
   in
   let ret_locl_ty = return.Typing_env_return_info.return_type.et_type in
   let env = set_tyvars_variance_in_callable env ret_locl_ty param_tys in
@@ -294,6 +305,7 @@ let method_def ~is_disposable env cls m =
       Some (pos, Hprim Tvoid)
     | None ->
       Typing_error_utils.add_typing_error
+        ~env
         Typing_error.(primary @@ Primary.Expecting_return_type_hint pos);
       None
     | Some _ -> hint_of_type_hint m.m_ret
@@ -304,7 +316,7 @@ let method_def ~is_disposable env cls m =
   let (env, e2) = Typing_solver.solve_all_unsolved_tyvars env in
 
   let return_hint = hint_of_type_hint m.m_ret in
-  let method_def =
+  let under_normal_assumptions =
     {
       Aast.m_annotation = Env.save local_tpenv env;
       Aast.m_span = m.m_span;
@@ -345,25 +357,27 @@ let method_def ~is_disposable env cls m =
          params_decl_ty
          return.Typing_env_return_info.return_type.et_type
   in
-  let (env, method_defs) =
-    let method_def_of_dynamic
-        (dynamic_env, dynamic_params, dynamic_body, dynamic_return_ty) =
-      let open Aast in
-      {
-        method_def with
-        m_annotation = Env.save local_tpenv dynamic_env;
-        m_params = dynamic_params;
-        m_body = { Aast.fb_ast = dynamic_body };
-        m_ret = (dynamic_return_ty, return_hint);
-      }
-    in
-    if
-      sdt_dynamic_check_required
-      && not (TypecheckerOptions.skip_check_under_dynamic tcopt)
+  let method_def_of_dynamic
+      (dynamic_env, dynamic_params, dynamic_body, dynamic_return_ty) =
+    let open Aast in
+    {
+      under_normal_assumptions with
+      m_annotation = Env.save local_tpenv dynamic_env;
+      m_params = dynamic_params;
+      m_body = { Aast.fb_ast = dynamic_body };
+      m_ret = (dynamic_return_ty, return_hint);
+    }
+  in
+  let (env, under_normal_assumptions, under_dynamic_assumptions) =
+    if sdt_dynamic_check_required && not (TCO.skip_check_under_dynamic tcopt)
     then
       let env = { env with checked = Tast.CUnderNormalAssumptions } in
-      let method_def =
-        Aast.{ method_def with m_annotation = Env.save local_tpenv env }
+      let under_normal_assumptions =
+        Aast.
+          {
+            under_normal_assumptions with
+            m_annotation = Env.save local_tpenv env;
+          }
       in
       let dynamic_components =
         method_dynamically_callable
@@ -373,21 +387,16 @@ let method_def ~is_disposable env cls m =
           params_decl_ty
           return
       in
-      let method_defs =
-        if TypecheckerOptions.tast_under_dynamic tcopt then
-          [method_def_of_dynamic dynamic_components]
-        else
-          []
-      in
-      (env, method_def :: method_defs)
+      ( env,
+        under_normal_assumptions,
+        Some (method_def_of_dynamic dynamic_components) )
     else
-      (env, [method_def])
+      (env, under_normal_assumptions, None)
   in
-  let (env, global_inference_env) = Env.extract_global_inference_env env in
   let _env = Env.log_env_change "method_def" initial_env env in
   let ty_err_opt = Option.merge e1 e2 ~f:Typing_error.both in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
-  (method_defs, (pos, global_inference_env))
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
+  { Tast_with_dynamic.under_normal_assumptions; under_dynamic_assumptions }
 
 (** Checks that extending this parent is legal - e.g. it is not final and not const. *)
 let check_parent env class_def class_type =
@@ -396,9 +405,11 @@ let check_parent env class_def class_type =
     let position = fst class_def.c_name in
     if Cls.const class_type && not (Cls.const parent_type) then
       Typing_error_utils.add_typing_error
+        ~env
         Typing_error.(primary @@ Primary.Self_const_parent_not position);
     if Cls.final parent_type then
       Typing_error_utils.add_typing_error
+        ~env
         Typing_error.(
           primary
           @@ Primary.Extend_final
@@ -409,7 +420,7 @@ let check_parent env class_def class_type =
                })
   | None -> ()
 
-let sealed_subtype ctx (c : Nast.class_) ~is_enum ~hard_error =
+let sealed_subtype ctx (c : Nast.class_) ~is_enum ~hard_error ~env =
   let parent_name = snd c.c_name in
   let is_sealed (attr : Nast.user_attribute) =
     String.equal (snd attr.ua_name) SN.UserAttributes.uaSealed
@@ -454,6 +465,7 @@ let sealed_subtype ctx (c : Nast.class_) ~is_enum ~hard_error =
             in
             if hard_error then
               Typing_error_utils.add_typing_error
+                ~env
                 Typing_error.(
                   primary
                   @@ Primary.Sealed_not_subtype
@@ -476,7 +488,7 @@ let sealed_subtype ctx (c : Nast.class_) ~is_enum ~hard_error =
     in
     List.iter sealed_attr.ua_params ~f:iter_item
 
-let check_parent_sealed (child_pos, child_type) parent_type =
+let check_parent_sealed (child_pos, child_type) parent_type ~env =
   match Cls.sealed_whitelist parent_type with
   | None -> ()
   | Some whitelist ->
@@ -486,6 +498,7 @@ let check_parent_sealed (child_pos, child_type) parent_type =
     let check parent_kind verb =
       if not (SSet.mem child_name whitelist) then
         Typing_error_utils.add_typing_error
+          ~env
           Typing_error.(
             primary
             @@ Primary.Extend_sealed
@@ -512,7 +525,10 @@ let check_parents_sealed env child_def child_type =
       | (_, Happly ((_, name), _)) -> begin
         match Env.get_class env name with
         | Some parent_type ->
-          check_parent_sealed (fst child_def.c_name, child_type) parent_type
+          check_parent_sealed
+            (fst child_def.c_name, child_type)
+            parent_type
+            ~env
         | None -> ()
       end
       | _ -> ())
@@ -523,7 +539,7 @@ let check_parents_sealed env child_def child_type =
  *
  * O(n^2) but we don't expect number of instantiated interfaces to be large
  *)
-let rec check_implements_or_extends_unique impl =
+let rec check_implements_or_extends_unique impl ~env =
   match impl with
   | [] -> ()
   | (hint, ty) :: rest ->
@@ -538,13 +554,14 @@ let rec check_implements_or_extends_unique impl =
       in
       if not (List.is_empty pos_list) then
         Typing_error_utils.add_typing_error
+          ~env
           Typing_error.(
             primary
             @@ Primary.Duplicate_interface
                  { pos = fst hint; name; others = pos_list });
 
-      check_implements_or_extends_unique rest
-    | _ -> check_implements_or_extends_unique rest)
+      check_implements_or_extends_unique rest ~env
+    | _ -> check_implements_or_extends_unique rest ~env)
 
 (** Add a dependency to constructors or produce an error if not a Tapply. *)
 let check_is_tapply_add_constructor_extends_dep
@@ -552,18 +569,10 @@ let check_is_tapply_add_constructor_extends_dep
   List.iter deps ~f:(fun ((p, _dep_hint), dep) ->
       match get_node dep with
       | Tapply ((_, class_name), _) ->
-        if not skip_constructor_dep then
-          Env.make_depend_on_constructor env class_name;
-        let is_hhi =
-          let open Option.Monad_infix in
-          Env.get_class env class_name
-          >>| Cls.pos
-          >>| Pos_or_decl.is_hhi
-          |> Option.value ~default:false
-        in
-        if not is_hhi then Env.add_extends_dependency env class_name
+        Env.add_parent_dep env ~skip_constructor_dep class_name
       | Tgeneric _ ->
         Typing_error_utils.add_typing_error
+          ~env
           Typing_error.(
             primary
             @@ Primary.Expected_class
@@ -573,6 +582,7 @@ let check_is_tapply_add_constructor_extends_dep
                  })
       | _ ->
         Typing_error_utils.add_typing_error
+          ~env
           Typing_error.(
             primary
             @@ Primary.Expected_class
@@ -580,18 +590,20 @@ let check_is_tapply_add_constructor_extends_dep
 
 (** For const classes, check that members from traits are all constant. *)
 let check_non_const_trait_members pos env use_list =
-  let (_, trait, _) = Decl_utils.unwrap_class_hint use_list in
+  let ((_, trait, _), err_opt) = Decl_utils.unwrap_class_hint use_list in
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) err_opt;
   match Env.get_class env trait with
   | Some c when Ast_defs.is_c_trait (Cls.kind c) ->
     List.iter (Cls.props c) ~f:(fun (x, ce) ->
         if not (get_ce_const ce) then
           Typing_error_utils.add_typing_error
+            ~env
             Typing_error.(
               primary @@ Primary.Trait_prop_const_class { pos; name = x }))
   | _ -> ()
 
 let check_consistent_enum_inclusion
-    included_cls ((dest_cls_pos, dest_cls) : Pos.t * Cls.t) =
+    included_cls ((dest_cls_pos, dest_cls) : Pos.t * Cls.t) ~env =
   let included_kind = Cls.kind included_cls in
   let dest_kind = Cls.kind dest_cls in
   match (Cls.enum_type included_cls, Cls.enum_type dest_cls) with
@@ -599,6 +611,7 @@ let check_consistent_enum_inclusion
     (* ensure that the base types are identical *)
     if not (Typing_defs.equal_decl_ty included_e.te_base dest_e.te_base) then
       Typing_error_utils.add_typing_error
+        ~env
         Typing_error.(
           enum
           @@ Primary.Enum.Incompatible_enum_inclusion_base
@@ -611,6 +624,7 @@ let check_consistent_enum_inclusion
     (match (included_e.te_constraint, dest_e.te_constraint) with
     | (None, Some _) ->
       Typing_error_utils.add_typing_error
+        ~env
         Typing_error.(
           enum
           @@ Primary.Enum.Incompatible_enum_inclusion_constraint
@@ -626,6 +640,7 @@ let check_consistent_enum_inclusion
       && not (Ast_defs.is_c_enum_class dest_kind)
     then
       Typing_error_utils.add_typing_error
+        ~env
         Typing_error.(
           primary
           @@ Primary.Wrong_extend_kind
@@ -639,6 +654,7 @@ let check_consistent_enum_inclusion
                })
   | (None, _) ->
     Typing_error_utils.add_typing_error
+      ~env
       Typing_error.(
         enum
         @@ Primary.Enum.Enum_inclusion_not_enum
@@ -683,7 +699,7 @@ let check_enum_includes env cls =
         (* 1. Check for consistency *)
         (match Env.get_class env dest_class_name with
         | None -> ()
-        | Some cls -> check_consistent_enum_inclusion ie_cls (ie_pos, cls));
+        | Some cls -> check_consistent_enum_inclusion ie_cls (ie_pos, cls) ~env);
         (* 2. Check for duplicates *)
         List.iter (Cls.consts ie_cls) ~f:(fun (const_name, class_const) ->
             (if String.equal const_name "class" then
@@ -699,6 +715,7 @@ let check_enum_includes env cls =
               if String.equal origin_class_name dest_class_name then
                 (* redeclare *)
                 Typing_error_utils.add_typing_error
+                  ~env
                   Typing_error.(
                     primary
                     @@ Primary.Redeclaring_classish_const
@@ -712,6 +729,7 @@ let check_enum_includes env cls =
               else if String.( <> ) origin_class_name class_const.cc_origin then
                 (* check for diamond inclusion, if not raise an error about multiple inherit *)
                 Typing_error_utils.add_typing_error
+                  ~env
                   Typing_error.(
                     primary
                     @@ Primary.Reinheriting_classish_const
@@ -731,7 +749,7 @@ let check_enum_includes env cls =
   )
 
 let skip_hierarchy_checks (ctx : Provider_context.t) : bool =
-  TypecheckerOptions.skip_hierarchy_checks (Provider_context.get_tcopt ctx)
+  TCO.skip_hierarchy_checks (Provider_context.get_tcopt ctx)
 
 let class_type_param env ct =
   let (env, tparam_list) = List.map_env env ct ~f:Typing.type_param in
@@ -758,26 +776,11 @@ let check_no_generic_static_property env tc =
                (Env.fill_in_pos_filename_if_in_current_decl env generic_pos)
                ~f:(fun generic_pos ->
                  Typing_error_utils.add_typing_error
+                   ~env
                    Typing_error.(
                      primary
                      @@ Primary.Static_prop_type_generic_param
                           { class_pos; var_ty_pos; pos = generic_pos })))
-
-let get_decl_prop_ty env cls ~is_static prop_id =
-  let is_global_inference_on = TCO.global_inference (Env.get_tcopt env) in
-  if is_global_inference_on then
-    let prop_opt =
-      if is_static then
-        (* this is very ad-hoc, but this is how we do it in the decl-heap *)
-        Cls.get_sprop cls ("$" ^ prop_id)
-      else
-        Cls.get_prop cls prop_id
-    in
-    match prop_opt with
-    | None -> failwith "error: could not find property in decl heap"
-    | Some { ce_type; _ } -> Some (Lazy.force ce_type)
-  else
-    None
 
 let typeconst_def
     cls
@@ -795,6 +798,7 @@ let typeconst_def
   (if Ast_defs.is_c_enum cls.c_kind then
     let (class_pos, class_name) = cls.c_name in
     Typing_error_utils.add_typing_error
+      ~env
       Typing_error.(
         primary
         @@ Primary.Cannot_declare_constant { pos; class_pos; class_name }));
@@ -812,7 +816,7 @@ let typeconst_def
           env
           ty
       in
-      Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt1;
+      Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt1;
       let (env, ty_err_opt2) =
         match c_atc_as_constraint with
         | Some as_ ->
@@ -865,7 +869,7 @@ let typeconst_def
       env
     | _ -> (env, None)
   in
-  Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
+  Option.iter ty_err_opt ~f:(Typing_error_utils.add_typing_error ~env);
   (* TODO(T88552052): should this check be happening for defaults
    * Does this belong here at all? *)
   let env =
@@ -906,12 +910,12 @@ let class_const_def ~in_enum_class c cls env cc =
         match k with
         | CCAbstract _
           when (not (is_enum_or_enum_class c.c_kind))
-               && TypecheckerOptions.require_types_class_consts tcopt > 0 ->
+               && TCO.require_types_class_consts tcopt > 0 ->
           Errors.add_error
             Naming_error.(to_user_error @@ Missing_typehint (fst id))
         | _
           when (not (is_enum_or_enum_class c.c_kind))
-               && TypecheckerOptions.require_types_class_consts tcopt > 1 ->
+               && TCO.require_types_class_consts tcopt > 1 ->
           Errors.add_error
             Naming_error.(to_user_error @@ Missing_typehint (fst id))
         | CCAbstract None -> ()
@@ -935,7 +939,7 @@ let class_const_def ~in_enum_class c cls env cc =
       let ((env, ty_err_opt), ty) =
         Phase.localize_possibly_enforced_no_subst env ~ignore_errors:false ty
       in
-      Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
+      Option.iter ty_err_opt ~f:(Typing_error_utils.add_typing_error ~env);
       (* Removing the HH\MemberOf wrapper in case of enum classes so the
        * following call to expr_* has the right expected type
        *)
@@ -1027,7 +1031,7 @@ let class_const_def ~in_enum_class c cls env cc =
       (env, [])
     end
   in
-  Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
+  Option.iter ty_err_opt ~f:(Typing_error_utils.add_typing_error ~env);
   ( env,
     ( {
         Aast.cc_type = cc.cc_type;
@@ -1049,10 +1053,10 @@ let class_var_def ~is_static ~is_noautodynamic cls env cv =
   Profile.measure_elapsed_time_and_report tcopt (Some env) cv.cv_id @@ fun () ->
   (* First pick up and localize the hint if it exists *)
   let decl_cty =
-    Typing_helpers.merge_hint_with_decl_hint
-      env
-      (hint_of_type_hint cv.cv_type)
-      (get_decl_prop_ty env cls ~is_static (snd cv.cv_id))
+    FunUtils.hint_to_type_opt env.decl_env (hint_of_type_hint cv.cv_type)
+  in
+  let no_auto_likes =
+    Naming_attributes.mem SN.UserAttributes.uaNoAutoLikes cv.cv_user_attributes
   in
   let (env, expected) =
     match decl_cty with
@@ -1075,16 +1079,17 @@ let class_var_def ~is_static ~is_noautodynamic cls env cv =
         | Enforced when is_none cv.cv_xhp_attr -> cty
         | _ ->
           if
-            TypecheckerOptions.everything_sdt env.genv.tcopt
-            && not is_noautodynamic
+            TCO.everything_sdt env.genv.tcopt
+            && (not is_noautodynamic)
+            && not no_auto_likes
           then
-            { cty with et_type = Typing_utils.make_like env cty.et_type }
+            { cty with et_type = TUtils.make_like env cty.et_type }
           else (
             Typing_log.log_pessimise_prop env (fst cv.cv_id) (snd cv.cv_id);
             cty
           )
       in
-      Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
+      Option.iter ty_err_opt ~f:(Typing_error_utils.add_typing_error ~env);
       let expected =
         Some (ExpectedTy.make_and_allow_coercion cv.cv_span Reason.URhint cty)
       in
@@ -1115,7 +1120,7 @@ let class_var_def ~is_static ~is_noautodynamic cls env cv =
       in
       (env, Some te)
   in
-  Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
+  Option.iter ty_err_opt ~f:(Typing_error_utils.add_typing_error ~env);
 
   let (env, user_attributes) =
     Typing.attributes_check_def
@@ -1140,7 +1145,6 @@ let class_var_def ~is_static ~is_noautodynamic cls env cv =
       Naming_error.(
         to_user_error @@ Prop_without_typehint { vis; pos; prop_name }));
 
-  let (env, global_inference_env) = Env.extract_global_inference_env env in
   let ((cv_type_ty, _) as cv_type) =
     match expected with
     | Some expected ->
@@ -1150,15 +1154,14 @@ let class_var_def ~is_static ~is_noautodynamic cls env cv =
   (* if the class implements dynamic, then check that the type of the property
    * is enforceable (for writing) and coerces to dynamic (for reading) *)
   if
-    TypecheckerOptions.enable_sound_dynamic
-      (Provider_context.get_tcopt (Env.get_ctx env))
+    TCO.enable_sound_dynamic (Provider_context.get_tcopt (Env.get_ctx env))
     && Cls.get_support_dynamic_type cls
     && not (Aast.equal_visibility cv.cv_visibility Private)
   then (
     let env_with_require_dynamic =
       Typing_dynamic.add_require_dynamic_bounds env cls
     in
-    Option.iter ~f:Typing_error_utils.add_typing_error
+    Option.iter ~f:(Typing_error_utils.add_typing_error ~env)
     @@ Option.bind decl_cty ~f:(fun ty ->
            Typing_dynamic.check_property_sound_for_dynamic_write
              ~this_class:(Some cls)
@@ -1173,7 +1176,7 @@ let class_var_def ~is_static ~is_noautodynamic cls env cv =
              ty
              (Some cv_type_ty));
 
-    Option.iter ~f:Typing_error_utils.add_typing_error
+    Option.iter ~f:(Typing_error_utils.add_typing_error ~env)
     @@ Typing_dynamic.check_property_sound_for_dynamic_read
          ~on_error:(fun pos prop_name class_name (prop_pos, prop_type) ->
            Typing_error.(
@@ -1186,23 +1189,22 @@ let class_var_def ~is_static ~is_noautodynamic cls env cv =
          cv_type_ty
   );
   ( env,
-    ( {
-        Aast.cv_final = cv.cv_final;
-        Aast.cv_xhp_attr = cv.cv_xhp_attr;
-        Aast.cv_abstract = cv.cv_abstract;
-        Aast.cv_visibility = cv.cv_visibility;
-        Aast.cv_type;
-        Aast.cv_id = cv.cv_id;
-        Aast.cv_expr = typed_cv_expr;
-        Aast.cv_user_attributes = user_attributes;
-        Aast.cv_is_promoted_variadic = cv.cv_is_promoted_variadic;
-        Aast.cv_doc_comment = cv.cv_doc_comment;
-        (* Can make None to save space *)
-        Aast.cv_is_static = is_static;
-        Aast.cv_span = cv.cv_span;
-        Aast.cv_readonly = cv.cv_readonly;
-      },
-      (cv.cv_span, global_inference_env) ) )
+    {
+      Aast.cv_final = cv.cv_final;
+      Aast.cv_xhp_attr = cv.cv_xhp_attr;
+      Aast.cv_abstract = cv.cv_abstract;
+      Aast.cv_visibility = cv.cv_visibility;
+      Aast.cv_type;
+      Aast.cv_id = cv.cv_id;
+      Aast.cv_expr = typed_cv_expr;
+      Aast.cv_user_attributes = user_attributes;
+      Aast.cv_is_promoted_variadic = cv.cv_is_promoted_variadic;
+      Aast.cv_doc_comment = cv.cv_doc_comment;
+      (* Can make None to save space *)
+      Aast.cv_is_static = is_static;
+      Aast.cv_span = cv.cv_span;
+      Aast.cv_readonly = cv.cv_readonly;
+    } )
 
 (** Check the where constraints of the parents of a class *)
 let check_class_parents_where_constraints env pc impl =
@@ -1210,7 +1212,7 @@ let check_class_parents_where_constraints env pc impl =
     let ((env, ty_err_opt1), locl_ty) =
       Phase.localize_no_subst env ~ignore_errors:false decl_ty
     in
-    Option.iter ty_err_opt1 ~f:Typing_error_utils.add_typing_error;
+    Option.iter ty_err_opt1 ~f:(Typing_error_utils.add_typing_error ~env);
     match get_node (TUtils.get_base_type env locl_ty) with
     | Tclass (cls, _, tyl) ->
       (match Env.get_class env (snd cls) with
@@ -1233,7 +1235,7 @@ let check_class_parents_where_constraints env pc impl =
             env
             (Cls.where_constraints cls)
         in
-        Option.iter ty_err_opt2 ~f:Typing_error_utils.add_typing_error;
+        Option.iter ty_err_opt2 ~f:(Typing_error_utils.add_typing_error ~env);
         env
       | _ -> env)
     | _ -> env
@@ -1248,8 +1250,7 @@ let check_generic_class_with_SupportDynamicType env c parents =
       c.c_user_attributes
   in
   if
-    TypecheckerOptions.enable_sound_dynamic
-      (Provider_context.get_tcopt (Env.get_ctx env))
+    TCO.enable_sound_dynamic (Provider_context.get_tcopt (Env.get_ctx env))
     && check_support_dynamic_type
   then (
     (* Any class that extends a class or implements an interface
@@ -1311,16 +1312,14 @@ let check_generic_class_with_SupportDynamicType env c parents =
           (env, ty_errs))
     in
     Option.(
-      iter ~f:Typing_error_utils.add_typing_error
+      iter ~f:(Typing_error_utils.add_typing_error ~env)
       @@ Typing_error.multiple_opt ty_errs);
     env
   ) else
     env
 
 let check_SupportDynamicType env c tc =
-  if
-    TypecheckerOptions.enable_sound_dynamic
-      (Provider_context.get_tcopt (Env.get_ctx env))
+  if TCO.enable_sound_dynamic (Provider_context.get_tcopt (Env.get_ctx env))
   then
     let support_dynamic_type =
       Naming_attributes.mem
@@ -1329,6 +1328,7 @@ let check_SupportDynamicType env c tc =
     in
     let error_parent_support_dynamic_type parent child_support_dyn =
       Typing_error_utils.add_typing_error
+        ~env
         Typing_error.(
           primary
           @@ Primary.Parent_support_dynamic_type
@@ -1368,7 +1368,7 @@ let check_SupportDynamicType env c tc =
           | None -> ())
 
 (** Check methods with <<__Override>> have a corresponding overridden method. *)
-let check_override_has_parent (c : ('a, 'b) class_) (tc : Cls.t) : unit =
+let check_override_has_parent (c : ('a, 'b) class_) (tc : Cls.t) ~env : unit =
   if not Ast_defs.(is_c_trait c.c_kind) then
     (* We don't want to check __Override on traits. __Override on
        traits asserts that the *using* class has an inherited method
@@ -1379,6 +1379,7 @@ let check_override_has_parent (c : ('a, 'b) class_) (tc : Cls.t) : unit =
         | Some ce -> begin
           if get_ce_superfluous_override ce then
             Typing_error_utils.add_typing_error
+              ~env
               Typing_error.(
                 primary
                 @@ Primary.Should_not_be_override
@@ -1401,6 +1402,7 @@ let check_used_methods_with_override env c (tc : Cls.t) : unit =
            __Override, but there's no inherited method on this class
            that we're overridding, that's an error. *)
         Typing_error_utils.add_typing_error
+          ~env
           Typing_error.(
             primary
             @@ Primary.Override_per_trait
@@ -1430,15 +1432,13 @@ let check_used_methods_with_override env c (tc : Cls.t) : unit =
 
 (** Check proper usage of the __Override attribute. *)
 let check_override_keyword env c tc =
-  check_override_has_parent c tc;
+  check_override_has_parent c tc ~env;
   check_used_methods_with_override env c tc
 
 let check_sealed env c =
-  let hard_error =
-    TypecheckerOptions.enforce_sealed_subclasses (Env.get_tcopt env)
-  in
+  let hard_error = TCO.enforce_sealed_subclasses (Env.get_tcopt env) in
   let is_enum = is_enum_or_enum_class c.c_kind in
-  sealed_subtype (Env.get_ctx env) c ~is_enum ~hard_error
+  sealed_subtype (Env.get_ctx env) c ~is_enum ~hard_error ~env
 
 let check_class_where_require_class_constraints env c tc =
   let (pc, _) = c.c_name in
@@ -1457,7 +1457,7 @@ let check_class_where_require_class_constraints env c tc =
       c.c_tparams
       (c.c_where_constraints @ req_class_constraints)
   in
-  Option.iter ty_err_opt1 ~f:Typing_error_utils.add_typing_error;
+  Option.iter ty_err_opt1 ~f:(Typing_error_utils.add_typing_error ~env);
   let (env, ty_err_opt2) =
     Phase.check_where_constraints
       ~in_class:true
@@ -1469,7 +1469,7 @@ let check_class_where_require_class_constraints env c tc =
       env
       (Cls.where_constraints tc)
   in
-  Option.iter ty_err_opt2 ~f:Typing_error_utils.add_typing_error;
+  Option.iter ty_err_opt2 ~f:(Typing_error_utils.add_typing_error ~env);
   env
 
 type class_parents = {
@@ -1567,7 +1567,7 @@ let check_hint_wellformedness_in_class env c parents =
   let { extends; implements; uses; _ } = parents in
   let (pc, _) = c.c_name in
   check_parents_are_tapply_add_constructor_deps env c parents;
-  List.iter ~f:Typing_error_utils.add_typing_error
+  List.iter ~f:(Typing_error_utils.add_typing_error ~env)
   @@ Typing_type_wellformedness.class_ env c;
   let env =
     check_class_parents_where_constraints env pc (extends @ implements @ uses)
@@ -1630,8 +1630,8 @@ let class_hierarchy_checks env c tc (parents : class_parents) =
     let env = Typing_requirements.check_class env pc tc in
     check_override_keyword env c tc;
     check_enum_includes env c;
-    check_implements_or_extends_unique implements;
-    check_implements_or_extends_unique extends;
+    check_implements_or_extends_unique implements ~env;
+    check_implements_or_extends_unique extends ~env;
     check_parent env c tc;
     check_parents_sealed env c tc;
     check_sealed env c;
@@ -1642,10 +1642,7 @@ let class_hierarchy_checks env c tc (parents : class_parents) =
       List.iter c.c_uses ~f:(check_non_const_trait_members pc env);
     let impl = extends @ implements @ uses in
     let impl =
-      if
-        TypecheckerOptions.require_extends_implements_ancestors
-          (Env.get_tcopt env)
-      then
+      if TCO.require_extends_implements_ancestors (Env.get_tcopt env) then
         impl @ req_extends @ req_implements
       else
         impl
@@ -1672,19 +1669,16 @@ let check_class_members env c tc =
       SN.UserAttributes.uaNoAutoDynamic
       c.Aast.c_user_attributes
   in
-  let (env, typed_vars_and_global_inference_envs) =
+  let (env, typed_vars) =
     List.map_env
       env
       vars
       ~f:(class_var_def ~is_static:false ~is_noautodynamic tc)
   in
-  let (typed_vars, vars_global_inference_envs) =
-    List.unzip typed_vars_and_global_inference_envs
+  let typed_methods =
+    List.filter_map methods ~f:(method_def ~is_disposable env tc)
   in
-  let (typed_methods, methods_global_inference_envs) =
-    List.filter_map methods ~f:(method_def ~is_disposable env tc) |> List.unzip
-  in
-  let typed_methods = List.concat typed_methods in
+  let typed_methods = Tast_with_dynamic.collect typed_methods in
   let (env, typed_typeconsts) =
     List.map_env env c.c_typeconsts ~f:(typeconst_def c)
   in
@@ -1696,25 +1690,23 @@ let check_class_members env c tc =
   let env = Typing_enum.enum_class_check env tc c.c_consts const_types in
   let typed_constructor = class_constr_def ~is_disposable env tc constructor in
   let env = Env.set_static env in
-  let (env, typed_static_vars_and_global_inference_envs) =
+  let (env, typed_static_vars) =
     List.map_env
       env
       static_vars
       ~f:(class_var_def ~is_static:true ~is_noautodynamic tc)
   in
-  let (typed_static_vars, static_vars_global_inference_envs) =
-    List.unzip typed_static_vars_and_global_inference_envs
-  in
-  let (typed_static_methods, static_methods_global_inference_envs) =
+  let typed_static_methods =
     List.filter_map static_methods ~f:(method_def ~is_disposable env tc)
-    |> List.unzip
   in
-  let typed_static_methods = List.concat typed_static_methods in
-  let (typed_methods, constr_global_inference_env) =
+  let typed_static_methods = Tast_with_dynamic.collect typed_static_methods in
+  let typed_methods =
     match typed_constructor with
-    | None -> (typed_static_methods @ typed_methods, [])
-    | Some (ms, global_inference_env) ->
-      (ms @ typed_static_methods @ typed_methods, [global_inference_env])
+    | None -> Tast_with_dynamic.append typed_static_methods typed_methods
+    | Some ms ->
+      Tast_with_dynamic.append
+        (Tast_with_dynamic.cons ms typed_static_methods)
+        typed_methods
   in
   let typed_members =
     ( typed_consts,
@@ -1723,14 +1715,7 @@ let check_class_members env c tc =
       typed_static_vars,
       typed_methods )
   in
-  let global_inference_envs =
-    methods_global_inference_envs
-    @ static_methods_global_inference_envs
-    @ constr_global_inference_env
-    @ static_vars_global_inference_envs
-    @ vars_global_inference_envs
-  in
-  (env, typed_members, global_inference_envs)
+  (env, typed_members)
 
 let class_def_ env c tc =
   let parents = class_parents_hints_to_types env c in
@@ -1743,46 +1728,55 @@ let class_def_ env c tc =
           typed_typeconsts,
           typed_vars,
           typed_static_vars,
-          typed_methods ),
-        _global_inference_envs ) =
+          typed_methods ) ) =
     check_class_members env c tc
   in
   let (env, tparams) = class_type_param env c.c_tparams in
   let (env, e1) = Typing_solver.solve_all_unsolved_tyvars env in
   check_SupportDynamicType env c tc;
-  Option.iter ~f:Typing_error_utils.add_typing_error e1;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) e1;
+  let mk_class_ typed_methods =
+    {
+      Aast.c_span = c.c_span;
+      Aast.c_annotation = Env.save (Env.get_tpenv env) env;
+      Aast.c_mode = c.c_mode;
+      Aast.c_final = c.c_final;
+      Aast.c_is_xhp = c.c_is_xhp;
+      Aast.c_has_xhp_keyword = c.c_has_xhp_keyword;
+      Aast.c_kind = c.c_kind;
+      Aast.c_name = c.c_name;
+      Aast.c_tparams = tparams;
+      Aast.c_extends = c.c_extends;
+      Aast.c_uses = c.c_uses;
+      Aast.c_xhp_attr_uses = c.c_xhp_attr_uses;
+      Aast.c_xhp_category = c.c_xhp_category;
+      Aast.c_reqs = c.c_reqs;
+      Aast.c_implements = c.c_implements;
+      Aast.c_where_constraints = c.c_where_constraints;
+      Aast.c_consts = typed_consts;
+      Aast.c_typeconsts = typed_typeconsts;
+      Aast.c_vars = typed_static_vars @ typed_vars;
+      Aast.c_methods = typed_methods;
+      Aast.c_file_attributes = file_attrs;
+      Aast.c_user_attributes = user_attributes;
+      Aast.c_namespace = c.c_namespace;
+      Aast.c_enum = c.c_enum;
+      Aast.c_doc_comment = c.c_doc_comment;
+      Aast.c_xhp_children = c.c_xhp_children;
+      Aast.c_xhp_attrs = [];
+      Aast.c_emit_id = c.c_emit_id;
+      Aast.c_internal = c.c_internal;
+      Aast.c_module = c.c_module;
+      Aast.c_docs_url = c.c_docs_url;
+    }
+  in
   {
-    Aast.c_span = c.c_span;
-    Aast.c_annotation = Env.save (Env.get_tpenv env) env;
-    Aast.c_mode = c.c_mode;
-    Aast.c_final = c.c_final;
-    Aast.c_is_xhp = c.c_is_xhp;
-    Aast.c_has_xhp_keyword = c.c_has_xhp_keyword;
-    Aast.c_kind = c.c_kind;
-    Aast.c_name = c.c_name;
-    Aast.c_tparams = tparams;
-    Aast.c_extends = c.c_extends;
-    Aast.c_uses = c.c_uses;
-    Aast.c_xhp_attr_uses = c.c_xhp_attr_uses;
-    Aast.c_xhp_category = c.c_xhp_category;
-    Aast.c_reqs = c.c_reqs;
-    Aast.c_implements = c.c_implements;
-    Aast.c_where_constraints = c.c_where_constraints;
-    Aast.c_consts = typed_consts;
-    Aast.c_typeconsts = typed_typeconsts;
-    Aast.c_vars = typed_static_vars @ typed_vars;
-    Aast.c_methods = typed_methods;
-    Aast.c_file_attributes = file_attrs;
-    Aast.c_user_attributes = user_attributes;
-    Aast.c_namespace = c.c_namespace;
-    Aast.c_enum = c.c_enum;
-    Aast.c_doc_comment = c.c_doc_comment;
-    Aast.c_xhp_children = c.c_xhp_children;
-    Aast.c_xhp_attrs = [];
-    Aast.c_emit_id = c.c_emit_id;
-    Aast.c_internal = c.c_internal;
-    Aast.c_module = c.c_module;
-    Aast.c_docs_url = c.c_docs_url;
+    Tast_with_dynamic.under_normal_assumptions =
+      mk_class_ typed_methods.Tast_with_dynamic.under_normal_assumptions;
+    under_dynamic_assumptions =
+      Option.map
+        typed_methods.Tast_with_dynamic.under_dynamic_assumptions
+        ~f:mk_class_;
   }
 
 let setup_env_for_class_def_check ctx c =
@@ -1799,37 +1793,24 @@ let setup_env_for_class_def_check ctx c =
   env
 
 let class_def ctx (c : _ class_) =
-  Counters.count Counters.Category.Typecheck @@ fun () ->
-  Errors.run_with_span c.c_span @@ fun () ->
   let env = setup_env_for_class_def_check ctx c in
-  let (name_pos, name) = c.c_name in
-  let tc = Env.get_class env name in
-  Typing_env.make_depend_on_current_module env;
-  match tc with
+  match Env.get_class env (snd c.c_name) with
   | None ->
-    (* This can happen if there was an error during the declaration
-     * of the class. *)
+    HackEventLogger.decl_consistency_bug
+      "Decl consistency: class_def, but can't find a decl"
+      ~data:(snd c.c_name)
+      ~pos:(Pos.to_relative_string (fst c.c_name) |> Pos.string);
     None
   | Some tc ->
-    Typing_helpers.add_decl_errors (Cls.decl_errors tc);
+    Env.make_depend_on_current_module env;
+    Typing_helpers.add_decl_errors ~env (Cls.decl_errors tc);
     if
       not
-        (TypecheckerOptions.saved_state_rollouts
-           (Provider_context.get_tcopt ctx))
+        (TCO.saved_state_rollouts (Provider_context.get_tcopt ctx))
           .Saved_state_rollouts.no_ancestor_edges
     then
-      Typing_env.make_depend_on_ancestors env tc;
-
-    (* If there are duplicate definitions of the class then we will end up
-     * checking one AST with respect to the decl corresponding to the other definition.
-     * Naming has already detected duplicates, so let's just avoid cascading unhelpful
-     * typing errors, and also avoid triggering the bad position assert
-     *)
-    if not (Pos.equal name_pos (Cls.pos tc |> Pos_or_decl.unsafe_to_raw_pos))
-    then
-      None
-    else
-      Some (class_def_ env c tc)
+      Env.make_depend_on_ancestors env tc;
+    Some (class_def_ env c tc)
 
 type class_member_standalone_check_env = {
   cls: Cls.t;

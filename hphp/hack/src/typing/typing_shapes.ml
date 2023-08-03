@@ -74,7 +74,7 @@ let refine_shape field_name pos env shape =
       sft_ty
   in
   let sft = { sft_optional = false; sft_ty } in
-  Option.iter ~f:Typing_error_utils.add_typing_error e1;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) e1;
   Typing_intersection.intersect
     env
     ~r:(Reason.Rwitness pos)
@@ -162,7 +162,11 @@ let rec shrink_shape pos ~supportdyn field_name env shape =
  * useful typechecking of incomplete code (code in the process of being
  * written). *)
 let shapes_idx_not_null_with_ty_err env shape_ty (ty, p, field) =
-  match TUtils.shape_field_name env (ty, p, field) with
+  let (fld_opt, ty_err_opt) =
+    TUtils.shape_field_name_with_ty_err env (ty, p, field)
+  in
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
+  match fld_opt with
   | None -> ((env, None), shape_ty)
   | Some field ->
     let field = TShapeField.of_ast Pos_or_decl.of_raw_pos field in
@@ -213,7 +217,7 @@ let shapes_idx_not_null env shape_ty fld =
   let ((env, ty_err_opt), res) =
     shapes_idx_not_null_with_ty_err env shape_ty fld
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
   (env, res)
 
 let make_idx_fake_super_shape shape_pos fun_name field_name field_ty =
@@ -275,11 +279,13 @@ let idx_without_default env ~expr_pos ~shape_pos shape_ty field_name =
     | _ -> (env, res)
   in
 
-  Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
+  Option.iter ty_err_opt ~f:(Typing_error_utils.add_typing_error ~env);
   make_locl_like_type env res
 
 let remove_key_with_ty_err p env shape_ty ((_, field_p, _) as field) =
-  match TUtils.shape_field_name env field with
+  let (fld_opt, ty_err_opt) = TUtils.shape_field_name_with_ty_err env field in
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
+  match fld_opt with
   | None ->
     let (env, ty) = Env.fresh_type_error env field_p in
     ((env, None), ty)
@@ -289,7 +295,7 @@ let remove_key_with_ty_err p env shape_ty ((_, field_p, _) as field) =
 
 let remove_key p env shape_ty field =
   let ((env, ty_err_opt), res) = remove_key_with_ty_err p env shape_ty field in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
   (env, res)
 
 let to_collection env pos shape_ty res return_type =
@@ -306,7 +312,7 @@ let to_collection env pos shape_ty res return_type =
          * or arraykey if there may be unknown fields (open shape)
          *)
         let (env, key) =
-          if not (Typing_utils.is_nothing env shape_kind) then
+          if not (TUtils.is_nothing env shape_kind) then
             (env, MakeType.arraykey r)
           else
             let keys = TShapeMap.keys fdm in
@@ -329,7 +335,7 @@ let to_collection env pos shape_ty res return_type =
                             const.cc_type
                         in
                         Option.iter
-                          ~f:Typing_error_utils.add_typing_error
+                          ~f:(Typing_error_utils.add_typing_error ~env)
                           ty_err_opt;
                         (env, lty)
                       | None -> Env.fresh_type_error env pos
@@ -401,10 +407,8 @@ let to_dict env pos shape_ty res =
       pos
       shape_ty
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error e1;
-  let shape_ty =
-    Typing_utils.get_base_type ~expand_supportdyn:true env shape_ty
-  in
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) e1;
+  let shape_ty = TUtils.get_base_type ~expand_supportdyn:true env shape_ty in
   to_collection env pos shape_ty res (fun env r key value ->
       (env, MakeType.dict r key value))
 
@@ -425,7 +429,7 @@ let check_shape_keys_validity env keys =
     | Ast_defs.SFlit_int _ -> (env, key_pos, None)
     | Ast_defs.SFlit_str (_, key_name) ->
       (if Int.equal 0 (String.length key_name) then
-        Typing_error_utils.add_typing_error
+        Typing_error_utils.add_typing_error ~env
         @@ Typing_error.(
              shape
              @@ Primary.Shape.Invalid_shape_field_name
@@ -439,7 +443,7 @@ let check_shape_keys_validity env keys =
       | Some cd ->
         (match Env.get_const env cd y with
         | None ->
-          Typing_error_utils.add_typing_error
+          Typing_error_utils.add_typing_error ~env
           @@ Typing_object_get.smember_not_found
                p
                ~is_const:true
@@ -455,7 +459,7 @@ let check_shape_keys_validity env keys =
           let ((env, ty_err_opt), ty) =
             Typing_phase.localize_no_subst ~ignore_errors:true env cc_type
           in
-          Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+          Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
           let r = Reason.Rwitness key_pos in
           let (env, e2) =
             Type.sub_type key_pos Reason.URnone env ty (MakeType.arraykey r)
@@ -471,7 +475,7 @@ let check_shape_keys_validity env keys =
                             trail = [];
                           })))
           in
-          Option.iter ~f:Typing_error_utils.add_typing_error e2;
+          Option.iter ~f:(Typing_error_utils.add_typing_error ~env) e2;
           (env, key_pos, Some (cls, ty)))
     end
   in
@@ -554,7 +558,7 @@ let check_shape_keys_validity env keys =
           | (env, _) -> (env, ty_errs))
     in
     let ty_err_opt = Typing_error.multiple_opt ty_errs in
-    Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+    Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
     env
 
 let update_param : decl_fun_param -> decl_ty -> decl_fun_param =
@@ -610,7 +614,7 @@ let transform_idx_fun_ty (field_name : tshape_field_name) nargs fty =
     match nargs with
     | 2 ->
       (* Return type should be ?Tv *)
-      let ret = MakeType.nullable_decl rret (MakeType.generic rret "Tv") in
+      let ret = MakeType.nullable rret (MakeType.generic rret "Tv") in
       ([param1; param2], ret)
     | 3 ->
       (* Third parameter should have type Tv *)

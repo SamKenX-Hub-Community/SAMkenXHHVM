@@ -16,7 +16,6 @@ module KindDefs = Typing_kinding_defs
 module TGenConstraint = Typing_generic_constraint
 module TUtils = Typing_utils
 module Subst = Decl_subst
-module SN = Naming_special_names
 
 module Locl_Inst = struct
   let rec instantiate subst (ty : locl_ty) =
@@ -159,7 +158,7 @@ end
 *)
 let check_typedef_usable_as_hk_type env use_pos typedef_name typedef_info =
   let report_constraint violating_type used_class used_class_tparam_name =
-    let tparams_in_ty = Typing_env.get_tparams env violating_type in
+    let tparams_in_ty = Env.get_tparams env violating_type in
     let tparams_of_typedef =
       List.fold typedef_info.td_tparams ~init:SSet.empty ~f:(fun s tparam ->
           SSet.add (snd tparam.tp_name) s)
@@ -195,7 +194,7 @@ let check_typedef_usable_as_hk_type env use_pos typedef_name typedef_info =
     let ((env, ty_err_opt), locl_ty) =
       TUtils.localize_no_subst env ~ignore_errors:true decl_ty
     in
-    Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+    Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
     match get_node (TUtils.get_base_type env locl_ty) with
     | Tclass (cls_name, _, tyl) when not (List.is_empty tyl) ->
       (match Env.get_class env (snd cls_name) with
@@ -211,12 +210,16 @@ let check_typedef_usable_as_hk_type env use_pos typedef_name typedef_info =
                   let ((env, ty_err1), cstr_ty) =
                     TUtils.localize ~ety_env env cstr_ty
                   in
-                  Option.iter ~f:Typing_error_utils.add_typing_error ty_err1;
+                  Option.iter
+                    ~f:(Typing_error_utils.add_typing_error ~env)
+                    ty_err1;
                   let (_env, ty_err2) =
                     TGenConstraint.check_constraint env ck ty ~cstr_ty
                     @@ report_constraint ty cls_name x
                   in
-                  Option.iter ty_err2 ~f:Typing_error_utils.add_typing_error)
+                  Option.iter
+                    ty_err2
+                    ~f:(Typing_error_utils.add_typing_error ~env))
           end
           tc_tparams
           tyl
@@ -251,10 +254,10 @@ let check_class_usable_as_hk_type pos class_info =
       Naming_error.(
         to_user_error @@ HKT_class_with_constraints_used { pos; class_name })
 
-let report_kind_error ~use_pos ~def_pos ~tparam_name ~expected ~actual =
+let report_kind_error env ~use_pos ~def_pos ~tparam_name ~expected ~actual =
   let actual_kind = Simple.description_of_kind actual in
   let expected_kind = Simple.description_of_kind expected in
-  Typing_error_utils.add_typing_error
+  Typing_error_utils.add_typing_error ~env
   @@ Typing_error.(
        primary
        @@ Primary.Kind_mismatch
@@ -303,6 +306,7 @@ module Simple = struct
     let arity_mistmatch_okay = Int.equal act_len 0 && allow_missing_targs in
     if Int.( <> ) exp_len act_len && not arity_mistmatch_okay then
       Typing_error_utils.add_typing_error
+        ~env
         Typing_error.(
           primary
           @@ Primary.Type_arity_mismatch
@@ -320,7 +324,7 @@ module Simple = struct
       =
     let kind = snd nkind in
     match get_node tyarg with
-    | Tapply ((_, x), _argl) when String.equal x SN.Typehints.wildcard ->
+    | Twildcard ->
       let is_higher_kinded = Simple.get_arity kind > 0 in
       if is_higher_kinded then (
         let pos =
@@ -358,12 +362,11 @@ module Simple = struct
     in
     match ty_ with
     | Tany _
-    | Tvar _
-    (* Tvar must not be higher-kinded yet *)
     | Tnonnull
     | Tprim _
     | Tdynamic
     | Tmixed
+    | Twildcard
     | Tthis ->
       ()
     | Tvec_or_dict (tk, tv) ->
@@ -410,7 +413,7 @@ module Simple = struct
       match Env.get_class_or_typedef env cid with
       | Some (Env.ClassResult class_info) ->
         Option.iter
-          ~f:Typing_error_utils.add_typing_error
+          ~f:(Typing_error_utils.add_typing_error ~env)
           (Typing_visibility.check_top_level_access
              ~in_signature
              ~use_pos
@@ -422,7 +425,7 @@ module Simple = struct
         check_against_tparams ~in_signature (Cls.pos class_info) argl tparams
       | Some (Env.TypedefResult typedef) ->
         Option.iter
-          ~f:Typing_error_utils.add_typing_error
+          ~f:(Typing_error_utils.add_typing_error ~env)
           (Typing_visibility.check_top_level_access
              ~in_signature
              ~use_pos
@@ -441,7 +444,7 @@ module Simple = struct
       (match Env.get_typedef env name with
       | Some typedef ->
         Option.iter
-          ~f:Typing_error_utils.add_typing_error
+          ~f:(Typing_error_utils.add_typing_error ~env)
           (Typing_visibility.check_top_level_access
              ~in_signature
              ~use_pos
@@ -461,9 +464,10 @@ module Simple = struct
     let (expected_name, expected_kind) = expected_nkind in
     let r = get_reason ty in
     let use_pos = Reason.to_pos r |> Pos_or_decl.unsafe_to_raw_pos in
-    let kind_error actual_kind =
+    let kind_error actual_kind env =
       let (def_pos, tparam_name) = expected_name in
       report_kind_error
+        env
         ~use_pos
         ~def_pos
         ~tparam_name
@@ -473,7 +477,7 @@ module Simple = struct
     let check_against_tparams tparams =
       let overall_kind = Simple.type_with_params_to_simple_kind tparams in
       if not (is_subkind env ~sub:overall_kind ~sup:expected_kind) then
-        kind_error overall_kind
+        kind_error overall_kind env
     in
 
     if Int.( = ) (Simple.get_arity expected_kind) 0 then
@@ -497,7 +501,7 @@ module Simple = struct
         | Some (_pos, gen_kind) ->
           let get_kind = Simple.from_full_kind gen_kind in
           if not (is_subkind env ~sub:get_kind ~sup:expected_kind) then
-            kind_error get_kind
+            kind_error get_kind env
         | None -> ()
       end
       | Tgeneric (_, targs)
@@ -511,7 +515,7 @@ module Simple = struct
                    count = List.length targs;
                  })
       | Tany _ -> ()
-      | _ -> kind_error (Simple.fully_applied_type ())
+      | _ -> kind_error (Simple.fully_applied_type ()) env
 
   (* Export the version that doesn't expose allow_missing_targs *)
   let check_well_kinded_type ~in_signature env (ty : decl_ty) =

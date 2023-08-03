@@ -43,14 +43,12 @@ let init_state
   Relative_path.(set_path_prefix Root root);
   make_tmp_dir ();
   make_hhi_dir ();
-  Typing_global_inference.set_path ();
   let ctx =
     Provider_context.empty_for_tool
       ~popt
       ~tcopt
       ~backend:Provider_backend.Shared_memory
       ~deps_mode
-      ~package_info:Package.Info.empty
   in
   let batch_state = Batch_global_state.save ~trace:true in
   (ctx, batch_state)

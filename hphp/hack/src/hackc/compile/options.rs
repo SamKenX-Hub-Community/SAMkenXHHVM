@@ -4,8 +4,11 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
+use bstr::BStr;
 use bstr::BString;
+use hhbc_string_utils as string_utils;
 pub use oxidized::parser_options::ParserOptions;
 use serde::Deserialize;
 use serde::Serialize;
@@ -30,13 +33,23 @@ impl Default for CompilerFlags {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Hhvm {
     pub include_roots: BTreeMap<BString, BString>,
+    pub renamable_functions: BTreeSet<BString>,
     pub parser_options: ParserOptions,
+    pub jit_enable_rename_function: JitEnableRenameFunction,
 }
 
 impl Hhvm {
     pub fn aliased_namespaces_cloned(&self) -> impl Iterator<Item = (String, String)> + '_ {
         self.parser_options.po_auto_namespace_map.iter().cloned()
     }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub enum JitEnableRenameFunction {
+    #[default]
+    Disable,
+    Enable,
+    RestrictedEnable,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -50,6 +63,16 @@ pub struct Options {
 impl Options {
     pub fn log_extern_compiler_perf(&self) -> bool {
         self.hhbc.log_extern_compiler_perf
+    }
+    pub fn function_is_renamable(&self, func: &BStr) -> bool {
+        let stripped_func = string_utils::strip_ns_bstr(func);
+        match self.hhvm.jit_enable_rename_function {
+            JitEnableRenameFunction::Enable => true,
+            JitEnableRenameFunction::RestrictedEnable => {
+                self.hhvm.renamable_functions.contains(stripped_func)
+            }
+            JitEnableRenameFunction::Disable => false,
+        }
     }
 }
 
@@ -78,8 +101,6 @@ pub struct HhbcFlags {
     /// PHP7 Uniform Variable Syntax
     pub uvs: bool,
 
-    pub repo_authoritative: bool,
-    pub jit_enable_rename_function: bool,
     pub log_extern_compiler_perf: bool,
     pub enable_intrinsics_extension: bool,
     pub emit_cls_meth_pointers: bool,
@@ -97,8 +118,6 @@ impl Default for HhbcFlags {
         Self {
             ltr_assign: false,
             uvs: false,
-            repo_authoritative: false,
-            jit_enable_rename_function: false,
             log_extern_compiler_perf: false,
             enable_intrinsics_extension: false,
             emit_cls_meth_pointers: true,

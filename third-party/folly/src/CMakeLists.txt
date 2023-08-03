@@ -90,8 +90,11 @@ set(FOLLY_SUPPORT_SHARED_LIBRARY "${BUILD_SHARED_LIBS}")
 include(FBBuildOptions)
 fb_activate_static_library_option()
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  message(STATUS "setting C++ standard to C++${CMAKE_CXX_STANDARD}")
+endif()
 
 if(NOT DEFINED IS_X86_64_ARCH AND ${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64|AMD64")
   set(IS_X86_64_ARCH TRUE)
@@ -196,11 +199,13 @@ list(REMOVE_ITEM files
   ${FOLLY_DIR}/python/GILAwareManualExecutor.cpp
   ${FOLLY_DIR}/python/iobuf.cpp
   ${FOLLY_DIR}/python/iobuf_ext.cpp
+  ${FOLLY_DIR}/python/ProactorExecutor.cpp
 )
 list(REMOVE_ITEM hfiles
   ${FOLLY_DIR}/python/fibers.h
   ${FOLLY_DIR}/python/GILAwareManualExecutor.h
   ${FOLLY_DIR}/python/iobuf_ext.h
+  ${FOLLY_DIR}/python/ProactorExecutor.h
 )
 
 # Explicitly include utility library code from inside
@@ -653,7 +658,13 @@ if (BUILD_TESTS OR BUILD_BENCHMARKS)
       TEST simd_for_each_test SOURCES SimdForEachTest.cpp
 
     DIRECTORY detail/test/
+      TEST simple_simd_string_utils_test SOURCES SimpleSimdStringUtilsTest.cpp
+
+    DIRECTORY detail/test/
       TEST split_string_simd_test SOURCES SplitStringSimdTest.cpp
+
+    DIRECTORY detail/test/
+      TEST unroll_utils_test SOURCES UnrollUtilsTest.cpp
 
     DIRECTORY detail/base64_detail/tests/
       TEST base64_detail_test

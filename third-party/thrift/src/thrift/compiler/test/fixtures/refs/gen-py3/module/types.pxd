@@ -41,7 +41,6 @@ from thrift.py3.common cimport (
     MetadataBox as __MetadataBox,
 )
 from folly.optional cimport cOptional as __cOptional
-cimport facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
 
 cimport module.types_fields as _fbthrift_types_fields
 
@@ -99,6 +98,23 @@ cdef extern from "thrift/compiler/test/fixtures/refs/src/gen-cpp2/module_types_c
         unique_ptr[cint32_t]& set_anInteger "set_anInteger" (const cint32_t&)
         const unique_ptr[string]& get_aString "get_aString" () const
         unique_ptr[string]& set_aString "set_aString" (const string&)
+
+    cdef enum cNonTriviallyDestructibleUnion__type "::cpp2::NonTriviallyDestructibleUnion::Type":
+        cNonTriviallyDestructibleUnion__type___EMPTY__ "::cpp2::NonTriviallyDestructibleUnion::Type::__EMPTY__",
+        cNonTriviallyDestructibleUnion__type_int_field "::cpp2::NonTriviallyDestructibleUnion::Type::int_field",
+
+    cdef cppclass cNonTriviallyDestructibleUnion "::cpp2::NonTriviallyDestructibleUnion":
+        cNonTriviallyDestructibleUnion() except +
+        cNonTriviallyDestructibleUnion(const cNonTriviallyDestructibleUnion&) except +
+        bint operator==(cNonTriviallyDestructibleUnion&)
+        bint operator!=(cNonTriviallyDestructibleUnion&)
+        bint operator<(cNonTriviallyDestructibleUnion&)
+        bint operator>(cNonTriviallyDestructibleUnion&)
+        bint operator<=(cNonTriviallyDestructibleUnion&)
+        bint operator>=(cNonTriviallyDestructibleUnion&)
+        cNonTriviallyDestructibleUnion__type getType() const
+        const shared_ptr[cint32_t]& get_int_field "get_int_field" () const
+        shared_ptr[cint32_t]& set_int_field "set_int_field" (const cint32_t&)
 
 
     cdef cppclass cMyField "::cpp2::MyField":
@@ -242,8 +258,19 @@ cdef extern from "thrift/compiler/test/fixtures/refs/src/gen-cpp2/module_types_c
         bint operator>=(cStructWithInternBox&)
         __field_ref[cEmpty] field1_ref "field1_ref" ()
         __field_ref[cMyField] field2_ref "field2_ref" ()
-        __terse_field_ref[cEmpty] field3_ref "field3_ref" ()
-        __terse_field_ref[cMyField] field4_ref "field4_ref" ()
+
+
+    cdef cppclass cStructWithTerseInternBox "::cpp2::StructWithTerseInternBox":
+        cStructWithTerseInternBox() except +
+        cStructWithTerseInternBox(const cStructWithTerseInternBox&) except +
+        bint operator==(cStructWithTerseInternBox&)
+        bint operator!=(cStructWithTerseInternBox&)
+        bint operator<(cStructWithTerseInternBox&)
+        bint operator>(cStructWithTerseInternBox&)
+        bint operator<=(cStructWithTerseInternBox&)
+        bint operator>=(cStructWithTerseInternBox&)
+        __terse_field_ref[cEmpty] field1_ref "field1_ref" ()
+        __terse_field_ref[cMyField] field2_ref "field2_ref" ()
 
 
     cdef cppclass cAdaptedStructWithInternBox "::cpp2::AdaptedStructWithInternBox":
@@ -257,8 +284,19 @@ cdef extern from "thrift/compiler/test/fixtures/refs/src/gen-cpp2/module_types_c
         bint operator>=(cAdaptedStructWithInternBox&)
         __field_ref[cEmpty] field1_ref "field1_ref" ()
         __field_ref[cMyField] field2_ref "field2_ref" ()
-        __terse_field_ref[cEmpty] field3_ref "field3_ref" ()
-        __terse_field_ref[cMyField] field4_ref "field4_ref" ()
+
+
+    cdef cppclass cAdaptedStructWithTerseInternBox "::cpp2::AdaptedStructWithTerseInternBox":
+        cAdaptedStructWithTerseInternBox() except +
+        cAdaptedStructWithTerseInternBox(const cAdaptedStructWithTerseInternBox&) except +
+        bint operator==(cAdaptedStructWithTerseInternBox&)
+        bint operator!=(cAdaptedStructWithTerseInternBox&)
+        bint operator<(cAdaptedStructWithTerseInternBox&)
+        bint operator>(cAdaptedStructWithTerseInternBox&)
+        bint operator<=(cAdaptedStructWithTerseInternBox&)
+        bint operator>=(cAdaptedStructWithTerseInternBox&)
+        __terse_field_ref[cEmpty] field1_ref "field1_ref" ()
+        __terse_field_ref[cMyField] field2_ref "field2_ref" ()
 
 
     cdef cppclass cStructWithRefTypeUnique "::cpp2::StructWithRefTypeUnique":
@@ -352,6 +390,27 @@ cdef class MyUnion(thrift.py3.types.Union):
 
     @staticmethod
     cdef _fbthrift_create(shared_ptr[cMyUnion])
+
+cdef class __NonTriviallyDestructibleUnionType(thrift.py3.types.CompiledEnum):
+    pass
+
+
+
+
+cdef class NonTriviallyDestructibleUnion(thrift.py3.types.Union):
+    cdef shared_ptr[cNonTriviallyDestructibleUnion] _cpp_obj
+    cdef readonly __NonTriviallyDestructibleUnionType type
+    cdef readonly object value
+    cdef _load_cache(NonTriviallyDestructibleUnion self)
+
+    @staticmethod
+    cdef unique_ptr[cNonTriviallyDestructibleUnion] _make_instance(
+        cNonTriviallyDestructibleUnion* base_instance,
+        object int_field
+    ) except *
+
+    @staticmethod
+    cdef _fbthrift_create(shared_ptr[cNonTriviallyDestructibleUnion])
 
 
 
@@ -495,15 +554,24 @@ cdef class StructWithInternBox(thrift.py3.types.Struct):
     cdef _fbthrift_types_fields.__StructWithInternBox_FieldsSetter _fields_setter
     cdef inline object field1_impl(self)
     cdef inline object field2_impl(self)
-    cdef inline object field3_impl(self)
-    cdef inline object field4_impl(self)
     cdef Empty __fbthrift_cached_field1
     cdef MyField __fbthrift_cached_field2
-    cdef Empty __fbthrift_cached_field3
-    cdef MyField __fbthrift_cached_field4
 
     @staticmethod
     cdef _fbthrift_create(shared_ptr[cStructWithInternBox])
+
+
+
+cdef class StructWithTerseInternBox(thrift.py3.types.Struct):
+    cdef shared_ptr[cStructWithTerseInternBox] _cpp_obj
+    cdef _fbthrift_types_fields.__StructWithTerseInternBox_FieldsSetter _fields_setter
+    cdef inline object field1_impl(self)
+    cdef inline object field2_impl(self)
+    cdef Empty __fbthrift_cached_field1
+    cdef MyField __fbthrift_cached_field2
+
+    @staticmethod
+    cdef _fbthrift_create(shared_ptr[cStructWithTerseInternBox])
 
 
 
@@ -512,15 +580,24 @@ cdef class AdaptedStructWithInternBox(thrift.py3.types.Struct):
     cdef _fbthrift_types_fields.__AdaptedStructWithInternBox_FieldsSetter _fields_setter
     cdef inline object field1_impl(self)
     cdef inline object field2_impl(self)
-    cdef inline object field3_impl(self)
-    cdef inline object field4_impl(self)
     cdef Empty __fbthrift_cached_field1
     cdef MyField __fbthrift_cached_field2
-    cdef Empty __fbthrift_cached_field3
-    cdef MyField __fbthrift_cached_field4
 
     @staticmethod
     cdef _fbthrift_create(shared_ptr[cAdaptedStructWithInternBox])
+
+
+
+cdef class AdaptedStructWithTerseInternBox(thrift.py3.types.Struct):
+    cdef shared_ptr[cAdaptedStructWithTerseInternBox] _cpp_obj
+    cdef _fbthrift_types_fields.__AdaptedStructWithTerseInternBox_FieldsSetter _fields_setter
+    cdef inline object field1_impl(self)
+    cdef inline object field2_impl(self)
+    cdef Empty __fbthrift_cached_field1
+    cdef MyField __fbthrift_cached_field2
+
+    @staticmethod
+    cdef _fbthrift_create(shared_ptr[cAdaptedStructWithTerseInternBox])
 
 
 

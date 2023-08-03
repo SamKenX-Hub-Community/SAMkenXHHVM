@@ -6,11 +6,9 @@ package python // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    scope "thrift/annotation/scope"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = scope.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
@@ -27,7 +25,9 @@ func NewHidden() *Hidden {
 }
 
 func (x *Hidden) String() string {
-    return fmt.Sprintf("%+v", x)
+    type HiddenAlias Hidden
+    valueAlias := (*HiddenAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -107,7 +107,9 @@ func NewFlags() *Flags {
 }
 
 func (x *Flags) String() string {
-    return fmt.Sprintf("%+v", x)
+    type FlagsAlias Flags
+    valueAlias := (*FlagsAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -233,7 +235,9 @@ if err != nil {
 }
 
 func (x *Name) String() string {
-    return fmt.Sprintf("%+v", x)
+    type NameAlias Name
+    valueAlias := (*NameAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -326,7 +330,9 @@ func NewIOBuf() *IOBuf {
 }
 
 func (x *IOBuf) String() string {
-    return fmt.Sprintf("%+v", x)
+    type IOBufAlias IOBuf
+    valueAlias := (*IOBufAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -498,7 +504,9 @@ if err != nil {
 }
 
 func (x *Adapter) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AdapterAlias Adapter
+    valueAlias := (*AdapterAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -575,6 +583,88 @@ func (x *Adapter) Read(p thrift.Protocol) error {
             if err := x.readField2(p); err != nil {
                 return err
             }
+        default:
+            if err := p.Skip(typ); err != nil {
+                return err
+            }
+        }
+
+        if err := p.ReadFieldEnd(); err != nil {
+            return err
+        }
+    }
+
+    if err := p.ReadStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", x), err)
+    }
+
+    return nil
+}
+
+
+type MarshalCapi struct {
+}
+// Compile time interface enforcer
+var _ thrift.Struct = &MarshalCapi{}
+
+func NewMarshalCapi() *MarshalCapi {
+    return (&MarshalCapi{})
+}
+
+func (x *MarshalCapi) String() string {
+    type MarshalCapiAlias MarshalCapi
+    valueAlias := (*MarshalCapiAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
+}
+
+
+// Deprecated: Use MarshalCapi.Set* methods instead or set the fields directly.
+type MarshalCapiBuilder struct {
+    obj *MarshalCapi
+}
+
+func NewMarshalCapiBuilder() *MarshalCapiBuilder {
+    return &MarshalCapiBuilder{
+        obj: NewMarshalCapi(),
+    }
+}
+
+func (x *MarshalCapiBuilder) Emit() *MarshalCapi {
+    var objCopy MarshalCapi = *x.obj
+    return &objCopy
+}
+
+func (x *MarshalCapi) Write(p thrift.Protocol) error {
+    if err := p.WriteStructBegin("MarshalCapi"); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
+    }
+
+    if err := p.WriteFieldStop(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field stop error: ", x), err)
+    }
+
+    if err := p.WriteStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *MarshalCapi) Read(p thrift.Protocol) error {
+    if _, err := p.ReadStructBegin(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
+    }
+
+    for {
+        _, typ, id, err := p.ReadFieldBegin()
+        if err != nil {
+            return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", x, id), err)
+        }
+
+        if typ == thrift.STOP {
+            break;
+        }
+
+        switch id {
         default:
             if err := p.Skip(typ); err != nil {
                 return err

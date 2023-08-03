@@ -10,7 +10,6 @@
 
 #include <thrift/lib/cpp2/gen/module_metadata_h.h>
 #include "thrift/compiler/test/fixtures/basic-annotations/gen-cpp2/module_types.h"
-#include "thrift/annotation/gen-cpp2/cpp_metadata.h"
 
 namespace cpp2 {
 class MyService;
@@ -23,6 +22,9 @@ class MyServicePrioChild;
 } // namespace cpp2
 namespace cpp2 {
 class GoodService;
+} // namespace cpp2
+namespace cpp2 {
+class FooBarBazService;
 } // namespace cpp2
 
 namespace apache {
@@ -129,6 +131,20 @@ class ServiceMetadata<::apache::thrift::ServiceHandler<::cpp2::GoodService>> {
   friend class ServiceMetadata;
 
   static void gen_bar(ThriftMetadata& metadata, ThriftService& context);
+};
+template <>
+class ServiceMetadata<::apache::thrift::ServiceHandler<::cpp2::FooBarBazService>> {
+ public:
+  static void gen(ThriftServiceMetadataResponse& response);
+ private:
+  static const ThriftServiceContextRef* genRecurse(ThriftMetadata& metadata, std::vector<ThriftServiceContextRef>& services);
+
+  template <typename T>
+  friend class ServiceMetadata;
+
+  static void gen_foo(ThriftMetadata& metadata, ThriftService& context);
+  static void gen_bar(ThriftMetadata& metadata, ThriftService& context);
+  static void gen_baz(ThriftMetadata& metadata, ThriftService& context);
 };
 } // namespace md
 } // namespace detail

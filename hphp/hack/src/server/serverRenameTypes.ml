@@ -24,15 +24,11 @@ type action =
   | ClassConstRename of string * string * string
   (* class_name * old_name * new_name *)
   | MethodRename of {
-      filename: string option;
-      definition: string SymbolDefinition.t option;
       class_name: string;
       old_name: string;
       new_name: string;
     }
   | FunctionRename of {
-      filename: string option;
-      definition: string SymbolDefinition.t option;
       old_name: string;
       new_name: string;
     }

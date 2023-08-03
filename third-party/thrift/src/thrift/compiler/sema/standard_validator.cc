@@ -414,7 +414,7 @@ void validate_union_field_attributes(
           field.qualifier() == t_field_qualifier::required ? "required"
                                                            : "optional",
           field.name());
-    } else if (field.qualifier() == t_field_qualifier::terse) {
+    } else if (field.find_structured_annotation_or_null(kTerseWriteUri)) {
       ctx.error(
           field,
           "`@thrift.TerseWrite` cannot be applied to union fields (in `{}`).",
@@ -588,18 +588,18 @@ void validate_field_default_value(
 void validate_structured_annotation(
     diagnostic_context& ctx, const t_named& node) {
   std::unordered_map<const t_type*, const t_const*> seen;
-  for (const auto* annot : node.structured_annotations()) {
-    auto result = seen.emplace(&annot->type().deref(), annot);
+  for (const auto& annot : node.structured_annotations()) {
+    auto result = seen.emplace(&annot.type().deref(), &annot);
     if (!result.second) {
       report_redef_error(
           ctx,
           "Structured annotation",
           result.first->first->name(),
           node,
-          *annot,
+          annot,
           *result.first->second);
     }
-    validate_const_type_and_value(ctx, *annot);
+    validate_const_type_and_value(ctx, annot);
   }
 }
 
@@ -875,16 +875,22 @@ void validate_stream_exceptions_return_type(
     return;
   }
 
-  ctx.check(
-      dynamic_cast<const t_stream_response*>(node.return_type().get_type()),
-      "`stream throws` only valid on stream methods: {}",
-      node.name());
+  if (!node.returns_stream()) {
+    ctx.error("`stream throws` only valid on stream methods: {}", node.name());
+  }
 }
 
-void validate_interaction_factories(
-    diagnostic_context& ctx, const t_function& node) {
-  if (node.is_interaction_member() && node.returned_interaction()) {
-    ctx.error("Nested interactions are forbidden: {}", node.name());
+void validate_interaction_nesting(
+    diagnostic_context& ctx, const t_interaction& node) {
+  for (auto* func : node.get_functions()) {
+    auto ret = func->get_returntype();
+    if (ret->is_service() &&
+        static_cast<const t_service*>(ret)->is_interaction()) {
+      ctx.error(*func, "Nested interactions are forbidden.");
+    }
+    if (func->returned_interaction()) {
+      ctx.error(*func, "Nested interactions are forbidden: {}", func->name());
+    }
   }
 }
 
@@ -1071,20 +1077,9 @@ void validate_custom_cpp_type_annotations(
       node.find_structured_annotation_or_null(kCppAdapterUri);
   const bool hasCppType = node.has_annotation(
       {"cpp.type", "cpp2.type", "cpp.template", "cpp2.template"});
-  const bool isStrongType =
-      node.find_structured_annotation_or_null(kCppStrongTypeUri);
-
   ctx.check(
       !(hasCppType && hasAdapter),
       "Definition `{}` cannot have both cpp.type/cpp.template and @cpp.Adapter annotations",
-      node.name());
-  ctx.check(
-      !(isStrongType && hasAdapter),
-      "Definition `{}` cannot have both @cpp.StrongType and @cpp.Adapter annotations",
-      node.name());
-  ctx.check(
-      !(isStrongType && hasCppType),
-      "Definition `{}` cannot have both cpp.type/cpp.template and @cpp.StrongType annotations",
       node.name());
 }
 
@@ -1109,6 +1104,124 @@ void validate_cpp_type_annotation(diagnostic_context& ctx, const Node& node) {
     }
   }
 }
+
+struct ValidateAnnotationPositions {
+  void operator()(diagnostic_context& ctx, const t_const& node) {
+    if (owns_annotations(node.type())) {
+      err(ctx);
+    }
+  }
+  void operator()(diagnostic_context& ctx, const t_function& node) {
+    for (const auto& type : node.return_types()) {
+      if (owns_annotations(type)) {
+        err(ctx);
+      }
+    }
+    if (const auto* s = dynamic_cast<const t_sink*>(node.sink_or_stream())) {
+      if (owns_annotations(s->sink_type()) ||
+          owns_annotations(s->final_response_type())) {
+        err(ctx);
+      }
+    }
+    if (const auto* s =
+            dynamic_cast<const t_stream_response*>(node.sink_or_stream())) {
+      if (owns_annotations(s->elem_type())) {
+        err(ctx);
+      }
+    }
+
+    for (auto& field : node.params().fields()) {
+      auto type = field.type();
+      if (owns_annotations(type)) {
+        err(ctx);
+      }
+    }
+  }
+  void operator()(diagnostic_context& ctx, const t_templated_type& type) {
+    switch (type.get_type_value()) {
+      case t_type::type::t_list: {
+        const auto& t = static_cast<const t_list&>(type);
+        if (owns_annotations(t.elem_type())) {
+          err(ctx);
+        }
+        break;
+      }
+      case t_type::type::t_set: {
+        const auto& t = static_cast<const t_set&>(type);
+        if (owns_annotations(t.elem_type())) {
+          err(ctx);
+        }
+        break;
+      }
+      case t_type::type::t_map: {
+        const auto& t = static_cast<const t_map&>(type);
+        if (owns_annotations(t.key_type()) || owns_annotations(t.val_type())) {
+          err(ctx);
+        }
+        break;
+      }
+      case t_type::type::t_stream:
+      case t_type::type::t_sink:
+        // This can be removed once sink and stream no longer inherit from
+        // t_templated_type.
+        break;
+      default:
+        throw std::runtime_error("Unknown templated type");
+    }
+  }
+
+ private:
+  static void err(diagnostic_context& ctx) {
+    ctx.error(
+        "Annotations are not allowed in this position. Extract the type into a named typedef instead.");
+  }
+  static bool owns_annotations(t_type_ref type) {
+    auto ptr = type.get_type();
+    if (ptr->annotations().empty()) {
+      return false;
+    }
+    if (dynamic_cast<const t_templated_type*>(ptr)) {
+      return true;
+    }
+    if (dynamic_cast<const t_base_type*>(ptr)) {
+      return true;
+    }
+    if (auto t = dynamic_cast<const t_typedef*>(ptr)) {
+      return t->typedef_kind() != t_typedef::kind::defined;
+    }
+    return false;
+  }
+};
+
+void validate_struct_names_uniqueness(
+    diagnostic_context& ctx, const t_program& p) {
+  std::unordered_set<std::string> seen;
+  for (auto* object : p.objects()) {
+    if (!seen.emplace(object->name()).second) {
+      ctx.error(*object, "Redefinition of type `{}`.", object->name());
+    }
+  }
+  for (auto* interaction : p.interactions()) {
+    if (!seen.emplace(interaction->name()).second) {
+      ctx.error(
+          *interaction, "Redefinition of type `{}`.", interaction->name());
+    }
+  }
+}
+
+void validate_performs(diagnostic_context& ctx, const t_service& s) {
+  for (auto* func : s.get_functions()) {
+    auto ret = func->get_returntype();
+    if (func->is_interaction_constructor()) {
+      if (!ret->is_service() ||
+          !static_cast<const t_service*>(ret)->is_interaction()) {
+        ctx.error(*func, "Only interactions can be performed.");
+        continue;
+      }
+    }
+  }
+}
+
 } // namespace
 
 ast_validator standard_validator() {
@@ -1117,12 +1230,14 @@ ast_validator standard_validator() {
   validator.add_interface_visitor(&validate_function_priority_annotation);
   validator.add_service_visitor(
       &validate_extends_service_function_name_uniqueness);
+  validator.add_service_visitor(&validate_performs);
+  validator.add_interaction_visitor(&validate_interaction_nesting);
   validator.add_throws_visitor(&validate_throws_exceptions);
   validator.add_function_visitor(&validate_oneway_function);
   validator.add_function_visitor(&validate_function_return_type);
   validator.add_function_visitor(&validate_stream_exceptions_return_type);
   validator.add_function_visitor(&validate_function_priority_annotation);
-  validator.add_function_visitor(&validate_interaction_factories);
+  validator.add_function_visitor(ValidateAnnotationPositions{});
 
   validator.add_structured_definition_visitor(&validate_field_names_uniqueness);
   validator.add_structured_definition_visitor(
@@ -1170,9 +1285,12 @@ ast_validator standard_validator() {
   validator.add_typedef_visitor([](auto& ctx, const auto& node) {
     validate_cpp_type_annotation(ctx, node);
   });
+  validator.add_type_instantiation_visitor(ValidateAnnotationPositions{});
   validator.add_enum_visitor(&validate_cpp_enum_type);
   validator.add_const_visitor(&validate_const_type_and_value);
+  validator.add_const_visitor(ValidateAnnotationPositions{});
   validator.add_program_visitor(&validate_uri_uniqueness);
+  validator.add_program_visitor(&validate_struct_names_uniqueness);
   return validator;
 }
 

@@ -59,20 +59,19 @@ let lsp_range_to_fc (range : Lsp.range) : File_content.range =
   }
 
 let lsp_range_to_pos ~line_to_offset path (range : Lsp.range) : Pos.t =
-  let pos_fname = Relative_path.suffix path in
-  let lexing_of endpoint =
-    let pos_bol = line_to_offset endpoint.Lsp.line in
-    Lexing.
-      {
-        pos_fname;
-        pos_lnum = endpoint.Lsp.line;
-        pos_bol;
-        pos_cnum = pos_bol + endpoint.Lsp.character;
-      }
+  let triple_of_endpoint Lsp.{ line; character } =
+    let bol = line_to_offset line in
+    (line, bol, bol + character)
   in
-  let start = lexing_of range.Lsp.start in
-  let end_ = lexing_of range.Lsp.end_ in
-  Pos.make_from_lexing_pos path start end_
+  Pos.make_from_lnum_bol_offset
+    ~pos_file:path
+    ~pos_start:(triple_of_endpoint range.Lsp.start)
+    ~pos_end:(triple_of_endpoint range.Lsp.end_)
+
+let lsp_range_is_selection (range : Lsp.range) =
+  range.start.line < range.end_.line
+  || range.start.line = range.end_.line
+     && range.start.character < range.end_.character
 
 let lsp_edit_to_fc (edit : Lsp.DidChange.textDocumentContentChangeEvent) :
     File_content.text_edit =
@@ -439,3 +438,9 @@ let showMessage_warning (writer : Jsonrpc.writer) =
 
 let showMessage_error (writer : Jsonrpc.writer) =
   showMessage writer MessageType.ErrorMessage
+
+let title_of_command_or_action =
+  Lsp.CodeAction.(
+    function
+    | Command Command.{ title; _ } -> title
+    | Action { title; _ } -> title)

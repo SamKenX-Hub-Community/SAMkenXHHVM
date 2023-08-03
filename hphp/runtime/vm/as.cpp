@@ -1811,7 +1811,7 @@ void parse_coeffects_closure_parent_scope(AsmState& as) {
  * directive-coeffects_generator_this ';'
  */
 void parse_coeffects_generator_this(AsmState& as) {
-  assertx(!SystemLib::s_inited);
+  assertx(as.ue->isASystemLib());
   as.fe->coeffectRules.emplace_back(CoeffectRule(CoeffectRule::GeneratorThis{}));
   as.in.expectWs(';');
 }
@@ -2144,6 +2144,17 @@ TypeConstraint parse_type_constraint(AsmState& as) {
   return parse_type_info(as, true).second;
 }
 
+std::vector<TypeConstraint> parse_type_constraint_union(AsmState& as) {
+  std::vector<TypeConstraint> tcs = {parse_type_constraint(as)};
+  while (true) {
+    as.in.skipWhitespace();
+    if (as.in.peek() != ',') break;
+    as.in.getc();
+    tcs.push_back(parse_type_constraint(as));
+  }
+  return tcs;
+}
+
 TParamNameVec parse_shadowed_tparams(AsmState& as) {
   TParamNameVec ret;
   as.in.skipWhitespace();
@@ -2175,7 +2186,7 @@ void parse_ub(AsmState& as, UpperBoundMap& ubs) {
   for (;;) {
     const auto& tc = parse_type_info(as).second;
     auto& v = ubs[nameStr];
-    v.push_back(tc);
+    v.add(tc);
     as.in.skipWhitespace();
     if (as.in.peek() != ',') break;
     as.in.getc();
@@ -2260,7 +2271,7 @@ void parse_parameter_list(AsmState& as,
 
       seenVariadic = true;
       param.setFlag(Func::ParamInfo::Flags::Variadic);
-      as.fe->attrs |= AttrVariadicParam;
+      assertx(as.fe->attrs & AttrVariadicParam);
     }
 
     if (as.in.tryConsume("inout")) {
@@ -2276,10 +2287,10 @@ void parse_parameter_list(AsmState& as,
     std::tie(param.userType, param.typeConstraint) = parse_type_info(as);
     auto currUBs = getRelevantUpperBounds(param.typeConstraint, ubs,
                                           class_ubs, shadowed_tparams);
-    if (currUBs.size() == 1 && !hasReifiedGenerics) {
-      applyFlagsToUB(currUBs[0], param.typeConstraint);
-      param.typeConstraint = currUBs[0];
-    } else if (!currUBs.empty()) {
+    if (currUBs.isSimple() && !hasReifiedGenerics) {
+      applyFlagsToUB(currUBs.asSimpleMut(), param.typeConstraint);
+      param.typeConstraint = currUBs.asSimple();
+    } else if (!currUBs.isTop()) {
       param.upperBounds = std::move(currUBs);
       as.fe->hasParamsWithMultiUBs = true;
     }
@@ -2382,7 +2393,7 @@ void check_native(AsmState& as) {
     if (as.fe->isNative) {
       auto info = as.fe->getNativeInfo();
       if (!info) {
-        if (SystemLib::s_inited) {
+        if (!as.ue->isASystemLib()) {
           // non-builtin native functions must have a valid binding
           as.error("No NativeFunctionInfo for function {}",
                    as.fe->nativeFullname());
@@ -2392,7 +2403,7 @@ void check_native(AsmState& as) {
         }
       }
     }
-    if (!SystemLib::s_inited) as.fe->attrs |= AttrBuiltin;
+    if (as.ue->isASystemLib()) as.fe->attrs |= AttrBuiltin;
   }
 }
 
@@ -2409,10 +2420,7 @@ void parse_function(AsmState& as) {
 
   UserAttributeMap userAttrs;
   Attr attrs = parse_attribute_list(as, AttrContext::Func, &userAttrs);
-
-  if (!SystemLib::s_inited) {
-    attrs |= AttrUnique | AttrPersistent | AttrBuiltin;
-  }
+  assertx(IMPLIES(as.ue->isASystemLib(), attrs & AttrBuiltin));
 
   int line0;
   int line1;
@@ -2423,17 +2431,20 @@ void parse_function(AsmState& as) {
   if (!as.in.readname(name)) {
     as.error(".function must have a name");
   }
+  auto const sname = makeStaticString(name);
+  assertx(IMPLIES(as.ue->isASystemLib(),
+    (attrs & AttrPersistent) != RO::funcIsRenamable(sname)));
 
-  as.fe = as.ue->newFuncEmitter(makeStaticString(name));
+  as.fe = as.ue->newFuncEmitter(sname);
   as.fe->init(line0, line1, attrs, nullptr);
 
   auto currUBs = getRelevantUpperBounds(retTypeInfo.second, ubs, {}, {});
   auto const hasReifiedGenerics =
     userAttrs.find(s___Reified.get()) != userAttrs.end();
-  if (currUBs.size() == 1 && !hasReifiedGenerics) {
-    applyFlagsToUB(currUBs[0], retTypeInfo.second);
-    retTypeInfo.second = currUBs[0];
-  } else if (!currUBs.empty()) {
+  if (currUBs.isSimple() && !hasReifiedGenerics) {
+    applyFlagsToUB(currUBs.asSimpleMut(), retTypeInfo.second);
+    retTypeInfo.second = currUBs.asSimple();
+  } else if (!currUBs.isTop()) {
     as.fe->retUpperBounds = std::move(currUBs);
     as.fe->hasReturnWithMultiUBs = true;
   }
@@ -2469,7 +2480,7 @@ void parse_method(AsmState& as, const UpperBoundMap& class_ubs) {
   UserAttributeMap userAttrs;
   Attr attrs = parse_attribute_list(as, AttrContext::Func, &userAttrs);
 
-  if (!SystemLib::s_inited) attrs |= AttrBuiltin;
+  assertx(IMPLIES(as.ue->isASystemLib(), attrs & AttrBuiltin));
 
   int line0;
   int line1;
@@ -2497,10 +2508,10 @@ void parse_method(AsmState& as, const UpperBoundMap& class_ubs) {
 
   auto currUBs = getRelevantUpperBounds(retTypeInfo.second, ubs,
                                         class_ubs, shadowed_tparams);
-  if (currUBs.size() == 1 && !hasReifiedGenerics) {
-    applyFlagsToUB(currUBs[0], retTypeInfo.second);
-    retTypeInfo.second = currUBs[0];
-  } else if (!currUBs.empty()) {
+  if (currUBs.isSimple() && !hasReifiedGenerics) {
+    applyFlagsToUB(currUBs.asSimpleMut(), retTypeInfo.second);
+    retTypeInfo.second = currUBs.asSimple();
+  } else if (!currUBs.isTop()) {
     as.fe->retUpperBounds = std::move(currUBs);
     as.fe->hasReturnWithMultiUBs = true;
   }
@@ -2598,10 +2609,10 @@ void parse_property(AsmState& as, const UpperBoundMap& class_ubs) {
     userAttributes.find(s___Reified.get()) != userAttributes.end();
   auto ub = getRelevantUpperBounds(typeConstraint, class_ubs, {}, {});
   auto needsMultiUBs = false;
-  if (ub.size() == 1 && !hasReifiedGenerics) {
-    applyFlagsToUB(ub[0], typeConstraint);
-    typeConstraint = ub[0];
-  } else if (!ub.empty()) {
+  if (ub.isSimple() && !hasReifiedGenerics) {
+    applyFlagsToUB(ub.asSimpleMut(), typeConstraint);
+    typeConstraint = ub.asSimple();
+  } else if (!ub.isTop()) {
     needsMultiUBs = true;
   }
   std::string name;
@@ -2630,12 +2641,17 @@ void parse_property(AsmState& as, const UpperBoundMap& class_ubs) {
  *                 : isAbstract
  *                 ;
  *
- * directive-const : identifier const-flags member-tv-initializer
- *                 | identifier const-flags ';'
+ * directive-const : [attrs] identifier const-flags member-tv-initializer
+ *                 | [attrs] identifier const-flags ';'
  *                 ;
  */
 void parse_class_constant(AsmState& as) {
   as.in.skipWhitespace();
+
+  Attr attrs = AttrNone;
+  if (as.in.peek() == '[') {
+    attrs = parse_attribute_list(as, AttrContext::Constant);
+  }
 
   std::string name;
   if (!as.in.readword(name)) {
@@ -2645,8 +2661,16 @@ void parse_class_constant(AsmState& as) {
   bool isType = as.in.tryConsume("isType");
   auto const kind =
     isType ? ConstModifiers::Kind::Type : ConstModifiers::Kind::Value;
+
   as.in.skipWhitespace();
-  DEBUG_ONLY bool isAbstract = as.in.tryConsume("isAbstract");
+  bool isAbstract;
+  if (kind == ConstModifiers::Kind::Value) {
+    isAbstract = attrs & AttrAbstract;
+  } else {
+    isAbstract = as.in.tryConsume("isAbstract");
+  }
+
+
   as.in.skipWhitespace();
 
   if (as.in.peek() == ';') {
@@ -2865,9 +2889,8 @@ void parse_class(AsmState& as) {
 
   UserAttributeMap userAttrs;
   Attr attrs = parse_attribute_list(as, AttrContext::Class, &userAttrs);
-  if (!SystemLib::s_inited) {
-    attrs |= AttrUnique | AttrPersistent | AttrBuiltin;
-  }
+  assertx(IMPLIES(as.ue->isASystemLib(), attrs & AttrPersistent &&
+                                         attrs & AttrBuiltin));
 
   std::string name;
   if (!as.in.readname(name)) {
@@ -3100,21 +3123,24 @@ void parse_adata(AsmState& as) {
  * Following the type-constraint we encode the serialized type structure
  * corresponding to this alias.
  */
-void parse_alias(AsmState& as) {
+void parse_alias(AsmState& as, bool caseType) {
   as.in.skipWhitespace();
 
   UserAttributeMap userAttrs;
   Attr attrs = parse_attribute_list(as, AttrContext::Alias, &userAttrs);
-  if (!SystemLib::s_inited) {
-    attrs |= AttrPersistent;
-  }
+  assertx(IMPLIES(as.ue->isASystemLib(), attrs & AttrPersistent));
   std::string name;
   if (!as.in.readname(name)) {
     as.error(".alias must have a name");
   }
   as.in.expectWs('=');
 
-  TypeConstraint ty = parse_type_constraint(as);
+  // Merge to ensure namedentity creation, according to
+  // emitTypedef in emitter.cpp
+  as.ue->mergeLitstr(makeStaticString(name));
+
+  auto const tis = parse_type_constraint_union(as);
+  assertx(!tis.empty());
 
   int line0;
   int line1;
@@ -3125,23 +3151,32 @@ void parse_alias(AsmState& as) {
     as.error(".alias must have a valid array type structure");
   }
 
-  const StringData* typeName = ty.typeName();
-  if (!typeName) typeName = staticEmptyString();
-  const StringData* sname = makeStaticString(name);
-  // Merge to ensure namedentity creation, according to
-  // emitTypedef in emitter.cpp
-  as.ue->mergeLitstr(sname);
-  as.ue->mergeLitstr(typeName);
+  TypeAndValueUnion typeAndValueUnion;
+  bool nullable = false;
+
+  if (RO::EvalTreatCaseTypesAsMixed && tis.size() > 1) {
+    typeAndValueUnion.emplace_back(TypeAndValue{AnnotType::Mixed, staticEmptyString()});
+  } else {
+    for (auto const& ty : tis) {
+      nullable |= ((ty.flags() & TypeConstraintFlags::Nullable) != 0);
+      auto const tname = ty.typeName();
+      if (tname && !tname->empty()) {
+        as.ue->mergeLitstr(tname);
+        typeAndValueUnion.emplace_back(TypeAndValue{ty.type(), tname});
+      } else {
+        typeAndValueUnion.emplace_back(TypeAndValue{AnnotType::Mixed, staticEmptyString()});
+      }
+    }
+  }
 
   auto te = as.ue->newTypeAliasEmitter(name);
   te->init(
     line0,
     line1,
     attrs,
-    typeName,
-    typeName->empty() ? AnnotType::Mixed : ty.type(),
-    (ty.flags() & TypeConstraintFlags::Nullable) != 0,
-    (ty.flags() & TypeConstraintFlags::CaseType) != 0,
+    typeAndValueUnion,
+    nullable,
+    caseType,
     ArrNR{ArrayData::GetScalarArray(std::move(ts))},
     Array{}
   );
@@ -3154,7 +3189,8 @@ void parse_constant(AsmState& as) {
   as.in.skipWhitespace();
 
   Constant constant;
-  Attr attrs = SystemLib::s_inited ? AttrNone : AttrPersistent;
+  Attr attrs = parse_attribute_list(as, AttrContext::Constant);
+  assertx(IMPLIES(as.ue->isASystemLib(), attrs & AttrPersistent));
 
   std::string name;
   if (!as.in.readword(name)) {
@@ -3166,9 +3202,6 @@ void parse_constant(AsmState& as) {
   constant.name = makeStaticString(name);
   constant.val = parse_member_tv_initializer(as);
   constant.attrs = attrs;
-  if (type(constant.val) == KindOfUninit) {
-    constant.val.m_data.pcnt = reinterpret_cast<MaybeCountable*>(Constant::get);
-  }
   as.ue->addConstant(constant);
 }
 
@@ -3298,6 +3331,7 @@ void parse_file_attributes(AsmState& as) {
  *         |    ".adata"            directive-adata
  *         |    ".class"            directive-class
  *         |    ".alias"            directive-alias
+ *         |    ".case_type"        directive-alias
  *         |    ".includes"         directive-filepaths
  *         |    ".constant_refs"    directive-symbols
  *         |    ".function_refs"    directive-symbols
@@ -3315,7 +3349,8 @@ void parse(AsmState& as) {
     if (directive == ".function")      { parse_function(as)      ; continue; }
     if (directive == ".adata")         { parse_adata(as)         ; continue; }
     if (directive == ".class")         { parse_class(as)         ; continue; }
-    if (directive == ".alias")         { parse_alias(as)         ; continue; }
+    if (directive == ".alias")         { parse_alias(as, false)  ; continue; }
+    if (directive == ".case_type")     { parse_alias(as, true)   ; continue; }
     if (directive == ".includes")      { parse_includes(as)      ; continue; }
     if (directive == ".const")         { parse_constant(as)      ; continue; }
     if (directive == ".constant_refs") { parse_constant_refs(as) ; continue; }

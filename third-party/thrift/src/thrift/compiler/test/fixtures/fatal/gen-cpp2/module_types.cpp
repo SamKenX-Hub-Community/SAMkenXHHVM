@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test_cpp2::cpp_reflection::enum1>::size;
+#endif
 folly::Range<::test_cpp2::cpp_reflection::enum1 const*> const TEnumTraits<::test_cpp2::cpp_reflection::enum1>::values = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::enum1>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test_cpp2::cpp_reflection::enum1>::names = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::enum1>::names);
 
@@ -28,18 +30,12 @@ bool TEnumTraits<::test_cpp2::cpp_reflection::enum1>::findValue(folly::StringPie
 
 }} // apache::thrift
 
-namespace test_cpp2 { namespace cpp_reflection {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _enum1_EnumMapFactory::ValuesToNamesMapType _enum1_VALUES_TO_NAMES = _enum1_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}} // test_cpp2::cpp_reflection
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test_cpp2::cpp_reflection::enum2>::size;
+#endif
 folly::Range<::test_cpp2::cpp_reflection::enum2 const*> const TEnumTraits<::test_cpp2::cpp_reflection::enum2>::values = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::enum2>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test_cpp2::cpp_reflection::enum2>::names = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::enum2>::names);
 
@@ -53,18 +49,12 @@ bool TEnumTraits<::test_cpp2::cpp_reflection::enum2>::findValue(folly::StringPie
 
 }} // apache::thrift
 
-namespace test_cpp2 { namespace cpp_reflection {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _enum2_EnumMapFactory::ValuesToNamesMapType _enum2_VALUES_TO_NAMES = _enum2_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}} // test_cpp2::cpp_reflection
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test_cpp2::cpp_reflection::enum3>::size;
+#endif
 folly::Range<::test_cpp2::cpp_reflection::enum3 const*> const TEnumTraits<::test_cpp2::cpp_reflection::enum3>::values = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::enum3>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test_cpp2::cpp_reflection::enum3>::names = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::enum3>::names);
 
@@ -78,18 +68,12 @@ bool TEnumTraits<::test_cpp2::cpp_reflection::enum3>::findValue(folly::StringPie
 
 }} // apache::thrift
 
-namespace test_cpp2 { namespace cpp_reflection {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _enum3_EnumMapFactory::ValuesToNamesMapType _enum3_VALUES_TO_NAMES = _enum3_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}} // test_cpp2::cpp_reflection
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test_cpp2::cpp_reflection::enum_with_special_names>::size;
+#endif
 folly::Range<::test_cpp2::cpp_reflection::enum_with_special_names const*> const TEnumTraits<::test_cpp2::cpp_reflection::enum_with_special_names>::values = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::enum_with_special_names>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test_cpp2::cpp_reflection::enum_with_special_names>::names = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::enum_with_special_names>::names);
 
@@ -103,14 +87,6 @@ bool TEnumTraits<::test_cpp2::cpp_reflection::enum_with_special_names>::findValu
 
 }} // apache::thrift
 
-namespace test_cpp2 { namespace cpp_reflection {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _enum_with_special_names_EnumMapFactory::ValuesToNamesMapType _enum_with_special_names_VALUES_TO_NAMES = _enum_with_special_names_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}} // test_cpp2::cpp_reflection
 
 namespace apache {
 namespace thrift {
@@ -135,7 +111,9 @@ void TccStructTraits<::test_cpp2::cpp_reflection::union1>::translateFieldName(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test_cpp2::cpp_reflection::union1::Type>::size;
+#endif
 folly::Range<::test_cpp2::cpp_reflection::union1::Type const*> const TEnumTraits<::test_cpp2::cpp_reflection::union1::Type>::values = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::union1::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test_cpp2::cpp_reflection::union1::Type>::names = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::union1::Type>::names);
 
@@ -260,7 +238,9 @@ void TccStructTraits<::test_cpp2::cpp_reflection::union2>::translateFieldName(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test_cpp2::cpp_reflection::union2::Type>::size;
+#endif
 folly::Range<::test_cpp2::cpp_reflection::union2::Type const*> const TEnumTraits<::test_cpp2::cpp_reflection::union2::Type>::values = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::union2::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test_cpp2::cpp_reflection::union2::Type>::names = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::union2::Type>::names);
 
@@ -385,7 +365,9 @@ void TccStructTraits<::test_cpp2::cpp_reflection::union3>::translateFieldName(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test_cpp2::cpp_reflection::union3::Type>::size;
+#endif
 folly::Range<::test_cpp2::cpp_reflection::union3::Type const*> const TEnumTraits<::test_cpp2::cpp_reflection::union3::Type>::values = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::union3::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test_cpp2::cpp_reflection::union3::Type>::names = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::union3::Type>::names);
 
@@ -520,6 +502,13 @@ const folly::StringPiece structA::__fbthrift_get_class_name() {
 
 structA::structA(const structA&) = default;
 structA& structA::operator=(const structA&) = default;
+structA::structA() :
+      __fbthrift_field_a() {
+}
+
+
+structA::~structA() {}
+
 structA::structA(FOLLY_MAYBE_UNUSED structA&& other) noexcept :
     __fbthrift_field_a(std::move(other.__fbthrift_field_a)),
     __fbthrift_field_b(std::move(other.__fbthrift_field_b)),
@@ -621,7 +610,9 @@ void TccStructTraits<::test_cpp2::cpp_reflection::unionA>::translateFieldName(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test_cpp2::cpp_reflection::unionA::Type>::size;
+#endif
 folly::Range<::test_cpp2::cpp_reflection::unionA::Type const*> const TEnumTraits<::test_cpp2::cpp_reflection::unionA::Type>::values = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::unionA::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test_cpp2::cpp_reflection::unionA::Type>::names = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::unionA::Type>::names);
 
@@ -2482,6 +2473,15 @@ struct4& struct4::operator=(const struct4& other) {
   return *this;
 }
 
+struct4::struct4() :
+      __fbthrift_field_field0(),
+      __fbthrift_field_field2(),
+      __fbthrift_field_field3(std::make_unique<::test_cpp2::cpp_reflection::structA>()) {
+}
+
+
+struct4::~struct4() {}
+
 struct4::struct4(FOLLY_MAYBE_UNUSED struct4&& other) noexcept :
     __fbthrift_field_field0(std::move(other.__fbthrift_field_field0)),
     __fbthrift_field_field1(std::move(other.__fbthrift_field_field1)),
@@ -2803,6 +2803,12 @@ const folly::StringPiece struct_binary::__fbthrift_get_class_name() {
 
 struct_binary::struct_binary(const struct_binary&) = default;
 struct_binary& struct_binary::operator=(const struct_binary&) = default;
+struct_binary::struct_binary() {
+}
+
+
+struct_binary::~struct_binary() {}
+
 struct_binary::struct_binary(FOLLY_MAYBE_UNUSED struct_binary&& other) noexcept :
     __fbthrift_field_bi(std::move(other.__fbthrift_field_bi)),
     __isset(other.__isset) {
@@ -3246,7 +3252,9 @@ void TccStructTraits<::test_cpp2::cpp_reflection::union_with_special_names>::tra
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test_cpp2::cpp_reflection::union_with_special_names::Type>::size;
+#endif
 folly::Range<::test_cpp2::cpp_reflection::union_with_special_names::Type const*> const TEnumTraits<::test_cpp2::cpp_reflection::union_with_special_names::Type>::values = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::union_with_special_names::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test_cpp2::cpp_reflection::union_with_special_names::Type>::names = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::union_with_special_names::Type>::names);
 
@@ -4139,7 +4147,9 @@ void TccStructTraits<::test_cpp2::cpp_reflection::UnionWithTypedefFieldAdapter>:
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test_cpp2::cpp_reflection::UnionWithTypedefFieldAdapter::Type>::size;
+#endif
 folly::Range<::test_cpp2::cpp_reflection::UnionWithTypedefFieldAdapter::Type const*> const TEnumTraits<::test_cpp2::cpp_reflection::UnionWithTypedefFieldAdapter::Type>::values = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::UnionWithTypedefFieldAdapter::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test_cpp2::cpp_reflection::UnionWithTypedefFieldAdapter::Type>::names = folly::range(TEnumDataStorage<::test_cpp2::cpp_reflection::UnionWithTypedefFieldAdapter::Type>::names);
 
@@ -4183,7 +4193,8 @@ bool UnionWithTypedefFieldAdapter::operator==(const UnionWithTypedefFieldAdapter
   if (getType() != rhs.getType()) { return false; }
   switch(getType()) {
     case Type::field:
-      return value_.field == rhs.value_.field;
+      return ::apache::thrift::adapt_detail::equal<::my::Adapter1, ::test_cpp2::cpp_reflection::I32>(
+value_.field, rhs.value_.field);
     default:
       return true;
   }
@@ -4196,7 +4207,8 @@ bool UnionWithTypedefFieldAdapter::operator<(FOLLY_MAYBE_UNUSED const UnionWithT
   }
   switch (lhs.getType()) {
     case Type::field:
-      return lhs.value_.field < rhs.value_.field;
+      return ::apache::thrift::adapt_detail::less<::my::Adapter1, ::test_cpp2::cpp_reflection::I32>(
+value_.field, rhs.value_.field);
     default:
       return false;
   }

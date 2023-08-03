@@ -7,22 +7,20 @@ package module // [[[ program thrift source path ]]]
 import (
     "context"
     "fmt"
+    "sync"
 
     included "included"
-    cpp "thrift/annotation/cpp"
-    thrift0 "thrift/annotation/thrift"
 
     "thrift/lib/go/thrift"
 )
 
 var _ = included.GoUnusedProtection__
-var _ = cpp.GoUnusedProtection__
-var _ = thrift0.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = context.Background
 var _ = fmt.Printf
 var _ = thrift.ZERO
+var _ = sync.Mutex{}
 
 
 
@@ -65,6 +63,7 @@ func (c *SomeServiceChannelClient) Open() error {
 // Deprecated: Use SomeServiceChannelClient instead.
 type SomeServiceClient struct {
     chClient *SomeServiceChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ SomeServiceClientInterface = &SomeServiceClient{}
@@ -226,7 +225,9 @@ if err != nil {
 }
 
 func (x *reqSomeServiceBounceMap) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqSomeServiceBounceMapAlias reqSomeServiceBounceMap
+    valueAlias := (*reqSomeServiceBounceMapAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -378,7 +379,9 @@ if err != nil {
 }
 
 func (x *respSomeServiceBounceMap) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respSomeServiceBounceMapAlias respSomeServiceBounceMap
+    valueAlias := (*respSomeServiceBounceMapAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -474,7 +477,7 @@ type SomeServiceBinaryKeyedMapArgs = reqSomeServiceBinaryKeyedMap
 
 func newReqSomeServiceBinaryKeyedMap() *reqSomeServiceBinaryKeyedMap {
     return (&reqSomeServiceBinaryKeyedMap{}).
-        SetRNonCompat(make([]int64, 0))
+        SetRNonCompat(nil)
 }
 
 func (x *reqSomeServiceBinaryKeyedMap) GetRNonCompat() []int64 {
@@ -483,7 +486,7 @@ func (x *reqSomeServiceBinaryKeyedMap) GetRNonCompat() []int64 {
 
 func (x *reqSomeServiceBinaryKeyedMap) GetR() []int64 {
     if !x.IsSetR() {
-        return make([]int64, 0)
+        return nil
     }
 
     return x.R
@@ -563,7 +566,9 @@ result := listResult
 }
 
 func (x *reqSomeServiceBinaryKeyedMap) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqSomeServiceBinaryKeyedMapAlias reqSomeServiceBinaryKeyedMap
+    valueAlias := (*reqSomeServiceBinaryKeyedMapAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -654,7 +659,7 @@ var _ thrift.WritableResult = &respSomeServiceBinaryKeyedMap{}
 
 func newRespSomeServiceBinaryKeyedMap() *respSomeServiceBinaryKeyedMap {
     return (&respSomeServiceBinaryKeyedMap{}).
-        SetValueNonCompat(make(map[*TBinary]int64))
+        SetValueNonCompat(nil)
 }
 
 func (x *respSomeServiceBinaryKeyedMap) GetValueNonCompat() map[*TBinary]int64 {
@@ -663,7 +668,7 @@ func (x *respSomeServiceBinaryKeyedMap) GetValueNonCompat() map[*TBinary]int64 {
 
 func (x *respSomeServiceBinaryKeyedMap) GetValue() map[*TBinary]int64 {
     if !x.IsSetValue() {
-        return make(map[*TBinary]int64)
+        return nil
     }
 
     return x.Value
@@ -693,7 +698,7 @@ func (x *respSomeServiceBinaryKeyedMap) writeField0(p thrift.Protocol) error {  
     }
 
     item := x.GetValueNonCompat()
-    if err := p.WriteMapBegin(thrift.BINARY, thrift.I64, len(item)); err != nil {
+    if err := p.WriteMapBegin(thrift.STRING, thrift.I64, len(item)); err != nil {
     return thrift.PrependError("error writing map begin: ", err)
 }
 for k, v := range item {
@@ -761,7 +766,9 @@ result := mapResult
 }
 
 func (x *respSomeServiceBinaryKeyedMap) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respSomeServiceBinaryKeyedMapAlias respSomeServiceBinaryKeyedMap
+    valueAlias := (*respSomeServiceBinaryKeyedMapAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -918,7 +925,7 @@ func (p *procFuncSomeServiceBounceMap) Write(seqId int32, result thrift.Writable
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("BounceMap", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("bounce_map", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -970,7 +977,7 @@ func (p *procFuncSomeServiceBinaryKeyedMap) Write(seqId int32, result thrift.Wri
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("BinaryKeyedMap", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("binary_keyed_map", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {

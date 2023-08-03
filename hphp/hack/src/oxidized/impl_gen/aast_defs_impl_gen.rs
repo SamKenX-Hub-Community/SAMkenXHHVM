@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<a0eba69ca0a41135203f35b09eeaf4f5>>
+// @generated SignedSource<<882cd6bc03356d847900c351f3bfe650>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -63,6 +63,9 @@ impl<Ex, En> Stmt_<Ex, En> {
     ) -> Self {
         Stmt_::Switch(Box::new((p0, p1, p2)))
     }
+    pub fn mk_match(p0: StmtMatch<Ex, En>) -> Self {
+        Stmt_::Match(Box::new(p0))
+    }
     pub fn mk_foreach(p0: Expr<Ex, En>, p1: AsExpr<Ex, En>, p2: Block<Ex, En>) -> Self {
         Stmt_::Foreach(Box::new((p0, p1, p2)))
     }
@@ -71,6 +74,9 @@ impl<Ex, En> Stmt_<Ex, En> {
     }
     pub fn mk_noop() -> Self {
         Stmt_::Noop
+    }
+    pub fn mk_declare_local(p0: Lid, p1: Hint, p2: Option<Expr<Ex, En>>) -> Self {
+        Stmt_::DeclareLocal(Box::new((p0, p1, p2)))
     }
     pub fn mk_block(p0: Block<Ex, En>) -> Self {
         Stmt_::Block(p0)
@@ -165,6 +171,12 @@ impl<Ex, En> Stmt_<Ex, En> {
             _ => false,
         }
     }
+    pub fn is_match(&self) -> bool {
+        match self {
+            Stmt_::Match(..) => true,
+            _ => false,
+        }
+    }
     pub fn is_foreach(&self) -> bool {
         match self {
             Stmt_::Foreach(..) => true,
@@ -180,6 +192,12 @@ impl<Ex, En> Stmt_<Ex, En> {
     pub fn is_noop(&self) -> bool {
         match self {
             Stmt_::Noop => true,
+            _ => false,
+        }
+    }
+    pub fn is_declare_local(&self) -> bool {
+        match self {
+            Stmt_::DeclareLocal(..) => true,
             _ => false,
         }
     }
@@ -274,6 +292,12 @@ impl<Ex, En> Stmt_<Ex, En> {
             _ => None,
         }
     }
+    pub fn as_match(&self) -> Option<&StmtMatch<Ex, En>> {
+        match self {
+            Stmt_::Match(p0) => Some(&p0),
+            _ => None,
+        }
+    }
     pub fn as_foreach(&self) -> Option<(&Expr<Ex, En>, &AsExpr<Ex, En>, &Block<Ex, En>)> {
         match self {
             Stmt_::Foreach(p0) => Some((&p0.0, &p0.1, &p0.2)),
@@ -283,6 +307,12 @@ impl<Ex, En> Stmt_<Ex, En> {
     pub fn as_try(&self) -> Option<(&Block<Ex, En>, &Vec<Catch<Ex, En>>, &FinallyBlock<Ex, En>)> {
         match self {
             Stmt_::Try(p0) => Some((&p0.0, &p0.1, &p0.2)),
+            _ => None,
+        }
+    }
+    pub fn as_declare_local(&self) -> Option<(&Lid, &Hint, &Option<Expr<Ex, En>>)> {
+        match self {
+            Stmt_::DeclareLocal(p0) => Some((&p0.0, &p0.1, &p0.2)),
             _ => None,
         }
     }
@@ -381,6 +411,12 @@ impl<Ex, En> Stmt_<Ex, En> {
             _ => None,
         }
     }
+    pub fn as_match_mut(&mut self) -> Option<&mut StmtMatch<Ex, En>> {
+        match self {
+            Stmt_::Match(p0) => Some(p0.as_mut()),
+            _ => None,
+        }
+    }
     pub fn as_foreach_mut(
         &mut self,
     ) -> Option<(&mut Expr<Ex, En>, &mut AsExpr<Ex, En>, &mut Block<Ex, En>)> {
@@ -398,6 +434,14 @@ impl<Ex, En> Stmt_<Ex, En> {
     )> {
         match self {
             Stmt_::Try(p0) => Some((&mut p0.0, &mut p0.1, &mut p0.2)),
+            _ => None,
+        }
+    }
+    pub fn as_declare_local_mut(
+        &mut self,
+    ) -> Option<(&mut Lid, &mut Hint, &mut Option<Expr<Ex, En>>)> {
+        match self {
+            Stmt_::DeclareLocal(p0) => Some((&mut p0.0, &mut p0.1, &mut p0.2)),
             _ => None,
         }
     }
@@ -488,6 +532,12 @@ impl<Ex, En> Stmt_<Ex, En> {
             _ => None,
         }
     }
+    pub fn as_match_into(self) -> Option<StmtMatch<Ex, En>> {
+        match self {
+            Stmt_::Match(p0) => Some(*p0),
+            _ => None,
+        }
+    }
     pub fn as_foreach_into(self) -> Option<(Expr<Ex, En>, AsExpr<Ex, En>, Block<Ex, En>)> {
         match self {
             Stmt_::Foreach(p0) => Some(((*p0).0, (*p0).1, (*p0).2)),
@@ -497,6 +547,12 @@ impl<Ex, En> Stmt_<Ex, En> {
     pub fn as_try_into(self) -> Option<(Block<Ex, En>, Vec<Catch<Ex, En>>, FinallyBlock<Ex, En>)> {
         match self {
             Stmt_::Try(p0) => Some(((*p0).0, (*p0).1, (*p0).2)),
+            _ => None,
+        }
+    }
+    pub fn as_declare_local_into(self) -> Option<(Lid, Hint, Option<Expr<Ex, En>>)> {
+        match self {
+            Stmt_::DeclareLocal(p0) => Some(((*p0).0, (*p0).1, (*p0).2)),
             _ => None,
         }
     }
@@ -647,6 +703,62 @@ impl<Ex, En> AsExpr<Ex, En> {
     pub fn as_await_as_kv_into(self) -> Option<(Pos, Expr<Ex, En>, Expr<Ex, En>)> {
         match self {
             AsExpr::AwaitAsKv(p0, p1, p2) => Some((p0, p1, p2)),
+            _ => None,
+        }
+    }
+}
+impl Pattern {
+    pub fn mk_pvar(p0: PatVar) -> Self {
+        Pattern::PVar(Box::new(p0))
+    }
+    pub fn mk_prefinement(p0: PatRefinement) -> Self {
+        Pattern::PRefinement(Box::new(p0))
+    }
+    pub fn is_pvar(&self) -> bool {
+        match self {
+            Pattern::PVar(..) => true,
+            _ => false,
+        }
+    }
+    pub fn is_prefinement(&self) -> bool {
+        match self {
+            Pattern::PRefinement(..) => true,
+            _ => false,
+        }
+    }
+    pub fn as_pvar(&self) -> Option<&PatVar> {
+        match self {
+            Pattern::PVar(p0) => Some(&p0),
+            _ => None,
+        }
+    }
+    pub fn as_prefinement(&self) -> Option<&PatRefinement> {
+        match self {
+            Pattern::PRefinement(p0) => Some(&p0),
+            _ => None,
+        }
+    }
+    pub fn as_pvar_mut(&mut self) -> Option<&mut PatVar> {
+        match self {
+            Pattern::PVar(p0) => Some(p0.as_mut()),
+            _ => None,
+        }
+    }
+    pub fn as_prefinement_mut(&mut self) -> Option<&mut PatRefinement> {
+        match self {
+            Pattern::PRefinement(p0) => Some(p0.as_mut()),
+            _ => None,
+        }
+    }
+    pub fn as_pvar_into(self) -> Option<PatVar> {
+        match self {
+            Pattern::PVar(p0) => Some(*p0),
+            _ => None,
+        }
+    }
+    pub fn as_prefinement_into(self) -> Option<PatRefinement> {
+        match self {
+            Pattern::PRefinement(p0) => Some(*p0),
             _ => None,
         }
     }
@@ -920,13 +1032,8 @@ impl<Ex, En> Expr_<Ex, En> {
     pub fn mk_class_const(p0: ClassId<Ex, En>, p1: Pstring) -> Self {
         Expr_::ClassConst(Box::new((p0, p1)))
     }
-    pub fn mk_call(
-        p0: Expr<Ex, En>,
-        p1: Vec<Targ<Ex>>,
-        p2: Vec<(ast_defs::ParamKind, Expr<Ex, En>)>,
-        p3: Option<Expr<Ex, En>>,
-    ) -> Self {
-        Expr_::Call(Box::new((p0, p1, p2, p3)))
+    pub fn mk_call(p0: CallExpr<Ex, En>) -> Self {
+        Expr_::Call(Box::new(p0))
     }
     pub fn mk_function_pointer(p0: FunctionPtrId<Ex, En>, p1: Vec<Targ<Ex>>) -> Self {
         Expr_::FunctionPointer(Box::new((p0, p1)))
@@ -1454,16 +1561,9 @@ impl<Ex, En> Expr_<Ex, En> {
             _ => None,
         }
     }
-    pub fn as_call(
-        &self,
-    ) -> Option<(
-        &Expr<Ex, En>,
-        &Vec<Targ<Ex>>,
-        &Vec<(ast_defs::ParamKind, Expr<Ex, En>)>,
-        &Option<Expr<Ex, En>>,
-    )> {
+    pub fn as_call(&self) -> Option<&CallExpr<Ex, En>> {
         match self {
-            Expr_::Call(p0) => Some((&p0.0, &p0.1, &p0.2, &p0.3)),
+            Expr_::Call(p0) => Some(&p0),
             _ => None,
         }
     }
@@ -1793,16 +1893,9 @@ impl<Ex, En> Expr_<Ex, En> {
             _ => None,
         }
     }
-    pub fn as_call_mut(
-        &mut self,
-    ) -> Option<(
-        &mut Expr<Ex, En>,
-        &mut Vec<Targ<Ex>>,
-        &mut Vec<(ast_defs::ParamKind, Expr<Ex, En>)>,
-        &mut Option<Expr<Ex, En>>,
-    )> {
+    pub fn as_call_mut(&mut self) -> Option<&mut CallExpr<Ex, En>> {
         match self {
-            Expr_::Call(p0) => Some((&mut p0.0, &mut p0.1, &mut p0.2, &mut p0.3)),
+            Expr_::Call(p0) => Some(p0.as_mut()),
             _ => None,
         }
     }
@@ -2141,16 +2234,9 @@ impl<Ex, En> Expr_<Ex, En> {
             _ => None,
         }
     }
-    pub fn as_call_into(
-        self,
-    ) -> Option<(
-        Expr<Ex, En>,
-        Vec<Targ<Ex>>,
-        Vec<(ast_defs::ParamKind, Expr<Ex, En>)>,
-        Option<Expr<Ex, En>>,
-    )> {
+    pub fn as_call_into(self) -> Option<CallExpr<Ex, En>> {
         match self {
-            Expr_::Call(p0) => Some(((*p0).0, (*p0).1, (*p0).2, (*p0).3)),
+            Expr_::Call(p0) => Some(*p0),
             _ => None,
         }
     }
@@ -3505,6 +3591,9 @@ impl Hint_ {
     pub fn mk_hmixed() -> Self {
         Hint_::Hmixed
     }
+    pub fn mk_hwildcard() -> Self {
+        Hint_::Hwildcard
+    }
     pub fn mk_hnonnull() -> Self {
         Hint_::Hnonnull
     }
@@ -3607,6 +3696,12 @@ impl Hint_ {
     pub fn is_hmixed(&self) -> bool {
         match self {
             Hint_::Hmixed => true,
+            _ => false,
+        }
+    }
+    pub fn is_hwildcard(&self) -> bool {
+        match self {
+            Hint_::Hwildcard => true,
             _ => false,
         }
     }

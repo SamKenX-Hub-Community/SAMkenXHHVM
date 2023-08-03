@@ -41,10 +41,31 @@ pub(crate) fn lower_class<'a>(mut class: Class<'a>, strings: Arc<StringInterner>
         }
     }
 
+    let classish_is_trait = class.is_trait();
+
     for method in &mut class.methods {
         if method.name.is_86pinit(&strings) {
             // We want 86pinit to be 'instance' but hackc marks it as 'static'.
             method.attrs -= Attr::AttrStatic;
+        }
+        if method.flags.contains(MethodFlags::IS_CLOSURE_BODY) {
+            // We want closure bodies to be 'instance' but hackc marks it as 'static'.
+            method.attrs -= Attr::AttrStatic;
+        }
+        if classish_is_trait {
+            // Let's insert a `self` parameter so infer's analysis can
+            // do its job. We don't use `$` so we are sure we don't clash with
+            // existing Hack user defined variables.
+            let self_param = Param {
+                name: strings.intern_str("self"),
+                is_variadic: false,
+                is_inout: false,
+                is_readonly: false,
+                user_attributes: vec![],
+                ty: TypeInfo::empty(),
+                default_value: None,
+            };
+            method.func.params.push(self_param);
         }
     }
 
@@ -72,11 +93,7 @@ pub(crate) fn lower_class<'a>(mut class: Class<'a>, strings: Arc<StringInterner>
     // TODO: Need to think about abstract constants. Maybe constants lookups
     // should really be function calls...
     for constant in class.constants.drain(..) {
-        let HackConstant {
-            name,
-            value,
-            is_abstract: _,
-        } = constant;
+        let HackConstant { name, value, attrs } = constant;
         // Mark the property as originally being a constant.
         let attributes = vec![Attribute {
             name: ClassId::from_str(INFER_CONSTANT, &strings),
@@ -89,7 +106,7 @@ pub(crate) fn lower_class<'a>(mut class: Class<'a>, strings: Arc<StringInterner>
         };
         let prop = Property {
             name: PropId::new(name.id),
-            flags: Attr::AttrStatic,
+            flags: attrs | Attr::AttrStatic,
             attributes,
             visibility: Visibility::Public,
             initial_value: value,

@@ -16,8 +16,6 @@ import sys
 if sys.version_info[0] >= 3:
   long = int
 
-import thrift.annotation.scope.ttypes
-
 
 import pprint
 import warnings
@@ -34,7 +32,7 @@ except ImportError:
 all_structs = []
 UTF8STRINGS = bool(0) or sys.version_info.major >= 3
 
-__all__ = ['UTF8STRINGS', 'Beta', 'Experimental', 'Testing', 'Deprecated', 'ReserveIds', 'Legacy', 'RequiresBackwardCompatibility', 'NoTesting', 'NoExperimental', 'NoBeta', 'Released', 'NoLegacy', 'NoDeprecated', 'TerseWrite', 'Box', 'Mixin', 'Bit', 'SerializeInFieldIdOrder', 'BitmaskEnum', 'GenDefaultEnumValue', 'GenEnumSet', 'v1', 'v1beta', 'v1alpha', 'v1test', 'ExceptionMessage', 'GenerateRuntimeSchema', 'InternBox']
+__all__ = ['UTF8STRINGS', 'Beta', 'Experimental', 'Testing', 'Deprecated', 'ReserveIds', 'RequiresBackwardCompatibility', 'NoTesting', 'NoExperimental', 'NoBeta', 'Released', 'NoLegacy', 'NoDeprecated', 'TerseWrite', 'Box', 'Mixin', 'SerializeInFieldIdOrder', 'BitmaskEnum', 'v1', 'v1beta', 'v1alpha', 'v1test', 'ExceptionMessage', 'GenerateRuntimeSchema', 'InternBox']
 
 class Beta:
   r"""
@@ -127,8 +125,9 @@ class Beta:
 
 class Experimental:
   r"""
-  Indicates a definition/feature should only be used with permission, may only
-  work in specific contexts, and may change in incompatible ways without notice.
+  Indicates a definition/feature should only be used with permission, may
+  only work in specific contexts, and may change in incompatible ways without
+  notice.
   """
 
   thrift_spec = None
@@ -420,7 +419,8 @@ class Deprecated:
 
 class ReserveIds:
   r"""
-  Annotate a thrift structured or enum to indicate if ids or values should not be used.
+  Annotate a thrift structured or enum to indicate if ids or values should not
+  be used.
   
   For example, you may want to mark ids as deprecated, or these ids
   might be reserved for other use cases or annotations.
@@ -440,8 +440,9 @@ class ReserveIds:
    - id_ranges: Represents ranges of ids that cannot be used.
   
   Each (key: value) pair represents the half-open range `[key, value)`,
-  where `key` is included and `value` is not. For example the map
-  `{10: 15, 20: 30}` represents the union of id/value ranges `[10, 15)` and `[20, 30)`
+  where `key` is included and `value` is not. For example, the map
+  `{10: 15, 20: 30}` represents the union of id/value ranges `[10, 15)` and
+  `[20, 30)`.
   """
 
   thrift_spec = None
@@ -597,117 +598,6 @@ class ReserveIds:
     import thrift.py3.converter
     py3_types = importlib.import_module("facebook.thrift.annotation.thrift.types")
     return thrift.py3.converter.to_py3_struct(py3_types.ReserveIds, self)
-
-  def _to_py_deprecated(self):
-    return self
-
-class Legacy:
-  r"""
-  Indicates  a definition/feature will be removed in the next release.
-  
-  Pleased migrate off of all @Legacy as soon as possible.
-  
-  Attributes:
-   - message
-  """
-
-  thrift_spec = None
-  thrift_field_annotations = None
-  thrift_struct_annotations = None
-  __init__ = None
-  @staticmethod
-  def isUnion():
-    return False
-
-  def read(self, iprot):
-    if (isinstance(iprot, TBinaryProtocol.TBinaryProtocolAccelerated) or (isinstance(iprot, THeaderProtocol.THeaderProtocolAccelerate) and iprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_BINARY_PROTOCOL)) and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastproto is not None:
-      fastproto.decode(self, iprot.trans, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=0)
-      return
-    if (isinstance(iprot, TCompactProtocol.TCompactProtocolAccelerated) or (isinstance(iprot, THeaderProtocol.THeaderProtocolAccelerate) and iprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_COMPACT_PROTOCOL)) and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastproto is not None:
-      fastproto.decode(self, iprot.trans, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=2)
-      return
-    iprot.readStructBegin()
-    while True:
-      (fname, ftype, fid) = iprot.readFieldBegin()
-      if ftype == TType.STOP:
-        break
-      if fid == 1:
-        if ftype == TType.STRING:
-          self.message = iprot.readString().decode('utf-8') if UTF8STRINGS else iprot.readString()
-        else:
-          iprot.skip(ftype)
-      else:
-        iprot.skip(ftype)
-      iprot.readFieldEnd()
-    iprot.readStructEnd()
-
-  def write(self, oprot):
-    if (isinstance(oprot, TBinaryProtocol.TBinaryProtocolAccelerated) or (isinstance(oprot, THeaderProtocol.THeaderProtocolAccelerate) and oprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_BINARY_PROTOCOL)) and self.thrift_spec is not None and fastproto is not None:
-      oprot.trans.write(fastproto.encode(self, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=0))
-      return
-    if (isinstance(oprot, TCompactProtocol.TCompactProtocolAccelerated) or (isinstance(oprot, THeaderProtocol.THeaderProtocolAccelerate) and oprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_COMPACT_PROTOCOL)) and self.thrift_spec is not None and fastproto is not None:
-      oprot.trans.write(fastproto.encode(self, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=2))
-      return
-    oprot.writeStructBegin('Legacy')
-    if self.message != None:
-      oprot.writeFieldBegin('message', TType.STRING, 1)
-      oprot.writeString(self.message.encode('utf-8')) if UTF8STRINGS and not isinstance(self.message, bytes) else oprot.writeString(self.message)
-      oprot.writeFieldEnd()
-    oprot.writeFieldStop()
-    oprot.writeStructEnd()
-
-  def readFromJson(self, json, is_text=True, **kwargs):
-    relax_enum_validation = bool(kwargs.pop('relax_enum_validation', False))
-    set_cls = kwargs.pop('custom_set_cls', set)
-    dict_cls = kwargs.pop('custom_dict_cls', dict)
-    if kwargs:
-        extra_kwargs = ', '.join(kwargs.keys())
-        raise ValueError(
-            'Unexpected keyword arguments: ' + extra_kwargs
-        )
-    json_obj = json
-    if is_text:
-      json_obj = loads(json)
-    if 'message' in json_obj and json_obj['message'] is not None:
-      self.message = json_obj['message']
-
-  def __repr__(self):
-    L = []
-    padding = ' ' * 4
-    if self.message is not None:
-      value = pprint.pformat(self.message, indent=0)
-      value = padding.join(value.splitlines(True))
-      L.append('    message=%s' % (value))
-    return "%s(%s)" % (self.__class__.__name__, "\n" + ",\n".join(L) if L else '')
-
-  def __eq__(self, other):
-    if not isinstance(other, self.__class__):
-      return False
-
-    return self.__dict__ == other.__dict__ 
-
-  def __ne__(self, other):
-    return not (self == other)
-
-  def __dir__(self):
-    return (
-      'message',
-    )
-
-  # Override the __hash__ function for Python3 - t10434117
-  __hash__ = object.__hash__
-
-  def _to_python(self):
-    import importlib
-    import thrift.python.converter
-    python_types = importlib.import_module("facebook.thrift.annotation.thrift.thrift_types")
-    return thrift.python.converter.to_python_struct(python_types.Legacy, self)
-
-  def _to_py3(self):
-    import importlib
-    import thrift.py3.converter
-    py3_types = importlib.import_module("facebook.thrift.annotation.thrift.types")
-    return thrift.py3.converter.to_py3_struct(py3_types.Legacy, self)
 
   def _to_py_deprecated(self):
     return self
@@ -1181,7 +1071,7 @@ class Released:
 
 class NoLegacy:
   r"""
-  Disables @Legacy features.
+  Disables legacy features.
   """
 
   thrift_spec = None
@@ -1273,8 +1163,8 @@ class NoDeprecated:
   Disables @Deprecated features.
   
   Should only be enabled in `test` versions, as deprecated implies removing
-  the feature will break current usage (otherwise it would be @Legacy or
-  deleted)
+  the feature will break current usage (otherwise it would be legacy or
+  deleted).
   """
 
   thrift_spec = None
@@ -1635,100 +1525,6 @@ class Mixin:
   def _to_py_deprecated(self):
     return self
 
-class Bit:
-  r"""
-  Indicates that a boolean type **may** be 'packed' in memory.
-  
-  This allows an implementation to not allocate a full native 'bool' type, and
-  instead use a single 'isset' bit to store the value.
-  
-  All fields that use such a type **must** be 'terse'.
-  """
-
-  thrift_spec = None
-  thrift_field_annotations = None
-  thrift_struct_annotations = None
-  @staticmethod
-  def isUnion():
-    return False
-
-  def read(self, iprot):
-    if (isinstance(iprot, TBinaryProtocol.TBinaryProtocolAccelerated) or (isinstance(iprot, THeaderProtocol.THeaderProtocolAccelerate) and iprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_BINARY_PROTOCOL)) and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastproto is not None:
-      fastproto.decode(self, iprot.trans, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=0)
-      return
-    if (isinstance(iprot, TCompactProtocol.TCompactProtocolAccelerated) or (isinstance(iprot, THeaderProtocol.THeaderProtocolAccelerate) and iprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_COMPACT_PROTOCOL)) and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastproto is not None:
-      fastproto.decode(self, iprot.trans, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=2)
-      return
-    iprot.readStructBegin()
-    while True:
-      (fname, ftype, fid) = iprot.readFieldBegin()
-      if ftype == TType.STOP:
-        break
-      else:
-        iprot.skip(ftype)
-      iprot.readFieldEnd()
-    iprot.readStructEnd()
-
-  def write(self, oprot):
-    if (isinstance(oprot, TBinaryProtocol.TBinaryProtocolAccelerated) or (isinstance(oprot, THeaderProtocol.THeaderProtocolAccelerate) and oprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_BINARY_PROTOCOL)) and self.thrift_spec is not None and fastproto is not None:
-      oprot.trans.write(fastproto.encode(self, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=0))
-      return
-    if (isinstance(oprot, TCompactProtocol.TCompactProtocolAccelerated) or (isinstance(oprot, THeaderProtocol.THeaderProtocolAccelerate) and oprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_COMPACT_PROTOCOL)) and self.thrift_spec is not None and fastproto is not None:
-      oprot.trans.write(fastproto.encode(self, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=2))
-      return
-    oprot.writeStructBegin('Bit')
-    oprot.writeFieldStop()
-    oprot.writeStructEnd()
-
-  def readFromJson(self, json, is_text=True, **kwargs):
-    relax_enum_validation = bool(kwargs.pop('relax_enum_validation', False))
-    set_cls = kwargs.pop('custom_set_cls', set)
-    dict_cls = kwargs.pop('custom_dict_cls', dict)
-    if kwargs:
-        extra_kwargs = ', '.join(kwargs.keys())
-        raise ValueError(
-            'Unexpected keyword arguments: ' + extra_kwargs
-        )
-    json_obj = json
-    if is_text:
-      json_obj = loads(json)
-
-  def __repr__(self):
-    L = []
-    padding = ' ' * 4
-    return "%s(%s)" % (self.__class__.__name__, "\n" + ",\n".join(L) if L else '')
-
-  def __eq__(self, other):
-    if not isinstance(other, self.__class__):
-      return False
-
-    return self.__dict__ == other.__dict__ 
-
-  def __ne__(self, other):
-    return not (self == other)
-
-  def __dir__(self):
-    return (
-    )
-
-  # Override the __hash__ function for Python3 - t10434117
-  __hash__ = object.__hash__
-
-  def _to_python(self):
-    import importlib
-    import thrift.python.converter
-    python_types = importlib.import_module("facebook.thrift.annotation.thrift.thrift_types")
-    return thrift.python.converter.to_python_struct(python_types.Bit, self)
-
-  def _to_py3(self):
-    import importlib
-    import thrift.py3.converter
-    py3_types = importlib.import_module("facebook.thrift.annotation.thrift.types")
-    return thrift.py3.converter.to_py3_struct(py3_types.Bit, self)
-
-  def _to_py_deprecated(self):
-    return self
-
 class SerializeInFieldIdOrder:
   r"""
   Option to serialize thrift struct in ascending field id order.
@@ -1906,255 +1702,6 @@ class BitmaskEnum:
     import thrift.py3.converter
     py3_types = importlib.import_module("facebook.thrift.annotation.thrift.types")
     return thrift.py3.converter.to_py3_struct(py3_types.BitmaskEnum, self)
-
-  def _to_py_deprecated(self):
-    return self
-
-class GenDefaultEnumValue:
-  r"""
-  Adds a default enum value (0), with the given name, if one is not
-  already defined.
-  
-  All v1+ enums must have an explicitly defined default value (0).
-  This annotation automatically adds such a value if not already present.
-  
-  Attributes:
-   - name: The name to use for the generated enum value.
-  
-  This intentionally does **not** use the most common 'zero' enum value name,
-  'Default', by default; as, defining a `Default = 0` enum value explicitly
-  is a useful means of self-documenting that setting an explicit value is
-  never required. In which case, it is part of the API, and should not be
-  removed in favor of an implicitly generated value.
-  
-  On the other hand, 'Unspecified' clearly indicates that the requirements
-  are not intrinsic to the enum. In which case, the relevant documentation
-  should be consulted (e.g. the doc strings on the function or field).
-  """
-
-  thrift_spec = None
-  thrift_field_annotations = None
-  thrift_struct_annotations = None
-  __init__ = None
-  @staticmethod
-  def isUnion():
-    return False
-
-  def read(self, iprot):
-    if (isinstance(iprot, TBinaryProtocol.TBinaryProtocolAccelerated) or (isinstance(iprot, THeaderProtocol.THeaderProtocolAccelerate) and iprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_BINARY_PROTOCOL)) and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastproto is not None:
-      fastproto.decode(self, iprot.trans, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=0)
-      return
-    if (isinstance(iprot, TCompactProtocol.TCompactProtocolAccelerated) or (isinstance(iprot, THeaderProtocol.THeaderProtocolAccelerate) and iprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_COMPACT_PROTOCOL)) and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastproto is not None:
-      fastproto.decode(self, iprot.trans, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=2)
-      return
-    iprot.readStructBegin()
-    while True:
-      (fname, ftype, fid) = iprot.readFieldBegin()
-      if ftype == TType.STOP:
-        break
-      if fid == 1:
-        if ftype == TType.STRING:
-          self.name = iprot.readString().decode('utf-8') if UTF8STRINGS else iprot.readString()
-        else:
-          iprot.skip(ftype)
-      else:
-        iprot.skip(ftype)
-      iprot.readFieldEnd()
-    iprot.readStructEnd()
-
-  def write(self, oprot):
-    if (isinstance(oprot, TBinaryProtocol.TBinaryProtocolAccelerated) or (isinstance(oprot, THeaderProtocol.THeaderProtocolAccelerate) and oprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_BINARY_PROTOCOL)) and self.thrift_spec is not None and fastproto is not None:
-      oprot.trans.write(fastproto.encode(self, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=0))
-      return
-    if (isinstance(oprot, TCompactProtocol.TCompactProtocolAccelerated) or (isinstance(oprot, THeaderProtocol.THeaderProtocolAccelerate) and oprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_COMPACT_PROTOCOL)) and self.thrift_spec is not None and fastproto is not None:
-      oprot.trans.write(fastproto.encode(self, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=2))
-      return
-    oprot.writeStructBegin('GenDefaultEnumValue')
-    if self.name != None:
-      oprot.writeFieldBegin('name', TType.STRING, 1)
-      oprot.writeString(self.name.encode('utf-8')) if UTF8STRINGS and not isinstance(self.name, bytes) else oprot.writeString(self.name)
-      oprot.writeFieldEnd()
-    oprot.writeFieldStop()
-    oprot.writeStructEnd()
-
-  def readFromJson(self, json, is_text=True, **kwargs):
-    relax_enum_validation = bool(kwargs.pop('relax_enum_validation', False))
-    set_cls = kwargs.pop('custom_set_cls', set)
-    dict_cls = kwargs.pop('custom_dict_cls', dict)
-    if kwargs:
-        extra_kwargs = ', '.join(kwargs.keys())
-        raise ValueError(
-            'Unexpected keyword arguments: ' + extra_kwargs
-        )
-    json_obj = json
-    if is_text:
-      json_obj = loads(json)
-    if 'name' in json_obj and json_obj['name'] is not None:
-      self.name = json_obj['name']
-
-  def __repr__(self):
-    L = []
-    padding = ' ' * 4
-    if self.name is not None:
-      value = pprint.pformat(self.name, indent=0)
-      value = padding.join(value.splitlines(True))
-      L.append('    name=%s' % (value))
-    return "%s(%s)" % (self.__class__.__name__, "\n" + ",\n".join(L) if L else '')
-
-  def __eq__(self, other):
-    if not isinstance(other, self.__class__):
-      return False
-
-    return self.__dict__ == other.__dict__ 
-
-  def __ne__(self, other):
-    return not (self == other)
-
-  def __dir__(self):
-    return (
-      'name',
-    )
-
-  # Override the __hash__ function for Python3 - t10434117
-  __hash__ = object.__hash__
-
-  def _to_python(self):
-    import importlib
-    import thrift.python.converter
-    python_types = importlib.import_module("facebook.thrift.annotation.thrift.thrift_types")
-    return thrift.python.converter.to_python_struct(python_types.GenDefaultEnumValue, self)
-
-  def _to_py3(self):
-    import importlib
-    import thrift.py3.converter
-    py3_types = importlib.import_module("facebook.thrift.annotation.thrift.types")
-    return thrift.py3.converter.to_py3_struct(py3_types.GenDefaultEnumValue, self)
-
-  def _to_py_deprecated(self):
-    return self
-
-class GenEnumSet:
-  r"""
-  Adds a typedef of {enum}Set that is sutable for storing a `packed` set of
-  values for the annotated enum.
-  
-  Any enum with this annotation must only have values between 1 and 32 inclusive.
-  
-  For example:
-    @thrift.GenEnumSet
-    enum Flag {
-      Option1 = 1,
-      ...
-    }
-  
-  Generates the equivalent of:
-    @cpp.Adapter("::apache::thrift::EnumSetAdapter<::ns::Flag>")
-    ...
-    typedef i32 FlagSet
-  
-  `FlagSet` can then be used like a normal typedef.
-  
-  Attributes:
-   - name: If a custom name is not provided, `{EnumName}Set` is used.
-  """
-
-  thrift_spec = None
-  thrift_field_annotations = None
-  thrift_struct_annotations = None
-  __init__ = None
-  @staticmethod
-  def isUnion():
-    return False
-
-  def read(self, iprot):
-    if (isinstance(iprot, TBinaryProtocol.TBinaryProtocolAccelerated) or (isinstance(iprot, THeaderProtocol.THeaderProtocolAccelerate) and iprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_BINARY_PROTOCOL)) and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastproto is not None:
-      fastproto.decode(self, iprot.trans, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=0)
-      return
-    if (isinstance(iprot, TCompactProtocol.TCompactProtocolAccelerated) or (isinstance(iprot, THeaderProtocol.THeaderProtocolAccelerate) and iprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_COMPACT_PROTOCOL)) and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastproto is not None:
-      fastproto.decode(self, iprot.trans, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=2)
-      return
-    iprot.readStructBegin()
-    while True:
-      (fname, ftype, fid) = iprot.readFieldBegin()
-      if ftype == TType.STOP:
-        break
-      if fid == 1:
-        if ftype == TType.STRING:
-          self.name = iprot.readString().decode('utf-8') if UTF8STRINGS else iprot.readString()
-        else:
-          iprot.skip(ftype)
-      else:
-        iprot.skip(ftype)
-      iprot.readFieldEnd()
-    iprot.readStructEnd()
-
-  def write(self, oprot):
-    if (isinstance(oprot, TBinaryProtocol.TBinaryProtocolAccelerated) or (isinstance(oprot, THeaderProtocol.THeaderProtocolAccelerate) and oprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_BINARY_PROTOCOL)) and self.thrift_spec is not None and fastproto is not None:
-      oprot.trans.write(fastproto.encode(self, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=0))
-      return
-    if (isinstance(oprot, TCompactProtocol.TCompactProtocolAccelerated) or (isinstance(oprot, THeaderProtocol.THeaderProtocolAccelerate) and oprot.get_protocol_id() == THeaderProtocol.THeaderProtocol.T_COMPACT_PROTOCOL)) and self.thrift_spec is not None and fastproto is not None:
-      oprot.trans.write(fastproto.encode(self, [self.__class__, self.thrift_spec, False], utf8strings=UTF8STRINGS, protoid=2))
-      return
-    oprot.writeStructBegin('GenEnumSet')
-    if self.name != None:
-      oprot.writeFieldBegin('name', TType.STRING, 1)
-      oprot.writeString(self.name.encode('utf-8')) if UTF8STRINGS and not isinstance(self.name, bytes) else oprot.writeString(self.name)
-      oprot.writeFieldEnd()
-    oprot.writeFieldStop()
-    oprot.writeStructEnd()
-
-  def readFromJson(self, json, is_text=True, **kwargs):
-    relax_enum_validation = bool(kwargs.pop('relax_enum_validation', False))
-    set_cls = kwargs.pop('custom_set_cls', set)
-    dict_cls = kwargs.pop('custom_dict_cls', dict)
-    if kwargs:
-        extra_kwargs = ', '.join(kwargs.keys())
-        raise ValueError(
-            'Unexpected keyword arguments: ' + extra_kwargs
-        )
-    json_obj = json
-    if is_text:
-      json_obj = loads(json)
-    if 'name' in json_obj and json_obj['name'] is not None:
-      self.name = json_obj['name']
-
-  def __repr__(self):
-    L = []
-    padding = ' ' * 4
-    if self.name is not None:
-      value = pprint.pformat(self.name, indent=0)
-      value = padding.join(value.splitlines(True))
-      L.append('    name=%s' % (value))
-    return "%s(%s)" % (self.__class__.__name__, "\n" + ",\n".join(L) if L else '')
-
-  def __eq__(self, other):
-    if not isinstance(other, self.__class__):
-      return False
-
-    return self.__dict__ == other.__dict__ 
-
-  def __ne__(self, other):
-    return not (self == other)
-
-  def __dir__(self):
-    return (
-      'name',
-    )
-
-  # Override the __hash__ function for Python3 - t10434117
-  __hash__ = object.__hash__
-
-  def _to_python(self):
-    import importlib
-    import thrift.python.converter
-    python_types = importlib.import_module("facebook.thrift.annotation.thrift.thrift_types")
-    return thrift.python.converter.to_python_struct(python_types.GenEnumSet, self)
-
-  def _to_py3(self):
-    import importlib
-    import thrift.py3.converter
-    py3_types = importlib.import_module("facebook.thrift.annotation.thrift.types")
-    return thrift.py3.converter.to_py3_struct(py3_types.GenEnumSet, self)
 
   def _to_py_deprecated(self):
     return self
@@ -2911,29 +2458,6 @@ def ReserveIds__setstate__(self, state):
 ReserveIds.__getstate__ = lambda self: self.__dict__.copy()
 ReserveIds.__setstate__ = ReserveIds__setstate__
 
-all_structs.append(Legacy)
-Legacy.thrift_spec = (
-  None, # 0
-  (1, TType.STRING, 'message', True, None, 2, ), # 1
-)
-
-Legacy.thrift_struct_annotations = {
-}
-Legacy.thrift_field_annotations = {
-}
-
-def Legacy__init__(self, message=None,):
-  self.message = message
-
-Legacy.__init__ = Legacy__init__
-
-def Legacy__setstate__(self, state):
-  state.setdefault('message', None)
-  self.__dict__ = state
-
-Legacy.__getstate__ = lambda self: self.__dict__.copy()
-Legacy.__setstate__ = Legacy__setstate__
-
 all_structs.append(RequiresBackwardCompatibility)
 RequiresBackwardCompatibility.thrift_spec = (
   None, # 0
@@ -3038,15 +2562,6 @@ Mixin.thrift_struct_annotations = {
 Mixin.thrift_field_annotations = {
 }
 
-all_structs.append(Bit)
-Bit.thrift_spec = (
-)
-
-Bit.thrift_struct_annotations = {
-}
-Bit.thrift_field_annotations = {
-}
-
 all_structs.append(SerializeInFieldIdOrder)
 SerializeInFieldIdOrder.thrift_spec = (
 )
@@ -3064,52 +2579,6 @@ BitmaskEnum.thrift_struct_annotations = {
 }
 BitmaskEnum.thrift_field_annotations = {
 }
-
-all_structs.append(GenDefaultEnumValue)
-GenDefaultEnumValue.thrift_spec = (
-  None, # 0
-  (1, TType.STRING, 'name', True, "Unspecified", 2, ), # 1
-)
-
-GenDefaultEnumValue.thrift_struct_annotations = {
-}
-GenDefaultEnumValue.thrift_field_annotations = {
-}
-
-def GenDefaultEnumValue__init__(self, name=GenDefaultEnumValue.thrift_spec[1][4],):
-  self.name = name
-
-GenDefaultEnumValue.__init__ = GenDefaultEnumValue__init__
-
-def GenDefaultEnumValue__setstate__(self, state):
-  state.setdefault('name', "Unspecified")
-  self.__dict__ = state
-
-GenDefaultEnumValue.__getstate__ = lambda self: self.__dict__.copy()
-GenDefaultEnumValue.__setstate__ = GenDefaultEnumValue__setstate__
-
-all_structs.append(GenEnumSet)
-GenEnumSet.thrift_spec = (
-  None, # 0
-  (1, TType.STRING, 'name', True, None, 2, ), # 1
-)
-
-GenEnumSet.thrift_struct_annotations = {
-}
-GenEnumSet.thrift_field_annotations = {
-}
-
-def GenEnumSet__init__(self, name=None,):
-  self.name = name
-
-GenEnumSet.__init__ = GenEnumSet__init__
-
-def GenEnumSet__setstate__(self, state):
-  state.setdefault('name', None)
-  self.__dict__ = state
-
-GenEnumSet.__getstate__ = lambda self: self.__dict__.copy()
-GenEnumSet.__setstate__ = GenEnumSet__setstate__
 
 all_structs.append(v1)
 v1.thrift_spec = (

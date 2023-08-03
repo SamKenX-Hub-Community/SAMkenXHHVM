@@ -137,6 +137,7 @@ let given_text_tokens =
     make_token_node "Keyset" "keyset" ~allowed_as_identifier:true ();
     make_token_node "Lateinit" "lateinit" ();
     make_token_node "List" "list" ();
+    make_token_node "Match" "match" ~allowed_as_identifier:true ();
     make_token_node "Mixed" "mixed" ~allowed_as_identifier:true ();
     make_token_node "Module" "module" ();
     make_token_node "Namespace" "namespace" ();
@@ -255,6 +256,7 @@ let given_text_tokens =
     make_token_node "Readonly" "readonly" ();
     make_token_node "Internal" "internal" ~allowed_as_identifier:true ();
     make_token_node "Package" "package" ();
+    make_token_node "Let" "let" ~allowed_as_identifier:true ();
   ]
 
 let tokens = variable_text_tokens @ no_text_tokens @ given_text_tokens

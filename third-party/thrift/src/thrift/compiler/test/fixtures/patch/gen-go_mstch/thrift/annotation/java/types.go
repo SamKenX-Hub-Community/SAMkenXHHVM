@@ -6,11 +6,9 @@ package java // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    scope "thrift/annotation/scope"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = scope.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
@@ -27,7 +25,9 @@ func NewMutable() *Mutable {
 }
 
 func (x *Mutable) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MutableAlias Mutable
+    valueAlias := (*MutableAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -153,7 +153,9 @@ if err != nil {
 }
 
 func (x *Annotation) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AnnotationAlias Annotation
+    valueAlias := (*AnnotationAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -246,7 +248,9 @@ func NewBinaryString() *BinaryString {
 }
 
 func (x *BinaryString) String() string {
-    return fmt.Sprintf("%+v", x)
+    type BinaryStringAlias BinaryString
+    valueAlias := (*BinaryStringAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -418,7 +422,9 @@ if err != nil {
 }
 
 func (x *Adapter) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AdapterAlias Adapter
+    valueAlias := (*AdapterAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -616,7 +622,9 @@ if err != nil {
 }
 
 func (x *Wrapper) String() string {
-    return fmt.Sprintf("%+v", x)
+    type WrapperAlias Wrapper
+    valueAlias := (*WrapperAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

@@ -12,4 +12,5 @@ var _ = thrift.ZERO
 
 var GoUnusedProtection__ int
 
-var ExampleFoo *Foo = NewFoo()
+var ExampleFoo *Foo = NewFoo().
+    SetANonCompat(2)

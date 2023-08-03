@@ -302,7 +302,7 @@ fn hint_to_type_constant_list<'arena>(
                 }
             }
             let hints = match &hints[..] {
-                [h] if name == typehints::POISON_MARKER || name == typehints::SUPPORTDYN_MARKER => {
+                [h] if name == typehints::POISON_MARKER => {
                     return hint_to_type_constant_list(
                         alloc,
                         opts,
@@ -337,6 +337,15 @@ fn hint_to_type_constant_list<'arena>(
                     hints,
                 )?);
             };
+            r
+        }
+        Hint_::Hwildcard => {
+            let (classname, _s_res) = resolve_classname(alloc, &[], "_".to_owned());
+            let mut r = bumpalo::vec![in alloc];
+            r.push(encode_kind(TypeStructureKind::T_typevar));
+            if let Some(c) = classname {
+                r.push(c);
+            }
             r
         }
         Hint_::Hshape(si) => {
@@ -440,7 +449,6 @@ fn hint_to_type_constant_list<'arena>(
         }
         Hint_::Hlike(h) => {
             let mut r = bumpalo::vec![in alloc];
-            r.push(encode_entry("like", TypedValue::Bool(true)));
             r.append(&mut hint_to_type_constant_list(
                 alloc,
                 opts,

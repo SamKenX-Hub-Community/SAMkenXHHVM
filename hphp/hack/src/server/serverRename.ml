@@ -10,7 +10,6 @@
 open Hh_prelude
 open ServerEnv
 open ServerRenameTypes
-open ServerCommandTypes.Done_or_retry
 
 let maybe_add_dollar s =
   if not (Char.equal s.[0] '$') then
@@ -42,12 +41,6 @@ let get_dead_unsafe_cast_patches (env : env) =
 let get_lambda_parameter_rewrite_patches ctx files =
   List.concat_map files ~f:(fun file ->
       ServerRewriteLambdaParameters.get_patches
-        ctx
-        (Relative_path.from_root ~suffix:file))
-
-let get_type_params_type_rewrite_patches ctx files =
-  List.concat_map files ~f:(fun file ->
-      ServerRewriteTypeParamsType.get_patches
         ctx
         (Relative_path.from_root ~suffix:file))
 
@@ -318,19 +311,26 @@ let classish_is_interface (ctx : Provider_context.t) (name : string) : bool =
     | Ast_defs.Cinterface -> true
     | _ -> false)
 
-(* Produce a "deprecated" version of the old function so that calls to it can be rerouted *)
+(* Produce a "deprecated" version of the old [definition] so that calls to it can be rerouted.
+   If [definition] is None, this is a no-op. *)
 let get_deprecated_wrapper_patch
-    ~(filename : string option)
-    ~(definition : string SymbolDefinition.t option)
+    ~(definition : Relative_path.t SymbolDefinition.t option)
     ~(ctx : Provider_context.t)
     (new_name : string) : patch option =
+  let filename =
+    Option.bind definition ~f:(fun definition ->
+        let filename = Pos.filename definition.SymbolDefinition.pos in
+        let is_dummy = Relative_path.equal filename Relative_path.default in
+        if is_dummy then
+          HackEventLogger.invariant_violation_bug
+            "--refactor has empty filename";
+        Option.some_if (not is_dummy) filename)
+  in
   SymbolDefinition.(
     Full_fidelity_positioned_syntax.(
       Option.Monad_infix.(
         filename >>= fun filename ->
         definition >>= fun definition ->
-        let definition = SymbolDefinition.to_relative definition in
-
         (* We need the number of spaces that the function declaration is offsetted so that we can
            format our wrapper properly with the correct indent (i.e. we need 0-indexed columns).
 
@@ -343,9 +343,7 @@ let get_deprecated_wrapper_patch
         let (_, col_start_plus1, _, _) = Pos.destruct_range definition.span in
         let col_start = col_start_plus1 - 1 in
         let (_ctx, entry) =
-          Provider_context.add_entry_if_missing
-            ~ctx
-            ~path:(Relative_path.create_detect_prefix filename)
+          Provider_context.add_entry_if_missing ~ctx ~path:filename
         in
         let cst_node =
           ServerSymbolDefinition.get_definition_cst_node_ctx
@@ -417,11 +415,7 @@ let get_deprecated_wrapper_patch
             ~func_ref
             new_name
         in
-        let filename =
-          find_def_filename
-            (Relative_path.create_detect_prefix filename)
-            definition
-        in
+        let filename = find_def_filename filename definition in
         let deprecated_wrapper_pos =
           get_pos_before_docblock_from_cst_node filename cst_node
         in
@@ -432,43 +426,6 @@ let get_deprecated_wrapper_patch
           }
         in
         Insert patch)))
-
-let upcast_visitor =
-  object (self)
-    inherit [_] Tast_visitor.reduce as super
-
-    val mutable upcasted_id = ""
-
-    method zero = []
-
-    method plus = ( @ )
-
-    method set_upcasted_fid fid = upcasted_id <- fid
-
-    method private check_id id pos =
-      if String.equal id upcasted_id then
-        [pos]
-      else
-        self#zero
-
-    method! on_expr env expr =
-      let acc =
-        let (_ty, pos, expr_) = expr in
-        match expr_ with
-        | Aast.Upcast (e, _hint) -> begin
-          match e with
-          | (_, _, Aast.FunctionPointer (Aast.FP_id (_, id), _)) ->
-            self#check_id id pos
-          | (_, _, Aast.New ((_, _, Aast.CI (_, id)), _, _, _, _)) ->
-            self#check_id id pos
-          | (_, _, Aast.Class_const ((_, _, Aast.CI (_, id)), _)) ->
-            self#check_id id pos
-          | _ -> self#zero
-        end
-        | _ -> self#zero
-      in
-      self#plus acc (super#on_expr env expr)
-  end
 
 let method_might_support_dynamic ctx ~class_name ~method_name =
   let open Option.Monad_infix in
@@ -488,95 +445,12 @@ let method_might_support_dynamic ctx ~class_name ~method_name =
              is_dynamicallycallable flags || supports_dynamic_type flags))
      |> Option.value ~default:true
 
-let get_upcast_locations ctx files element_name =
-  let element_name = ServerFindRefs.add_ns element_name in
-  (* [files] can legitimately refer to non-existent files, e.g.
-     if they've been deleted since the depgraph was created.
-     This is how we'll filter them out. *)
-  let is_entry_valid entry =
-    entry |> Provider_context.get_file_contents_if_present |> Option.is_some
-  in
-  (* These are the tasts for all the 'fileinfo_l' passed in *)
-  let tasts_of_files : (Relative_path.t * Tast.program) list =
-    List.filter_map files ~f:(fun path ->
-        let (_ctx, entry) = Provider_context.add_entry_if_missing ~ctx ~path in
-        try
-          let { Tast_provider.Compute_tast.tast; _ } =
-            Tast_provider.compute_tast_unquarantined ~ctx ~entry
-          in
-          Some (path, tast)
-        with
-        | _ when not (is_entry_valid entry) -> None)
-  in
-  let () = upcast_visitor#set_upcasted_fid element_name in
-  let upcast_positions =
-    List.rev_map tasts_of_files ~f:(fun (_, tast) -> upcast_visitor#go ctx tast)
-    |> List.concat
-  in
-  let buf = Buffer.create (31 * List.length upcast_positions) in
-  let refactor_check_sd_string = "Refactor-check-sound-dynamic: " in
-  let len_string =
-    Printf.sprintf
-      "Number of upcast positions for %s is %d\n"
-      element_name
-      (List.length upcast_positions)
-  in
-  Hh_logger.log "%s%s" refactor_check_sd_string len_string;
-  Buffer.add_string buf len_string;
-  let () =
-    List.iter
-      ~f:(fun pos ->
-        let pos_string =
-          Printf.sprintf "%s\n" (Pos.string (Pos.to_absolute pos))
-        in
-        Hh_logger.log "%sposition = %s" refactor_check_sd_string pos_string;
-        Buffer.add_string buf pos_string)
-      upcast_positions
-  in
-  Buffer.contents buf
-
-let go_sound_dynamic ctx action genv env =
-  if not (TypecheckerOptions.enable_sound_dynamic env.tcopt) then
-    ( env,
-      Done
-        "Server is NOT using sound dynamic. Change the .hhconfig file to enable sound dynamic. \n"
-    )
-  else
-    let is_sound_dynamic_str = "Server is using sound dynamic. \n" in
-    match action with
-    | ServerRenameTypes.FunctionRename { old_name; _ } ->
-      let function_name = ServerFindRefs.add_ns old_name in
-      ServerFindRefs.handle_prechecked_files
-        genv
-        env
-        Typing_deps.(Dep.(make (Fun function_name)))
-      @@ fun () ->
-      let files =
-        FindRefsService.get_dependent_files_function
-          ctx
-          genv.ServerEnv.workers
-          function_name
-        |> Relative_path.Set.elements
-      in
-      is_sound_dynamic_str ^ get_upcast_locations ctx files old_name
-    | ServerRenameTypes.ClassRename (class_name, _) ->
-      let class_name = ServerFindRefs.add_ns class_name in
-      ServerFindRefs.handle_prechecked_files
-        genv
-        env
-        Typing_deps.(Dep.(make (Type class_name)))
-      @@ fun () ->
-      let files =
-        FindRefsService.get_dependent_files
-          ctx
-          genv.ServerEnv.workers
-          (SSet.singleton class_name)
-        |> Relative_path.Set.elements
-      in
-      is_sound_dynamic_str ^ get_upcast_locations ctx files class_name
-    | _ -> (env, Done "")
-
-let go ctx action genv env =
+let go
+    ctx
+    action
+    genv
+    env
+    ~(definition_for_wrapper : Relative_path.t SymbolDefinition.t option) =
   let module Types = ServerCommandTypes.Find_refs in
   let (find_refs_action, new_name) =
     match action with
@@ -595,31 +469,46 @@ let go ctx action genv env =
   ServerFindRefs.go ctx find_refs_action include_defs genv env
   |> ServerCommandTypes.Done_or_retry.map_env ~f:(fun refs ->
          let changes =
-           List.fold_left
-             refs
-             ~f:
-               begin
-                 fun acc x ->
-                   let replacement =
-                     { pos = Pos.to_absolute (snd x); text = new_name }
-                   in
-                   let patch = Replace replacement in
-                   patch :: acc
-               end
-             ~init:[]
+           let fold_to_positions_and_patches (positions, patches) (_, pos) =
+             if Pos.Set.mem pos positions then
+               (* Don't rename at the same position twice. Double-renames were happening (~~T157645473~~) because
+                * ServerRename uses ServerFindRefs which searches the tast, which thinks Self::TWhatever
+                * is a use of the current class at the position of the declaration of the current class.
+                * *)
+               (positions, patches)
+             else
+               let positions = Pos.Set.add pos positions in
+               let replacement =
+                 { pos = Pos.to_absolute pos; text = new_name }
+               in
+               let patch = Replace replacement in
+               let patches = patch :: patches in
+               (positions, patches)
+           in
+           refs
+           |> List.fold_left
+                ~init:(Pos.Set.empty, [])
+                ~f:fold_to_positions_and_patches
+           |> snd
          in
          let deprecated_wrapper_patch =
            match action with
-           | FunctionRename { filename; definition; _ } ->
-             get_deprecated_wrapper_patch ~filename ~definition ~ctx new_name
-           | MethodRename { filename; definition; class_name; old_name; _ } ->
+           | FunctionRename _ ->
+             get_deprecated_wrapper_patch
+               ~definition:definition_for_wrapper
+               ~ctx
+               new_name
+           | MethodRename { class_name; old_name; _ } ->
              if
                method_might_support_dynamic
                  ctx
                  ~class_name
                  ~method_name:old_name
              then
-               get_deprecated_wrapper_patch ~filename ~definition ~ctx new_name
+               get_deprecated_wrapper_patch
+                 ~definition:definition_for_wrapper
+                 ~ctx
+                 new_name
              else
                None
            | ClassRename _
@@ -642,7 +531,10 @@ let go_for_localvar ctx action new_name =
       >>| List.fold_left
             ~f:(fun acc x ->
               let replacement =
-                { pos = Pos.to_absolute (snd x); text = new_name }
+                {
+                  pos = Pos.to_absolute (snd x);
+                  text = maybe_add_dollar new_name;
+                }
               in
               let patch = Replace replacement in
               patch :: acc)
@@ -684,24 +576,31 @@ let go_for_single_file
           end
         ~init:[]
     in
+    let should_write_deprecated_wrapper_patch =
+      (* Context: D46818062
+         When we rename symbols looking at one file at a time we always pass the [SymbolDefinition.t] along.
+         Generating a deprecated_wrapper_patch looks at the symbol definition pos, checks to see if there's a matching
+         CST node and if so, will send back a deprecated wrapper patch to write.
+
+         However, if we're renaming a symbol in a file where the (method or function) is NOT defined,
+         we should reject any deprecated wrapper patches. We only want a patch IFF the rename action is editing
+         the file matching [symbol_definition.pos.file]
+      *)
+      Relative_path.equal
+        filename
+        (Pos.filename symbol_definition.SymbolDefinition.pos)
+    in
+    let definition =
+      Option.some_if should_write_deprecated_wrapper_patch symbol_definition
+    in
     let deprecated_wrapper_patch =
       let open ServerCommandTypes.Find_refs in
-      let filename = Relative_path.suffix filename in
       match find_refs_action with
-      | Function _ ->
-        get_deprecated_wrapper_patch
-          ~filename:(Some filename)
-          ~definition:(Some symbol_definition)
-          ~ctx
-          new_name
+      | Function _ -> get_deprecated_wrapper_patch ~definition ~ctx new_name
       | Member (class_name, Method old_name) ->
         if method_might_support_dynamic ctx ~class_name ~method_name:old_name
         then
-          get_deprecated_wrapper_patch
-            ~filename:(Some filename)
-            ~definition:(Some symbol_definition)
-            ~ctx
-            new_name
+          get_deprecated_wrapper_patch ~definition ~ctx new_name
         else
           None
       | Class _
@@ -711,8 +610,13 @@ let go_for_single_file
       | GConst _ ->
         None
     in
-    Option.value_map deprecated_wrapper_patch ~default:changes ~f:(fun patch ->
-        patch :: changes) )
+    if should_write_deprecated_wrapper_patch then
+      Option.value_map
+        deprecated_wrapper_patch
+        ~default:changes
+        ~f:(fun patch -> patch :: changes)
+    else
+      changes )
   |> fun rename_patches -> Ok rename_patches
 
 (**
@@ -721,7 +625,7 @@ let go_for_single_file
   directly.
 *)
 let go_ide_with_find_refs_action
-    ctx ~find_refs_action ~new_name ~filename ~symbol_definition genv env =
+    ctx ~find_refs_action ~new_name ~symbol_definition genv env =
   let include_defs = true in
   ServerFindRefs.go ctx find_refs_action include_defs genv env
   |> ServerCommandTypes.Done_or_retry.map_env ~f:(fun refs ->
@@ -744,7 +648,6 @@ let go_ide_with_find_refs_action
            match find_refs_action with
            | Function _ ->
              get_deprecated_wrapper_patch
-               ~filename:(Some filename)
                ~definition:(Some symbol_definition)
                ~ctx
                new_name
@@ -756,7 +659,6 @@ let go_ide_with_find_refs_action
                  ~method_name:old_name
              then
                get_deprecated_wrapper_patch
-                 ~filename:(Some filename)
                  ~definition:(Some symbol_definition)
                  ~ctx
                  new_name
@@ -774,72 +676,3 @@ let go_ide_with_find_refs_action
            ~default:changes
            ~f:(fun patch -> patch :: changes))
   |> fun rename_patches -> Ok rename_patches
-
-let go_ide ctx (filename, line, column) new_name genv env =
-  let open SymbolDefinition in
-  let (ctx, entry) =
-    Provider_context.add_entry_if_missing
-      ~ctx
-      ~path:(Relative_path.create_detect_prefix filename)
-  in
-  let file_content = Provider_context.read_file_contents_exn entry in
-  let definitions =
-    ServerIdentifyFunction.go_quarantined_absolute ~ctx ~entry ~line ~column
-  in
-  match definitions with
-  | [(_, Some definition)] ->
-    let { full_name; kind; _ } = definition in
-    let pieces = Str.split (Str.regexp "::") full_name in
-    (match (kind, pieces) with
-    | (Function, [function_name]) ->
-      let command =
-        ServerRenameTypes.FunctionRename
-          {
-            filename = Some filename;
-            definition = Some definition;
-            old_name = function_name;
-            new_name;
-          }
-      in
-      Ok (go ctx command genv env)
-    | (Enum, [enum_name]) ->
-      let command = ServerRenameTypes.ClassRename (enum_name, new_name) in
-      Ok (go ctx command genv env)
-    | (Class, [class_name]) ->
-      let command = ServerRenameTypes.ClassRename (class_name, new_name) in
-      Ok (go ctx command genv env)
-    | (Typedef, [class_name]) ->
-      let command = ServerRenameTypes.ClassRename (class_name, new_name) in
-      Ok (go ctx command genv env)
-    | (ClassConst, [class_name; const_name]) ->
-      let command =
-        ServerRenameTypes.ClassConstRename (class_name, const_name, new_name)
-      in
-      Ok (go ctx command genv env)
-    | (Method, [class_name; method_name]) ->
-      let command =
-        ServerRenameTypes.MethodRename
-          {
-            filename = Some filename;
-            definition = Some definition;
-            class_name;
-            old_name = method_name;
-            new_name;
-          }
-      in
-      Ok (go ctx command genv env)
-    | (LocalVar, _) ->
-      let command =
-        ServerRenameTypes.LocalVarRename
-          {
-            filename = Relative_path.create_detect_prefix filename;
-            file_content;
-            line;
-            char = column;
-            new_name = maybe_add_dollar new_name;
-          }
-      in
-      Ok (go ctx command genv env)
-    | (_, _) -> Error "Tried to rename a non-renameable symbol")
-  (* We have 0 or >1 definitions so correct behavior is unknown *)
-  | _ -> Error "Tried to rename a non-renameable symbol"

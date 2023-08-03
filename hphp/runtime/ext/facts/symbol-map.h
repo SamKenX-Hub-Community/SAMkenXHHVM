@@ -36,7 +36,6 @@
 #include "hphp/runtime/ext/facts/file-facts.h"
 #include "hphp/runtime/ext/facts/inheritance-info.h"
 #include "hphp/runtime/ext/facts/lazy-two-way-map.h"
-#include "hphp/runtime/ext/facts/path-methods-map.h"
 #include "hphp/runtime/ext/facts/path-symbols-map.h"
 #include "hphp/runtime/ext/facts/path-versions.h"
 #include "hphp/runtime/ext/facts/string-ptr.h"
@@ -65,7 +64,7 @@ struct UpdateDBWorkItem {
  * Stores a map from thread to AutoloadDB.
  */
 struct AutoloadDBVault {
-  AutoloadDBVault(AutoloadDB::Handle handle);
+  explicit AutoloadDBVault(AutoloadDB::Opener);
 
   /**
    * Get the AutoloadDB associated with the thread that calls this method.
@@ -75,7 +74,7 @@ struct AutoloadDBVault {
   std::shared_ptr<AutoloadDB> get() const;
 
  private:
-  AutoloadDB::Handle m_dbHandle;
+  AutoloadDB::Opener m_dbOpener;
   // Holds one AutoloadDB per thread. Creates an AutoloadDB on the first access.
   mutable folly::Synchronized<
       hphp_hash_map<std::thread::id, std::shared_ptr<AutoloadDB>>>
@@ -95,7 +94,7 @@ struct AutoloadDBVault {
 struct SymbolMap {
   explicit SymbolMap(
       std::filesystem::path root,
-      AutoloadDB::Handle dbHandle,
+      AutoloadDB::Opener dbOpener,
       hphp_hash_set<Symbol<SymKind::Type>> indexedMethodAttributes);
   SymbolMap() = delete;
   SymbolMap(const SymbolMap&) = delete;
@@ -133,20 +132,6 @@ struct SymbolMap {
   Path getModuleFile(const StringData& module);
   Path getTypeAliasFile(Symbol<SymKind::Type> typeAlias);
   Path getTypeAliasFile(const StringData& typeAlias);
-
-  /**
-   * Return all symbols in the repo, along with the relative path defining
-   * them. For large repos, this will be slow.
-   *
-   * Results are returned in an unspecified order. If a symbol is defined in
-   * more than one path, the symbol will appear multiple times in the returned
-   * vector, with each path defining it.
-   */
-  std::vector<std::pair<Symbol<SymKind::Type>, Path>> getAllTypes();
-  std::vector<std::pair<Symbol<SymKind::Function>, Path>> getAllFunctions();
-  std::vector<std::pair<Symbol<SymKind::Constant>, Path>> getAllConstants();
-  std::vector<std::pair<Symbol<SymKind::Module>, Path>> getAllModules();
-  std::vector<std::pair<Symbol<SymKind::Type>, Path>> getAllTypeAliases();
 
   /**
    * Return all symbols of a given kind declared in the given path.
@@ -189,28 +174,6 @@ struct SymbolMap {
   std::vector<Symbol<SymKind::Type>> getDerivedTypes(
       const StringData& baseType,
       DeriveKind kind);
-
-  /**
-   * Return all types which transitively extend, implement, or use the given
-   * base type.
-   *
-   * `kinds` is a bitmask dictating whether we should follow classes,
-   * interfaces, enums, or traits. If one of these kinds is missing, we don't
-   * include anything of that kind, or any of their subtypes.
-   *
-   * `deriveKinds` is a bitmask dictating whether we should follow `extends` or
-   * `require extends` relationships.
-   */
-  using DerivedTypeInfo =
-      std::tuple<Symbol<SymKind::Type>, Path, TypeKind, TypeFlagMask>;
-  std::vector<DerivedTypeInfo> getTransitiveDerivedTypes(
-      Symbol<SymKind::Type> baseType,
-      TypeKindMask kinds = kTypeKindAll,
-      DeriveKindMask deriveKinds = kDeriveKindAll);
-  std::vector<DerivedTypeInfo> getTransitiveDerivedTypes(
-      const StringData& baseType,
-      TypeKindMask kinds = kTypeKindAll,
-      DeriveKindMask deriveKinds = kDeriveKindAll);
 
   /**
    * Return the attributes of a type
@@ -270,6 +233,16 @@ struct SymbolMap {
    */
   std::vector<Path> getFilesWithAttribute(Symbol<SymKind::Type> attr);
   std::vector<Path> getFilesWithAttribute(const StringData& attr);
+
+  /**
+   * Return the files with a given attribute and value
+   */
+  std::vector<Path> getFilesWithAttributeAndAnyValue(
+      Symbol<SymKind::Type> attr,
+      const folly::dynamic& value);
+  std::vector<Path> getFilesWithAttributeAndAnyValue(
+      const StringData& attr,
+      const folly::dynamic& value);
 
   /**
    * Return the argument at the given position of a given type with a given
@@ -434,11 +407,6 @@ struct SymbolMap {
   void waitForDBUpdate();
 
   /**
-   * Return every path we know about.
-   */
-  hphp_hash_set<Path> getAllPaths() const;
-
-  /**
    * Return a map from path to hash for every path we know about.
    */
   hphp_hash_map<Path, SHA1> getAllPathsWithHashes() const;
@@ -469,7 +437,6 @@ struct SymbolMap {
     PathToSymbolsMap<SymKind::Function> m_functionPath;
     PathToSymbolsMap<SymKind::Constant> m_constantPath;
     PathToSymbolsMap<SymKind::Module> m_modulePath;
-    PathToMethodsMap m_methodPath;
 
     /**
      * Future chain and queue holding the work that needs to be done before the
@@ -593,11 +560,6 @@ struct SymbolMap {
       const FileFacts& facts) const;
 
   /**
-   * True iff the given path is known to be deleted.
-   */
-  bool isPathDeleted(Path path) const noexcept;
-
-  /**
    * Mark `derivedType` as inheriting from each of the `baseTypes`.
    */
   void setBaseTypes(
@@ -612,12 +574,6 @@ struct SymbolMap {
       AutoloadDB& db,
       Path path,
       Symbol<SymKind::Type> derivedType);
-
-  /**
-   * Get all symbols of kind k
-   */
-  template <SymKind k>
-  std::vector<std::pair<Symbol<k>, Path>> getAllSymbols();
 
   /**
    * Helper function to read from and write to m_synchronizedData.

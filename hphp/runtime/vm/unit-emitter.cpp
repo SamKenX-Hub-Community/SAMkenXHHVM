@@ -478,6 +478,9 @@ TypeAliasEmitter* UnitEmitter::newTypeAliasEmitter(const std::string& name) {
 // Constants.
 
 Id UnitEmitter::addConstant(const Constant& c) {
+  // A KindOfUninit constant is a sentinel that the runtime should invoke
+  // 86cinit_<cnsName> by calling Constant::get(). hackc emits these
+  // initializer functions for constants that could not be folded.
   Id id = m_constants.size();
   TRACE(1, "Add Constant %d %s %d\n", id, c.name->data(), c.attrs);
   m_constants.push_back(c);
@@ -749,7 +752,7 @@ std::unique_ptr<Unit> UnitEmitter::create() const {
   }
 
   if (RuntimeOption::EvalDumpHhas > 1 ||
-    (SystemLib::s_inited && RuntimeOption::EvalDumpHhas == 1)) {
+    (!isASystemLib() && RuntimeOption::EvalDumpHhas == 1)) {
     auto const& hhaspath = RuntimeOption::EvalDumpHhasToFile;
     if (!hhaspath.empty()) {
       static std::atomic<bool> first_unit{true};
@@ -763,7 +766,7 @@ std::unique_ptr<Unit> UnitEmitter::create() const {
       std::printf("%s", disassemble(u.get()).c_str());
       std::fflush(stdout);
     }
-    if (SystemLib::s_inited) {
+    if (!isASystemLib()) {
       _Exit(0);
     }
   }
@@ -956,9 +959,6 @@ void UnitEmitter::serde(SerDe& sd, bool lazy) {
           Constant cns;
           sd(cns.name);
           sd(cns);
-          if (type(cns.val) == KindOfUninit) {
-            cns.val.m_data.pcnt = reinterpret_cast<MaybeCountable*>(Constant::get);
-          }
           auto const id UNUSED = addConstant(cns);
           assertx(id == i);
         },

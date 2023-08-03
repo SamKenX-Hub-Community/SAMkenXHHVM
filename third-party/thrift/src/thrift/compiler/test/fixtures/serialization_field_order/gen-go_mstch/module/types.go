@@ -6,11 +6,9 @@ package module // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    thrift0 "thrift/annotation/thrift"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = thrift0.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
@@ -165,7 +163,9 @@ if err != nil {
 }
 
 func (x *Foo) String() string {
-    return fmt.Sprintf("%+v", x)
+    type FooAlias Foo
+    valueAlias := (*FooAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -422,7 +422,9 @@ if err != nil {
 }
 
 func (x *Foo2) String() string {
-    return fmt.Sprintf("%+v", x)
+    type Foo2Alias Foo2
+    valueAlias := (*Foo2Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

@@ -16,10 +16,8 @@ import sys
 if sys.version_info[0] >= 3:
   long = int
 
-import thrift.annotation.thrift.ttypes
-import thrift.annotation.scope.ttypes
-import thrift.annotation.cpp.ttypes
 import thrift.lib.thrift.standard.ttypes
+import thrift.lib.thrift.id.ttypes
 
 
 import pprint
@@ -37,7 +35,7 @@ except ImportError:
 all_structs = []
 UTF8STRINGS = bool(0) or sys.version_info.major >= 3
 
-__all__ = ['UTF8STRINGS', 'PatchOp', 'GeneratePatch', 'AssignOnlyPatch', 'BoolPatch', 'BytePatch', 'I16Patch', 'I32Patch', 'I64Patch', 'FloatPatch', 'DoublePatch', 'StringPatch', 'BinaryPatch', 'ListPatchIndex']
+__all__ = ['UTF8STRINGS', 'PatchOp', 'GeneratePatch', 'AssignOnlyPatch', 'BoolPatch', 'BytePatch', 'I16Patch', 'I32Patch', 'I64Patch', 'FloatPatch', 'DoublePatch', 'StringPatch', 'BinaryPatch', 'FieldId', 'FieldIdList']
 
 class PatchOp:
   r"""
@@ -47,6 +45,7 @@ class PatchOp:
   Patch field ids are interpreted at runtime, as a dynamic patch protocol,
   without any additional schema derived from IDL patch definitions.
   """
+  Unspecified = 0
   Assign = 1
   Clear = 2
   PatchPrior = 3
@@ -56,9 +55,9 @@ class PatchOp:
   Remove = 7
   Add = 8
   Put = 9
-  Unspecified = 0
 
   _VALUES_TO_NAMES = {
+    0: "Unspecified",
     1: "Assign",
     2: "Clear",
     3: "PatchPrior",
@@ -68,10 +67,10 @@ class PatchOp:
     7: "Remove",
     8: "Add",
     9: "Put",
-    0: "Unspecified",
   }
 
   _NAMES_TO_VALUES = {
+    "Unspecified": 0,
     "Assign": 1,
     "Clear": 2,
     "PatchPrior": 3,
@@ -81,13 +80,12 @@ class PatchOp:
     "Remove": 7,
     "Add": 8,
     "Put": 9,
-    "Unspecified": 0,
   }
 
 class GeneratePatch:
   r"""
-  An annotation that indicates a patch representation
-  should be generated for the associated definition.
+  An annotation that indicates a patch representation should be generated for
+  the associated definition.
   """
 
   thrift_spec = None
@@ -1629,7 +1627,8 @@ class BinaryPatch:
   def _to_py_deprecated(self):
     return self
 
-ListPatchIndex = UnimplementedTypedef()
+FieldId = thrift.lib.thrift.id.ttypes.FieldId
+FieldIdList = UnimplementedTypedef()
 all_structs.append(GeneratePatch)
 GeneratePatch.thrift_spec = (
 )

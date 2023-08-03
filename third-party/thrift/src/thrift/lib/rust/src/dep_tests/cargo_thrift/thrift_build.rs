@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use thrift_compiler::Config;
+use thrift_compiler::GenContext;
 
 #[rustfmt::skip]
 fn main() {
@@ -18,7 +19,7 @@ fn main() {
     ).expect("Failed to write cratemap");
 
     let conf = {
-        let mut conf = Config::from_env().expect("Failed to instantiate thrift_compiler::Config");
+        let mut conf = Config::from_env(GenContext::Lib).expect("Failed to instantiate thrift_compiler::Config");
 
         let path_from_manifest_to_base: &Path = "../../../../../..".as_ref();
         let cargo_manifest_dir =
@@ -42,22 +43,27 @@ fn main() {
 
         conf.base_path(base_path);
 
+        conf.types_crate("fbthrift_test_if__types");
+
         let options = "serde";
         if !options.is_empty() {
             conf.options(options);
         }
 
-        let include_srcs = vec![
+        let lib_include_srcs = vec![
             
         ];
-        conf.include_srcs(include_srcs);
+        let types_include_srcs = vec![
+            
+        ];
+        conf.lib_include_srcs(lib_include_srcs);
+        conf.types_include_srcs(types_include_srcs);
 
         conf
     };
 
-    conf
-        .run(&[
-            "../test_thrift.thrift"
-        ])
-        .expect("Failed while running thrift compilation");
+    let srcs: &[&str] = &[
+        "../test_thrift.thrift"
+    ];
+    conf.run(srcs).expect("Failed while running thrift compilation");
 }

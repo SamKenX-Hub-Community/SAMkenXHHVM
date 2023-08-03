@@ -47,6 +47,7 @@
 #include "hphp/runtime/base/file-util.h"
 #include "hphp/runtime/base/implicit-context.h"
 #include "hphp/runtime/base/object-data.h"
+#include "hphp/runtime/base/package.h"
 #include "hphp/runtime/base/rds.h"
 #include "hphp/runtime/base/repo-auth-type.h"
 #include "hphp/runtime/base/runtime-error.h"
@@ -74,7 +75,7 @@
 #include "hphp/runtime/ext/asio/ext_static-wait-handle.h"
 #include "hphp/runtime/ext/asio/ext_wait-handle.h"
 #include "hphp/runtime/ext/asio/ext_waitable-wait-handle.h"
-#include "hphp/runtime/ext/std/ext_std_closure.h"
+#include "hphp/runtime/ext/core/ext_core_closure.h"
 #include "hphp/runtime/ext/generator/ext_generator.h"
 #include "hphp/runtime/ext/hh/ext_hh.h"
 #include "hphp/runtime/ext/hh/ext_implicit_context.h"
@@ -396,14 +397,12 @@ void Stack::requestInit() {
   // log(RuntimeOption::EvalVMStackElms)) bits.
   m_top = m_base = m_elms + RuntimeOption::EvalVMStackElms - 1;
 
-  rds::header()->stackLimitAndSurprise.store(
-    reinterpret_cast<uintptr_t>(
-      reinterpret_cast<char*>(m_elms) + sSurprisePageSize +
-        stackCheckPadding() * sizeof(TypedValue)
-    ),
-    std::memory_order_release
+  auto const limit = reinterpret_cast<uintptr_t>(
+    reinterpret_cast<char*>(m_elms) + sSurprisePageSize +
+      stackCheckPadding() * sizeof(TypedValue)
   );
-  assertx(!(rds::header()->stackLimitAndSurprise.load() & kSurpriseFlagMask));
+  assertx(!(limit & kSurpriseFlagMask));
+  rds::header()->stackLimitAndSurprise.store(limit, std::memory_order_release);
 
   // Because of the surprise page at the bottom of the stack we lose an
   // additional 256 elements which must be taken into account when checking for
@@ -931,17 +930,31 @@ static inline void lookup_sprop(ActRec* fp,
 
 namespace {
 
-void checkModuleBoundaryViolation(const Class* ctx, const Func* callee) {
+void checkModuleBoundaryViolation(const Class* ctx, const Func& callee) {
   auto const caller = vmfp()->func();
-  if (will_symbol_raise_module_boundary_violation(callee, caller)) {
-    raiseModuleBoundaryViolation(ctx, callee, caller->moduleName());
+  if (will_symbol_raise_module_boundary_violation(&callee, caller)) {
+    raiseModuleBoundaryViolation(ctx, &callee, caller->moduleName());
+  }
+  // Only check deployment boundary violation for toplevel function calls
+  // since class method calls will be handled at the class level.
+  if (!ctx && RO::EvalEnforceDeployment) {
+    auto const packageInfo = g_context->getPackageInfo();
+    if (will_symbol_raise_deployment_boundary_violation(packageInfo, callee)) {
+      raiseDeploymentBoundaryViolation(&callee);
+    }
   }
 }
 
-void checkModuleBoundaryViolation(const Class* cls) {
+void checkModuleBoundaryViolation(const Class& cls) {
   auto const caller = vmfp()->func();
-  if (will_symbol_raise_module_boundary_violation(cls, caller)) {
-    raiseModuleBoundaryViolation(cls, caller->moduleName());
+  if (will_symbol_raise_module_boundary_violation(&cls, caller)) {
+    raiseModuleBoundaryViolation(&cls, caller->moduleName());
+  }
+  if (RO::EvalEnforceDeployment) {
+    auto const packageInfo = g_context->getPackageInfo();
+    if (will_symbol_raise_deployment_boundary_violation(packageInfo, cls)) {
+      raiseDeploymentBoundaryViolation(&cls);
+    }
   }
 }
 
@@ -2589,7 +2602,7 @@ void queryMImpl(MemberKey mk, int32_t nDiscard, QueryMOp op) {
       always_assert_flog(
         mcodeIsElem(mk.mcode), "QueryM InOut is only compatible with Elem"
       );
-      // fallthrough
+      [[fallthrough]];
     case QueryMOp::CGet:
     case QueryMOp::CGetQuiet:
       dimDispatch(getQueryMOpMode(op), mk);
@@ -3249,7 +3262,7 @@ OPTBLD_INLINE void iopSetS(ReadonlyOp op) {
     auto const& tc = sprop.typeConstraint;
     if (tc.isCheckable()) tc.verifyStaticProperty(tv1, cls, sprop.cls, name);
     if (RuntimeOption::EvalEnforceGenericsUB > 0) {
-      for (auto const& ub : sprop.ubs) {
+      for (auto const& ub : sprop.ubs.m_constraints) {
         if (ub.isCheckable()) {
           ub.verifyStaticProperty(tv1, cls, sprop.cls, name);
         }
@@ -3597,8 +3610,8 @@ OPTBLD_INLINE JitResumeAddr fcallFuncArr(bool retToJit, PC origpc, PC& pc,
     raise_error("Invalid callable (array)");
   }
 
-  checkModuleBoundaryViolation(cls, func);
-  if (cls) checkModuleBoundaryViolation(cls);
+  checkModuleBoundaryViolation(cls, *func);
+  if (cls) checkModuleBoundaryViolation(*cls);
 
   Object thisRC(thiz);
   arr.reset();
@@ -3634,8 +3647,8 @@ OPTBLD_INLINE JitResumeAddr fcallFuncStr(bool retToJit, PC origpc, PC& pc,
     raise_call_to_undefined(str.get());
   }
 
-  checkModuleBoundaryViolation(cls, func);
-  if (cls) checkModuleBoundaryViolation(cls);
+  checkModuleBoundaryViolation(cls, *func);
+  if (cls) checkModuleBoundaryViolation(*cls);
 
   Object thisRC(thiz);
   str.reset();
@@ -3957,7 +3970,7 @@ const Func* resolveClsMethodFunc(Class* cls, const StringData* methName) {
   assertx(res == LookupResult::MethodFoundNoThis);
   assertx(func);
   checkClsMethFuncHelper(func);
-  checkModuleBoundaryViolation(cls, func);
+  checkModuleBoundaryViolation(cls, *func);
   return func;
 }
 
@@ -4583,7 +4596,7 @@ OPTBLD_INLINE void iopVerifyOutType(local_var param) {
     auto& ubs = const_cast<Func::ParamUBMap&>(func->paramUBs());
     auto it = ubs.find(paramId);
     if (it != ubs.end()) {
-      for (auto& ub : it->second) {
+      for (auto& ub : it->second.m_constraints) {
         applyFlagsToUB(ub, tc);
         if (ub.isCheckable()) {
           auto const ctx = ub.isThis() ? frameStaticClass(vmfp()) : nullptr;
@@ -4605,7 +4618,7 @@ OPTBLD_INLINE void verifyRetTypeImpl(size_t ind) {
   }
   if (func->hasReturnWithMultiUBs()) {
     auto& ubs = const_cast<Func::UpperBoundVec&>(func->returnUBs());
-    for (auto& ub : ubs) {
+    for (auto& ub : ubs.m_constraints) {
       applyFlagsToUB(ub, tc);
       if (ub.isCheckable()) {
         auto const ctx = ub.isThis() ? frameStaticClass(vmfp()) : nullptr;
@@ -5592,6 +5605,20 @@ PcPair lookup_cti(const Func* func, PC pc) {
   return {lookup_cti(func, cti_entry, unitpc, pc), pc};
 }
 
+uint64_t packJitResumeAddr(JitResumeAddr addr) {
+  auto const h = reinterpret_cast<uint64_t>(addr.handler);
+  auto const a = reinterpret_cast<uint64_t>(addr.arg);
+  assertx((h >> 32) == 0);
+  assertx((a >> 32) == 0);
+  return h << 32 | a;
+}
+
+JitResumeAddr unpackJitResumeAddr(uint64_t packedAddr) {
+  auto const arg = reinterpret_cast<TCA>(packedAddr & 0xFFFFFFFFu);
+  auto const handler = reinterpret_cast<TCA>(packedAddr >> 32);
+  return {handler, arg};
+}
+
 template <bool breakOnCtlFlow>
 JitResumeAddr dispatchThreaded(bool coverage) {
   auto modes = breakOnCtlFlow ? ExecMode::BB : ExecMode::Normal;
@@ -5601,9 +5628,9 @@ JitResumeAddr dispatchThreaded(bool coverage) {
   DEBUGGER_ATTACHED_ONLY(modes = modes | ExecMode::Debugger);
   auto target = lookup_cti(vmfp()->func(), vmpc());
   CALLEE_SAVED_BARRIER();
-  auto retAddr = g_enterCti(modes, target, rds::header());
+  auto retAddr = unpackJitResumeAddr(g_enterCti(modes, target));
   CALLEE_SAVED_BARRIER();
-  return JitResumeAddr::trans(retAddr);
+  return retAddr;
 }
 #endif
 using ModeType = std::underlying_type_t<ExecMode>;
@@ -5827,20 +5854,17 @@ static PcPair popPrediction() {
 NEVER_INLINE void execModeHelper(PC pc, ExecMode modes) {
   if (modes & ExecMode::Debugger) phpDebuggerOpcodeHook(pc);
   if (modes & ExecMode::Coverage) recordCodeCoverage(pc);
-  if (modes & ExecMode::BB) {
-    //Stats::inc(Stats::Instr_InterpBB##name);
-  }
 }
 
-template<Op opcode, bool repo_auth, class Iop>
-PcPair run(TCA* returnaddr, ExecMode modes, rds::Header* tl, PC nextpc, PC pc,
-           Iop iop) {
+template<Op opcode, bool repo_auth, bool breakOnCtlFlow, class Iop>
+PcPair run(TCA* returnaddr, ExecMode modes, PC nextpc, PC pc, Iop iop) {
   assert(vmpc() == pc);
   assert(peek_op(pc) == opcode);
   FTRACE(1, "dispatch: {}: {}\n", pcOff(),
          instrToString(pc, vmfp()->func()));
-  if (!repo_auth) {
-    if (UNLIKELY(modes != ExecMode::Normal)) {
+  if constexpr (!repo_auth) {
+    static_assert((int)ExecMode::Normal == 0 && (int)ExecMode::BB == 1);
+    if (UNLIKELY(modes > ExecMode::BB)) {
       execModeHelper(pc, modes);
     }
   }
@@ -5849,21 +5873,21 @@ PcPair run(TCA* returnaddr, ExecMode modes, rds::Header* tl, PC nextpc, PC pc,
   auto retAddr = iop(pc);
   vmpc() = pc;
   assert(!isThrow(opcode));
-  if (isSimple(opcode)) {
+  if constexpr (isSimple(opcode)) {
     // caller ignores rax return value, invokes next bytecode
     return {nullptr, pc};
   }
-  if (isBranch(opcode) || isUnconditionalJmp(opcode)) {
-    // callsites have no ability to indirect-jump out of bytecode.
+  if constexpr (isBranch(opcode) || isUnconditionalJmp(opcode)) {
+    // Regular branches have no ability to indirect-jump out of bytecode,
     // so smash the return address to &g_exitCti
     // if we need to exit because of dispatchBB() mode.
     // TODO: t6019406 use surprise checks to eliminate BB mode
-    if (modes & ExecMode::BB) {
+    if constexpr (breakOnCtlFlow) {
       *returnaddr = g_exitCti;
-      // FIXME(T115315816): properly handle JitResumeAddr
-      return {nullptr, (PC)retAddr.handler};  // exit stub will return retAddr
+      return {nullptr, reinterpret_cast<PC>(packJitResumeAddr(retAddr))};
+    } else {
+      return {nullptr, pc};
     }
-    return {nullptr, pc};
   }
   // call & indirect branch: caller will jump to address returned in rax
   if (instrCanHalt(opcode) && !pc) {
@@ -5875,19 +5899,20 @@ PcPair run(TCA* returnaddr, ExecMode modes, rds::Header* tl, PC nextpc, PC pc,
     // the TC. We only actually return callToExit to our caller if that
     // caller is dispatchBB().
     assert(isCallToExit((uint64_t)retAddr.arg));
-    if (!(modes & ExecMode::BB)) retAddr = JitResumeAddr::none();
-    // FIXME(T115315816): properly handle JitResumeAddr
-    return {g_exitCti, (PC)retAddr.handler};
+    if constexpr (breakOnCtlFlow) {
+      return {g_exitCti, reinterpret_cast<PC>(packJitResumeAddr(retAddr))};
+    } else {
+      return {g_exitCti, nullptr};
+    }
   }
-  if (instrIsControlFlow(opcode) && (modes & ExecMode::BB)) {
-    // FIXME(T115315816): properly handle JitResumeAddr
-    return {g_exitCti, (PC)retAddr.handler};
+  if constexpr (breakOnCtlFlow && instrIsControlFlow(opcode)) {
+    return {g_exitCti, reinterpret_cast<PC>(packJitResumeAddr(retAddr))};
   }
-  if (isReturnish(opcode)) {
+  if constexpr (isReturnish(opcode)) {
     auto target = popPrediction();
     if (pc == target.pc) return target;
   }
-  if (isFCall(opcode)) {
+  if constexpr (isFCall(opcode)) {
     // call-like opcodes predict return to next bytecode
     assert(nextpc == origPc + instrLen(origPc));
     pushPrediction({*returnaddr + kCtiIndirectJmpSize, nextpc});
@@ -5901,18 +5926,22 @@ PcPair run(TCA* returnaddr, ExecMode modes, rds::Header* tl, PC nextpc, PC pc,
 // rax = target of indirect branch instr (call, switch, etc)
 // rdx = pc (passed as 3rd arg register, 2nd return register)
 // rbx = next-pc after branch instruction, only if isBranch(op)
-// r12 = rds::Header* (vmtl)
 // r13 = modes
 // r14 = location of return address to cti caller on native stack
 
 #ifdef __clang__
-#define DECLARE_FIXED(TL,MODES,RA)\
-  rds::Header* TL; asm volatile("mov %%r12, %0" : "=r"(TL) ::);\
-  ExecMode MODES;  asm volatile("mov %%r13d, %0" : "=r"(MODES) ::);\
-  TCA* RA;         asm volatile("mov %%r14, %0" : "=r"(RA) ::);
+#define DECLARE_FIXED(MODES,RA)\
+  ExecMode MODES;\
+  TCA* RA;\
+  asm volatile(\
+    "mov %%r13d, %0\n\t"\
+    "mov %%r14, %1"\
+    : "=r"(MODES), "=r"(RA)\
+    :\
+    : "r13", "r14"\
+    );
 #else
-#define DECLARE_FIXED(TL,MODES,RA)\
-  register rds::Header* TL asm("r12");\
+#define DECLARE_FIXED(MODES,RA)\
   register ExecMode MODES  asm("r13");\
   register TCA* RA         asm("r14");
 #endif
@@ -5921,11 +5950,20 @@ namespace cti {
 // generate cti::op call-threaded function for each opcode
 #define O(opcode, imm, push, pop, flags)\
 PcPair opcode(PC nextpc, TCA*, PC pc) {\
-  DECLARE_FIXED(tl, modes, returnaddr);\
-  return run<Op::opcode,true>(returnaddr, modes, tl, nextpc, pc,\
-      [](PC& pc) {\
-    return iopWrap##opcode<false>(pc);\
-  });\
+  DECLARE_FIXED(modes, returnaddr);\
+  if (modes & ExecMode::BB) {\
+    return run<Op::opcode,true,true>(returnaddr, modes, nextpc, pc,\
+      [&](PC& pc) {\
+        return iopWrap##opcode<true>(pc);\
+      }\
+    );\
+  } else {\
+    return run<Op::opcode,true,false>(returnaddr, modes, nextpc, pc,\
+      [&](PC& pc) {\
+        return iopWrap##opcode<false>(pc);\
+      }\
+    );\
+  };\
 }
 OPCODES
 #undef O
@@ -5933,11 +5971,20 @@ OPCODES
 // generate debug/coverage-capable opcode bodies (for non-repo-auth)
 #define O(opcode, imm, push, pop, flags)\
 PcPair d##opcode(PC nextpc, TCA*, PC pc) {\
-  DECLARE_FIXED(tl, modes, returnaddr);\
-  return run<Op::opcode,false>(returnaddr, modes, tl, nextpc, pc,\
-      [](PC& pc) {\
-    return iopWrap##opcode<false>(pc);\
-  });\
+  DECLARE_FIXED(modes, returnaddr);\
+  if (modes & ExecMode::BB) {\
+    return run<Op::opcode,false,true>(returnaddr, modes, nextpc, pc,\
+      [&](PC& pc) {\
+        return iopWrap##opcode<true>(pc);\
+      }\
+    );\
+  } else {\
+    return run<Op::opcode,false,false>(returnaddr, modes, nextpc, pc,\
+      [&](PC& pc) {\
+        return iopWrap##opcode<false>(pc);\
+      }\
+    );\
+  };\
 }
 OPCODES
 #undef O

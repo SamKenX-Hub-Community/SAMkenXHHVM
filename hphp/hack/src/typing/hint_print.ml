@@ -32,6 +32,7 @@ let rec pp_hint ~is_ctx ppf (pos, hint_) =
   | Aast.Hdynamic -> Fmt.string ppf "dynamic"
   | Aast.Hnothing -> Fmt.string ppf "nothing"
   | Aast.Hmixed -> Fmt.string ppf "mixed"
+  | Aast.Hwildcard -> Fmt.string ppf "_"
   | Aast.Hnonnull -> Fmt.string ppf "nonnull"
   | Aast.Hvar name -> Fmt.string ppf name
   | Aast.Hfun_context name -> Fmt.(prefix (const string "ctx ") string) ppf name
@@ -366,10 +367,10 @@ and pp_expr_ ppf = function
       (class_id, class_get_expr)
   | Aast.Class_const (class_id, (_, cname)) ->
     Fmt.(pair ~sep:dbl_colon pp_class_id string) ppf (class_id, cname)
-  | Aast.Call (fn, targs, exprs, expr_opt) ->
+  | Aast.(Call { func; targs; args; unpacked_arg }) ->
     Fmt.(pair ~sep:nop pp_expr @@ pair ~sep:nop pp_targs pp_arg_exprs)
       ppf
-      (fn, (targs, (exprs, expr_opt)))
+      (func, (targs, (args, unpacked_arg)))
   | Aast.FunctionPointer (id, targs) ->
     Fmt.(pair ~sep:nop pp_function_ptr_id (angles @@ list ~sep:comma pp_targ))
       ppf

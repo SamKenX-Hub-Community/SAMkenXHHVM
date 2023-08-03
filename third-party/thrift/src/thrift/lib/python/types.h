@@ -73,6 +73,7 @@ inline T convInt(V v) {
 
 PyObject* createUnionTuple();
 
+PyObject* createStructTuple(int16_t numFields);
 PyObject* createStructTuple(const detail::StructInfo& structInfo);
 
 void setStructIsset(void* object, int16_t index, bool set);
@@ -102,6 +103,14 @@ inline UniquePyObjectPtr primitiveCppToPython(std::int32_t value) {
     return ret;
   };
   THRIFT_PY3_CHECK_ERROR();
+}
+
+inline UniquePyObjectPtr primitiveCppToPython(std::int8_t value) {
+  return primitiveCppToPython(static_cast<std::int32_t>(value));
+}
+
+inline UniquePyObjectPtr primitiveCppToPython(std::int16_t value) {
+  return primitiveCppToPython(static_cast<std::int32_t>(value));
 }
 
 inline UniquePyObjectPtr primitiveCppToPython(std::int64_t value) {
@@ -416,6 +425,30 @@ class DynamicStructInfo {
 
 detail::TypeInfo createStructTypeInfo(
     const DynamicStructInfo& dynamicStructInfo);
+
+namespace capi {
+/**
+ * Retrieves internal _fbthrift_data from `StructOrUnion`. On import failure,
+ * returns nullptr. Caller is responsible for clearing Err indicator on failure.
+ * Do not use externally; use capi interface instead.
+ */
+PyObject* FOLLY_NULLABLE getThriftData(PyObject* structOrUnion);
+
+/**
+ * Sets index + 1 field of struct_tuple to `value` and records that is set
+ * in the isset array at field 0. Returns 0 on success and -1 on failure.
+ * Only for use with fresh struct_tuple (i.e., no set field values)
+ */
+int setStructField(PyObject* struct_tuple, int16_t index, PyObject* value);
+/**
+ * Creates a union tuple of size 2.
+ * Sets index 0 of union_tuple to python int created from type_key
+ * Sets index 1 of union_tuple to value.
+ * Returns nullptr on failure, union tuple on success.
+ */
+PyObject* unionTupleFromValue(int64_t type_key, PyObject* value);
+
+} // namespace capi
 
 } // namespace python
 } // namespace thrift

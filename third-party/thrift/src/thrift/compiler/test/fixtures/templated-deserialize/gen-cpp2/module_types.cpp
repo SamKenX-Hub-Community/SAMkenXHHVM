@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::cpp2::MyEnumA>::size;
+#endif
 folly::Range<::cpp2::MyEnumA const*> const TEnumTraits<::cpp2::MyEnumA>::values = folly::range(TEnumDataStorage<::cpp2::MyEnumA>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::cpp2::MyEnumA>::names = folly::range(TEnumDataStorage<::cpp2::MyEnumA>::names);
 
@@ -28,14 +30,6 @@ bool TEnumTraits<::cpp2::MyEnumA>::findValue(folly::StringPiece name, type* out)
 
 }} // apache::thrift
 
-namespace cpp2 {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _MyEnumA_EnumMapFactory::ValuesToNamesMapType _MyEnumA_VALUES_TO_NAMES = _MyEnumA_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-} // cpp2
 
 namespace apache {
 namespace thrift {
@@ -207,7 +201,7 @@ containerStruct::containerStruct() :
   static_cast<::std::int32_t>(4)}),
       __fbthrift_field_fieldE(apache::thrift::StringTraits<std::string>::fromStringLiteral("somestring")),
       __fbthrift_field_fieldI(true),
-      __fbthrift_field_fieldJ(std::initializer_list<std::pair<const ::std::string, ::std::vector<::std::int32_t>>>{{apache::thrift::StringTraits<std::string>::fromStringLiteral("subfieldA"), std::initializer_list<::std::int32_t>{static_cast<::std::int32_t>(1),
+      __fbthrift_field_fieldJ(std::initializer_list<::std::map<::std::string, ::std::vector<::std::int32_t>>::value_type>{{apache::thrift::StringTraits<std::string>::fromStringLiteral("subfieldA"), std::initializer_list<::std::int32_t>{static_cast<::std::int32_t>(1),
   static_cast<::std::int32_t>(4),
   static_cast<::std::int32_t>(8),
   static_cast<::std::int32_t>(12)}},

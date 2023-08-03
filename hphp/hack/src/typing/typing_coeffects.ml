@@ -26,6 +26,8 @@ let register_capabilities env (cap_ty : locl_ty) (unsafe_cap_ty : locl_ty) =
   (* Represents the capability for local operations inside a function body, excluding calls. *)
   let env =
     Env.set_local
+      ~is_defined:true
+      ~bound_ty:None
       env
       local_capability_id
       cap_ty
@@ -39,13 +41,19 @@ let register_capabilities env (cap_ty : locl_ty) (unsafe_cap_ty : locl_ty) =
       unsafe_cap_ty
   in
   (* The implicit argument for ft_implicit_params.capability *)
-  ( Env.set_local env capability_id ty (Pos_or_decl.unsafe_to_raw_pos cap_pos),
+  ( Env.set_local
+      ~is_defined:true
+      ~bound_ty:None
+      env
+      capability_id
+      ty
+      (Pos_or_decl.unsafe_to_raw_pos cap_pos),
     ty )
 
 let get_type capability =
   match capability with
   | CapTy cap -> cap
-  | CapDefaults p -> Typing_make_type.default_capability p
+  | CapDefaults p -> MakeType.default_capability p
 
 let rec validate_capability env pos ty =
   match get_node ty with
@@ -55,7 +63,7 @@ let rec validate_capability env pos ty =
   | Tapply ((_, n), _) ->
     (match Env.get_class_or_typedef env n with
     | None -> () (* unbound name error *)
-    | Some (Typing_env.TypedefResult { Typing_defs.td_is_ctx = true; _ }) -> ()
+    | Some (Env.TypedefResult { Typing_defs.td_is_ctx = true; _ }) -> ()
     | _ ->
       Errors.add_error
         Nast_check_error.(
@@ -65,9 +73,9 @@ let rec validate_capability env pos ty =
   | Tgeneric (name, []) when SN.Coeffects.is_generated_generic name -> ()
   | Taccess (root, (_p, c)) ->
     let ((env, ty_err_opt), root) =
-      Typing_phase.localize_no_subst env ~ignore_errors:false root
+      Phase.localize_no_subst env ~ignore_errors:false root
     in
-    Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+    Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
     let (env, candidates) =
       Typing_utils.get_concrete_supertypes ~abstract_enum:false env root
     in
@@ -128,13 +136,13 @@ let type_capability env ctxs unsafe_ctxs default_pos =
       Phase.localize_no_subst env ~ignore_errors:false ty
     | CapDefaults p -> ((env, None), MakeType.default_capability p)
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt1;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt1;
   let ((env, ty_err_opt2), unsafe_cap_ty) =
     match snd @@ cc env.decl_env unsafe_ctxs default_pos with
     | CapTy ty -> Phase.localize_no_subst env ~ignore_errors:false ty
     | CapDefaults p -> ((env, None), MakeType.default_capability_unsafe p)
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt2;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt2;
   (env, cap_ty, unsafe_cap_ty)
 
 (* Checking this with List.exists will be a single op in the vast majority of cases (empty) *)

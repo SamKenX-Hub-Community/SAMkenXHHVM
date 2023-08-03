@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test::fixtures::basic-structured-annotations::MyEnum>::size;
+#endif
 folly::Range<::test::fixtures::basic-structured-annotations::MyEnum const*> const TEnumTraits<::test::fixtures::basic-structured-annotations::MyEnum>::values = folly::range(TEnumDataStorage<::test::fixtures::basic-structured-annotations::MyEnum>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test::fixtures::basic-structured-annotations::MyEnum>::names = folly::range(TEnumDataStorage<::test::fixtures::basic-structured-annotations::MyEnum>::names);
 
@@ -28,14 +30,6 @@ bool TEnumTraits<::test::fixtures::basic-structured-annotations::MyEnum>::findVa
 
 }} // apache::thrift
 
-namespace test { namespace fixtures { namespace basic-structured-annotations {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _MyEnum_EnumMapFactory::ValuesToNamesMapType _MyEnum_VALUES_TO_NAMES = _MyEnum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // test::fixtures::basic-structured-annotations
 
 namespace apache {
 namespace thrift {
@@ -74,6 +68,14 @@ const folly::StringPiece structured_annotation_inline::__fbthrift_get_class_name
 
 structured_annotation_inline::structured_annotation_inline(const structured_annotation_inline&) = default;
 structured_annotation_inline& structured_annotation_inline::operator=(const structured_annotation_inline&) = default;
+structured_annotation_inline::structured_annotation_inline() :
+      __fbthrift_field_count(),
+      __fbthrift_field_name(apache::thrift::StringTraits<std::string>::fromStringLiteral("abacaba")) {
+}
+
+
+structured_annotation_inline::~structured_annotation_inline() {}
+
 structured_annotation_inline::structured_annotation_inline(FOLLY_MAYBE_UNUSED structured_annotation_inline&& other) noexcept :
     __fbthrift_field_count(std::move(other.__fbthrift_field_count)),
     __fbthrift_field_name(std::move(other.__fbthrift_field_name)),
@@ -182,6 +184,13 @@ const folly::StringPiece structured_annotation_with_default::__fbthrift_get_clas
 
 structured_annotation_with_default::structured_annotation_with_default(const structured_annotation_with_default&) = default;
 structured_annotation_with_default& structured_annotation_with_default::operator=(const structured_annotation_with_default&) = default;
+structured_annotation_with_default::structured_annotation_with_default() :
+      __fbthrift_field_name(apache::thrift::StringTraits<std::string>::fromStringLiteral("abacabadabacaba")) {
+}
+
+
+structured_annotation_with_default::~structured_annotation_with_default() {}
+
 structured_annotation_with_default::structured_annotation_with_default(FOLLY_MAYBE_UNUSED structured_annotation_with_default&& other) noexcept :
     __fbthrift_field_name(std::move(other.__fbthrift_field_name)),
     __isset(other.__isset) {
@@ -292,6 +301,12 @@ structured_annotation_recursive& structured_annotation_recursive::operator=(cons
   swap(*this, tmp);
   return *this;
 }
+
+structured_annotation_recursive::structured_annotation_recursive() {
+}
+
+
+structured_annotation_recursive::~structured_annotation_recursive() {}
 
 structured_annotation_recursive::structured_annotation_recursive(FOLLY_MAYBE_UNUSED structured_annotation_recursive&& other) noexcept :
     __fbthrift_field_name(std::move(other.__fbthrift_field_name)),
@@ -515,6 +530,12 @@ const folly::StringPiece structured_annotation_nested::__fbthrift_get_class_name
 
 structured_annotation_nested::structured_annotation_nested(const structured_annotation_nested&) = default;
 structured_annotation_nested& structured_annotation_nested::operator=(const structured_annotation_nested&) = default;
+structured_annotation_nested::structured_annotation_nested() {
+}
+
+
+structured_annotation_nested::~structured_annotation_nested() {}
+
 structured_annotation_nested::structured_annotation_nested(FOLLY_MAYBE_UNUSED structured_annotation_nested&& other) noexcept :
     __fbthrift_field_name(std::move(other.__fbthrift_field_name)),
     __fbthrift_field_nest(std::move(other.__fbthrift_field_nest)),
@@ -637,6 +658,14 @@ const folly::StringPiece MyStruct::__fbthrift_get_class_name() {
 
 MyStruct::MyStruct(const MyStruct&) = default;
 MyStruct& MyStruct::operator=(const MyStruct&) = default;
+MyStruct::MyStruct() :
+      __fbthrift_field_annotated_field(),
+      __fbthrift_field_annotated_nested() {
+}
+
+
+MyStruct::~MyStruct() {}
+
 MyStruct::MyStruct(FOLLY_MAYBE_UNUSED MyStruct&& other) noexcept :
     __fbthrift_field_annotated_field(std::move(other.__fbthrift_field_annotated_field)),
     __fbthrift_field_annotated_type(std::move(other.__fbthrift_field_annotated_type)),
@@ -854,7 +883,9 @@ void TccStructTraits<::test::fixtures::basic-structured-annotations::MyUnion>::t
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test::fixtures::basic-structured-annotations::MyUnion::Type>::size;
+#endif
 folly::Range<::test::fixtures::basic-structured-annotations::MyUnion::Type const*> const TEnumTraits<::test::fixtures::basic-structured-annotations::MyUnion::Type>::values = folly::range(TEnumDataStorage<::test::fixtures::basic-structured-annotations::MyUnion::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test::fixtures::basic-structured-annotations::MyUnion::Type>::names = folly::range(TEnumDataStorage<::test::fixtures::basic-structured-annotations::MyUnion::Type>::names);
 

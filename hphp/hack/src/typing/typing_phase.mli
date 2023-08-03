@@ -86,6 +86,12 @@ val localize_hint_no_subst :
   Aast.hint ->
   (env * Typing_error.t option) * locl_ty
 
+val localize_hint_for_refinement :
+  env -> Aast.hint -> (env * Typing_error.t option) * locl_ty
+
+val localize_hint_for_lambda :
+  env -> Aast.hint -> (env * Typing_error.t option) * locl_ty
+
 val localize_ft :
   ?instantiation:method_instantiation ->
   ety_env:expand_env ->
@@ -143,6 +149,7 @@ val localize_targs_and_check_constraints :
 
 (** Declare and localize a single explicit type argument *)
 val localize_targ :
+  ?tparam:decl_tparam ->
   check_well_kinded:bool ->
   env ->
   Aast.hint ->

@@ -19,7 +19,8 @@ let call_handler ~path progress_ref (pos_map : XRefs.pos_map) =
   object (_self)
     inherit Tast_visitor.handler_base
 
-    method! at_Call _env (_, callee_pos, callee_exp) _targs args _unpack_arg =
+    method! at_Call _env call =
+      let Aast.{ func = (_, callee_pos, callee_exp); args; _ } = call in
       let f (_, (_, arg_pos, exp)) =
         let exp_json =
           match exp with
@@ -29,10 +30,12 @@ let call_handler ~path progress_ref (pos_map : XRefs.pos_map) =
             Some (Symbol_build_json.build_argument_lit_json s)
           | Aast.Id (id_pos, _)
           | Aast.Class_const (_, (id_pos, _)) ->
-            Option.map
-              ~f:(fun XRefs.{ target; _ } ->
-                Symbol_build_json.build_argument_xref_json target)
-              (XRefs.PosMap.find_opt id_pos pos_map)
+            (match XRefs.PosMap.find_opt id_pos pos_map with
+            | Some (XRefs.{ target; _ } :: _) ->
+              (* there shouldn't be more than one target for a symbol in that
+                 position *)
+              Some (Symbol_build_json.build_argument_xref_json target)
+            | _ -> None)
           | _ -> None
         in
         (exp_json, arg_pos)
@@ -56,25 +59,23 @@ let call_handler ~path progress_ref (pos_map : XRefs.pos_map) =
           | [arg] -> Some arg
           | _ -> None)
       in
-      let callee_xref_receiver_type_opt =
-        Option.(id_pos >>= fun pos -> XRefs.PosMap.find_opt pos pos_map)
+      let callee_infos =
+        match id_pos with
+        | None -> []
+        | Some pos ->
+          (match XRefs.PosMap.find_opt pos pos_map with
+          | Some l -> l
+          | None -> [])
       in
-      let (callee_xref, receiver_type) =
-        match callee_xref_receiver_type_opt with
-        | None -> (None, None)
-        | Some XRefs.{ target; receiver_type } -> (Some target, receiver_type)
-      in
-      let (_fact_id, prog) =
+      progress_ref :=
         Add_fact.file_call
           ~path
           callee_pos
-          ~callee_xref
+          ~callee_infos
           ~call_args
           ~dispatch_arg
-          ~receiver_type
           !progress_ref
-      in
-      progress_ref := prog
+        |> snd
   end
 
 let process_calls ctx path tast map_pos_decl progress =

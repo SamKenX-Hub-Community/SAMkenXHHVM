@@ -35,9 +35,9 @@
 #include "hphp/runtime/base/zend-string.h"
 
 #include "hphp/runtime/ext/collections/ext_collections.h"
+#include "hphp/runtime/ext/core/ext_core_closure.h"
 #include "hphp/runtime/ext/json/JSON_parser.h"
 #include "hphp/runtime/ext/json/ext_json.h"
-#include "hphp/runtime/ext/std/ext_std_closure.h"
 
 #include "hphp/runtime/vm/class.h"
 #include "hphp/runtime/vm/native-data.h"
@@ -801,7 +801,7 @@ void VariableSerializer::writeOverflow(tv_rval tv) {
       m_buf->append("s:12:\"...(omitted)\";", 20);
       break;
     }
-    // fall through
+    [[fallthrough]];
   case Type::Serialize:
   case Type::Internal:
   case Type::APCSerialize:
@@ -1451,7 +1451,7 @@ bool VariableSerializer::incNestedLevel(tv_rval tv) {
     if (m_maxLevelDebugger > 0 && ++m_levelDebugger > m_maxLevelDebugger) {
       return true;
     }
-    // fall through
+    [[fallthrough]];
   case Type::Serialize:
   case Type::Internal:
   case Type::APCSerialize:
@@ -2264,8 +2264,8 @@ void VariableSerializer::serializeObjectImpl(const ObjectData* obj) {
           }
         }
 
-        // TODO(T126821336): Populate with module name. Do we know ctx is nonnull here always?
-        auto const propCtx = MemberLookupContext(ctx);
+        // TODO(T126821336): Populate with module name
+        auto const propCtx = MemberLookupContext(ctx, (StringData*)nullptr);
         auto const lookup = obj_cls->getDeclPropSlot(propCtx, memberName.get());
         auto const slot = lookup.slot;
 
@@ -2325,9 +2325,8 @@ void VariableSerializer::serializeObjectImpl(const ObjectData* obj) {
       Array properties = getSerializeProps(obj);
       if (type == VariableSerializer::Type::DebuggerSerialize) {
         try {
-          CoeffectsAutoGuard _;
           auto val = const_cast<ObjectData*>(obj)->invokeToDebugDisplay(
-            RuntimeCoeffects::automatic());
+            m_pure ? RuntimeCoeffects::pure() : RuntimeCoeffects::defaults());
           if (val.isInitialized()) {
             properties.set(s_PHP_DebugDisplay, *val.asTypedValue());
           }
@@ -2371,9 +2370,8 @@ void VariableSerializer::serializeObjectImpl(const ObjectData* obj) {
           return;
         }
         // Otherwise compute it if we have a __toDebugDisplay method.
-        CoeffectsAutoGuard _;
         auto val = const_cast<ObjectData*>(obj)->invokeToDebugDisplay(
-          RuntimeCoeffects::automatic());
+          m_pure ? RuntimeCoeffects::pure() : RuntimeCoeffects::defaults());
         if (val.isInitialized()) {
           serializeVariant(val.asTypedValue(), false, false, true);
           return;

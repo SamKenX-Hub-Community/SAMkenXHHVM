@@ -25,7 +25,7 @@ type validation_state = {
   env: Typing_env_types.env;
   ety_env: expand_env;
   validity: validity;
-  like_context: bool;
+  inside_reified_class_generic_position: bool;
   reification: reification;
   expanded_typedefs: SSet.t;
 }
@@ -62,7 +62,7 @@ class virtual type_validator =
       let ((env, ty_err_opt), root) =
         Typing_phase.localize acc.env ~ety_env:acc.ety_env root
       in
-      Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
+      Option.iter ty_err_opt ~f:(Typing_error_utils.add_typing_error ~env);
       let (env, tyl) =
         Typing_utils.get_concrete_supertypes ~abstract_enum:true env root
       in
@@ -164,7 +164,7 @@ class virtual type_validator =
               };
             expanded_typedefs = SSet.empty;
             validity = Valid;
-            like_context = false;
+            inside_reified_class_generic_position = false;
             reification;
           }
           root_ty

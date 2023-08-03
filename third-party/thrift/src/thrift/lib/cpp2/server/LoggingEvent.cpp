@@ -56,15 +56,13 @@ THRIFT_PLUGGABLE_FUNC_REGISTER(
     makeLoggingEventRegistry) {
   return std::make_unique<DefaultLoggingEventRegistry>();
 }
-THRIFT_PLUGGABLE_FUNC_REGISTER(
-    std::vector<folly::IPAddress>,
-    getAllowedIPsForCert,
-    const folly::AsyncTransportCertificate*) {
-  return std::vector<folly::IPAddress>();
-}
 
-THRIFT_PLUGGABLE_FUNC_REGISTER(bool, isLocalIP, const folly::IPAddress& ip) {
-  return ip.isLoopback();
+THRIFT_PLUGGABLE_FUNC_REGISTER(
+    bool,
+    isCertIPMismatch,
+    const ConnectionLoggingContext&,
+    const folly::AsyncTransportCertificate*) {
+  return false;
 }
 } // namespace detail
 

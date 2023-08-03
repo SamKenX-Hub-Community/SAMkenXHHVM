@@ -26,20 +26,16 @@ let rpc_command_needs_full_check : type a. a t -> bool =
   | CODEMOD_SDT _ ->
     true (* need same information as STATUS *)
   | REWRITE_LAMBDA_PARAMETERS _ -> true
-  | REWRITE_TYPE_PARAMS_TYPE _ -> true
   (* Finding references/implementations uses global dependency table *)
   | FIND_REFS _ -> true
   | GO_TO_IMPL _ -> true
-  | IDE_FIND_REFS _ -> true
   | IDE_FIND_REFS_BY_SYMBOL _ -> true
-  | IDE_GO_TO_IMPL _ -> true
+  | IDE_GO_TO_IMPL_BY_SYMBOL _ -> true
   | METHOD_JUMP (_, _, find_children) -> find_children (* uses find refs *)
   | SAVE_NAMING _ -> false
   | SAVE_STATE _ -> true
   (* Codebase-wide rename, uses find references *)
   | RENAME _ -> true
-  | RENAME_CHECK_SD _ -> true
-  | IDE_RENAME _ -> true
   | IDE_RENAME_BY_SYMBOL _ -> true
   (* Same case as Ai commands *)
   | CREATE_CHECKPOINT _ -> true
@@ -47,7 +43,7 @@ let rpc_command_needs_full_check : type a. a t -> bool =
   | DELETE_CHECKPOINT _ -> true
   | IN_MEMORY_DEP_TABLE_SIZE -> true
   | NO_PRECHECKED_FILES -> true
-  | GEN_PREFETCH_DIR _ -> false
+  | POPULATE_REMOTE_DECLS _ -> false
   | STATS -> false
   | DISCONNECT -> false
   | STATUS_SINGLE _ -> false
@@ -61,11 +57,10 @@ let rpc_command_needs_full_check : type a. a t -> bool =
   | DOCBLOCK_AT _ -> false
   | DOCBLOCK_FOR_SYMBOL _ -> false
   | IDE_SIGNATURE_HELP _ -> false
-  | COMMANDLINE_AUTOCOMPLETE _ -> false
+  | XHP_AUTOCOMPLETE_SNIPPET _ -> true
   | IDENTIFY_FUNCTION _ -> false
   | IDENTIFY_SYMBOL _ -> false
   | METHOD_JUMP_BATCH _ -> false
-  | IDE_HIGHLIGHT_REFS _ -> false
   | DUMP_SYMBOL_INFO _ -> false
   | LINT _ -> false
   | LINT_STDIN _ -> false
@@ -73,7 +68,8 @@ let rpc_command_needs_full_check : type a. a t -> bool =
   | FORMAT _ -> false
   | DUMP_FULL_FIDELITY_PARSE _ -> false
   | IDE_AUTOCOMPLETE _ -> false
-  | CODE_ACTIONS _ -> false
+  | CODE_ACTION _ -> false
+  | CODE_ACTION_RESOLVE _ -> false
   | OUTLINE _ -> false
   | IDE_IDLE -> false
   | RAGE -> false
@@ -95,7 +91,6 @@ let rpc_command_needs_full_check : type a. a t -> bool =
   | PAUSE true -> false
   (* when you unpause, then it will catch up *)
   | PAUSE false -> true
-  | GLOBAL_INFERENCE _ -> true
   | VERBOSE _ -> false
   | DEPS_IN_BATCH _ -> true
 

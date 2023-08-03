@@ -295,7 +295,9 @@ if err != nil {
 }
 
 func (x *Color) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ColorAlias Color
+    valueAlias := (*ColorAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -439,7 +441,7 @@ func (x *Vehicle) GetColorNonCompat() *Color {
 
 func (x *Vehicle) GetColor() *Color {
     if !x.IsSetColor() {
-        return NewColor()
+        return nil
     }
 
     return x.Color
@@ -487,7 +489,7 @@ func (x *Vehicle) GetHasACNonCompat() *bool {
 
 func (x *Vehicle) GetHasAC() bool {
     if !x.IsSetHasAC() {
-        return false
+        return *NewVehicle().HasAC
     }
 
     return *x.HasAC
@@ -738,7 +740,9 @@ var Vehicle_Name_DEFAULT = NewVehicle().GetName()
 var Vehicle_HasAC_DEFAULT = NewVehicle().GetHasAC()
 
 func (x *Vehicle) String() string {
-    return fmt.Sprintf("%+v", x)
+    type VehicleAlias Vehicle
+    valueAlias := (*VehicleAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -940,7 +944,7 @@ func (x *Person) GetFavoriteColorNonCompat() *Color {
 
 func (x *Person) GetFavoriteColor() *Color {
     if !x.IsSetFavoriteColor() {
-        return NewColor()
+        return nil
     }
 
     return x.FavoriteColor
@@ -952,7 +956,7 @@ func (x *Person) GetFriendsNonCompat() []PersonID {
 
 func (x *Person) GetFriends() []PersonID {
     if !x.IsSetFriends() {
-        return make([]PersonID, 0)
+        return nil
     }
 
     return x.Friends
@@ -976,7 +980,7 @@ func (x *Person) GetPetNamesNonCompat() map[Animal]string {
 
 func (x *Person) GetPetNames() map[Animal]string {
     if !x.IsSetPetNames() {
-        return make(map[Animal]string)
+        return nil
     }
 
     return x.PetNames
@@ -1000,7 +1004,7 @@ func (x *Person) GetVehiclesNonCompat() []*Vehicle {
 
 func (x *Person) GetVehicles() []*Vehicle {
     if !x.IsSetVehicles() {
-        return make([]*Vehicle, 0)
+        return nil
     }
 
     return x.Vehicles
@@ -1565,7 +1569,9 @@ var Person_BestFriend_DEFAULT = NewPerson().GetBestFriend()
 var Person_AfraidOfAnimal_DEFAULT = NewPerson().GetAfraidOfAnimal()
 
 func (x *Person) String() string {
-    return fmt.Sprintf("%+v", x)
+    type PersonAlias Person
+    valueAlias := (*PersonAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

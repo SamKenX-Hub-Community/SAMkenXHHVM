@@ -173,7 +173,9 @@ if err != nil {
 }
 
 func (x *A) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AAlias A
+    valueAlias := (*AAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -264,9 +266,7 @@ type U struct {
 var _ thrift.Struct = &U{}
 
 func NewU() *U {
-    return (&U{}).
-        SetINonCompat(0).
-        SetSNonCompat("")
+    return (&U{})
 }
 
 func (x *U) GetINonCompat() *int32 {
@@ -388,7 +388,9 @@ var U_I_DEFAULT = NewU().GetI()
 var U_S_DEFAULT = NewU().GetS()
 
 func (x *U) String() string {
-    return fmt.Sprintf("%+v", x)
+    type UAlias U
+    valueAlias := (*UAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *U) countSetFields() int {
@@ -558,11 +560,15 @@ if err != nil {
 }
 
 func (x *Bang) String() string {
-    return fmt.Sprintf("%+v", x)
+    type BangAlias Bang
+    valueAlias := (*BangAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *Bang) Error() string {
-    return x.String()
+    type BangAlias Bang
+    valueAlias := (*BangAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

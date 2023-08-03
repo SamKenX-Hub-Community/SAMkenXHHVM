@@ -28,8 +28,6 @@ constexpr auto kBoxUri = "facebook.com/thrift/annotation/Box";
 constexpr auto kInternBoxUri = "facebook.com/thrift/annotation/InternBox";
 constexpr auto kExceptionMessageUri =
     "facebook.com/thrift/annotation/ExceptionMessage";
-constexpr auto kGenDefaultEnumValueUri =
-    "facebook.com/thrift/annotation/GenDefaultEnumValue";
 constexpr auto kGenerateRuntimeSchemaUri =
     "facebook.com/thrift/annotation/GenerateRuntimeSchema";
 constexpr auto kInjectMetadataFieldsUri =
@@ -78,8 +76,6 @@ constexpr auto kCppPackIssetUri =
 constexpr auto kCppRefUri = "facebook.com/thrift/annotation/cpp/Ref";
 constexpr auto kCppScopedEnumAsUnionTypeUri =
     "facebook.com/thrift/annotation/cpp/ScopedEnumAsUnionType";
-constexpr auto kCppStrongTypeUri =
-    "facebook.com/thrift/annotation/cpp/StrongType";
 constexpr auto kCppTriviallyRelocatableUri =
     "facebook.com/thrift/annotation/cpp/TriviallyRelocatable";
 constexpr auto kCppUseOpEncodeUri =
@@ -103,6 +99,8 @@ constexpr auto kPythonHiddenUri =
 constexpr auto kPythonFlagsUri = "facebook.com/thrift/annotation/python/Flags";
 constexpr auto kPythonNameUri = "facebook.com/thrift/annotation/python/Name";
 constexpr auto kPythonIOBufUri = "facebook.com/thrift/annotation/python/IOBuf";
+constexpr auto kMarshalCapiUri =
+    "facebook.com/thrift/annotation/python/MarshalCapi";
 
 // hack
 constexpr auto kHackAdapterUri = "facebook.com/thrift/annotation/hack/Adapter";
@@ -122,6 +120,11 @@ constexpr auto kHackUnionEnumAttributesUri =
 constexpr auto kHackWrapperUri = "facebook.com/thrift/annotation/hack/Wrapper";
 constexpr auto kHackModuleInternalUri =
     "facebook.com/thrift/annotation/hack/ModuleInternal";
+
+// go
+constexpr auto kGoNameUri = "facebook.com/thrift/annotation/go/Name";
+constexpr auto kGoTagUri = "facebook.com/thrift/annotation/go/Tag";
+constexpr auto kGoNewTypeUri = "facebook.com/thrift/annotation/go/NewType";
 
 constexpr auto kGeneratePatchUri = "facebook.com/thrift/op/GeneratePatch";
 constexpr auto kAssignOnlyPatchUri = "facebook.com/thrift/op/AssignOnlyPatch";

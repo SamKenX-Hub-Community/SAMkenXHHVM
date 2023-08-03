@@ -75,6 +75,10 @@ type catch = (unit, unit) Aast.catch
 
 type case = (unit, unit) Aast.case
 
+type stmt_match = (unit, unit) Aast.stmt_match
+
+type stmt_match_arm = (unit, unit) Aast.stmt_match_arm
+
 type default_case = (unit, unit) Aast.default_case
 
 type gen_case = (unit, unit) Aast.gen_case
@@ -183,8 +187,17 @@ let get_simple_xhp_attrs =
       | Xhp_simple { xs_name = id; xs_expr = e; _ } -> Some (id, e)
       | Xhp_spread _ -> None)
 
+(* Definitions appearing in a Nast.program *)
+type defs = {
+  funs: (FileInfo.id * fun_def) list;
+  classes: (FileInfo.id * class_) list;
+  typedefs: (FileInfo.id * typedef) list;
+  constants: (FileInfo.id * gconst) list;
+  modules: (FileInfo.id * module_def) list;
+}
+
 (* Given a Nast.program, give me the list of entities it defines *)
-let get_defs (ast : program) =
+let get_defs (ast : program) : defs =
   (* fold_right traverses the file from top to bottom, and as such gives nicer
    * error messages than fold_left. E.g. in the case where a function is
    * declared twice in the same file, the error will say that the declaration
@@ -192,42 +205,24 @@ let get_defs (ast : program) =
   let to_id (a, b) = (a, b, None) in
   (* TODO(hgoldstein): Just have this return four values, not five *)
   let rec get_defs ast acc =
-    List.fold_right
-      ast
-      ~init:acc
-      ~f:(fun def ((funs, classes, typedefs, constants, modules) as acc) ->
+    List.fold_right ast ~init:acc ~f:(fun def acc ->
         Aast.(
           match def with
           | Fun f ->
-            ( FileInfo.pos_full (to_id f.fd_name) :: funs,
-              classes,
-              typedefs,
-              constants,
-              modules )
+            let f = (FileInfo.pos_full (to_id f.fd_name), f) in
+            { acc with funs = f :: acc.funs }
           | Class c ->
-            ( funs,
-              FileInfo.pos_full (to_id c.c_name) :: classes,
-              typedefs,
-              constants,
-              modules )
+            let c = (FileInfo.pos_full (to_id c.c_name), c) in
+            { acc with classes = c :: acc.classes }
           | Typedef t ->
-            ( funs,
-              classes,
-              FileInfo.pos_full (to_id t.t_name) :: typedefs,
-              constants,
-              modules )
+            let t = (FileInfo.pos_full (to_id t.t_name), t) in
+            { acc with typedefs = t :: acc.typedefs }
           | Constant cst ->
-            ( funs,
-              classes,
-              typedefs,
-              FileInfo.pos_full (to_id cst.cst_name) :: constants,
-              modules )
+            let cst = (FileInfo.pos_full (to_id cst.cst_name), cst) in
+            { acc with constants = cst :: acc.constants }
           | Module md ->
-            ( funs,
-              classes,
-              typedefs,
-              constants,
-              FileInfo.pos_full (to_id md.md_name) :: modules )
+            let md = (FileInfo.pos_full (to_id md.md_name), md) in
+            { acc with modules = md :: acc.modules }
           | Namespace (_, defs) -> get_defs defs acc
           | NamespaceUse _
           | SetNamespaceEnv _
@@ -238,7 +233,22 @@ let get_defs (ast : program) =
           | Stmt _ ->
             acc))
   in
-  get_defs ast ([], [], [], [], [])
+  let acc =
+    { funs = []; classes = []; typedefs = []; constants = []; modules = [] }
+  in
+  get_defs ast acc
+
+let get_def_names ast : FileInfo.t =
+  let { funs; classes; typedefs; constants; modules } = get_defs ast in
+  FileInfo.
+    {
+      empty_t with
+      funs = List.map funs ~f:fst;
+      classes = List.map classes ~f:fst;
+      typedefs = List.map typedefs ~f:fst;
+      consts = List.map constants ~f:fst;
+      modules = List.map modules ~f:fst;
+    }
 
 type ignore_attribute_env = { ignored_attributes: string list }
 
@@ -400,6 +410,8 @@ module Visitor_DEPRECATED = struct
     object
       method on_block : 'a -> block -> 'a
 
+      method on_declare_local : 'a -> lid -> hint -> expr option -> 'a
+
       method on_break : 'a -> 'a
 
       method on_case : 'a -> case -> 'a
@@ -439,6 +451,16 @@ module Visitor_DEPRECATED = struct
       method on_stmt_ : 'a -> (unit, unit) stmt_ -> 'a
 
       method on_switch : 'a -> expr -> case list -> default_case option -> 'a
+
+      method on_stmt_match : 'a -> stmt_match -> 'a
+
+      method on_stmt_match_arm : 'a -> stmt_match_arm -> 'a
+
+      method on_pat : 'a -> pattern -> 'a
+
+      method on_pat_var : 'a -> pat_var -> 'a
+
+      method on_pat_refinement : 'a -> pat_refinement -> 'a
 
       method on_throw : 'a -> expr -> 'a
 
@@ -683,6 +705,27 @@ module Visitor_DEPRECATED = struct
         in
         acc
 
+      method on_stmt_match acc { sm_expr; sm_arms } =
+        let acc = this#on_expr acc sm_expr in
+        let acc = List.fold_left sm_arms ~f:this#on_stmt_match_arm ~init:acc in
+        acc
+
+      method on_stmt_match_arm acc { sma_pat; sma_body } =
+        let acc = this#on_pat acc sma_pat in
+        let acc = this#on_stmt acc sma_body in
+        acc
+
+      method on_pat acc =
+        function
+        | PVar pv -> this#on_pat_var acc pv
+        | PRefinement pr -> this#on_pat_refinement acc pr
+
+      method on_pat_var acc { pv_pos = _; pv_id = _ } = acc
+
+      method on_pat_refinement acc { pr_pos = _; pr_id = _; pr_hint } =
+        let acc = this#on_hint acc pr_hint in
+        acc
+
       method on_foreach acc e ae b =
         let acc = this#on_expr acc e in
         let acc = this#on_as_expr acc ae in
@@ -694,6 +737,13 @@ module Visitor_DEPRECATED = struct
         let acc = List.fold_left cl ~f:this#on_catch ~init:acc in
         let acc = this#on_block acc fb in
         acc
+
+      method on_declare_local acc id t e =
+        let acc = this#on_lvar acc id in
+        let acc = this#on_hint acc t in
+        match e with
+        | None -> acc
+        | Some e -> this#on_expr acc e
 
       method on_block acc b = List.fold_left b ~f:this#on_stmt ~init:acc
 
@@ -734,11 +784,13 @@ module Visitor_DEPRECATED = struct
         | Using us -> this#on_using acc us
         | For (e1, e2, e3, b) -> this#on_for acc e1 e2 e3 b
         | Switch (e, cl, dfl) -> this#on_switch acc e cl dfl
+        | Match sm -> this#on_stmt_match acc sm
         | Foreach (e, ae, b) -> this#on_foreach acc e ae b
         | Try (b, cl, fb) -> this#on_try acc b cl fb
         | Noop -> this#on_noop acc
         | Fallthrough -> this#on_fallthrough acc
         | Awaitall (el, b) -> this#on_awaitall acc el b
+        | Declare_local (id, t, e) -> this#on_declare_local acc id t e
         | Block b -> this#on_block acc b
         | Markup s -> this#on_markup acc s
         | AssertEnv _ -> this#on_noop acc
@@ -771,8 +823,8 @@ module Visitor_DEPRECATED = struct
         | Array_get (e1, e2) -> this#on_array_get acc e1 e2
         | Class_get (cid, e, _) -> this#on_class_get acc cid e
         | Class_const (cid, id) -> this#on_class_const acc cid id
-        | Call (e, _, el, unpacked_element) ->
-          this#on_call acc e el unpacked_element
+        | Call { func = e; args = el; unpacked_arg; _ } ->
+          this#on_call acc e el unpacked_arg
         | FunctionPointer (fpid, targs) ->
           this#on_function_pointer acc fpid targs
         | String2 el -> this#on_string2 acc el

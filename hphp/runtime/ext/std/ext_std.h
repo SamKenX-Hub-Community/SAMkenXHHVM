@@ -26,12 +26,6 @@ struct StandardExtension final : Extension {
     loadDeclsFrom("std_variable");
   }
 
-  void moduleLoad(const IniSetting::Map& /*ini*/, Hdf /*config*/) override {
-    // Closure must be hoisted before anything which extends from it.
-    // So we place it in the global systemlib and bind its dependencies early.
-    loadClosure();
-  }
-
   void moduleInit() override {
     initStandard();
     initErrorFunc();
@@ -56,11 +50,9 @@ struct StandardExtension final : Extension {
 
   void requestInit() override {
     requestInitMath();
-    requestInitOptions();
   }
- private:
-  void loadClosure();
 
+ private:
   void initStandard();
   void initErrorFunc();
   void initClassobj();
@@ -80,7 +72,6 @@ struct StandardExtension final : Extension {
   void threadInitMisc();
 
   void requestInitMath();
-  void requestInitOptions();
 };
 
 /////////////////////////////////////////////////////////////////////////////

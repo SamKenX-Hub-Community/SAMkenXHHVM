@@ -143,13 +143,8 @@ let this r = mk (r, Tgeneric (SN.Typehints.this, []))
 
 let taccess r ty id = mk (r, Taccess (ty, id))
 
-let nullable_decl r ty =
-  (* Cheap avoidance of double nullable *)
-  match get_node ty with
-  | Toption _ as ty_ -> mk (r, ty_)
-  | _ -> mk (r, Toption ty)
-
-let nullable_locl r ty =
+let nullable : type a. a Reason.t_ -> a ty -> a ty =
+ fun r ty ->
   (* Cheap avoidance of double nullable *)
   match get_node ty with
   | Toption _ as ty_ -> mk (r, ty_)
@@ -217,7 +212,7 @@ let default_capability p : locl_ty =
   let r = Reason.Rdefault_capability p in
   intersection
     r
-    Naming_special_names.Capabilities.
+    SN.Capabilities.
       [
         class_type r writeProperty [];
         class_type r accessGlobals [];

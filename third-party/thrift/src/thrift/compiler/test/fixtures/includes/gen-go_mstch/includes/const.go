@@ -14,5 +14,9 @@ var _ = thrift.ZERO
 
 var GoUnusedProtection__ int
 
-var ExampleIncluded *Included = NewIncluded()
+var ExampleIncluded *Included = NewIncluded().
+    SetMyIntFieldNonCompat(2).
+    SetMyTransitiveFieldNonCompat(
+        *transitive.ExampleFoo,
+    )
 const IncludedConstant int64 = 42

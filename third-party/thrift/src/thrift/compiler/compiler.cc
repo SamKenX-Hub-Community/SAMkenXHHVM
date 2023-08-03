@@ -45,7 +45,6 @@
 #include <thrift/compiler/detail/system.h>
 #include <thrift/compiler/diagnostic.h>
 #include <thrift/compiler/generate/t_generator.h>
-#include <thrift/compiler/mutator/mutator.h>
 #include <thrift/compiler/parse/parse_ast.h>
 #include <thrift/compiler/sema/standard_mutator.h>
 #include <thrift/compiler/sema/standard_validator.h>
@@ -444,8 +443,9 @@ std::unique_ptr<t_program_bundle> parse_and_mutate_program(
     parsing_params params,
     bool return_nullptr_on_failure) {
   auto programs = parse_ast(sm, ctx, filename, std::move(params));
-  if (!programs) {
-    return {};
+  if (!programs || ctx.has_errors()) {
+    // Mutations should be only performed on a valid AST.
+    return !return_nullptr_on_failure ? std::move(programs) : nullptr;
   }
   auto result = standard_mutators()(ctx, *programs);
   if (result.unresolvable_typeref && return_nullptr_on_failure) {
@@ -502,7 +502,8 @@ std::unique_ptr<t_program_bundle> parse_and_get_program(
   return parse_ast(sm, ctx, filename, std::move(pparams));
 }
 
-compile_result compile(const std::vector<std::string>& arguments) {
+compile_result compile(
+    const std::vector<std::string>& arguments, source_manager& source_mgr) {
   compile_result result;
 
   // Parse arguments.
@@ -513,7 +514,6 @@ compile_result compile(const std::vector<std::string>& arguments) {
   if (input_filename.empty()) {
     return result;
   }
-  source_manager source_mgr;
   diagnostic_context ctx(source_mgr, result.detail, std::move(dparams));
 
   // Parse it!
@@ -524,14 +524,6 @@ compile_result compile(const std::vector<std::string>& arguments) {
       std::move(pparams),
       true /* return_nullptr_on_failure */);
   if (!program) {
-    return result;
-  }
-
-  // TODO(afuller): Migrate to ast_mutator.
-  try {
-    mutator::mutate(program->root_program());
-  } catch (const mutator_exception& e) {
-    ctx.report(e.loc, e.level, "{}", e.message);
     return result;
   }
 

@@ -58,10 +58,20 @@ fn convert_type<'a>(ty: &ir::TypeInfo, strings: &StringCache<'a>) -> TypeInfo<'a
     }
 }
 
+fn convert_types<'a>(
+    tis: &[ir::TypeInfo],
+    strings: &StringCache<'a>,
+) -> ffi::Slice<'a, TypeInfo<'a>> {
+    ffi::Slice::fill_iter(
+        strings.alloc,
+        tis.iter().map(|ti| convert_type(ti, strings)),
+    )
+}
+
 fn base_type_string(ty: &ir::BaseType) -> Option<Str<'static>> {
     match ty {
-        BaseType::Class(_) | BaseType::Mixed | BaseType::None | BaseType::Void => None,
-
+        BaseType::Class(_) | BaseType::Mixed | BaseType::Void => None,
+        BaseType::None => Some(Str::new("".as_bytes())),
         BaseType::AnyArray => Some(ir::types::BUILTIN_NAME_ANY_ARRAY),
         BaseType::Arraykey => Some(ir::types::BUILTIN_NAME_ARRAYKEY),
         BaseType::Bool => Some(ir::types::BUILTIN_NAME_BOOL),
@@ -99,10 +109,11 @@ pub(crate) fn convert_typedef<'a>(td: ir::Typedef, strings: &StringCache<'a>) ->
     let ir::Typedef {
         name,
         attributes,
-        type_info,
+        type_info_union,
         type_structure,
         loc,
         attrs,
+        case_type,
     } = td;
 
     let name = strings.lookup_class_name(name);
@@ -111,15 +122,16 @@ pub(crate) fn convert_typedef<'a>(td: ir::Typedef, strings: &StringCache<'a>) ->
         line_end: loc.line_end,
     };
     let attributes = crate::convert::convert_attributes(attributes, strings);
-    let type_info = convert_type(&type_info, strings);
+    let type_info_union = convert_types(type_info_union.as_ref(), strings);
     let type_structure = crate::convert::convert_typed_value(&type_structure, strings);
 
     hhbc::Typedef {
         name,
         attributes,
-        type_info,
+        type_info_union,
         type_structure,
         span,
         attrs,
+        case_type,
     }
 }

@@ -75,9 +75,10 @@ File root|module_enums.php--X.php
               (make_ft_flags FSync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
+              ft_ifc_decl = FDPolicied {PUBLIC}; ft_cross_package = None }));
         fe_pos = [12:19-21]; fe_php_std_lib = false;
-        fe_support_dynamic_type = false; fe_no_auto_dynamic = false }));
+        fe_support_dynamic_type = false; fe_no_auto_dynamic = false;
+        fe_no_auto_likes = false }));
   ("\\f2",
    (Shallow_decl_defs.Fun
       { Typing_defs.fe_deprecated = None; fe_module = (Some ([3:8-9], "X"));
@@ -106,9 +107,10 @@ File root|module_enums.php--X.php
               (make_ft_flags FSync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
+              ft_ifc_decl = FDPolicied {PUBLIC}; ft_cross_package = None }));
         fe_pos = [15:10-12]; fe_php_std_lib = false;
-        fe_support_dynamic_type = false; fe_no_auto_dynamic = false }));
+        fe_support_dynamic_type = false; fe_no_auto_dynamic = false;
+        fe_no_auto_likes = false }));
   ("\\f5",
    (Shallow_decl_defs.Fun
       { Typing_defs.fe_deprecated = None; fe_module = (Some ([3:8-9], "X"));
@@ -125,9 +127,10 @@ File root|module_enums.php--X.php
               (make_ft_flags FSync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
+              ft_ifc_decl = FDPolicied {PUBLIC}; ft_cross_package = None }));
         fe_pos = [18:19-21]; fe_php_std_lib = false;
-        fe_support_dynamic_type = false; fe_no_auto_dynamic = false }));
+        fe_support_dynamic_type = false; fe_no_auto_dynamic = false;
+        fe_no_auto_likes = false }));
   ("\\f6",
    (Shallow_decl_defs.Fun
       { Typing_defs.fe_deprecated = None; fe_module = (Some ([3:8-9], "X"));
@@ -144,9 +147,10 @@ File root|module_enums.php--X.php
               (make_ft_flags FSync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
+              ft_ifc_decl = FDPolicied {PUBLIC}; ft_cross_package = None }));
         fe_pos = [23:10-12]; fe_php_std_lib = false;
-        fe_support_dynamic_type = false; fe_no_auto_dynamic = false }))
+        fe_support_dynamic_type = false; fe_no_auto_dynamic = false;
+        fe_no_auto_likes = false }))
   ]
 
 File root|module_enums.php--Y.php
@@ -178,9 +182,10 @@ File root|module_enums.php--Y.php
              (make_ft_flags FSync ~return_disposable:false
                ~returns_readonly:false ~support_dynamic_type:false
                ~readonly_this:false ~is_memoized:false ~variadic:false);
-             ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
+             ft_ifc_decl = FDPolicied {PUBLIC}; ft_cross_package = None }));
        fe_pos = [6:10-12]; fe_php_std_lib = false;
-       fe_support_dynamic_type = false; fe_no_auto_dynamic = false }));
+       fe_support_dynamic_type = false; fe_no_auto_dynamic = false;
+       fe_no_auto_likes = false }));
   ("\\f7",
    (Shallow_decl_defs.Fun
       { Typing_defs.fe_deprecated = None; fe_module = (Some ([3:8-9], "Y"));
@@ -197,9 +202,10 @@ File root|module_enums.php--Y.php
               (make_ft_flags FSync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
+              ft_ifc_decl = FDPolicied {PUBLIC}; ft_cross_package = None }));
         fe_pos = [10:10-12]; fe_php_std_lib = false;
-        fe_support_dynamic_type = false; fe_no_auto_dynamic = false }))
+        fe_support_dynamic_type = false; fe_no_auto_dynamic = false;
+        fe_no_auto_likes = false }))
   ]
 
 File root|module_enums.php--no-module.php
@@ -231,9 +237,10 @@ File root|module_enums.php--no-module.php
              (make_ft_flags FSync ~return_disposable:false
                ~returns_readonly:false ~support_dynamic_type:false
                ~readonly_this:false ~is_memoized:false ~variadic:false);
-             ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
+             ft_ifc_decl = FDPolicied {PUBLIC}; ft_cross_package = None }));
        fe_pos = [3:10-12]; fe_php_std_lib = false;
-       fe_support_dynamic_type = false; fe_no_auto_dynamic = false }));
+       fe_support_dynamic_type = false; fe_no_auto_dynamic = false;
+       fe_no_auto_likes = false }));
   ("\\f8",
    (Shallow_decl_defs.Fun
       { Typing_defs.fe_deprecated = None; fe_module = None;
@@ -250,7 +257,8 @@ File root|module_enums.php--no-module.php
               (make_ft_flags FSync ~return_disposable:false
                 ~returns_readonly:false ~support_dynamic_type:false
                 ~readonly_this:false ~is_memoized:false ~variadic:false);
-              ft_ifc_decl = FDPolicied {PUBLIC}ft_cross_package = None }));
+              ft_ifc_decl = FDPolicied {PUBLIC}; ft_cross_package = None }));
         fe_pos = [5:10-12]; fe_php_std_lib = false;
-        fe_support_dynamic_type = false; fe_no_auto_dynamic = false }))
+        fe_support_dynamic_type = false; fe_no_auto_dynamic = false;
+        fe_no_auto_likes = false }))
   ]

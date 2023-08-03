@@ -14,7 +14,6 @@ from typing_extensions import Final
 
 import sys
 import itertools
-import facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
 
 
 __property__ = property
@@ -95,4 +94,3 @@ class SecretStruct(thrift.py3.types.Struct, _typing.Hashable):
     def _to_py_deprecated(self) -> "module.ttypes.SecretStruct": ...   # type: ignore
 
 myStruct: MyStruct = ...
-MyId = int

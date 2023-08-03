@@ -30,7 +30,7 @@ let check_tparams_constraints env use_pos tparams targs =
   let ety_env : expand_env =
     { empty_expand_env with substs = Subst.make_locl tparams targs }
   in
-  Typing_phase.check_tparams_constraints ~use_pos ~ety_env env tparams
+  Phase.check_tparams_constraints ~use_pos ~ety_env env tparams
 
 let loclty_of_hint unchecked_tparams env h =
   let hint_pos = fst h in
@@ -55,7 +55,7 @@ let loclty_of_hint unchecked_tparams env h =
   in
   let ety_env = { ety_env with expand_visible_newtype = false } in
   let ((env, ty_err_opt), locl_ty) = Phase.localize env ~ety_env decl_ty in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
   (env, hint_pos, locl_ty)
 
 let check_hrefinement unchecked_tparams env h rl =
@@ -116,7 +116,7 @@ let check_hrefinement unchecked_tparams env h rl =
                  })
     in
     List.iter rl ~f:(fun r ->
-        Option.iter ~f:Typing_error_utils.add_typing_error (check_ref r))
+        Option.iter ~f:(Typing_error_utils.add_typing_error ~env) (check_ref r))
   | _ -> ()
 
 (** Mostly check constraints on type parameters. *)
@@ -136,7 +136,7 @@ let check_happly unchecked_tparams env h =
       | None -> (env, None))
     | _ -> (env, None)
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
   env
 
 let rec context_hint ?(in_signature = true) env (p, h) =
@@ -154,6 +154,7 @@ and hint_ ~in_signature env p h_ =
   | Hany
   | Herr
   | Hmixed
+  | Hwildcard
   | Hnonnull
   | Hprim _
   | Hthis
@@ -275,7 +276,8 @@ let requirements env = List.concat_map ~f:(fun (h, _kind) -> hint env h)
 
 let fun_ tenv f =
   let env = { typedef_tparams = []; tenv } in
-  FunUtils.check_params f.f_params;
+  let err_opt = FunUtils.check_params f.f_params in
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env:tenv) err_opt;
   type_hint env f.f_ret @ fun_params env f.f_params
 
 let fun_def tenv fd =
@@ -288,7 +290,7 @@ let fun_def tenv fd =
       fd.fd_tparams
       fd.fd_where_constraints
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env:tenv) ty_err_opt;
   let env = { typedef_tparams = []; tenv } in
   tparams env fd.fd_tparams
   @ fun_ tenv fd.fd_fun
@@ -343,7 +345,7 @@ let method_ env m =
       m.m_tparams
       m.m_where_constraints
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env:tenv) ty_err_opt;
   (* Only throw hack error if class and method are both public *)
   let tenv =
     Env.set_internal
@@ -420,7 +422,7 @@ let class_ tenv c =
       c_tparams
       (req_class_constraints @ c_where_constraints)
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env:tenv) ty_err_opt;
   let env = { env with tenv } in
   let (c_constructor, c_statics, c_methods) = split_methods c_methods in
   let (c_static_vars, c_vars) = split_vars c_vars in
@@ -470,6 +472,7 @@ let typedef tenv t =
     t_internal = _;
     t_module = _;
     t_docs_url = _;
+    t_doc_comment = _;
   } =
     t
   in
@@ -484,7 +487,7 @@ let typedef tenv t =
         t_tparams
         where_constraints
     in
-    Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+    Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
     env
   in
   (* We only need to check that the type alias as a public API if it's transparent, since
@@ -574,7 +577,7 @@ let expr tenv ((), _p, e) =
   | Cast (h, _) ->
     hint tenv h
   | New (_, hl, _, _, _)
-  | Call (_, hl, _, _) ->
+  | Call { targs = hl; _ } ->
     List.concat_map hl ~f:(fun (_, h) -> hint tenv h)
   | Lfun (f, _)
   | Efun { ef_fun = f; _ } ->

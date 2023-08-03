@@ -224,6 +224,10 @@ class Derive implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftShap
   public static function getAllStructuredAnnotations()[write_props]: \TStructAnnotations {
     return shape(
       'struct' => dict[
+        '\facebook\thrift\annotation\Enum' => \facebook\thrift\annotation\Enum::fromShape(
+          shape(
+          )
+        ),
         '\facebook\thrift\annotation\Struct' => \facebook\thrift\annotation\Struct::fromShape(
           shape(
           )
@@ -236,7 +240,7 @@ class Derive implements \IThriftSyncStruct, \IThriftStructMetadata, \IThriftShap
 
   public static function __fromShape(self::TShape $shape)[]: this {
     return new static(
-      (new Vector($shape['derives'])),
+      $shape['derives'] |> new Vector($$),
     );
   }
 

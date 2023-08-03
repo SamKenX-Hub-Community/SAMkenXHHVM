@@ -21,6 +21,7 @@
 #include <folly/Range.h>
 #include <folly/ScopeGuard.h>
 #include <folly/lang/New.h>
+#include <folly/python/import.h>
 #include <thrift/lib/cpp2/protocol/TableBasedSerializer.h>
 
 namespace apache {
@@ -32,8 +33,14 @@ constexpr const size_t kFieldOffset = sizeof(PyObject*);
 
 namespace {
 
-void do_import() {
-  if (0 != import_thrift__python__types()) {
+bool ensure_module_imported() {
+  static ::folly::python::import_cache_nocapture import(
+      ::import_thrift__python__types);
+  return import();
+}
+
+void ensureImportOrThrow() {
+  if (!ensure_module_imported()) {
     throw std::runtime_error("import_thrift__python__types failed");
   }
 }
@@ -57,7 +64,7 @@ UniquePyObjectPtr getDefaultValue(
     const detail::TypeInfo* typeInfo,
     const FieldValueMap& userValueMap,
     int16_t index) {
-  FOLLY_MAYBE_UNUSED static bool done = (do_import(), false);
+  ensureImportOrThrow();
   auto userValueFound = userValueMap.find(index);
   if (userValueFound != userValueMap.end()) {
     auto value = userValueFound->second;
@@ -136,27 +143,34 @@ UniquePyObjectPtr getDefaultValue(
   return value;
 }
 
-PyObject* createStructTuple(const detail::StructInfo& structInfo) {
-  auto numFields = structInfo.numFields;
+PyObject* createStructTuple(int16_t numFields) {
   UniquePyObjectPtr issetArr{PyBytes_FromStringAndSize(nullptr, numFields)};
   if (!issetArr) {
-    THRIFT_PY3_CHECK_ERROR();
+    return nullptr;
   }
   char* flags = PyBytes_AsString(issetArr.get());
   if (!flags) {
-    THRIFT_PY3_CHECK_ERROR();
+    return nullptr;
   }
   for (Py_ssize_t i = 0; i < numFields; ++i) {
     flags[i] = '\0';
   }
   // create a tuple with the first element as a bytearray for isset flags, and
   // the rest numFields for struct fields.
+  PyObject* tuple{PyTuple_New(numFields + 1)};
+  if (tuple == nullptr) {
+    return nullptr;
+  }
+  PyTuple_SET_ITEM(tuple, 0, issetArr.release());
+  return tuple;
+}
 
-  UniquePyObjectPtr tuple{PyTuple_New(numFields + 1)};
+PyObject* createStructTuple(const detail::StructInfo& structInfo) {
+  auto numFields = structInfo.numFields;
+  UniquePyObjectPtr tuple{createStructTuple(numFields)};
   if (!tuple) {
     THRIFT_PY3_CHECK_ERROR();
   }
-  PyTuple_SET_ITEM(tuple.get(), 0, issetArr.release());
   const auto& defaultValues =
       *static_cast<const FieldValueMap*>(structInfo.customExt);
   for (int i = 0; i < numFields; ++i) {
@@ -275,7 +289,7 @@ void setString(void* object, const std::string& value) {
 
 detail::OptionalThriftValue getIOBuf(
     const void* object, const detail::TypeInfo& /* typeInfo */) {
-  FOLLY_MAYBE_UNUSED static bool done = (do_import(), false);
+  ensureImportOrThrow();
   PyObject* pyObj = *toPyObjectPtr(object);
   folly::IOBuf* buf = pyObj != nullptr ? get_cIOBuf(pyObj) : nullptr;
   return buf ? folly::make_optional<detail::ThriftValue>(buf)
@@ -283,7 +297,7 @@ detail::OptionalThriftValue getIOBuf(
 }
 
 void setIOBuf(void* object, const folly::IOBuf& value) {
-  FOLLY_MAYBE_UNUSED static bool done = (do_import(), false);
+  ensureImportOrThrow();
   const auto buf = create_IOBuf(value.clone());
   Py_INCREF(buf);
   UniquePyObjectPtr iobufObj{buf};
@@ -577,9 +591,9 @@ void DynamicStructInfo::addFieldValue(int16_t index, PyObject* fieldValue) {
 const detail::TypeInfo& boolTypeInfo =
     PrimitiveTypeInfo<bool, protocol::TType::T_BOOL>::typeInfo;
 const detail::TypeInfo& byteTypeInfo =
-    PrimitiveTypeInfo<std::int32_t, protocol::TType::T_BYTE>::typeInfo;
+    PrimitiveTypeInfo<std::int8_t, protocol::TType::T_BYTE>::typeInfo;
 const detail::TypeInfo& i16TypeInfo =
-    PrimitiveTypeInfo<std::int32_t, protocol::TType::T_I16>::typeInfo;
+    PrimitiveTypeInfo<std::int16_t, protocol::TType::T_I16>::typeInfo;
 const detail::TypeInfo& i32TypeInfo =
     PrimitiveTypeInfo<std::int32_t, protocol::TType::T_I32>::typeInfo;
 const detail::TypeInfo& i64TypeInfo =
@@ -618,6 +632,61 @@ const detail::TypeInfo iobufTypeInfo{
     /* .set */ reinterpret_cast<detail::VoidFuncPtr>(setIOBuf),
     /* .typeExt */ &ioBufFieldType,
 };
+
+namespace capi {
+PyObject* FOLLY_NULLABLE getThriftData(PyObject* structOrUnion) {
+  if (!ensure_module_imported()) {
+    return nullptr;
+  }
+  return _get_fbthrift_data(structOrUnion);
+}
+
+/**
+ * This is a cpp version is set_struct_field in .pyx, but it saves overhead
+ * of checking PyErr_Occurred() that would be necessary with every capi call
+ * because the cython version is `except *`.
+ *
+ * Also, this assumes that struct_tuple has been created from PyTuple_New
+ * without setting any fields. If this is used with a struct_tuple created
+ * from python, it will leak the old value at index + 1.
+ */
+int setStructField(PyObject* struct_tuple, int16_t index, PyObject* value) {
+  try {
+    setStructIsset(struct_tuple, index, 1);
+  } catch (std::runtime_error& e) {
+    // In error case, folly::handlePythonError clears error indicator
+    // and throws std::runtime_error with message fetched from PyErr.
+    //
+    PyErr_SetString(PyExc_TypeError, e.what());
+    return -1;
+  }
+  Py_INCREF(value);
+  PyTuple_SET_ITEM(struct_tuple, index + 1, value);
+  return 0;
+}
+
+/**
+ * This is a cpp version of Union._fbthrift_update_type_value, but it avoids the
+ * overhead of checking PyErr_Occurred(), similar to setStructField.
+ */
+PyObject* unionTupleFromValue(int64_t type_key, PyObject* value) {
+  PyObject* union_tuple = PyTuple_New(2);
+  if (union_tuple == nullptr) {
+    return nullptr;
+  }
+  PyObject* py_tag = PyLong_FromLong(type_key);
+  if (py_tag == nullptr) {
+    Py_DECREF(union_tuple);
+    return nullptr;
+  }
+  Py_INCREF(py_tag);
+  PyTuple_SET_ITEM(union_tuple, 0, py_tag);
+  Py_INCREF(value);
+  PyTuple_SET_ITEM(union_tuple, 1, value);
+  return union_tuple;
+}
+
+} // namespace capi
 
 } // namespace python
 } // namespace thrift

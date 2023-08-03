@@ -16,6 +16,9 @@
 
 from libcpp.memory cimport unique_ptr
 from folly cimport cFollyExecutor
+from libcpp cimport bool
+from libc.stdint cimport uint64_t, uintptr_t
+
 
 cdef extern from "folly/python/AsyncioExecutor.h" namespace "folly::python":
     cdef cppclass cAsyncioExecutor "folly::python::AsyncioExecutor"(cFollyExecutor):
@@ -29,8 +32,25 @@ cdef extern from "folly/python/AsyncioExecutor.h" namespace "folly::python":
         @staticmethod
         unique_ptr[cNotificationQueueAsyncioExecutor, cDeleter] create()
 
+cdef extern from "folly/python/ProactorExecutor.h" namespace "folly::python":
+    cdef cppclass cProactorExecutorDeleter "folly::python::ProactorExecutor::Deleter":
+        pass
+
+    cdef cppclass cProactorExecutor "folly::python::ProactorExecutor"(cAsyncioExecutor):
+        bool execute(uint64_t address)
+        void notify()
+        @staticmethod
+        unique_ptr[cProactorExecutor, cProactorExecutorDeleter] create[T](T iocp)
+
 cdef class AsyncioExecutor:
     cdef cAsyncioExecutor* _executor
+
+cdef class ProactorExecutor(AsyncioExecutor):
+    cdef unique_ptr[cProactorExecutor, cProactorExecutorDeleter] cQ
+
+
+cdef class IocpQueue(dict):
+    cdef ProactorExecutor _executor
 
 cdef api cAsyncioExecutor* get_executor()
 cdef api int set_executor_for_loop(loop, cAsyncioExecutor* executor)

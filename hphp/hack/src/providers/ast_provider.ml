@@ -50,14 +50,10 @@ let parse
     ~(source_text : Full_fidelity_source_text.t) : Errors.t * Parser_return.t =
   let path = source_text.Full_fidelity_source_text.file_path in
   let parser_env =
-    Full_fidelity_ast.make_env
-      ~quick_mode:(not full)
-      ~keep_errors:true
-      ~parser_options:popt
-      path
+    Full_fidelity_ast.make_env ~quick_mode:(not full) ~parser_options:popt path
   in
   let (err, result) =
-    Errors.do_with_context path Errors.Typing @@ fun () ->
+    Errors.do_with_context path @@ fun () ->
     Full_fidelity_ast.from_source_text_with_legacy parser_env source_text
   in
   let ast = result.Parser_return.ast in
@@ -95,7 +91,7 @@ let get_from_local_cache ~full ctx file_name =
         | Some _ ->
           (* It's up to Parsing_service to add parsing errors. *)
           let (err, result) =
-            Errors.do_with_context file_name Errors.Typing @@ fun () ->
+            Errors.do_with_context file_name @@ fun () ->
             Full_fidelity_ast.defensive_program
               ~quick:(not full)
               popt
@@ -188,10 +184,9 @@ let compute_comments ~(popt : ParserOptions.t) ~(entry : Provider_context.entry)
 let compute_file_info
     ~(popt : ParserOptions.t) ~(entry : Provider_context.entry) : FileInfo.t =
   let ast = compute_ast ~popt ~entry in
-  let (funs, classes, typedefs, consts, modules) = Nast.get_defs ast in
-  { FileInfo.empty_t with FileInfo.funs; classes; typedefs; consts; modules }
+  Nast.get_def_names ast
 
-let get_ast_with_error ?(full = false) ctx path =
+let get_ast_with_error ~(full : bool) ctx path =
   Counters.count Counters.Category.Get_ast @@ fun () ->
   let parse_from_disk_no_caching ~apply_file_filter =
     let absolute_path = Relative_path.to_absolute path in
@@ -260,10 +255,10 @@ let get_ast_with_error ?(full = false) ctx path =
     (* reparsing the file over and over. *)
     get_from_local_cache ~full ctx path
 
-let get_ast ?(full = false) ctx path = get_ast_with_error ~full ctx path |> snd
+let get_ast ~(full : bool) ctx path = get_ast_with_error ~full ctx path |> snd
 
 let get_def
-    ?(full = false)
+    ~(full : bool)
     ctx
     file_name
     (node_getter : Nast.def -> ('a * string) option)
@@ -310,28 +305,28 @@ let iequal name =
   let name = Caml.String.lowercase_ascii name in
   (fun s -> String.equal name (Caml.String.lowercase_ascii s))
 
-let find_class_in_file ?(full = false) ctx file_name name =
+let find_class_in_file ~(full : bool) ctx file_name name =
   get_def ~full ctx file_name find_class_impl (String.equal name)
 
 let find_iclass_in_file ctx file_name iname =
-  get_def ctx file_name find_class_impl (iequal iname)
+  get_def ctx file_name find_class_impl (iequal iname) ~full:false
 
-let find_fun_in_file ?(full = false) ctx file_name name =
+let find_fun_in_file ~(full : bool) ctx file_name name =
   get_def ~full ctx file_name find_fun_impl (String.equal name)
 
 let find_ifun_in_file ctx file_name iname =
-  get_def ctx file_name find_fun_impl (iequal iname)
+  get_def ctx file_name find_fun_impl (iequal iname) ~full:false
 
-let find_typedef_in_file ?(full = false) ctx file_name name =
+let find_typedef_in_file ~(full : bool) ctx file_name name =
   get_def ~full ctx file_name find_typedef_impl (String.equal name)
 
 let find_itypedef_in_file ctx file_name iname =
-  get_def ctx file_name find_typedef_impl (iequal iname)
+  get_def ctx file_name find_typedef_impl (iequal iname) ~full:false
 
-let find_gconst_in_file ?(full = false) ctx file_name name =
+let find_gconst_in_file ~(full : bool) ctx file_name name =
   get_def ~full ctx file_name find_const_impl (String.equal name)
 
-let find_module_in_file ?(full = false) ctx file_name name =
+let find_module_in_file ~(full : bool) ctx file_name name =
   get_def ~full ctx file_name find_module_impl (String.equal name)
 
 let local_changes_push_sharedmem_stack () =

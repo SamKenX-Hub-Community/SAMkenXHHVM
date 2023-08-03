@@ -57,25 +57,15 @@ let validator =
     method! on_tgeneric acc r name _tyargs =
       (* If we allow higher-kinded generics to be enforceable at some point,
          handle type arguments here *)
-      if acc.Type_validator.like_context then
-        acc
-      else
-        this#check_generic acc r name
+      this#check_generic acc r name
 
     method! on_newtype acc r sid _ as_cstr _super_cstr _ =
       if String.equal (snd sid) SN.Classes.cSupportDyn then
         this#on_type acc (with_reason as_cstr r)
-      else if acc.Type_validator.like_context then
-        acc
       else
         this#invalid acc r "a `newtype`"
 
-    method! on_tlike acc r ty =
-      if TypecheckerOptions.like_casts (Env.get_tcopt acc.Type_validator.env)
-      then
-        super#on_tlike { acc with Type_validator.like_context = true } r ty
-      else
-        this#invalid acc r "a like type"
+    method! on_tlike acc _r ty = this#on_type acc ty
 
     method! on_class acc r cls tyl =
       match Env.get_class acc.Type_validator.env (snd cls) with
@@ -91,29 +81,32 @@ let validator =
               begin
                 match
                   List.fold2 ~init:acc targs tparams ~f:(fun acc targ tparam ->
-                      let covariant =
-                        Ast_defs.(equal_variance tparam.tp_variance Covariant)
+                      let inside_reified_class_generic_position =
+                        acc.Type_validator.inside_reified_class_generic_position
                       in
-                      if this#is_wildcard targ then
-                        acc
-                      else if
-                        Aast.(equal_reify_kind tparam.tp_reified Reified)
-                        || (acc.Type_validator.like_context && covariant)
-                      then
+                      if this#is_wildcard targ then begin
+                        if inside_reified_class_generic_position then
+                          this#invalid
+                            acc
+                            r
+                            "a reified type containing a wildcard (`_`)"
+                        else
+                          acc
+                      end else if
+                            Aast.(equal_reify_kind tparam.tp_reified Reified)
+                          then
+                        this#on_type
+                          {
+                            acc with
+                            Type_validator.inside_reified_class_generic_position =
+                              true;
+                          }
+                          targ
+                      else if inside_reified_class_generic_position then
                         this#on_type acc targ
                       else
                         let error_message =
                           "a type with an erased generic type argument"
-                        in
-                        let error_message =
-                          if
-                            TypecheckerOptions.like_casts
-                              (Env.get_tcopt acc.Type_validator.env)
-                          then
-                            error_message
-                            ^ ", except in a like cast when the corresponding type parameter is covariant"
-                          else
-                            error_message
                         in
                         this#invalid acc r error_message)
                 with
@@ -123,17 +116,9 @@ let validator =
         end
       | None -> acc
 
-    method! on_alias acc r id tyl ty =
+    method! on_alias acc r _id tyl ty =
       if List.is_empty tyl then
         this#on_type acc ty
-      else if
-        String.equal (snd id) Naming_special_names.FB.cIncorrectType
-        && Int.equal (List.length tyl) 1
-      then
-        let ty = List.hd_exn tyl in
-        this#on_type { acc with Type_validator.like_context = true } ty
-      else if acc.Type_validator.like_context then
-        super#on_alias acc r id tyl ty
       else
         this#invalid
           acc
@@ -153,7 +138,7 @@ let validator =
 
     method is_wildcard ty =
       match get_node ty with
-      | Tapply ((_, name), _) -> String.equal name SN.Typehints.wildcard
+      | Twildcard -> true
       | _ -> false
 
     method check_for_wildcards acc tyl s =
@@ -188,10 +173,15 @@ let validator =
       | (Aast.SoftReified, _) ->
         this#invalid acc r "a soft reified generic type parameter"
       | (Aast.Reified, false) ->
-        this#invalid
+        (* If a reified generic is an argument to a reified class it does not
+         * need to be enforceable *)
+        if acc.Type_validator.inside_reified_class_generic_position then
           acc
-          r
-          "a reified type parameter that is not marked `<<__Enforceable>>`"
+        else
+          this#invalid
+            acc
+            r
+            "a reified type parameter that is not marked `<<__Enforceable>>`"
       | (Aast.Reified, true) -> acc
   end
 

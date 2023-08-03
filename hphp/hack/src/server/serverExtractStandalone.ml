@@ -158,7 +158,7 @@ end = struct
   let get_fun =
     make_nast_getter
       ~get_pos:Decl.get_fun_pos
-      ~find_in_file:Ast_provider.find_fun_in_file
+      ~find_in_file:(Ast_provider.find_fun_in_file ~full:false)
       ~naming:Naming.fun_def
 
   let get_fun_exn ctx name = value_or_not_found name (get_fun ctx name)
@@ -166,7 +166,7 @@ end = struct
   let get_class =
     make_nast_getter
       ~get_pos:Decl.get_class_pos
-      ~find_in_file:Ast_provider.find_class_in_file
+      ~find_in_file:(Ast_provider.find_class_in_file ~full:false)
       ~naming:Naming.class_
 
   let get_class_exn ctx name = value_or_not_found name (get_class ctx name)
@@ -174,7 +174,7 @@ end = struct
   let get_typedef =
     make_nast_getter
       ~get_pos:Decl.get_typedef_pos
-      ~find_in_file:Ast_provider.find_typedef_in_file
+      ~find_in_file:(Ast_provider.find_typedef_in_file ~full:false)
       ~naming:Naming.typedef
 
   let get_typedef_exn ctx name = value_or_not_found name (get_typedef ctx name)
@@ -182,7 +182,7 @@ end = struct
   let get_gconst =
     make_nast_getter
       ~get_pos:Decl.get_gconst_pos
-      ~find_in_file:Ast_provider.find_gconst_in_file
+      ~find_in_file:(Ast_provider.find_gconst_in_file ~full:false)
       ~naming:Naming.global_const
 
   let get_gconst_exn ctx name = value_or_not_found name (get_gconst ctx name)
@@ -450,8 +450,8 @@ end = struct
       | Aast_defs.Hfun hint_fun -> aux_fun acc hint_fun
       | Aast_defs.Hshape shape_info -> aux_shape acc shape_info
       | Aast_defs.(
-          ( Hany | Herr | Hmixed | Hnonnull | Hprim _ | Hthis | Hdynamic
-          | Hnothing | Hfun_context _ | Hvar _ )) ->
+          ( Hany | Herr | Hmixed | Hwildcard | Hnonnull | Hprim _ | Hthis
+          | Hdynamic | Hnothing | Hfun_context _ | Hvar _ )) ->
         acc
     and auxs acc = function
       | [] -> acc
@@ -922,14 +922,22 @@ end = struct
       Typing_deps.Dep.(
         match target with
         | Cmd.Function func ->
-          let (_ : Tast.def list option) =
-            Typing_check_job.type_fun ctx filename func
+          let full_ast =
+            Ast_provider.find_fun_in_file ctx filename func ~full:true
+          in
+          let (_ : Tast.def Tast_with_dynamic.t option) =
+            Option.bind full_ast ~f:(fun full_ast ->
+                Typing_check_job.type_fun ctx ~full_ast)
           in
           add_implementation_dependencies ctx env;
           HashSet.remove env.dependencies (Fun func)
         | Cmd.Method (cls, m) ->
-          let (_ : Tast.def option) =
-            Typing_check_job.type_class ctx filename cls
+          let full_ast =
+            Ast_provider.find_class_in_file ctx filename cls ~full:true
+          in
+          let (_ : Tast.def Tast_with_dynamic.t option) =
+            Option.bind full_ast ~f:(fun full_ast ->
+                Typing_check_job.type_class ctx ~full_ast)
           in
           HashSet.add env.dependencies (Method (cls, m));
           HashSet.add env.dependencies (SMethod (cls, m));
@@ -1160,6 +1168,7 @@ end = struct
         | Hvec_or_dict _
         | Hprim _
         | Hthis
+        | Hwildcard
         | Hdynamic
         | Hnothing
         | Hunion _

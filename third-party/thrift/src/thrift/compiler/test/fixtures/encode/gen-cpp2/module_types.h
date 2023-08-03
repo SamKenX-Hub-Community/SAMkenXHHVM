@@ -9,8 +9,6 @@
 #include <thrift/lib/cpp2/gen/module_types_h.h>
 
 
-#include "thrift/annotation/gen-cpp2/cpp_types.h"
-#include "thrift/annotation/gen-cpp2/thrift_types.h"
 
 namespace apache {
 namespace thrift {
@@ -151,14 +149,6 @@ template <> struct TEnumTraits<::facebook::thrift::test::Enum> {
 
 }} // apache::thrift
 
-namespace facebook { namespace thrift { namespace test {
-
-using _Enum_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<Enum>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _Enum_EnumMapFactory::ValuesToNamesMapType _Enum_VALUES_TO_NAMES;
-#endif
-}}} // facebook::thrift::test
 
 // END declare_enums
 // BEGIN forward_declare
@@ -377,8 +367,8 @@ class Bar final  {
 
  public:
 
-  Bar() {
-  }
+  Bar();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   Bar(apache::thrift::FragileConstructor, ::std::vector<::facebook::thrift::test::AdaptedFoo> list_field__arg);
@@ -390,6 +380,9 @@ class Bar final  {
 
   Bar& operator=(Bar&&) noexcept;
   Bar& operator=(const Bar& src);
+
+  ~Bar();
+
  private:
   ::std::vector<::facebook::thrift::test::AdaptedFoo> __fbthrift_field_list_field;
  private:
@@ -525,8 +518,8 @@ class Baz final  {
 
  public:
 
-  Baz() {
-  }
+  Baz();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   Baz(apache::thrift::FragileConstructor, ::std::vector<::facebook::thrift::test::AdaptedFoo> list_field__arg, ::std::vector<::std::vector<::facebook::thrift::test::AdaptedFoo>> nested_list_field__arg);
@@ -538,6 +531,9 @@ class Baz final  {
 
   Baz& operator=(Baz&&) noexcept;
   Baz& operator=(const Baz& src);
+
+  ~Baz();
+
  private:
   ::std::vector<::facebook::thrift::test::AdaptedFoo> __fbthrift_field_list_field;
  private:

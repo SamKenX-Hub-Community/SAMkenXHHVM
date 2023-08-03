@@ -9,7 +9,6 @@
 #include <thrift/lib/cpp2/gen/module_types_h.h>
 
 
-#include "thrift/annotation/gen-cpp2/thrift_types.h"
 
 namespace apache {
 namespace thrift {
@@ -280,14 +279,6 @@ template <> struct TEnumTraits<::facebook::thrift::test::terse_write::deprecated
 
 }} // apache::thrift
 
-namespace facebook { namespace thrift { namespace test { namespace terse_write { namespace deprecated {
-
-using _MyEnum_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<MyEnum>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _MyEnum_EnumMapFactory::ValuesToNamesMapType _MyEnum_VALUES_TO_NAMES;
-#endif
-}}}}} // facebook::thrift::test::terse_write::deprecated
 
 // END declare_enums
 // BEGIN forward_declare

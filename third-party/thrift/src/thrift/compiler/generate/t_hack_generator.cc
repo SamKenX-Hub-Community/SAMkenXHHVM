@@ -15,6 +15,7 @@
  */
 
 #include <stdlib.h>
+#include <thrift/compiler/ast/node_list.h>
 #include <thrift/compiler/ast/t_result_struct.h>
 #include <thrift/compiler/ast/t_sink.h>
 #include <thrift/compiler/ast/t_stream.h>
@@ -342,6 +343,8 @@ class t_hack_generator : public t_concat_generator {
       std::ostream& out, t_name_generator& namer, const t_map* t);
   void generate_hack_array_from_shape_lambda(
       std::ostream& out, t_name_generator& namer, const t_list* t);
+  void generate_hack_array_from_shape_lambda(
+      std::ostream& out, t_name_generator& namer, const t_set* t);
   void generate_hack_array_from_shape_lambda(
       std::ostream& out, t_name_generator& namer, const t_struct* t);
   void generate_shape_from_hack_array_lambda(
@@ -760,23 +763,19 @@ class t_hack_generator : public t_concat_generator {
 
   const std::string& find_hack_name(
       const t_named* tnamed, const std::string& default_name) const {
-    if (const std::string* annotation =
-            tnamed->find_annotation_or_null("hack.name")) {
-      return *annotation;
-    }
     if (const auto annotation =
             tnamed->find_structured_annotation_or_null(kHackNameUri)) {
       return annotation->get_value_from_structured_annotation("name")
           .get_string();
     }
+    if (const std::string* annotation =
+            tnamed->find_annotation_or_null("hack.name")) {
+      return *annotation;
+    }
     return default_name;
   }
 
   const std::string find_union_enum_attributes(const t_struct& tstruct) {
-    if (const std::string* annotation =
-            tstruct.find_annotation_or_null("hack.union_enum_attributes")) {
-      return *annotation;
-    }
     if (const auto annotation = tstruct.find_structured_annotation_or_null(
             kHackUnionEnumAttributesUri)) {
       for (const auto& item : annotation->value()->get_map()) {
@@ -976,7 +975,7 @@ class t_hack_generator : public t_concat_generator {
   std::string render_service_metadata_response(
       const t_service* service, const bool mangle);
   std::string render_structured_annotations(
-      const std::vector<const t_const*>& annotations,
+      node_list_view<const t_const> annotations,
       std::ostream& temp_var_initializations_out,
       t_name_generator& namer);
 
@@ -1573,7 +1572,7 @@ void t_hack_generator::close_generator() {
 
     annotations_out << indent() << "return dict[\n";
     indent_up();
-    for (const auto& tconst : program_->consts()) {
+    for (const t_const* tconst : program_->consts()) {
       if (tconst->structured_annotations().empty()) {
         continue;
       }
@@ -1741,7 +1740,7 @@ void t_hack_generator::generate_enum(const t_enum* tenum) {
                   << ",\n";
   annotations_out << indent() << "'constants' => dict[\n";
   indent_up();
-  for (const auto& constant : tenum->get_enum_values()) {
+  for (const t_enum_value* constant : tenum->get_enum_values()) {
     if (constant->structured_annotations().empty()) {
       continue;
     }
@@ -2934,7 +2933,7 @@ void t_hack_generator::generate_php_type_spec(
     // Noop, type is all we need
   } else if (t->is_enum()) {
     indent(out) << "'enum' => " << hack_name(t) << "::class,\n";
-  } else if (t->is_struct() || t->is_xception()) {
+  } else if (t->is_struct() || t->is_exception()) {
     auto sname = hack_name(t);
     if (const auto* tstruct = dynamic_cast<const t_struct*>(t)) {
       auto [wrapper, name, ns] = find_hack_wrapper(tstruct);
@@ -3248,6 +3247,9 @@ void t_hack_generator::generate_hack_array_from_shape_lambda(
     indent(out) << ")";
     indent_down();
   }
+  if (!arrays_ && !no_use_hack_collections_) {
+    out << " |> new Map($$)";
+  }
 }
 
 void t_hack_generator::generate_hack_array_from_shape_lambda(
@@ -3275,6 +3277,19 @@ void t_hack_generator::generate_hack_array_from_shape_lambda(
     indent(out) << ")";
     indent_down();
   }
+  if (!arrays_ && !no_use_hack_collections_) {
+    out << " |> new Vector($$)";
+  }
+}
+
+void t_hack_generator::generate_hack_array_from_shape_lambda(
+    std::ostream& out, t_name_generator&, const t_set*) {
+  if (!arrays_ && !no_use_hack_collections_ && !arraysets_) {
+    out << "\n";
+    indent_up();
+    indent(out) << "|> new Set(Keyset\\keys($$))";
+    indent_down();
+  }
 }
 
 void t_hack_generator::generate_hack_array_from_shape_lambda(
@@ -3298,6 +3313,9 @@ void t_hack_generator::generate_hack_array_from_shape_lambda(
   } else if (t->is_struct()) {
     generate_hack_array_from_shape_lambda(
         out, namer, static_cast<const t_struct*>(t));
+  } else if (t->is_set()) {
+    generate_hack_array_from_shape_lambda(
+        out, namer, static_cast<const t_set*>(t));
   }
 }
 
@@ -3368,7 +3386,7 @@ bool t_hack_generator::field_is_nullable(
   std::string dval = "";
   const t_type* t = field->type()->get_true_type();
   if (field->default_value() != nullptr &&
-      !(t->is_struct() || t->is_xception())) {
+      !(t->is_struct() || t->is_exception())) {
     dval = render_const_value(t, field->default_value());
   } else {
     dval = render_default_value(t);
@@ -3385,29 +3403,12 @@ void t_hack_generator::generate_php_struct_stringifyMapKeys_method(
   if (!shape_arraykeys_) {
     return;
   }
-  std::string arg_return_type;
-  if (arrays_ || no_use_hack_collections_) {
-    arg_return_type = "dict";
-  } else if (const_collections_) {
-    arg_return_type = "\\ConstMap";
-  } else {
-    arg_return_type = "Map";
-  }
+
   indent(out) << "public static function __stringifyMapKeys<T>("
-              << arg_return_type << "<arraykey, T> $m)[]: " << arg_return_type
-              << "<string, T> {\n";
+              << "dict<arraykey, T> $m)[]: "
+              << "dict<string, T> {\n";
   indent_up();
-  if (arrays_ || no_use_hack_collections_) {
-    indent(out) << "return Dict\\map_keys($m, $key ==> (string)$key);\n";
-  } else {
-    indent(out) << "$new = dict[];\n";
-    indent(out) << "foreach ($m as $k => $v) {\n";
-    indent_up();
-    indent(out) << "$new[(string)$k] = $v;\n";
-    indent_down();
-    indent(out) << "}\n";
-    indent(out) << "return new Map($new);\n";
-  }
+  indent(out) << "return Dict\\map_keys($m, $key ==> (string)$key);\n";
   indent_down();
   indent(out) << "}\n\n";
 }
@@ -3446,100 +3447,13 @@ void t_hack_generator::generate_php_struct_shape_methods(
         inner << "new Set(Keyset\\keys(" << source.str() << "))";
       }
     } else if (t->is_map() || t->is_list()) {
-      if (arrays_ || no_use_hack_collections_) {
-        inner << source.str();
-        std::stringstream inner_;
-        generate_hack_array_from_shape_lambda(inner_, namer, t);
-        auto str = inner_.str();
-        if (!str.empty()) {
-          inner << str;
-          is_simple_shape_index = false;
-        }
-
-      } else {
+      inner << source.str();
+      std::stringstream inner_;
+      generate_hack_array_from_shape_lambda(inner_, namer, t);
+      auto str = inner_.str();
+      if (!str.empty()) {
+        inner << str;
         is_simple_shape_index = false;
-        if (t->is_map() && shape_arraykeys_) {
-          const t_type* key_type = static_cast<const t_map*>(t)->get_key_type();
-          if (key_type->is_base_type() && key_type->is_string_or_binary()) {
-            inner << "self::__stringifyMapKeys";
-          }
-        }
-        inner << "(";
-        if (t->is_map()) {
-          inner << "new Map(";
-        } else {
-          inner << "new Vector(";
-        }
-
-        inner << source.str() << "))";
-
-        int nest = 0;
-        while (true) {
-          const t_type* val_type;
-          if (t->is_map()) {
-            val_type = static_cast<const t_map*>(t)->get_val_type();
-          } else {
-            val_type = static_cast<const t_list*>(t)->get_elem_type();
-          }
-          val_type = val_type->get_true_type();
-
-          if ((val_type->is_set() && !arraysets_) || val_type->is_map() ||
-              val_type->is_list() || val_type->is_struct()) {
-            indent_up();
-            nest++;
-            inner << "->map(\n";
-
-            if (val_type->is_set()) {
-              std::string tmp = namer("val");
-              indent(inner) << "$" << tmp << " ==> new Set(Keyset\\keys($"
-                            << tmp << ")),\n";
-              break;
-            } else if (val_type->is_map() || val_type->is_list()) {
-              std::string tmp = namer("val");
-
-              bool stringify_map_keys = false;
-              if (val_type->is_map() && shape_arraykeys_) {
-                const t_type* key_type =
-                    static_cast<const t_map*>(val_type)->get_key_type();
-                if (key_type->is_base_type() &&
-                    key_type->is_string_or_binary()) {
-                  stringify_map_keys = true;
-                }
-              }
-
-              indent(inner)
-                  << "$" << tmp << " ==> "
-                  << (stringify_map_keys ? "self::__stringifyMapKeys" : "")
-                  << "(new ";
-              if (val_type->is_map()) {
-                inner << "Map";
-              } else {
-                inner << "Vector";
-              }
-              inner << "($" << tmp << "))";
-              t = val_type;
-            } else if (val_type->is_struct()) {
-              std::string tmp = namer("val");
-              std::string type = hack_name(val_type);
-              indent(inner) << "$" << tmp << " ==> " << type << "::__fromShape("
-
-                            << "$" << tmp << "),\n";
-              break;
-            }
-          } else {
-            if (nest > 0) {
-              inner << ",\n";
-            }
-            break;
-          }
-        }
-        while (nest-- > 0) {
-          indent_down();
-          indent(inner) << ")";
-          if (nest > 0) {
-            inner << ",\n";
-          }
-        }
       }
     } else if (t->is_struct()) {
       is_simple_shape_index = false;
@@ -4570,7 +4484,7 @@ void t_hack_generator::generate_php_struct_constructor_field_assignment(
   std::string dval = "";
   bool is_exception = tstruct->is_exception();
   if (field.default_value() != nullptr &&
-      !(t->is_struct() || t->is_xception() || skip_custom_default)) {
+      !(t->is_struct() || t->is_exception() || skip_custom_default)) {
     dval = render_const_value(t, field.default_value());
   } else if (
       tstruct->is_exception() &&
@@ -5062,7 +4976,7 @@ std::string t_hack_generator::render_service_metadata_response(
 }
 
 std::string t_hack_generator::render_structured_annotations(
-    const std::vector<const t_const*>& annotations,
+    node_list_view<const t_const> annotations,
     std::ostream& temp_var_initializations_out,
     t_name_generator& namer) {
   std::ostringstream out;
@@ -5071,10 +4985,10 @@ std::string t_hack_generator::render_structured_annotations(
     out << "\n";
     indent_up();
     for (const auto& annotation : annotations) {
-      indent(out) << "'" << hack_name(annotation->get_type()) << "' => "
+      indent(out) << "'" << hack_name(annotation.get_type()) << "' => "
                   << render_const_value_helper(
-                         annotation->get_type(),
-                         annotation->get_value(),
+                         annotation.get_type(),
+                         annotation.get_value(),
                          temp_var_initializations_out,
                          namer,
                          false, // immutable_collections
@@ -6670,7 +6584,7 @@ std::string t_hack_generator::type_to_typehint(
     return typedef_to_typehint(ttypedef, variations);
   }
 
-  if (ttype->is_struct() || ttype->is_xception()) {
+  if (ttype->is_struct() || ttype->is_exception()) {
     std::string struct_name = hack_name(ttype);
 
     auto [wrapper, name, ns] = find_hack_wrapper(ttype, false);
@@ -7543,7 +7457,7 @@ std::string t_hack_generator::declare_field(
       } else {
         result += " = Set {}";
       }
-    } else if (type->is_struct() || type->is_xception()) {
+    } else if (type->is_struct() || type->is_exception()) {
       if (obj) {
         result += " = " + hack_name(type) + "::withDefaultValues()";
       } else {
@@ -7708,7 +7622,7 @@ std::string t_hack_generator::type_to_enum(const t_type* type) {
     }
   } else if (type->is_enum()) {
     return "\\TType::I32";
-  } else if (type->is_struct() || type->is_xception()) {
+  } else if (type->is_struct() || type->is_exception()) {
     return "\\TType::STRUCT";
   } else if (type->is_map()) {
     return "\\TType::MAP";

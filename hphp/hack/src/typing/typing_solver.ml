@@ -119,7 +119,7 @@ let rec freshen_inside_ty env ty =
   | Tnewtype (name, _, ty)
     when String.equal name Naming_special_names.Classes.cSupportDyn ->
     let (env, ty) = freshen_inside_ty env ty in
-    (env, Typing_make_type.supportdyn r ty)
+    (env, MakeType.supportdyn r ty)
   | Tnewtype (name, tyl, ty) ->
     if List.is_empty tyl then
       default ()
@@ -203,9 +203,9 @@ let bind env var (ty : locl_ty) =
    * nothing, as it will lead to type holes.
    *)
   let proj_ty_err_opt =
-    if Typing_utils.is_tyvar_error env ty then
+    if TUtils.is_tyvar_error env ty then
       None
-    else if Typing_utils.is_nothing env ty && not (SMap.is_empty tconsts) then
+    else if TUtils.is_nothing env ty && not (SMap.is_empty tconsts) then
       let (_, ((proj_pos, tconst_name), _)) = SMap.choose tconsts
       and pos = Env.get_tyvar_pos env var in
       Some
@@ -254,7 +254,7 @@ let bind_to_lower_bound ~freshen env r var lower_bounds =
               (Typing_error.Reasons_callback.unify_error_at
               @@ Env.get_tyvar_pos env var)
           in
-          let (env, ty_err_opt) = Typing_utils.sub_type env ty newty on_error in
+          let (env, ty_err_opt) = TUtils.sub_type env ty newty on_error in
           (env, ty_err_opt, newty)
         else
           (env, None, ty)
@@ -272,18 +272,27 @@ let bind_to_lower_bound ~freshen env r var lower_bounds =
           (fun ty env ->
             let (env, ty) = Env.expand_type env ty in
             match get_node ty with
-            | Tvar v when not (Env.is_global_tyvar env v) ->
-              Env.remove_tyvar_upper_bound env v var
+            | Tvar v -> Env.remove_tyvar_upper_bound env v var
             | _ -> env)
           lower_bounds
           env
       in
-      (* Now actually make the assignment var := ty, and remove var from tvenv *)
-      let (env, bind_ty_err) = bind env var ty in
-      let ty_err_opt =
-        Option.merge freshen_ty_err bind_ty_err ~f:Typing_error.both
+      (* In autocomplete mode, we do not solve to nothing, as it makes a lot
+       * of checks in the autocompletion fail for bad reasons (especially
+       * around invariant generics. Leave them be to try to get leave more
+       * flexibility to type filers *)
+      let autocomplete_mode =
+        TypecheckerOptions.tco_autocomplete_mode env.genv.tcopt
       in
-      (env, ty_err_opt)
+      if autocomplete_mode && TUtils.is_nothing env ty then
+        (env, freshen_ty_err)
+      else
+        (* Now actually make the assignment var := ty, and remove var from tvenv *)
+        let (env, bind_ty_err) = bind env var ty in
+        let ty_err_opt =
+          Option.merge freshen_ty_err bind_ty_err ~f:Typing_error.both
+        in
+        (env, ty_err_opt)
   in
   (Env.log_env_change "bind_to_lower_bound" old_env env, ty_err_opt)
 
@@ -311,8 +320,7 @@ let bind_to_upper_bound env r var upper_bounds =
       let (env, ty) = Env.expand_type env ty in
       let env =
         match get_node ty with
-        | Tvar v when not (Env.is_global_tyvar env v) ->
-          Env.remove_tyvar_lower_bound env v var
+        | Tvar v -> Env.remove_tyvar_lower_bound env v var
         | _ -> env
       in
       bind env var ty
@@ -336,8 +344,7 @@ let bind_to_upper_bound env r var upper_bounds =
 let ty_equal_shallow env ty1 ty2 =
   let (env, ty1) = Env.expand_type env ty1 in
   let (_env, ty2) = Env.expand_type env ty2 in
-  if Typing_utils.is_tyvar_error env ty1 && Typing_utils.is_tyvar_error env ty2
-  then
+  if TUtils.is_tyvar_error env ty1 && TUtils.is_tyvar_error env ty2 then
     true
   else
     match (get_node ty1, get_node ty2) with
@@ -353,8 +360,8 @@ let ty_equal_shallow env ty1 ty2 =
     | (Tfun fty1, Tfun fty2) -> Int.equal fty1.ft_flags fty2.ft_flags
     | (Tshape (_, shape_kind1, fdm1), Tshape (_, shape_kind2, fdm2)) ->
       Bool.equal
-        (Typing_utils.is_nothing env shape_kind1)
-        (Typing_utils.is_nothing env shape_kind2)
+        (TUtils.is_nothing env shape_kind1)
+        (TUtils.is_nothing env shape_kind2)
       && List.equal
            (fun (k1, v1) (k2, v2) ->
              TShapeField.equal k1 k2
@@ -367,27 +374,44 @@ let ty_equal_shallow env ty1 ty2 =
     | _ -> false
 
 let try_bind_to_equal_bound ~freshen env r var =
-  if Env.tyvar_is_solved_or_skip_global env var then
+  if Env.tyvar_is_solved env var then
     (env, None)
   else
     let old_env = env in
     let env = Utils.remove_tyvar_from_bounds env var in
+    let is_null ity =
+      match ity with
+      | LoclType ty -> begin
+        match get_node ty with
+        | Tprim Aast_defs.Tnull -> true
+        | _ -> false
+      end
+      | _ -> false
+    in
+    let lower_bounds = Env.get_tyvar_lower_bounds env var in
+    let has_null_lower_bound = ITySet.exists is_null lower_bounds in
     let expand_all ~strip_supportdyn env tyset =
       ITySet.fold
         (fun ty (env, res, sd_res) ->
           let (env, ty) = Env.expand_internal_type env ty in
           match ty with
           | LoclType ty when strip_supportdyn ->
-            let (_, env, stripped_ty) = Typing_utils.strip_supportdyn env ty in
-            ( env,
-              ITySet.add (LoclType stripped_ty) res,
-              ITySet.add (LoclType ty) sd_res )
+            let (_, env, stripped_ty) = TUtils.strip_supportdyn env ty in
+            let res = ITySet.add (LoclType stripped_ty) res in
+            let sd_res = ITySet.add (LoclType ty) sd_res in
+            let res =
+              if has_null_lower_bound then
+                ITySet.add (LoclType (MakeType.nullable r stripped_ty)) res
+              else
+                res
+            in
+            (env, res, sd_res)
           | _ -> (env, ITySet.add ty res, sd_res))
         tyset
         (env, ITySet.empty, ITySet.empty)
     in
     let (env, lower_bounds, sd_lower_bounds) =
-      expand_all ~strip_supportdyn:true env (Env.get_tyvar_lower_bounds env var)
+      expand_all ~strip_supportdyn:true env lower_bounds
     in
     let (env, upper_bounds, _) =
       expand_all
@@ -443,10 +467,10 @@ let try_bind_to_equal_bound ~freshen env r var =
                 @@ Env.get_tyvar_pos env var)
             in
             let (env, ty_sub_err_opt) =
-              Typing_utils.sub_type env ty var_ty on_error
+              TUtils.sub_type env ty var_ty on_error
             in
             let (env, ty_sup_err_opt) =
-              Typing_utils.sub_type env var_ty ty on_error
+              TUtils.sub_type env var_ty ty on_error
             in
             let (env, bind_err_opt) = bind env var ty in
             let ty_err_opt =
@@ -466,11 +490,17 @@ let try_bind_to_equal_bound ~freshen env r var =
    Therefore, we always force to the lower bounds (even contravariant variables),
    because it produces a "more specific" type, which is more likely to support
    the operation which we eagerly solved for in the first place.
+
+   During autocompletion, if the set of lower bounds is empty and the
+   variable appears contravariantly, try an upper bound.
 *)
 let rec always_solve_tyvar_down ~freshen env r var =
+  let autocomplete_mode =
+    TypecheckerOptions.tco_autocomplete_mode env.genv.tcopt
+  in
   (* If there is a type that is both a lower and upper bound, force to that type *)
   let (env, ty_err_opt1) = try_bind_to_equal_bound ~freshen env r var in
-  if Env.tyvar_is_solved_or_skip_global env var then
+  if Env.tyvar_is_solved env var then
     (env, ty_err_opt1)
   else
     let r =
@@ -480,23 +510,40 @@ let rec always_solve_tyvar_down ~freshen env r var =
         r
     in
     let (env, ty_err_opt2) =
-      let lower_bounds = Env.get_tyvar_lower_bounds env var in
+      let (to_lower, bounds) =
+        let lower_bounds = Env.get_tyvar_lower_bounds env var in
+        if autocomplete_mode then
+          let upper_bounds = Env.get_tyvar_upper_bounds env var in
+          if
+            Env.get_tyvar_appears_contravariantly env var
+            && ITySet.is_empty lower_bounds
+            && not (ITySet.is_empty upper_bounds)
+          then
+            (false, upper_bounds)
+          else
+            (true, lower_bounds)
+        else
+          (true, lower_bounds)
+      in
       (* We cannot do more on (<expr#1> as C) than on simply C,
        * so replace expression-dependent types with their bound.
        * This avoids solving to a type so specific that it ends
        * up hurting completeness. *)
-      let lower_bounds =
-        ITySet.map
-          (function
-            | LoclType lty as ity ->
-              let (_env, lty) = Env.expand_type env lty in
-              (match get_node lty with
-              | Tdependent (_, bnd) -> LoclType bnd
-              | _ -> ity)
-            | ity -> ity)
-          lower_bounds
-      in
-      bind_to_lower_bound ~freshen env r var lower_bounds
+      if to_lower then
+        let bounds =
+          ITySet.map
+            (function
+              | LoclType lty as ity ->
+                let (_env, lty) = Env.expand_type env lty in
+                (match get_node lty with
+                | Tdependent (_, bnd) -> LoclType bnd
+                | _ -> ity)
+              | ity -> ity)
+            bounds
+        in
+        bind_to_lower_bound ~freshen env r var bounds
+      else
+        bind_to_upper_bound env r var bounds
     in
     let (env, ety) = Env.expand_var env r var in
     match get_node ety with
@@ -528,7 +575,7 @@ let rec always_solve_tyvar_down ~freshen env r var =
  *   us to set v := ti.
  *)
 let solve_tyvar_wrt_variance env r var =
-  if Env.tyvar_is_solved_or_skip_global env var then
+  if Env.tyvar_is_solved env var then
     (env, None)
   else
     let r =
@@ -611,12 +658,6 @@ let always_solve_tyvar env r var =
   let ty_err_opt = Option.merge ty_err_opt1 ty_err_opt2 ~f:Typing_error.both in
   (env, ty_err_opt)
 
-let always_solve_tyvar_wrt_variance_or_down env r var =
-  let (env, ty_err_opt1) = solve_tyvar_wrt_variance env r var in
-  let (env, ty_err_opt2) = always_solve_tyvar_down ~freshen:false env r var in
-  let ty_err_opt = Option.merge ty_err_opt1 ty_err_opt2 ~f:Typing_error.both in
-  (env, ty_err_opt)
-
 (* Force solve all type variables in the environment *)
 let solve_all_unsolved_tyvars env =
   let old_env = env in
@@ -625,33 +666,12 @@ let solve_all_unsolved_tyvars env =
       (Env.get_all_tyvars env)
       ~init:(env, [])
       ~f:(fun (env, ty_errs) var ->
-        if Env.is_global_tyvar env var then
-          (env, ty_errs)
-        else
-          match always_solve_tyvar env Reason.Rnone var with
-          | (env, Some ty_err) -> (env, ty_err :: ty_errs)
-          | (env, _) -> (env, ty_errs))
-  in
-  let env = Env.log_env_change "solve_all_unsolved_tyvars" old_env env in
-  log_remaining_prop env;
-  let ty_err_opt = Typing_error.multiple_opt ty_errs in
-  (env, ty_err_opt)
-
-let solve_all_unsolved_tyvars_gi env =
-  let old_allow_solve_globals = Env.get_allow_solve_globals env in
-  let env = Env.set_allow_solve_globals env true in
-  let (env, ty_errs) =
-    List.fold
-      (Env.get_all_tyvars env)
-      ~init:(env, [])
-      ~f:(fun (env, ty_errs) tyvar ->
-        match
-          always_solve_tyvar_wrt_variance_or_down env Reason.Rnone tyvar
-        with
+        match always_solve_tyvar env Reason.Rnone var with
         | (env, Some ty_err) -> (env, ty_err :: ty_errs)
         | (env, _) -> (env, ty_errs))
   in
-  let env = Env.set_allow_solve_globals env old_allow_solve_globals in
+  let env = Env.log_env_change "solve_all_unsolved_tyvars" old_env env in
+  log_remaining_prop env;
   let ty_err_opt = Typing_error.multiple_opt ty_errs in
   (env, ty_err_opt)
 
@@ -682,7 +702,7 @@ let expand_type_and_solve
   let vars_solved_to_nothing = ref [] in
   let ty_errs = ref [] in
   let (env', ety) =
-    Typing_utils.simplify_unions env ty ~on_tyvar:(fun env r v ->
+    TUtils.simplify_unions env ty ~on_tyvar:(fun env r v ->
         let (env, ty_err_opt) = always_solve_tyvar_down ~freshen env r v in
         Option.iter ty_err_opt ~f:(fun ty_err -> ty_errs := ty_err :: !ty_errs);
         let (env, ety) = Env.expand_var env r v in
@@ -698,7 +718,7 @@ let expand_type_and_solve
     match default with
     | Some default_ty ->
       let res =
-        Typing_utils.sub_type env ety default_ty
+        TUtils.sub_type env ety default_ty
         @@ Some (Typing_error.Reasons_callback.unify_error_at p)
       in
       (res, default_ty)
@@ -732,7 +752,7 @@ let expand_type_and_solve
 let expand_type_and_solve_eq env ty =
   let ty_err_opts = ref [] in
   let (env, ty) =
-    Typing_utils.simplify_unions env ty ~on_tyvar:(fun env r v ->
+    TUtils.simplify_unions env ty ~on_tyvar:(fun env r v ->
         let (env, ty_err_opt) = try_bind_to_equal_bound ~freshen:true env r v in
         ty_err_opts := ty_err_opt :: !ty_err_opts;
         Env.expand_var env r v)
@@ -789,10 +809,7 @@ let widen env widen_concrete_type ty =
   widen env ty
 
 let is_nothing env ty =
-  Typing_utils.is_sub_type_ignore_generic_params
-    env
-    ty
-    (MakeType.nothing Reason.none)
+  TUtils.is_sub_type_ignore_generic_params env ty (MakeType.nothing Reason.none)
 
 (* Using the `widen_concrete_type` function to compute an upper bound,
  * narrow the constraints on a type that are valid for an operation.
@@ -876,11 +893,23 @@ let expand_type_and_narrow
         | (false, _, widened_ty) ->
           (* We really don't want to just guess `nothing` if none of the types can be widened *)
           let res =
-            Typing_utils.sub_type env ty widened_ty
+            TUtils.sub_type env ty widened_ty
             @@ Some (Typing_error.Reasons_callback.unify_error_at p)
           in
           (match res with
-          | (env, None) -> ((env, None), widened_ty)
+          | (env, None) ->
+            let supportdyn = Typing_utils.is_supportdyn env ty in
+            let res2 =
+              if supportdyn then begin
+                TUtils.sub_type
+                  env
+                  widened_ty
+                  (MakeType.supportdyn_mixed (Reason.Rwitness p))
+                @@ Some (Typing_error.Reasons_callback.unify_error_at p)
+              end else
+                (env, None)
+            in
+            (res2, widened_ty)
           | _ ->
             if force_solve then
               expand_type_and_solve env ~description_of_expected p ty
@@ -920,7 +949,7 @@ let is_sub_type env ty1 ty2 =
   let ((env, ty_err_opt1), ty1) = expand_type_and_solve_eq env ty1 in
   let ((env, ty_err_opt2), ty2) = expand_type_and_solve_eq env ty2 in
   let ty_err_opt = Option.merge ty_err_opt1 ty_err_opt2 ~f:Typing_error.both in
-  (Typing_utils.is_sub_type env ty1 ty2, ty_err_opt)
+  (TUtils.is_sub_type env ty1 ty2, ty_err_opt)
 
 (**
  * Strips away all Toption that we possible can in a type, expanding type
@@ -939,10 +968,8 @@ let rec non_null env pos ty =
         let ty = mk (r, Tdependent (dep, cstr)) in
         match TUtils.get_concrete_supertypes ~abstract_enum:true env ty with
         | (env, [ty'])
-          when Typing_utils.is_sub_type_for_union
-                 env
-                 (MakeType.null Reason.none)
-                 ty' ->
+          when TUtils.is_sub_type_for_union env (MakeType.null Reason.none) ty'
+          ->
           let (env, ty') = non_null env pos ty' in
           (env, mk (r, Tdependent (dep, ty')))
         | (env, _) -> super#on_tdependent env r dep cstr
@@ -951,10 +978,8 @@ let rec non_null env pos ty =
         let ty = mk (r, Tnewtype (x, tyl, cstr)) in
         match TUtils.get_concrete_supertypes ~abstract_enum:true env ty with
         | (env, [ty'])
-          when Typing_utils.is_sub_type_for_union
-                 env
-                 (MakeType.null Reason.none)
-                 ty' ->
+          when TUtils.is_sub_type_for_union env (MakeType.null Reason.none) ty'
+          ->
           let (env, ty') = non_null env pos ty' in
           (env, mk (r, Tnewtype (x, tyl, ty')))
         | (env, _) -> super#on_tnewtype env r x tyl cstr

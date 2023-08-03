@@ -41,17 +41,19 @@ struct TypeAliasEmitter {
   TypeAliasEmitter(UnitEmitter& ue, Id id, const std::string& name);
 
   void init(int line0, int line1, Attr attrs,
-            const StringData* value, AnnotType type, bool nullable,
-            bool case_type, Array typeStructure, Array resolvedTypeStructure);
+            TypeAndValueUnion,
+            bool nullable, bool caseType, Array typeStructure,
+            Array resolvedTypeStructure);
 
   UnitEmitter& ue() const { return m_ue; }
   const StringData* name() const { return m_name; }
-  const StringData* value() const { return m_value; }
+  const TypeAndValueUnion& typeAndValueUnion() const {
+    return m_typeAndValueUnion;
+  }
   Attr attrs() const { return m_attrs; }
   void setAttrs(Attr attrs) { m_attrs = attrs; }
-  AnnotType type() const { return m_type; }
   bool nullable() const { return m_nullable; }
-  bool case_type() const { return m_case_type; }
+  bool caseType() const { return m_caseType; }
   UserAttributeMap userAttributes() const { return m_userAttributes; }
   void setUserAttributes(UserAttributeMap map) {
     m_userAttributes = std::move(map);
@@ -72,13 +74,12 @@ struct TypeAliasEmitter {
 private:
   UnitEmitter& m_ue;
   LowStringPtr m_name;
-  LowStringPtr m_value;
   Attr m_attrs;
-  AnnotType m_type;
+  TypeAndValueUnion m_typeAndValueUnion;
   int m_line0;
   int m_line1;
   bool m_nullable;  // null is allowed; for ?Foo aliases
-  bool m_case_type;
+  bool m_caseType;
   UserAttributeMap m_userAttributes;
   Array m_typeStructure{ArrayData::CreateDict()};
   // If !isNull(), contains m_typeStructure in post-resolved form from

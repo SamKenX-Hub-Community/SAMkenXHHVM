@@ -7,6 +7,7 @@ package module1 // [[[ program thrift source path ]]]
 import (
     "context"
     "fmt"
+    "sync"
 
     module0 "module0"
 
@@ -19,6 +20,7 @@ var _ = module0.GoUnusedProtection__
 var _ = context.Background
 var _ = fmt.Printf
 var _ = thrift.ZERO
+var _ = sync.Mutex{}
 
 
 
@@ -63,6 +65,7 @@ func (c *FinderChannelClient) Open() error {
 // Deprecated: Use FinderChannelClient instead.
 type FinderClient struct {
     chClient *FinderChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ FinderClientInterface = &FinderClient{}
@@ -229,7 +232,9 @@ if err != nil {
 }
 
 func (x *reqFinderByPlate) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqFinderByPlateAlias reqFinderByPlate
+    valueAlias := (*reqFinderByPlateAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -329,7 +334,7 @@ func (x *respFinderByPlate) GetValueNonCompat() *Automobile {
 
 func (x *respFinderByPlate) GetValue() *Automobile {
     if !x.IsSetValue() {
-        return NewAutomobile()
+        return nil
     }
 
     return x.Value
@@ -392,7 +397,9 @@ func (x *respFinderByPlate) DefaultGetValue() *Automobile {
 }
 
 func (x *respFinderByPlate) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respFinderByPlateAlias respFinderByPlate
+    valueAlias := (*respFinderByPlateAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -537,7 +544,9 @@ if err != nil {
 }
 
 func (x *reqFinderAliasByPlate) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqFinderAliasByPlateAlias reqFinderAliasByPlate
+    valueAlias := (*reqFinderAliasByPlateAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -637,7 +646,7 @@ func (x *respFinderAliasByPlate) GetValueNonCompat() *Car {
 
 func (x *respFinderAliasByPlate) GetValue() *Car {
     if !x.IsSetValue() {
-        return NewCar()
+        return nil
     }
 
     return x.Value
@@ -700,7 +709,9 @@ func (x *respFinderAliasByPlate) DefaultGetValue() *Car {
 }
 
 func (x *respFinderAliasByPlate) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respFinderAliasByPlateAlias respFinderAliasByPlate
+    valueAlias := (*respFinderAliasByPlateAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -845,7 +856,9 @@ if err != nil {
 }
 
 func (x *reqFinderPreviousPlate) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqFinderPreviousPlateAlias reqFinderPreviousPlate
+    valueAlias := (*reqFinderPreviousPlateAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -985,7 +998,9 @@ if err != nil {
 }
 
 func (x *respFinderPreviousPlate) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respFinderPreviousPlateAlias respFinderPreviousPlate
+    valueAlias := (*respFinderPreviousPlateAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1144,7 +1159,7 @@ func (p *procFuncFinderByPlate) Write(seqId int32, result thrift.WritableStruct,
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("ByPlate", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("byPlate", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -1196,7 +1211,7 @@ func (p *procFuncFinderAliasByPlate) Write(seqId int32, result thrift.WritableSt
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("AliasByPlate", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("aliasByPlate", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -1248,7 +1263,7 @@ func (p *procFuncFinderPreviousPlate) Write(seqId int32, result thrift.WritableS
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("PreviousPlate", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("previousPlate", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {

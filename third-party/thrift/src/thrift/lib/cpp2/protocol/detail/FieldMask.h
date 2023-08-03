@@ -48,6 +48,30 @@ inline bool isNoneMask(const Mask& mask) {
   return mask.includes_ref() && mask.includes_ref()->empty();
 }
 
+// Checks whether it is ALL map mask.
+inline bool isAllMapMask(const Mask& mask) {
+  if (!mask.excludes_map_ref() && !mask.excludes_string_map_ref() &&
+      !mask.includes_map_ref() && !mask.includes_string_map_ref()) {
+    folly::throw_exception<std::runtime_error>("This is not a map mask.");
+  }
+
+  return (mask.excludes_map_ref() && mask.excludes_map_ref()->empty()) ||
+      (mask.excludes_string_map_ref() &&
+       mask.excludes_string_map_ref()->empty());
+}
+
+// Checks whether it is NONE map mask.
+inline bool isNoneMapMask(const Mask& mask) {
+  if (!mask.excludes_map_ref() && !mask.excludes_string_map_ref() &&
+      !mask.includes_map_ref() && !mask.includes_string_map_ref()) {
+    folly::throw_exception<std::runtime_error>("This is not a map mask.");
+  }
+
+  return (mask.includes_map_ref() && mask.includes_map_ref()->empty()) ||
+      (mask.includes_string_map_ref() &&
+       mask.includes_string_map_ref()->empty());
+}
+
 // If mask is a field mask, return it, otherwise return nullptr
 [[nodiscard]] const FieldIdToMask* FOLLY_NULLABLE
 getFieldMask(const Mask& mask);
@@ -97,7 +121,7 @@ void compare_impl(
       return;
     }
     // check if nested fields need to be added to mask
-    using FieldType = op::get_native_type<Id, Struct>;
+    using FieldType = op::get_native_type<Struct, Id>;
     if constexpr (is_thrift_struct_v<FieldType>) {
       compare_impl(
           *original_ptr, *modified_ptr, mask[fieldId].includes_ref().emplace());

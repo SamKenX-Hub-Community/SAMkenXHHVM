@@ -6,11 +6,9 @@ package module // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    hack "thrift/annotation/hack"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = hack.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
@@ -150,7 +148,7 @@ func NewMyStruct() *MyStruct {
         SetOnewayNonCompat(false).
         SetReadonlyNonCompat(false).
         SetIdempotentNonCompat(false).
-        SetFloatSetNonCompat(make([]float32, 0)).
+        SetFloatSetNonCompat(nil).
         SetNoHackCodegenFieldNonCompat("")
 }
 
@@ -176,7 +174,7 @@ func (x *MyStruct) GetMyDataFieldNonCompat() *MyDataItem {
 
 func (x *MyStruct) GetMyDataField() *MyDataItem {
     if !x.IsSetMyDataField() {
-        return NewMyDataItem()
+        return nil
     }
 
     return x.MyDataField
@@ -220,7 +218,7 @@ func (x *MyStruct) GetFloatSetNonCompat() []float32 {
 
 func (x *MyStruct) GetFloatSet() []float32 {
     if !x.IsSetFloatSet() {
-        return make([]float32, 0)
+        return nil
     }
 
     return x.FloatSet
@@ -617,7 +615,9 @@ func (x *MyStruct) DefaultGetMyDataField() *MyDataItem {
 }
 
 func (x *MyStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructAlias MyStruct
+    valueAlias := (*MyStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -814,7 +814,9 @@ func NewMyDataItem() *MyDataItem {
 }
 
 func (x *MyDataItem) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyDataItemAlias MyDataItem
+    valueAlias := (*MyDataItemAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -894,11 +896,7 @@ type MyUnion struct {
 var _ thrift.Struct = &MyUnion{}
 
 func NewMyUnion() *MyUnion {
-    return (&MyUnion{}).
-        SetMyEnumNonCompat(0).
-        SetMyStructNonCompat(*NewMyStruct()).
-        SetMyDataItemNonCompat(*NewMyDataItem()).
-        SetFloatSetNonCompat(make([]float32, 0))
+    return (&MyUnion{})
 }
 
 func (x *MyUnion) GetMyEnumNonCompat() *MyEnum {
@@ -919,7 +917,7 @@ func (x *MyUnion) GetMyStructNonCompat() *MyStruct {
 
 func (x *MyUnion) GetMyStruct() *MyStruct {
     if !x.IsSetMyStruct() {
-        return NewMyStruct()
+        return nil
     }
 
     return x.MyStruct
@@ -931,7 +929,7 @@ func (x *MyUnion) GetMyDataItemNonCompat() *MyDataItem {
 
 func (x *MyUnion) GetMyDataItem() *MyDataItem {
     if !x.IsSetMyDataItem() {
-        return NewMyDataItem()
+        return nil
     }
 
     return x.MyDataItem
@@ -943,7 +941,7 @@ func (x *MyUnion) GetFloatSetNonCompat() []float32 {
 
 func (x *MyUnion) GetFloatSet() []float32 {
     if !x.IsSetFloatSet() {
-        return make([]float32, 0)
+        return nil
     }
 
     return x.FloatSet
@@ -1183,7 +1181,9 @@ func (x *MyUnion) DefaultGetMyDataItem() *MyDataItem {
 }
 
 func (x *MyUnion) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyUnionAlias MyUnion
+    valueAlias := (*MyUnionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *MyUnion) countSetFields() int {
@@ -1385,7 +1385,9 @@ if err != nil {
 }
 
 func (x *ReservedKeyword) String() string {
-    return fmt.Sprintf("%+v", x)
+    type ReservedKeywordAlias ReservedKeyword
+    valueAlias := (*ReservedKeywordAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1475,8 +1477,7 @@ type UnionToBeRenamed struct {
 var _ thrift.Struct = &UnionToBeRenamed{}
 
 func NewUnionToBeRenamed() *UnionToBeRenamed {
-    return (&UnionToBeRenamed{}).
-        SetReservedFieldNonCompat(0)
+    return (&UnionToBeRenamed{})
 }
 
 func (x *UnionToBeRenamed) GetReservedFieldNonCompat() *int32 {
@@ -1539,7 +1540,9 @@ if err != nil {
 var UnionToBeRenamed_ReservedField_DEFAULT = NewUnionToBeRenamed().GetReservedField()
 
 func (x *UnionToBeRenamed) String() string {
-    return fmt.Sprintf("%+v", x)
+    type UnionToBeRenamedAlias UnionToBeRenamed
+    valueAlias := (*UnionToBeRenamedAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *UnionToBeRenamed) countSetFields() int {

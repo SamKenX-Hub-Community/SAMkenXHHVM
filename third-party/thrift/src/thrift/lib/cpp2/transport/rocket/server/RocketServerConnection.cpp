@@ -40,6 +40,7 @@
 
 #include <thrift/lib/cpp/TApplicationException.h>
 #include <thrift/lib/cpp2/server/LoggingEvent.h>
+#include <thrift/lib/cpp2/transport/rocket/FdSocket.h>
 #include <thrift/lib/cpp2/transport/rocket/PayloadUtils.h>
 #include <thrift/lib/cpp2/transport/rocket/RocketException.h>
 #include <thrift/lib/cpp2/transport/rocket/framing/Frames.h>
@@ -159,17 +160,76 @@ void RocketServerConnection::flushWrites(
   socket_->writeChain(this, std::move(writes));
 }
 
+void RocketServerConnection::flushWritesWithFds(
+    std::unique_ptr<folly::IOBuf> writes,
+    WriteBatchContext&& context,
+    FdsAndOffsets&& fdsAndOffsets) {
+  DestructorGuard dg(this);
+  DVLOG(10) << fmt::format(
+      "write: {} B + {} FD sets",
+      writes->computeChainDataLength(),
+      fdsAndOffsets.size());
+
+  // If some of the batched writes had FDs, we need to unbatch them, so that
+  // each set of FDs is set with the corresponding data.
+  //
+  // Future: We batch and then unbatch to avoid the potential performance
+  // risk of having the "fast path" of FD-free code track a
+  // `vector<unique_ptr<IOBuf>>` instead of a single IOBuf chain.  However,
+  // it could be worth the simpler code to try and benchmark such a
+  // vector-based "last-minute batching" aggregation as in
+  // `RocketClient::writeScheduledRequestsToSocket`.
+  IOBufQueue writesQ;
+  writesQ.append(std::move(writes)); // we'll `split()` chunks from the front
+  size_t prevOffset = 0; // the current start of `writesQ`
+  for (size_t i = 0; i < fdsAndOffsets.size(); ++i) {
+    DCHECK(!writesQ.empty());
+    auto& [fds, fdsOffset] = fdsAndOffsets[i];
+    // `GT` as opposed to `GE` because in `enqueueWrite`, `offset` includes
+    // `data.length()`, and we don't associate FDs with "empty data".
+    CHECK_GT(fdsOffset, prevOffset);
+
+    // After this split, `write` just has `[prevOffset, fdsOffset)`, and we
+    // can write it out together with `fds`.
+    auto write = writesQ.split(fdsOffset - prevOffset);
+    DCHECK_EQ(fdsOffset - prevOffset, write->computeChainDataLength());
+
+    // Our writeSuccess / writeError handlers require that every write to
+    // the socket be preceded by a matched queue entry.  To avoid complex
+    // unbatching of `WriteBatchContext`s in `WriteBatcher::enqueueWrite`,
+    // let's make the first N-1 queue entries empty dummies, and use the
+    // full batched context for the last write.
+    inflightWritesQueue_.push_back(
+        writesQ.empty() ? std::move(context) : WriteBatchContext{});
+    // KEEP THIS INVARIANT: For the receiver to correctly match FDs to a
+    // message, the FDs must be sent with the IOBuf ending with the FINAL
+    // fragment of that message.  Today, message fragments are not
+    // interleaved, so there is no explicit logic around this, but this
+    // invariant must be preserved going forward.
+    writeChainWithFds(socket_.get(), this, std::move(write), std::move(fds));
+
+    prevOffset = fdsOffset;
+  }
+  // This tail segment of data had no FDs attached.
+  if (!writesQ.empty()) {
+    inflightWritesQueue_.push_back(std::move(context));
+    socket_->writeChain(this, writesQ.move());
+  }
+}
+
 void RocketServerConnection::send(
     std::unique_ptr<folly::IOBuf> data,
     MessageChannel::SendCallbackPtr cb,
-    StreamId streamId) {
+    StreamId streamId,
+    folly::SocketFds fds) {
   evb_.dcheckIsInEventBaseThread();
 
   if (state_ != ConnectionState::ALIVE && state_ != ConnectionState::DRAINING) {
     return;
   }
 
-  writeBatcher_.enqueueWrite(std::move(data), std::move(cb), streamId);
+  writeBatcher_.enqueueWrite(
+      std::move(data), std::move(cb), streamId, std::move(fds));
 }
 
 RocketServerConnection::~RocketServerConnection() {
@@ -463,6 +523,7 @@ void RocketServerConnection::handleUntrackedFrame(
               return transportMetadata;
             });
           }
+          break;
         }
         default:
           break;
@@ -545,21 +606,18 @@ void RocketServerConnection::handleSinkFrame(
     folly::io::Cursor cursor,
     RocketSinkClientCallback& clientCallback) {
   if (!clientCallback.serverCallbackReady()) {
-    switch (frameType) {
-      case FrameType::ERROR: {
-        ErrorFrame errorFrame{std::move(frame)};
-        if (errorFrame.errorCode() == ErrorCode::CANCELED) {
-          return clientCallback.earlyCancelled();
-        }
+    if (frameType == FrameType::ERROR) {
+      ErrorFrame errorFrame{std::move(frame)};
+      if (errorFrame.errorCode() == ErrorCode::CANCELED) {
+        return clientCallback.earlyCancelled();
       }
-      default:
-        return close(folly::make_exception_wrapper<RocketException>(
-            ErrorCode::INVALID,
-            fmt::format(
-                "Received unexpected early frame, stream id ({}) type ({})",
-                static_cast<uint32_t>(streamId),
-                static_cast<uint8_t>(frameType))));
     }
+    return close(folly::make_exception_wrapper<RocketException>(
+        ErrorCode::INVALID,
+        fmt::format(
+            "Received unexpected early frame, stream id ({}) type ({})",
+            static_cast<uint32_t>(streamId),
+            static_cast<uint8_t>(frameType))));
   }
 
   auto handleSinkPayload = [&](PayloadFrame&& payloadFrame) {
@@ -577,6 +635,13 @@ void RocketServerConnection::handleSinkFrame(
             freeStream(streamId, true);
           }
         } else {
+          // FIXME: As noted in `RocketClient::handleSinkResponse`, sinks
+          // currently lack the codegen to be able to support FD passing.
+          DCHECK(
+              !streamPayload->metadata.fdMetadata().has_value() ||
+              streamPayload->metadata.fdMetadata()->numFds().value_or(0) == 0)
+              << "FD passing is not implemented for sinks";
+
           auto payloadMetadataRef =
               streamPayload->metadata.payloadMetadata_ref();
           if (payloadMetadataRef &&
@@ -652,6 +717,7 @@ void RocketServerConnection::handleSinkFrame(
         break;
       }
     }
+      [[fallthrough]];
 
     default:
       close(folly::make_exception_wrapper<RocketException>(
@@ -757,14 +823,18 @@ void RocketServerConnection::writeStarting() noexcept {
 void RocketServerConnection::writeSuccess() noexcept {
   DestructorGuard dg(this);
   DCHECK(!inflightWritesQueue_.empty());
-  auto& context = inflightWritesQueue_.front();
+  auto& context = inflightWritesQueue_.front(); // NB: Can be empty.
   for (auto processingCompleteCount = context.requestCompleteCount;
        processingCompleteCount > 0;
        --processingCompleteCount) {
     frameHandler_->requestComplete();
   }
   DCHECK(!context.writeEventsContext.endRawByteOffset.has_value());
-  context.writeEventsContext.endRawByteOffset = socket_->getRawBytesWritten();
+  if (context.writeEventsContext.startRawByteOffset.has_value()) {
+    context.writeEventsContext.endRawByteOffset = std::max(
+        context.writeEventsContext.startRawByteOffset.value(),
+        socket_->getRawBytesWritten() - 1);
+  }
 
   if (auto observerContainer = getObserverContainer();
       observerContainer && observerContainer->numObservers()) {
@@ -796,7 +866,7 @@ void RocketServerConnection::writeErr(
     size_t /* bytesWritten */, const folly::AsyncSocketException& ex) noexcept {
   DestructorGuard dg(this);
   DCHECK(!inflightWritesQueue_.empty());
-  auto& context = inflightWritesQueue_.front();
+  auto& context = inflightWritesQueue_.front(); // NB: Can be empty.
   for (auto processingCompleteCount = context.requestCompleteCount;
        processingCompleteCount > 0;
        --processingCompleteCount) {
@@ -904,10 +974,12 @@ void RocketServerConnection::sendPayload(
     Payload&& payload,
     Flags flags,
     apache::thrift::MessageChannel::SendCallbackPtr cb) {
+  auto fds = std::move(payload.fds);
   send(
       PayloadFrame(streamId, std::move(payload), flags).serialize(),
       std::move(cb),
-      streamId);
+      streamId,
+      std::move(fds));
 }
 
 void RocketServerConnection::sendError(

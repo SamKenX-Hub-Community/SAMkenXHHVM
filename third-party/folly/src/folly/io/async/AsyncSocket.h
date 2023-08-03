@@ -36,7 +36,10 @@
 #include <folly/io/async/AsyncTransport.h>
 #include <folly/io/async/DelayedDestruction.h>
 #include <folly/io/async/EventHandler.h>
+#include <folly/io/async/observer/AsyncSocketObserverContainer.h>
 #include <folly/net/NetOpsDispatcher.h>
+#include <folly/net/TcpInfo.h>
+#include <folly/net/TcpInfoDispatcher.h>
 #include <folly/portability/Sockets.h>
 #include <folly/small_vector.h>
 
@@ -78,9 +81,16 @@ namespace folly {
 #define SO_NO_TSOCKS 201
 #endif
 
+#if FOLLY_HAVE_SO_TIMESTAMPING
+#define SO_MAX_ATTEMPTS_ENABLE_BYTEEVENTS 10
+#endif
+
 class AsyncSocket : public AsyncSocketTransport {
  public:
   using UniquePtr = std::unique_ptr<AsyncSocket, Destructor>;
+  using ByteEvent = AsyncSocketObserverInterface::ByteEvent;
+  using Observer = AsyncSocketObserverContainer::Observer;
+  using ManagedObserver = AsyncSocketObserverContainer::ManagedObserver;
 
   class EvbChangeCallback {
    public:
@@ -360,7 +370,7 @@ class AsyncSocket : public AsyncSocketTransport {
    */
   struct ByteEventHelper {
     bool byteEventsEnabled{false};
-    size_t rawBytesWrittenWhenByteEventsEnabled{0};
+    long rawBytesWrittenWhenByteEventsEnabled{0};
     folly::Optional<AsyncSocketException> maybeEx;
 
     /**
@@ -733,6 +743,30 @@ class AsyncSocket : public AsyncSocketTransport {
   virtual std::shared_ptr<netops::Dispatcher> getOverrideNetOpsDispatcher()
       const {
     return netops_.getOverride();
+  }
+
+  /**
+   * Override folly::TcpInfoDispatcher to be used for getting TcpInfo.
+   *
+   * Pass empty shared_ptr to reset to default.
+   * Override can be used by unit tests to intercept and mock
+   * TcpInfo::initFromFd calls.
+   */
+  virtual void setOverrideTcpInfoDispatcher(
+      std::shared_ptr<folly::TcpInfoDispatcher> dispatcher) {
+    tcpInfoDispatcher_.setOverride(std::move(dispatcher));
+  }
+
+  /**
+   * Returns override folly::TcpInfoDispatcher being used for tcpinfo calls.
+   *
+   * Returns empty shared_ptr if no override set.
+   * Override can be used by unit tests to intercept and mock
+   * TcpInfo::initFromFd calls.
+   */
+  virtual std::shared_ptr<folly::TcpInfoDispatcher>
+  getOverrideTcpInfoDispatcher() const {
+    return tcpInfoDispatcher_.getOverride();
   }
 
   // Read and write methods
@@ -1120,6 +1154,12 @@ class AsyncSocket : public AsyncSocketTransport {
   }
 
   /**
+   * Get folly::TcpInfo from socket
+   */
+  folly::Expected<folly::TcpInfo, std::errc> getTcpInfo(
+      TcpInfo::LookupOptions options);
+
+  /**
    * writeReturn is the total number of bytes written, or WRITE_ERROR on error.
    * If no data has been written, 0 is returned.
    * exception is a more specific exception that cause a write error.
@@ -1242,62 +1282,97 @@ class AsyncSocket : public AsyncSocketTransport {
     uint32_t totalBytesWritten_{0}; ///< total bytes written
   };
 
-  class LifecycleObserver : virtual public AsyncTransport::LifecycleObserver {
+ public:
+  /**
+   * Observer of socket events.
+   */
+  class LegacyLifecycleObserver : public AsyncSocketObserverInterface {
    public:
-    using AsyncTransport::LifecycleObserver::LifecycleObserver;
+    /**
+     * Observer configuration.
+     *
+     * Specifies events observer wants to receive. Cannot be changed post
+     * initialization because the transport may turn on / off instrumentation
+     * when observers are added / removed, based on the observer configuration.
+     */
+    struct Config {
+      virtual ~Config() = default;
+
+      // receive ByteEvents
+      bool byteEvents{false};
+
+      // observer is notified during prewrite stage and can add WriteFlags
+      bool prewrite{false};
+
+      /**
+       * Enable all events in config.
+       */
+      virtual void enableAllEvents() {
+        byteEvents = true;
+        prewrite = true;
+      }
+
+      /**
+       * Returns a config where all events are enabled.
+       */
+      static Config getConfigAllEventsEnabled() {
+        Config config = {};
+        config.enableAllEvents();
+        return config;
+      }
+    };
 
     /**
-     * fdDetach() is invoked if the socket file descriptor is detached.
-     *
-     * detachNetworkSocket() will be triggered when a new AsyncSocket is being
-     * constructed from an old one. See the moved() event for details about
-     * this special case.
-     *
-     * @param socket      Socket for which detachNetworkSocket was invoked.
+     * Constructor for observer, uses default config (instrumentation disabled).
      */
-    virtual void fdDetach(AsyncSocket* /* socket */) noexcept = 0;
+    LegacyLifecycleObserver() : LegacyLifecycleObserver(Config()) {}
 
     /**
-     * fdAttach() is invoked when the socket file descriptor is attached.
+     * Constructor for observer.
      *
-     * @param socket      Socket for which handleNetworkSocketAttached was
-     * invoked.
+     * @param config      Config, defaults to auxilary instrumentaton disabled.
      */
-    virtual void fdAttach(AsyncSocket* /* socket */) noexcept {}
+    explicit LegacyLifecycleObserver(const Config& observerConfig)
+        : observerConfig_(observerConfig) {}
+
+    ~LegacyLifecycleObserver() override = default;
 
     /**
-     * move() will be invoked when a new AsyncSocket is being constructed via
-     * constructor AsyncSocket(AsyncSocket* oldAsyncSocket) from an AsyncSocket
-     * that has an observer attached.
+     * Returns observer's configuration.
      *
-     * This type of construction is common during TLS/SSL accept process.
-     * wangle::Acceptor may transform an AsyncSocket to an AsyncFizzServer, and
-     * then transform the AsyncFizzServer to an AsyncSSLSocket on fallback.
-     * AsyncFizzServer and AsyncSSLSocket derive from AsyncSocket and at each
-     * stage the aforementioned constructor will be called.
-     *
-     * Observers may be attached when the initial AsyncSocket is created, before
-     * TLS/SSL accept handling has completed. As a result, AsyncSocket must
-     * notify the observer during each transformation so that:
-     *   (1) The observer can track these transformations for debugging.
-     *   (2) The observer does not become separated from the underlying
-     *        operating system socket and corresponding file descriptor.
-     *
-     * When a new AsyncSocket is being constructed via the aforementioned
-     * constructor, the following observer events will be triggered:
-     *   (1) fdDetach
-     *   (2) move
-     *
-     * When move is triggered, the observer can CHOOSE to detach the old socket
-     * and attach to the new socket. This process will not happen automatically;
-     * the observer must explicitly perform these steps.
-     *
-     * @param oldSocket   Old socket that fd was detached from.
-     * @param newSocket   New socket being constructed with fd attached.
+     * @return            Observer configuration.
      */
-    virtual void move(
-        AsyncSocket* /* oldSocket */,
-        AsyncSocket* /* newSocket */) noexcept = 0;
+    const Config& getConfig() { return observerConfig_; }
+
+    /**
+     * observerAttach() will be invoked when an observer is added.
+     *
+     * @param socket   Socket where observer was installed.
+     */
+    virtual void observerAttach(AsyncSocket* /* socket */) noexcept = 0;
+
+    /**
+     * observerDetached() will be invoked if the observer is uninstalled prior
+     * to socket destruction.
+     *
+     * No further events will be invoked after observerDetach().
+     *
+     * @param socket   Socket where observer was uninstalled.
+     */
+    virtual void observerDetach(AsyncSocket* /* socket */) noexcept = 0;
+
+    /**
+     * destroy() will be invoked when the socket's destructor is invoked.
+     *
+     * No further events will be invoked after destroy().
+     *
+     * @param socket   Socket being destroyed.
+     */
+    virtual void destroy(AsyncSocket* /* socket */) noexcept = 0;
+
+   protected:
+    // observer configuration; cannot be changed post instantiation
+    const Config observerConfig_;
   };
 
   /**
@@ -1309,13 +1384,12 @@ class AsyncSocket : public AsyncSocketTransport {
    * This enables instrumentation to be added without changing / interfering
    * with how the application uses the socket.
    *
-   * Observer should implement AsyncTransport::LifecycleObserver to receive
-   * additional lifecycle events specific to AsyncSocket.
+   * Observer should implement AsyncSocket::LegacyLifecycleObserver to
+   * receive additional lifecycle events specific to AsyncSocket.
    *
-   * @param observer     Observer to add (implements LifecycleObserver).
+   * @param observer     Observer to add (implements LegacyLifecycleObserver).
    */
-  void addLifecycleObserver(
-      AsyncTransport::LifecycleObserver* observer) override;
+  virtual void addLifecycleObserver(LegacyLifecycleObserver* observer);
 
   /**
    * Removes a lifecycle observer.
@@ -1323,17 +1397,109 @@ class AsyncSocket : public AsyncSocketTransport {
    * @param observer     Observer to remove.
    * @return             Whether observer found and removed from list.
    */
-  bool removeLifecycleObserver(
-      AsyncTransport::LifecycleObserver* observer) override;
+  virtual bool removeLifecycleObserver(LegacyLifecycleObserver* observer);
 
   /**
    * Returns installed lifecycle observers.
    *
    * @return             Vector with installed observers.
    */
-  FOLLY_NODISCARD virtual std::vector<AsyncTransport::LifecycleObserver*>
-  getLifecycleObservers() const override;
+  FOLLY_NODISCARD virtual std::vector<LegacyLifecycleObserver*>
+  getLifecycleObservers() const;
 
+  /**
+   * Adds an observer.
+   *
+   * If the observer is already added, this is a no-op.
+   *
+   * @param observer     Observer to add.
+   * @return             Whether the observer was added (fails if no list).
+   */
+  virtual bool addObserver(Observer* observer) {
+    if (auto list = getAsyncSocketObserverContainer()) {
+      list->addObserver(observer);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Adds an observer.
+   *
+   * If the observer is already added, this is a no-op.
+   *
+   * @param observer     Observer to add.
+   * @return             Whether the observer was added (fails if no list).
+   */
+  bool addObserver(std::shared_ptr<Observer> observer) {
+    if (auto list = getAsyncSocketObserverContainer()) {
+      list->addObserver(std::move(observer));
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Removes an observer.
+   *
+   * @param observer     Observer to remove.
+   * @return             Whether the observer was found and removed.
+   */
+  virtual bool removeObserver(Observer* observer) {
+    if (auto list = getAsyncSocketObserverContainer()) {
+      return list->removeObserver(observer);
+    }
+    return false;
+  }
+
+  /**
+   * Removes an observer.
+   *
+   * @param observer     Observer to remove.
+   * @return             Whether the observer was found and removed.
+   */
+  virtual bool removeObserver(std::shared_ptr<Observer> observer) {
+    if (auto list = getAsyncSocketObserverContainer()) {
+      return list->removeObserver(std::move(observer));
+    }
+    return false;
+  }
+
+  /**
+   * Get number of observers.
+   *
+   * @return             Number of observers.
+   */
+  [[nodiscard]] virtual size_t numObservers() {
+    if (auto list = getAsyncSocketObserverContainer()) {
+      return list->numObservers();
+    }
+    return 0;
+  }
+
+  /**
+   * Returns list of attached observers that are of type T.
+   *
+   * @return             Attached observers of type T.
+   */
+  template <typename T = Observer>
+  std::vector<T*> findObservers() {
+    if (auto list = getAsyncSocketObserverContainer()) {
+      return list->findObservers<T>();
+    }
+    return {};
+  }
+
+ private:
+  /**
+   * Returns the AsyncSocketObserverContainer or nullptr if not available.
+   */
+  [[nodiscard]] AsyncSocketObserverContainer*
+  getAsyncSocketObserverContainer() {
+    return &observerContainer_;
+  }
+
+ public:
   /**
    * Split iovec array at given byte offsets; produce a new array with result.
    */
@@ -1742,8 +1908,8 @@ class AsyncSocket : public AsyncSocketTransport {
   // mobile, in which case we fallback to std::vector to prioritize code size.
   using LifecycleObserverVecImpl = conditional_t<
       !kIsMobile,
-      folly::small_vector<AsyncTransport::LifecycleObserver*, 2>,
-      std::vector<AsyncTransport::LifecycleObserver*>>;
+      folly::small_vector<LegacyLifecycleObserver*, 2>,
+      std::vector<LegacyLifecycleObserver*>>;
   LifecycleObserverVecImpl lifecycleObservers_;
 
   // Pre-received data, to be returned to read callback before any data from the
@@ -1787,6 +1953,17 @@ class AsyncSocket : public AsyncSocketTransport {
   bool closeOnFailedWrite_{true};
 
   netops::DispatcherContainer netops_;
+
+  folly::TcpInfoDispatcherContainer tcpInfoDispatcher_;
+
+  // Container of observers for the socket / transport.
+  //
+  // This member MUST be last in the list of members (other than
+  // constructorCallbackList_) to ensure it is destroyed first, before any other
+  // members are destroyed. This ensures that observers can inspect any socket /
+  // transport state available through public methods when destruction of the
+  // transport begins.
+  AsyncSocketObserverContainer observerContainer_;
 
   // allow other functions to register for callbacks when
   // new AsyncSocket()'s are created

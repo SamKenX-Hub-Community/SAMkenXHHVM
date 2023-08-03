@@ -212,6 +212,7 @@ folly::SemiFuture<DbQueryResult> Connection::querySemiFuture(
     std::unique_ptr<Connection> conn,
     Query&& query,
     QueryOptions&& options) {
+  conn->mergePersistentQueryAttributes(options.getAttributes());
   auto op = beginQuery(std::move(conn), std::move(query));
   op->setAttributes(std::move(options.getAttributes()));
   return toSemiFuture(std::move(op));
@@ -228,6 +229,7 @@ folly::SemiFuture<DbMultiQueryResult> Connection::multiQuerySemiFuture(
     std::unique_ptr<Connection> conn,
     Query&& args,
     QueryOptions&& options) {
+  conn->mergePersistentQueryAttributes(options.getAttributes());
   auto op = beginMultiQuery(std::move(conn), std::move(args));
   op->setAttributes(std::move(options.getAttributes()));
   return toSemiFuture(std::move(op));
@@ -237,6 +239,7 @@ folly::SemiFuture<DbMultiQueryResult> Connection::multiQuerySemiFuture(
     std::unique_ptr<Connection> conn,
     std::vector<Query>&& args,
     QueryOptions&& options) {
+  conn->mergePersistentQueryAttributes(options.getAttributes());
   auto op = beginMultiQuery(std::move(conn), std::move(args));
   op->setAttributes(std::move(options.getAttributes()));
   return toSemiFuture(std::move(op));
@@ -259,6 +262,7 @@ DbQueryResult Connection::query(Query&& query, QueryOptions&& options) {
   auto op = beginAnyQuery<QueryOperation>(
       Operation::ConnectionProxy(Operation::ReferencedConnection(this)),
       std::move(query));
+  mergePersistentQueryAttributes(options.getAttributes());
   op->setAttributes(std::move(options.getAttributes()));
   SCOPE_EXIT {
     operation_in_progress_ = false;
@@ -312,6 +316,7 @@ DbMultiQueryResult Connection::multiQuery(
   auto op = beginAnyQuery<MultiQueryOperation>(
       Operation::ConnectionProxy(Operation::ReferencedConnection(this)),
       std::move(queries));
+  mergePersistentQueryAttributes(options.getAttributes());
   op->setAttributes(std::move(options.getAttributes()));
   auto guard = folly::makeGuard([&] { operation_in_progress_ = false; });
 
@@ -370,7 +375,7 @@ DbMultiQueryResult Connection::multiQuery(Args&&... args) {
 MultiQueryStreamHandler Connection::streamMultiQuery(
     std::unique_ptr<Connection> conn,
     std::vector<Query>&& queries,
-    const std::unordered_map<std::string, std::string>& attributes) {
+    const AttributeMap& attributes) {
   // MultiQueryStreamHandler needs to be alive while the operation is running.
   // To accomplish that, ~MultiQueryStreamHandler waits until
   // `postOperationEnded` is called.
@@ -386,7 +391,7 @@ MultiQueryStreamHandler Connection::streamMultiQuery(
 MultiQueryStreamHandler Connection::streamMultiQuery(
     std::unique_ptr<Connection> conn,
     MultiQuery&& multi_query,
-    const std::unordered_map<std::string, std::string>& attributes) {
+    const AttributeMap& attributes) {
   auto proxy =
       Operation::ConnectionProxy(Operation::OwnedConnection(std::move(conn)));
   auto connP = proxy.get();
@@ -435,6 +440,12 @@ std::shared_ptr<QueryOperation> Connection::commitTransaction(
 std::shared_ptr<QueryOperation> Connection::rollbackTransaction(
     std::shared_ptr<QueryOperation>& op) {
   return beginQuery(op, "ROLLBACK");
+}
+
+void Connection::mergePersistentQueryAttributes(QueryAttributes& attrs) const {
+  for (const auto& [key, value] : getPersistentQueryAttributes()) {
+    attrs[key] = value;
+  }
 }
 
 } // namespace facebook::common::mysql_client

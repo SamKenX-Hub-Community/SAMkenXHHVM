@@ -20,6 +20,13 @@ val make_class_member_standalone_check_env :
 val method_def_standalone :
   class_member_standalone_check_env ->
   string ->
-  (Tast.method_ list * Typing_inference_env.t_global_with_pos) option
+  Tast.method_ Tast_with_dynamic.t option
 
-val class_def : Provider_context.t -> Nast.class_ -> Tast.class_ option
+(** This is a helper for [Typing_toplevel.class_def]. Call that instead.
+
+Must only be called if [Decl_provider.get_class] for this class's name will return
+this class's decl. (which it might not, say, if there were duplicate definitions
+and this class was the loser). This function will return None if the condition isn't
+met. *)
+val class_def :
+  Provider_context.t -> Nast.class_ -> Tast.class_ Tast_with_dynamic.t option

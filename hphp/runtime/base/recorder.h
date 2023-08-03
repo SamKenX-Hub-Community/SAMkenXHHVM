@@ -27,12 +27,16 @@
 #include "hphp/runtime/base/record-replay.h"
 #include "hphp/runtime/base/req-vector.h"
 #include "hphp/runtime/base/type-array.h"
+#include "hphp/runtime/base/type-object.h"
 #include "hphp/runtime/base/type-string.h"
 #include "hphp/runtime/base/type-variant.h"
 
 namespace HPHP {
 
+struct c_ExternalThreadEventWaitHandle;
+
 struct Recorder {
+  void onExternalThreadEventProcess(const c_ExternalThreadEventWaitHandle* id);
   void requestExit();
   void requestInit();
   static void setEntryPoint(const String& entryPoint);
@@ -46,6 +50,7 @@ struct Recorder {
 
  private:
   friend struct Replayer;
+  struct DebuggerHook;
   struct LoggerHook;
   struct StdoutHook;
   template<auto f> struct WrapNativeFunc;
@@ -67,8 +72,10 @@ struct Recorder {
   static StdoutHook* getStdoutHook();
   void onNativeCallArg(const String& arg);
   void onNativeCallEntry(std::uintptr_t id);
+  void onNativeCallExit();
   void onNativeCallReturn(const String& ret);
   void onNativeCallThrow(std::exception_ptr exc);
+  void onNativeCallWaitHandle(const Object& object);
   template<typename T> static String serialize(T value);
   Array toArray() const;
 
@@ -91,6 +98,12 @@ struct Recorder {
       onNativeCallThrow(exc);
       std::rethrow_exception(exc);
     } else {
+      if constexpr (std::is_same_v<R, Object>) {
+        if (ret && ret->isWaitHandle()) {
+          onNativeCallWaitHandle(ret);
+          return ret;
+        }
+      }
       onNativeCallReturn(serialize(ret));
       if constexpr (!std::is_void_v<R>) {
         return ret;
@@ -99,7 +112,10 @@ struct Recorder {
   }
 
   bool m_enabled{false};
+  req::vector<std::uintptr_t> m_externalThreadEventCreates;
+  req::vector<std::uintptr_t> m_externalThreadEventProcesses;
   req::vector<NativeCall> m_nativeCalls;
+  Array m_serverGlobal;
 };
 
 } // namespace HPHP

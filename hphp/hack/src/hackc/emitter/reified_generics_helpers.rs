@@ -59,13 +59,12 @@ pub(crate) fn has_reified_type_constraint<'a, 'arena>(
         mut h_iter: impl Iterator<Item = &'a aast::Hint>,
     ) -> bool {
         let erased_tparams: HashSet<String> = get_erased_tparams(env).collect();
-        h_iter.all(|h| {
-            if let Hint_::Happly(Id(_, ref id), ref apply_hints) = *h.1 {
-                if apply_hints.is_empty() {
-                    return id == "_" || erased_tparams.contains(id);
-                }
+        h_iter.all(|h| match &*h.1 {
+            Hint_::Hwildcard => true,
+            Hint_::Happly(Id(_, ref id), ref apply_hints) => {
+                apply_hints.is_empty() && erased_tparams.contains(id)
             }
-            false
+            _ => false,
         })
     }
     match &*h.1 {
@@ -87,6 +86,7 @@ pub(crate) fn has_reified_type_constraint<'a, 'arena>(
         }
         Hint_::Hprim(_)
         | Hint_::Hmixed
+        | Hint_::Hwildcard
         | Hint_::Hnonnull
         | Hint_::HvecOrDict(_, _)
         | Hint_::Hthis
@@ -131,7 +131,8 @@ fn remove_awaitable(aast::Hint(pos, hint): aast::Hint) -> aast::Hint {
         | Hint_::Hrefinement(_, _)
         | Hint_::Happly(_, _)
         | Hint_::HfunContext(_)
-        | Hint_::Hvar(_) => Hint(pos, hint),
+        | Hint_::Hvar(_)
+        | Hint_::Hwildcard => Hint(pos, hint),
         Hint_::Herr
         | Hint_::Hany
         | Hint_::Hmixed
@@ -187,18 +188,14 @@ pub(crate) fn remove_erased_generics<'a, 'arena>(
     use aast::NastShapeInfo;
     use aast::ShapeFieldInfo;
     fn rec<'a, 'arena>(env: &Env<'a, 'arena>, Hint(pos, h_): Hint) -> Hint {
-        fn modify<'a, 'arena>(env: &Env<'a, 'arena>, id: String) -> String {
-            if get_erased_tparams(env).any(|p| p == id) {
-                "_".into()
-            } else {
-                id
-            }
-        }
         let h_ = match *h_ {
-            Hint_::Happly(Id(pos, id), hs) => Hint_::Happly(
-                Id(pos, modify(env, id)),
-                hs.into_iter().map(|h| rec(env, h)).collect(),
-            ),
+            Hint_::Happly(Id(pos, id), hs) => {
+                if get_erased_tparams(env).any(|p| p == id) {
+                    Hint_::Hwildcard
+                } else {
+                    Hint_::Happly(Id(pos, id), hs.into_iter().map(|h| rec(env, h)).collect())
+                }
+            }
             Hint_::Hsoft(h) => Hint_::Hsoft(rec(env, h)),
             Hint_::Hlike(h) => Hint_::Hlike(rec(env, h)),
             Hint_::Hoption(h) => Hint_::Hoption(rec(env, h)),
@@ -223,7 +220,10 @@ pub(crate) fn remove_erased_generics<'a, 'arena>(
                     field_map,
                 })
             }
-            h_ @ Hint_::Hfun(_) | h_ @ Hint_::Haccess(_, _) | h_ @ Hint_::Hrefinement(_, _) => h_,
+            h_ @ Hint_::Hfun(_)
+            | h_ @ Hint_::Haccess(_, _)
+            | h_ @ Hint_::Hrefinement(_, _)
+            | h_ @ Hint_::Hwildcard => h_,
             Hint_::Herr
             | Hint_::Hany
             | Hint_::Hmixed

@@ -9,7 +9,6 @@
 #include <thrift/lib/cpp2/gen/module_types_h.h>
 
 
-#include "thrift/annotation/gen-cpp2/thrift_types.h"
 
 namespace apache {
 namespace thrift {
@@ -90,10 +89,6 @@ template <> struct TEnumTraits<::test::fixtures::basic::MyEnum> {
 
 }} // apache::thrift
 
-namespace test { namespace fixtures { namespace basic {
-
-using _MyEnum_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<MyEnum>;
-}}} // test::fixtures::basic
 
 // END declare_enums
 // BEGIN forward_declare
@@ -162,9 +157,8 @@ class MyStruct final  {
 
  public:
 
-  MyStruct() :
-      __fbthrift_field_myIntField() {
-  }
+  MyStruct();
+
 
   MyStruct(MyStruct&&) noexcept;
 
@@ -173,6 +167,9 @@ class MyStruct final  {
 
   MyStruct& operator=(MyStruct&&) noexcept;
   MyStruct& operator=(const MyStruct& src);
+
+  ~MyStruct();
+
  private:
   ::std::int64_t __fbthrift_field_myIntField;
  private:

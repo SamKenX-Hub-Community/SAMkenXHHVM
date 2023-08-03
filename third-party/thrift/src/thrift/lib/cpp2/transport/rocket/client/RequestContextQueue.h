@@ -39,11 +39,32 @@ class RequestContextQueue {
 
   void enqueueScheduledWrite(RequestContext& req) noexcept;
 
-  std::unique_ptr<folly::IOBuf> getNextScheduledWritesBatch() noexcept;
+  template <typename F>
+  void prepareNextScheduledWritesBatch(F&& foreachRequest) noexcept {
+    while (!writeScheduledQueue_.empty()) {
+      auto& req = writeScheduledQueue_.front();
+      writeScheduledQueue_.pop_front();
+
+      DCHECK(req.state_ == State::WRITE_SCHEDULED);
+      req.state_ = State::WRITE_SENDING;
+      if (req.isRequestResponse()) {
+        req.scheduleTimeoutForResponse();
+      }
+      writeSendingQueue_.push_back(req);
+
+      if (writeScheduledQueue_.empty()) {
+        req.lastInWriteBatch_ = true;
+      }
+
+      foreachRequest(req);
+    }
+  }
 
   template <typename F>
   void markNextSendingBatchAsSent(F&& foreachRequest) noexcept {
+    CHECK(!writeSendingQueue_.empty()) << "empty queue";
     for (bool lastInBatch = false; !lastInBatch;) {
+      CHECK(!writeSendingQueue_.empty()) << "missing end of batch marker";
       auto& req = writeSendingQueue_.front();
       writeSendingQueue_.pop_front();
       DCHECK(req.state() == State::WRITE_SENDING);

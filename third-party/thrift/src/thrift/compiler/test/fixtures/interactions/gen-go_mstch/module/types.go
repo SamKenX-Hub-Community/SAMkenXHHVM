@@ -71,11 +71,15 @@ if err != nil {
 }
 
 func (x *CustomException) String() string {
-    return fmt.Sprintf("%+v", x)
+    type CustomExceptionAlias CustomException
+    valueAlias := (*CustomExceptionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *CustomException) Error() string {
-    return x.String()
+    type CustomExceptionAlias CustomException
+    valueAlias := (*CustomExceptionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

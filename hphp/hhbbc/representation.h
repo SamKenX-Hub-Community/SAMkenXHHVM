@@ -181,7 +181,7 @@ struct Param {
    */
   LSString userTypeConstraint;
 
-  CompactVector<TypeConstraint> upperBounds;
+  TypeIntersectionConstraint upperBounds;
 
   /*
    * Each parameter of a func can have arbitrary user attributes.
@@ -418,7 +418,7 @@ struct Func : FuncBase {
   bool fromModuleLevelTrait : 1;
   bool requiresFromOriginalModule : 1;
 
-  CompactVector<TypeConstraint> returnUBs;
+  TypeIntersectionConstraint returnUBs;
 
   /*
    * Return type specified in the source code (ex. "function foo(): Bar").
@@ -489,7 +489,7 @@ struct Prop {
 
   LSString userType;
   TypeConstraint typeConstraint;
-  CompactVector<TypeConstraint> ubs;
+  TypeIntersectionConstraint ubs;
 
   /*
    * The default value of the property, for properties with scalar
@@ -668,12 +668,20 @@ struct Module {
   template <typename SerDe> void serde(SerDe&);
 };
 
+struct TypeAndValue {
+  AnnotType type;
+  LSString value;
+
+  template <typename SerDe> void serde(SerDe&);
+};
+
 struct TypeAlias {
+  using TypeAndValueUnion = TinyVector<TypeAndValue>;
+
   SrcInfo srcInfo;
   LSString name;
-  LSString value;
   Attr attrs;
-  AnnotType type;
+  TypeAndValueUnion typeAndValueUnion;
   bool nullable : 1;  // null is allowed; for ?Foo aliases
   bool caseType : 1;
   UserAttributeMap userAttrs;
@@ -701,7 +709,7 @@ struct FatalInfo {
  * Representation of a php file (normal compilation unit).
  */
 struct Unit {
-  LSString filename;
+  LSString filename{nullptr};
   std::unique_ptr<FatalInfo> fatalInfo{nullptr};
   CompactVector<SString> funcs;
   CompactVector<SString> classes;
@@ -762,6 +770,7 @@ MAKE_UNIQUE_PTR_BLOB_SERDE_HELPER(HHBBC::php::ClassBytecode)
 MAKE_UNIQUE_PTR_BLOB_SERDE_HELPER(HHBBC::php::Constant)
 MAKE_UNIQUE_PTR_BLOB_SERDE_HELPER(HHBBC::php::TypeAlias)
 MAKE_UNIQUE_PTR_BLOB_SERDE_HELPER(HHBBC::php::Module)
+MAKE_UNIQUE_PTR_BLOB_SERDE_HELPER(HHBBC::php::TypeAndValue)
 MAKE_UNIQUE_PTR_BLOB_SERDE_HELPER(HHBBC::php::FatalInfo)
 
 //////////////////////////////////////////////////////////////////////

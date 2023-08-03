@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::facebook::ns::qwerty::AnEnumA>::size;
+#endif
 folly::Range<::facebook::ns::qwerty::AnEnumA const*> const TEnumTraits<::facebook::ns::qwerty::AnEnumA>::values = folly::range(TEnumDataStorage<::facebook::ns::qwerty::AnEnumA>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::facebook::ns::qwerty::AnEnumA>::names = folly::range(TEnumDataStorage<::facebook::ns::qwerty::AnEnumA>::names);
 
@@ -28,18 +30,12 @@ bool TEnumTraits<::facebook::ns::qwerty::AnEnumA>::findValue(folly::StringPiece 
 
 }} // apache::thrift
 
-namespace facebook { namespace ns { namespace qwerty {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _AnEnumA_EnumMapFactory::ValuesToNamesMapType _AnEnumA_VALUES_TO_NAMES = _AnEnumA_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // facebook::ns::qwerty
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::facebook::ns::qwerty::AnEnumB>::size;
+#endif
 folly::Range<::facebook::ns::qwerty::AnEnumB const*> const TEnumTraits<::facebook::ns::qwerty::AnEnumB>::values = folly::range(TEnumDataStorage<::facebook::ns::qwerty::AnEnumB>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::facebook::ns::qwerty::AnEnumB>::names = folly::range(TEnumDataStorage<::facebook::ns::qwerty::AnEnumB>::names);
 
@@ -53,18 +49,12 @@ bool TEnumTraits<::facebook::ns::qwerty::AnEnumB>::findValue(folly::StringPiece 
 
 }} // apache::thrift
 
-namespace facebook { namespace ns { namespace qwerty {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _AnEnumB_EnumMapFactory::ValuesToNamesMapType _AnEnumB_VALUES_TO_NAMES = _AnEnumB_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // facebook::ns::qwerty
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::facebook::ns::qwerty::AnEnumC>::size;
+#endif
 folly::Range<::facebook::ns::qwerty::AnEnumC const*> const TEnumTraits<::facebook::ns::qwerty::AnEnumC>::values = folly::range(TEnumDataStorage<::facebook::ns::qwerty::AnEnumC>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::facebook::ns::qwerty::AnEnumC>::names = folly::range(TEnumDataStorage<::facebook::ns::qwerty::AnEnumC>::names);
 
@@ -78,18 +68,12 @@ bool TEnumTraits<::facebook::ns::qwerty::AnEnumC>::findValue(folly::StringPiece 
 
 }} // apache::thrift
 
-namespace facebook { namespace ns { namespace qwerty {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _AnEnumC_EnumMapFactory::ValuesToNamesMapType _AnEnumC_VALUES_TO_NAMES = _AnEnumC_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // facebook::ns::qwerty
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::facebook::ns::qwerty::AnEnumD>::size;
+#endif
 folly::Range<::facebook::ns::qwerty::AnEnumD const*> const TEnumTraits<::facebook::ns::qwerty::AnEnumD>::values = folly::range(TEnumDataStorage<::facebook::ns::qwerty::AnEnumD>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::facebook::ns::qwerty::AnEnumD>::names = folly::range(TEnumDataStorage<::facebook::ns::qwerty::AnEnumD>::names);
 
@@ -103,18 +87,12 @@ bool TEnumTraits<::facebook::ns::qwerty::AnEnumD>::findValue(folly::StringPiece 
 
 }} // apache::thrift
 
-namespace facebook { namespace ns { namespace qwerty {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _AnEnumD_EnumMapFactory::ValuesToNamesMapType _AnEnumD_VALUES_TO_NAMES = _AnEnumD_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // facebook::ns::qwerty
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::facebook::ns::qwerty::AnEnumE>::size;
+#endif
 folly::Range<::facebook::ns::qwerty::AnEnumE const*> const TEnumTraits<::facebook::ns::qwerty::AnEnumE>::values = folly::range(TEnumDataStorage<::facebook::ns::qwerty::AnEnumE>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::facebook::ns::qwerty::AnEnumE>::names = folly::range(TEnumDataStorage<::facebook::ns::qwerty::AnEnumE>::names);
 
@@ -128,14 +106,6 @@ bool TEnumTraits<::facebook::ns::qwerty::AnEnumE>::findValue(folly::StringPiece 
 
 }} // apache::thrift
 
-namespace facebook { namespace ns { namespace qwerty {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _AnEnumE_EnumMapFactory::ValuesToNamesMapType _AnEnumE_VALUES_TO_NAMES = _AnEnumE_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // facebook::ns::qwerty
 
 namespace apache {
 namespace thrift {

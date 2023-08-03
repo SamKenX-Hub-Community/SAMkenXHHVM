@@ -80,7 +80,7 @@ let type_does_not_require_init env ty_opt =
     let ((env, ty_err_opt), ty) =
       Typing_phase.localize_no_subst env ~ignore_errors:true ty
     in
-    Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+    Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
     let null = Typing_make_type.null Typing_reason.Rnone in
     Typing_subtype.is_sub_type env null ty
     ||
@@ -262,7 +262,7 @@ let class_prop_pos class_name prop_name ctx : Pos_or_decl.t =
       let get_class_by_name ctx x =
         let open Option.Monad_infix in
         Naming_provider.get_type_path ctx x >>= fun fn ->
-        Ast_provider.find_class_in_file ctx fn x
+        Ast_provider.find_class_in_file ctx fn x ~full:false
       in
       (match get_class_by_name ctx member_origin with
       | None -> Pos_or_decl.none
@@ -275,7 +275,7 @@ let class_prop_pos class_name prop_name ctx : Pos_or_decl.t =
           (* We found the class prop's origin via Typing_defs.ce_origin, so we
              *should* find the prop in the class. This is an invariant violation.
           *)
-          HackEventLogger.invariant_violation_bug
+          HackEventLogger.decl_consistency_bug
             "nastInitCheck can't find expected class prop"
             ~data:
               (Printf.sprintf
@@ -283,18 +283,12 @@ let class_prop_pos class_name prop_name ctx : Pos_or_decl.t =
                  class_name
                  member_origin
                  prop_name);
-          Typing_error_utils.add_typing_error
-            Typing_error.(
-              primary
-              @@ Primary.Internal_error
-                   {
-                     pos = Pos.none;
-                     msg =
-                       "Invariant violation:  please report this bug via the VSCode bug button. Expected to find prop_name "
-                       ^ prop_name
-                       ^ " in class "
-                       ^ member_origin;
-                   });
+          Errors.internal_error
+            Pos.none
+            ("Invariant violation:  please report this bug via the VSCode bug button. Expected to find prop_name "
+            ^ prop_name
+            ^ " in class "
+            ^ member_origin);
           Pos_or_decl.none
         | Some cv -> Pos_or_decl.of_raw_pos @@ fst cv.Aast.cv_id)))
 
@@ -359,9 +353,12 @@ and stmt env acc st =
   let default_case = default_case env in
   match snd st with
   | Expr (* only in top level!*)
-      (_, _, Call ((_, _, Class_const ((_, _, CIparent), (_, m))), _, el, _uel))
+      ( _,
+        _,
+        Call { func = (_, _, Class_const ((_, _, CIparent), (_, m))); args; _ }
+      )
     when String.equal m SN.Members.__construct ->
-    let acc = argument_list env acc el in
+    let acc = argument_list env acc args in
     assign env acc DICheck.parent_init_prop
   | Expr e ->
     if Typing_func_terminality.expression_exits env.tenv e then
@@ -423,9 +420,12 @@ and stmt env acc st =
     S.union acc c
   | Fallthrough -> S.empty
   | Noop -> acc
+  | Declare_local (_, _, Some e) -> expr acc e
+  | Declare_local (_, _, None) -> acc
   | Block b -> block acc b
   | Markup _ -> acc
   | AssertEnv _ -> acc
+  | Match _ -> failwith "TODO(jakebailey): match statements"
 
 and toplevel env acc l =
   try List.fold_left ~f:(stmt env) ~init:acc l with
@@ -481,8 +481,9 @@ and expr_ env acc p e =
   | Obj_get ((_, _, This), (_, _, Id ((_, vx) as v)), _, Is_prop) ->
     if SMap.mem vx env.props && not (S.mem vx acc) then (
       let (pos, member_name) = v in
-      Typing_error_utils.add_typing_error
-        Typing_error.(primary @@ Primary.Read_before_write { pos; member_name });
+      Errors.add_error
+        Nast_check_error.(
+          to_user_error @@ Read_before_write { pos; member_name });
       acc
     ) else if
         SSet.mem vx env.parent_cstr_props
@@ -494,8 +495,9 @@ and expr_ env acc p e =
          constructor, but we haven't called the parent constructor
          yet. *)
       let (pos, member_name) = v in
-      Typing_error_utils.add_typing_error
-        Typing_error.(primary @@ Primary.Read_before_write { pos; member_name });
+      Errors.add_error
+        Nast_check_error.(
+          to_user_error @@ Read_before_write { pos; member_name });
       acc
     ) else
       acc
@@ -512,10 +514,12 @@ and expr_ env acc p e =
   | Class_get _ ->
     acc
   | Call
-      ( (_, p, Obj_get ((_, _, This), (_, _, Id (_, f)), _, Is_method)),
-        _,
-        el,
-        unpacked_element ) ->
+      {
+        func = (_, p, Obj_get ((_, _, This), (_, _, Id (_, f)), _, Is_method));
+        args;
+        unpacked_arg;
+        _;
+      } ->
     let method_ = Env.get_method env f in
     (match method_ with
     | None ->
@@ -528,24 +532,22 @@ and expr_ env acc p e =
         (* First time we encounter this private method. Let's check its
          * arguments first, and then recurse into the method body.
          *)
-        let acc = argument_list env acc el in
-        let acc =
-          Option.value_map ~f:(expr acc) ~default:acc unpacked_element
-        in
+        let acc = argument_list env acc args in
+        let acc = Option.value_map ~f:(expr acc) ~default:acc unpacked_arg in
         method_ := Done;
         toplevel env acc b.fb_ast))
-  | Call (e, _, el, unpacked_element) ->
-    let el =
-      match e with
+  | Call { func; args; unpacked_arg; _ } ->
+    let args =
+      match func with
       | (_, _, Id (_, fun_name)) when is_whitelisted fun_name ->
-        List.filter el ~f:(function
+        List.filter args ~f:(function
             | (_, (_, _, This)) -> false
             | _ -> true)
-      | _ -> el
+      | _ -> args
     in
-    let acc = argument_list env acc el in
-    let acc = Option.value_map ~f:(expr acc) ~default:acc unpacked_element in
-    expr acc e
+    let acc = argument_list env acc args in
+    let acc = Option.value_map ~f:(expr acc) ~default:acc unpacked_arg in
+    expr acc func
   | True
   | False
   | Int _
@@ -655,9 +657,9 @@ let class_ tenv c =
     List.iter c.c_vars ~f:(fun cv ->
         match cv.cv_expr with
         | Some _ when is_lateinit cv ->
-          Typing_error_utils.add_typing_error
-            Typing_error.(
-              primary @@ Primary.Lateinit_with_default (fst cv.cv_id))
+          Errors.add_error
+            Nast_check_error.(
+              to_user_error @@ Lateinit_with_default (fst cv.cv_id))
         | None when cv.cv_is_static ->
           let ty_opt =
             Option.map
@@ -671,10 +673,8 @@ let class_ tenv c =
           then
             ()
           else
-            Typing_error_utils.add_typing_error
-              Typing_error.(
-                wellformedness
-                @@ Primary.Wellformedness.Missing_assign (fst cv.cv_id))
+            Errors.add_error
+              Nast_check_error.(to_user_error @@ Missing_assign (fst cv.cv_id))
         | _ -> ());
   let (c_constructor, _, _) = split_methods c.c_methods in
   match c_constructor with

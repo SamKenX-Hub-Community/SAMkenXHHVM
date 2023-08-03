@@ -7,39 +7,29 @@ package module // [[[ program thrift source path ]]]
 import (
     "context"
     "fmt"
+    "sync"
 
-    cpp "thrift/annotation/cpp"
-    python "thrift/annotation/python"
-    thrift0 "thrift/annotation/thrift"
-    scope "thrift/annotation/scope"
-    hack "thrift/annotation/hack"
-    rust "thrift/annotation/rust"
 
     "thrift/lib/go/thrift"
 )
 
-var _ = cpp.GoUnusedProtection__
-var _ = python.GoUnusedProtection__
-var _ = thrift0.GoUnusedProtection__
-var _ = scope.GoUnusedProtection__
-var _ = hack.GoUnusedProtection__
-var _ = rust.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = context.Background
 var _ = fmt.Printf
 var _ = thrift.ZERO
+var _ = sync.Mutex{}
 
 
 
 type Service interface {
-    Func(ctx context.Context, arg1 StringWithAdapter, arg2 string, arg3 *Foo) (MyI32, error)
+    Func(ctx context.Context, arg1 StringWithAdapter_7208, arg2 string, arg3 *Foo) (MyI32_4873, error)
 }
 
 // Deprecated: Use Service instead.
 type ServiceClientInterface interface {
     thrift.ClientInterface
-    Func(arg1 StringWithAdapter, arg2 string, arg3 *Foo) (MyI32, error)
+    Func(arg1 StringWithAdapter_7208, arg2 string, arg3 *Foo) (MyI32_4873, error)
 }
 
 type ServiceChannelClient struct {
@@ -69,6 +59,7 @@ func (c *ServiceChannelClient) Open() error {
 // Deprecated: Use ServiceChannelClient instead.
 type ServiceClient struct {
     chClient *ServiceChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ ServiceClientInterface = &ServiceClient{}
@@ -125,7 +116,7 @@ func NewServiceThreadsafeClientFactory(t thrift.Transport, pf thrift.ProtocolFac
 }
 
 
-func (c *ServiceChannelClient) Func(ctx context.Context, arg1 StringWithAdapter, arg2 string, arg3 *Foo) (MyI32, error) {
+func (c *ServiceChannelClient) Func(ctx context.Context, arg1 StringWithAdapter_7208, arg2 string, arg3 *Foo) (MyI32_4873, error) {
     in := &reqServiceFunc{
         Arg1: arg1,
         Arg2: arg2,
@@ -139,13 +130,13 @@ func (c *ServiceChannelClient) Func(ctx context.Context, arg1 StringWithAdapter,
     return out.Value, nil
 }
 
-func (c *ServiceClient) Func(arg1 StringWithAdapter, arg2 string, arg3 *Foo) (MyI32, error) {
+func (c *ServiceClient) Func(arg1 StringWithAdapter_7208, arg2 string, arg3 *Foo) (MyI32_4873, error) {
     return c.chClient.Func(nil, arg1, arg2, arg3)
 }
 
 
 type reqServiceFunc struct {
-    Arg1 StringWithAdapter `thrift:"arg1,1" json:"arg1" db:"arg1"`
+    Arg1 StringWithAdapter_7208 `thrift:"arg1,1" json:"arg1" db:"arg1"`
     Arg2 string `thrift:"arg2,2" json:"arg2" db:"arg2"`
     Arg3 *Foo `thrift:"arg3,3" json:"arg3" db:"arg3"`
 }
@@ -156,16 +147,16 @@ type ServiceFuncArgs = reqServiceFunc
 
 func newReqServiceFunc() *reqServiceFunc {
     return (&reqServiceFunc{}).
-        SetArg1NonCompat(NewStringWithAdapter()).
+        SetArg1NonCompat(NewStringWithAdapter_7208()).
         SetArg2NonCompat("").
         SetArg3NonCompat(*NewFoo())
 }
 
-func (x *reqServiceFunc) GetArg1NonCompat() StringWithAdapter {
+func (x *reqServiceFunc) GetArg1NonCompat() StringWithAdapter_7208 {
     return x.Arg1
 }
 
-func (x *reqServiceFunc) GetArg1() StringWithAdapter {
+func (x *reqServiceFunc) GetArg1() StringWithAdapter_7208 {
     return x.Arg1
 }
 
@@ -183,18 +174,18 @@ func (x *reqServiceFunc) GetArg3NonCompat() *Foo {
 
 func (x *reqServiceFunc) GetArg3() *Foo {
     if !x.IsSetArg3() {
-        return NewFoo()
+        return nil
     }
 
     return x.Arg3
 }
 
-func (x *reqServiceFunc) SetArg1NonCompat(value StringWithAdapter) *reqServiceFunc {
+func (x *reqServiceFunc) SetArg1NonCompat(value StringWithAdapter_7208) *reqServiceFunc {
     x.Arg1 = value
     return x
 }
 
-func (x *reqServiceFunc) SetArg1(value StringWithAdapter) *reqServiceFunc {
+func (x *reqServiceFunc) SetArg1(value StringWithAdapter_7208) *reqServiceFunc {
     x.Arg1 = value
     return x
 }
@@ -229,7 +220,7 @@ func (x *reqServiceFunc) writeField1(p thrift.Protocol) error {  // Arg1
     }
 
     item := x.GetArg1NonCompat()
-    err := WriteStringWithAdapter(item, p)
+    err := WriteStringWithAdapter_7208(item, p)
 if err != nil {
     return err
 }
@@ -277,7 +268,7 @@ func (x *reqServiceFunc) writeField3(p thrift.Protocol) error {  // Arg3
 }
 
 func (x *reqServiceFunc) readField1(p thrift.Protocol) error {  // Arg1
-    result, err := ReadStringWithAdapter(p)
+    result, err := ReadStringWithAdapter_7208(p)
 if err != nil {
     return err
 }
@@ -319,7 +310,9 @@ func (x *reqServiceFunc) DefaultGetArg3() *Foo {
 }
 
 func (x *reqServiceFunc) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqServiceFuncAlias reqServiceFunc
+    valueAlias := (*reqServiceFuncAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -334,7 +327,7 @@ func newReqServiceFuncBuilder() *reqServiceFuncBuilder {
     }
 }
 
-func (x *reqServiceFuncBuilder) Arg1(value StringWithAdapter) *reqServiceFuncBuilder {
+func (x *reqServiceFuncBuilder) Arg1(value StringWithAdapter_7208) *reqServiceFuncBuilder {
     x.obj.Arg1 = value
     return x
 }
@@ -428,7 +421,7 @@ func (x *reqServiceFunc) Read(p thrift.Protocol) error {
 }
 
 type respServiceFunc struct {
-    Value MyI32 `thrift:"value,0" json:"value" db:"value"`
+    Value MyI32_4873 `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &respServiceFunc{}
@@ -436,23 +429,23 @@ var _ thrift.WritableResult = &respServiceFunc{}
 
 func newRespServiceFunc() *respServiceFunc {
     return (&respServiceFunc{}).
-        SetValueNonCompat(NewMyI32())
+        SetValueNonCompat(NewMyI32_4873())
 }
 
-func (x *respServiceFunc) GetValueNonCompat() MyI32 {
+func (x *respServiceFunc) GetValueNonCompat() MyI32_4873 {
     return x.Value
 }
 
-func (x *respServiceFunc) GetValue() MyI32 {
+func (x *respServiceFunc) GetValue() MyI32_4873 {
     return x.Value
 }
 
-func (x *respServiceFunc) SetValueNonCompat(value MyI32) *respServiceFunc {
+func (x *respServiceFunc) SetValueNonCompat(value MyI32_4873) *respServiceFunc {
     x.Value = value
     return x
 }
 
-func (x *respServiceFunc) SetValue(value MyI32) *respServiceFunc {
+func (x *respServiceFunc) SetValue(value MyI32_4873) *respServiceFunc {
     x.Value = value
     return x
 }
@@ -463,7 +456,7 @@ func (x *respServiceFunc) writeField0(p thrift.Protocol) error {  // Value
     }
 
     item := x.GetValueNonCompat()
-    err := WriteMyI32(item, p)
+    err := WriteMyI32_4873(item, p)
 if err != nil {
     return err
 }
@@ -475,7 +468,7 @@ if err != nil {
 }
 
 func (x *respServiceFunc) readField0(p thrift.Protocol) error {  // Value
-    result, err := ReadMyI32(p)
+    result, err := ReadMyI32_4873(p)
 if err != nil {
     return err
 }
@@ -485,7 +478,9 @@ if err != nil {
 }
 
 func (x *respServiceFunc) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respServiceFuncAlias respServiceFunc
+    valueAlias := (*respServiceFuncAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -500,7 +495,7 @@ func newRespServiceFuncBuilder() *respServiceFuncBuilder {
     }
 }
 
-func (x *respServiceFuncBuilder) Value(value MyI32) *respServiceFuncBuilder {
+func (x *respServiceFuncBuilder) Value(value MyI32_4873) *respServiceFuncBuilder {
     x.obj.Value = value
     return x
 }
@@ -640,7 +635,7 @@ func (p *procFuncServiceFunc) Write(seqId int32, result thrift.WritableStruct, o
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Func", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("func", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -710,6 +705,7 @@ func (c *AdapterServiceChannelClient) Open() error {
 // Deprecated: Use AdapterServiceChannelClient instead.
 type AdapterServiceClient struct {
     chClient *AdapterServiceChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ AdapterServiceClientInterface = &AdapterServiceClient{}
@@ -811,7 +807,9 @@ func newReqAdapterServiceCount() *reqAdapterServiceCount {
 }
 
 func (x *reqAdapterServiceCount) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqAdapterServiceCountAlias reqAdapterServiceCount
+    valueAlias := (*reqAdapterServiceCountAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -898,7 +896,7 @@ func (x *respAdapterServiceCount) GetValueNonCompat() *CountingStruct {
 
 func (x *respAdapterServiceCount) GetValue() *CountingStruct {
     if !x.IsSetValue() {
-        return NewCountingStruct()
+        return nil
     }
 
     return x.Value
@@ -961,7 +959,9 @@ func (x *respAdapterServiceCount) DefaultGetValue() *CountingStruct {
 }
 
 func (x *respAdapterServiceCount) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respAdapterServiceCountAlias respAdapterServiceCount
+    valueAlias := (*respAdapterServiceCountAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1066,7 +1066,7 @@ func (x *reqAdapterServiceAdaptedTypes) GetArgNonCompat() *HeapAllocated {
 
 func (x *reqAdapterServiceAdaptedTypes) GetArg() *HeapAllocated {
     if !x.IsSetArg() {
-        return NewHeapAllocated()
+        return nil
     }
 
     return x.Arg
@@ -1129,7 +1129,9 @@ func (x *reqAdapterServiceAdaptedTypes) DefaultGetArg() *HeapAllocated {
 }
 
 func (x *reqAdapterServiceAdaptedTypes) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqAdapterServiceAdaptedTypesAlias reqAdapterServiceAdaptedTypes
+    valueAlias := (*reqAdapterServiceAdaptedTypesAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1229,7 +1231,7 @@ func (x *respAdapterServiceAdaptedTypes) GetValueNonCompat() *HeapAllocated {
 
 func (x *respAdapterServiceAdaptedTypes) GetValue() *HeapAllocated {
     if !x.IsSetValue() {
-        return NewHeapAllocated()
+        return nil
     }
 
     return x.Value
@@ -1292,7 +1294,9 @@ func (x *respAdapterServiceAdaptedTypes) DefaultGetValue() *HeapAllocated {
 }
 
 func (x *respAdapterServiceAdaptedTypes) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respAdapterServiceAdaptedTypesAlias respAdapterServiceAdaptedTypes
+    valueAlias := (*respAdapterServiceAdaptedTypesAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1449,7 +1453,7 @@ func (p *procFuncAdapterServiceCount) Write(seqId int32, result thrift.WritableS
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Count", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("count", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -1500,7 +1504,7 @@ func (p *procFuncAdapterServiceAdaptedTypes) Write(seqId int32, result thrift.Wr
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("AdaptedTypes", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("adaptedTypes", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {

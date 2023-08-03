@@ -1041,6 +1041,17 @@ static Buf getCertificateRequest(
   return encodedCertificateRequest;
 }
 
+static std::string getSNI(const ClientHello& chlo) {
+  auto serverNameList = getExtension<ServerNameList>(chlo.extensions);
+  std::string sni;
+  if (serverNameList && !serverNameList->server_name_list.empty()) {
+    sni = serverNameList->server_name_list.front()
+              .hostname->moveToFbString()
+              .toStdString();
+  }
+  return sni;
+}
+
 static std::tuple<ECHStatus, uint8_t> processECHHRR(
     const Optional<CookieState>& cookieState,
     const State& state,
@@ -1104,40 +1115,69 @@ static std::tuple<ECHStatus, uint8_t> processECHHRR(
   return {echStatus, 0};
 }
 
-// Process ECH, replacing chlo if successful
-static std::pair<ECHStatus, ECHState> processECH(
+/*
+ * `processECH` looks for any encrypted_client_hello extension sent
+ * by the client and attempts to decrypt it.
+ *
+ * @param cookieState  If set, the decoded cookie from the client containing
+ previous state (for HRR).
+ * @param state Fizz server state, containing an optionally configured ECH
+ decrypter
+ * @param chlo  ClientHello received by the client (the "outer" client hello).
+ If ECH is successfully decrypted, after this function returns `chlo` will now
+ contain the decrypted "inner" client hello.
+ *
+ * @return A pair with the following semantics:
+ *             1. The `ECHStatus`, indicating whether ECH was successfully
+ decoded.
+ *             2.
+ *               a. If unset, this implies that no encrypted_client_hello
+ extension was sent by the client
+ *               b. If set, this implies that a client has sent a
+ encrypted_client_hello extension. The `ECHState` contains fields that are
+ logged from the extension that the client sent and it also contains any
+ auxiliary ECH-relevant informatio.
+ */
+static std::pair<ECHStatus, folly::Optional<ECHState>> processECH(
     const Optional<CookieState>& cookieState,
     const State& state,
     ClientHello& chlo) {
   // First, fetch current state (if any).
-  ECHState echState;
+  folly::Optional<ECHState> echState;
   ECHStatus echStatus = state.echStatus();
   auto decrypter = state.context()->getECHDecrypter();
 
   if (state.handshakeContext() || cookieState) {
+    echState = ECHState{};
     // Process ECH for HRR (if any)
-    std::tie(echStatus, echState.configId) =
+    std::tie(echStatus, echState->configId) =
         processECHHRR(cookieState, state, chlo);
-    // Populate ECH state for saving
     if (state.echState().has_value()) {
-      echState.hpkeContext = std::move(state.echState()->hpkeContext);
-      echState.cipherSuite = state.echState()->cipherSuite;
+      echState->hpkeContext = std::move(state.echState()->hpkeContext);
+      echState->cipherSuite = state.echState()->cipherSuite;
     }
   } else {
     bool requestedECH =
         findExtension(chlo.extensions, ExtensionType::encrypted_client_hello) !=
         chlo.extensions.end();
-    if (requestedECH && decrypter) {
-      auto gotChlo = decrypter->decryptClientHello(chlo);
-      if (gotChlo.has_value()) {
-        auto echExt = getExtension<ech::OuterECHClientHello>(chlo.extensions);
-        echStatus = ECHStatus::Accepted;
-        echState.hpkeContext = std::move(gotChlo->context);
-        echState.configId = gotChlo->configId;
-        echState.cipherSuite = echExt->cipher_suite;
-        chlo = std::move(gotChlo->chlo);
-      } else if (requestedECH) {
-        echStatus = ECHStatus::Rejected;
+
+    // ECHState is populated even if we do not have a valid decrypter
+    // to aid in logging (and detecting misconfigurations)
+    if (requestedECH) {
+      auto echExt = getExtension<ech::OuterECHClientHello>(chlo.extensions);
+      echState = ECHState{
+          echExt->cipher_suite, echExt->config_id, nullptr, folly::none};
+      if (decrypter) {
+        auto gotChlo = decrypter->decryptClientHello(chlo);
+        if (gotChlo.has_value()) {
+          auto outerSni = getSNI(chlo);
+          echStatus = ECHStatus::Accepted;
+          echState->hpkeContext = std::move(gotChlo->context);
+          echState->outerSni = outerSni;
+          chlo = std::move(gotChlo->chlo);
+        } else {
+          echStatus = ECHStatus::Rejected;
+        }
       }
     }
   }
@@ -1165,7 +1205,8 @@ EventHandler<ServerTypes, StateEnum::ExpectingClientHello, Event::ClientHello>::
   }
 
   ECHStatus echStatus;
-  ECHState echState;
+  folly::Optional<ECHState> echState;
+
   std::tie(echStatus, echState) = processECH(cookieState, state, chlo);
 
   addHandshakeLogging(state, chlo);
@@ -1200,6 +1241,14 @@ EventHandler<ServerTypes, StateEnum::ExpectingClientHello, Event::ClientHello>::
           PlaintextWriteRecordLayer()
               .writeInitialClientHello(std::move(*chlo.originalEncoding))
               .data;
+      // Save SNI extension value to help decide server SSL context.
+      auto serverNameList = getExtension<ServerNameList>(chlo.extensions);
+      if (serverNameList && !serverNameList->server_name_list.empty()) {
+        fallback.sni = serverNameList->server_name_list.front()
+                           .hostname->moveToFbString()
+                           .toStdString();
+      }
+
       return actions(
           MutateState(&Transition<StateEnum::Error>), std::move(fallback));
     } else {
@@ -1439,9 +1488,7 @@ EventHandler<ServerTypes, StateEnum::ExpectingClientHello, Event::ClientHello>::
                   newState.replayCacheResult() = replayCacheResult;
                   newState.readRecordLayer() = std::move(newReadRecordLayer);
                   newState.echStatus() = echStatus;
-                  if (echStatus == ECHStatus::Accepted) {
-                    newState.echState() = std::move(echState);
-                  }
+                  newState.echState() = std::move(echState);
                 }),
                 std::move(serverFlight),
                 MutateState(&Transition<StateEnum::ExpectingClientHello>)));
@@ -1472,6 +1519,7 @@ EventHandler<ServerTypes, StateEnum::ExpectingClientHello, Event::ClientHello>::
              cipher,
              group,
              echStatus,
+             echState = std::move(echState),
              earlyReadRecordLayer = std::move(earlyReadRecordLayer),
              earlyReadSecretAvailable = std::move(earlyReadSecretAvailable),
              earlyExporterMaster = std::move(earlyExporterMaster),
@@ -1664,6 +1712,7 @@ EventHandler<ServerTypes, StateEnum::ExpectingClientHello, Event::ClientHello>::
                    clientRandom = std::move(clientRandom),
                    group,
                    echStatus,
+                   echState = std::move(echState),
                    encodedServerHello = std::move(encodedServerHello),
                    handshakeWriteRecordLayer =
                        std::move(handshakeWriteRecordLayer),
@@ -1824,6 +1873,7 @@ EventHandler<ServerTypes, StateEnum::ExpectingClientHello, Event::ClientHello>::
                          appToken = std::move(appToken),
                          serverCertCompAlgo,
                          echStatus,
+                         echState = std::move(echState),
                          clientRandom = std::move(clientRandom),
                          handshakeTime = std::move(handshakeTime)](
                             State& newState) mutable {
@@ -1854,7 +1904,7 @@ EventHandler<ServerTypes, StateEnum::ExpectingClientHello, Event::ClientHello>::
                           newState.handshakeTime() = std::move(handshakeTime);
                           newState.clientRandom() = std::move(clientRandom);
                           newState.echStatus() = echStatus;
-                          newState.echState() = folly::none;
+                          newState.echState() = std::move(echState);
                         });
 
                     if (earlyDataType == EarlyDataType::Accepted) {

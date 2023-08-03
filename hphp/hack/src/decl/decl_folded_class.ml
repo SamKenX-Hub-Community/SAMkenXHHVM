@@ -244,7 +244,15 @@ let synthesize_typeconst_defaults
 let get_sealed_whitelist (c : Shallow_decl_defs.shallow_class) : SSet.t option =
   match Attributes.find SN.UserAttributes.uaSealed c.sc_user_attributes with
   | None -> None
-  | Some { ua_classname_params; _ } -> Some (SSet.of_list ua_classname_params)
+  | Some { ua_params; _ } ->
+    let cn_params =
+      List.filter_map
+        ~f:(function
+          | Classname cn -> Some cn
+          | _ -> None)
+        ua_params
+    in
+    Some (SSet.of_list cn_params)
 
 let get_implements (env : Decl_env.env) parent_cache (ht : Typing_defs.decl_ty)
     : Typing_defs.decl_ty SMap.t =
@@ -296,6 +304,7 @@ let build_constructor_fun_elt
       fe_php_std_lib = false;
       fe_support_dynamic_type = false;
       fe_no_auto_dynamic = false;
+      fe_no_auto_likes = false;
     }
   in
   (if member_heaps_enabled ctx then
@@ -421,12 +430,16 @@ let build_prop_sprop_ty
     (sp : Shallow_decl_defs.shallow_prop) : Typing_defs.decl_ty =
   let (_sp_pos, sp_name) = sp.sp_name in
   let is_xhp_attr = is_some sp.sp_xhp_attr in
+  let no_auto_likes = PropFlags.get_no_auto_likes sp.sp_flags in
   let ty =
-    Decl_enforceability.maybe_pessimise_type
-      ~is_xhp_attr
-      ~this_class
-      ctx
+    if no_auto_likes then
       sp.sp_type
+    else
+      Decl_enforceability.maybe_pessimise_type
+        ~is_xhp_attr
+        ~this_class
+        ctx
+        sp.sp_type
   in
   (if member_heaps_enabled ctx then
     if is_static then
@@ -673,6 +686,11 @@ let build_method_fun_elt
       Naming_special_names.UserAttributes.uaNoAutoDynamic
       m.Shallow_decl_defs.sm_attributes
   in
+  let fe_no_auto_likes =
+    Typing_defs.Attributes.mem
+      Naming_special_names.UserAttributes.uaNoAutoLikes
+      m.Shallow_decl_defs.sm_attributes
+  in
   let fe =
     {
       fe_module = None;
@@ -681,8 +699,8 @@ let build_method_fun_elt
       fe_deprecated = None;
       fe_type =
         (if
-         Provider_context.implicit_sdt_for_class ctx this_class
-         && not fe_no_auto_dynamic
+         (not fe_no_auto_dynamic)
+         && Provider_context.implicit_sdt_for_class ctx this_class
         then
           Decl_enforceability.(
             pessimise_fun_type
@@ -692,6 +710,7 @@ let build_method_fun_elt
                 else
                   Concrete_method)
               ~this_class
+              ~no_auto_likes:fe_no_auto_likes
               ctx
               pos
               m.sm_type)
@@ -700,6 +719,7 @@ let build_method_fun_elt
       fe_php_std_lib = false;
       fe_support_dynamic_type = support_dynamic_type;
       fe_no_auto_dynamic;
+      fe_no_auto_likes;
     }
   in
   (if member_heaps_enabled ctx then
@@ -1015,6 +1035,8 @@ and class_decl
       dc_is_xhp = c.sc_is_xhp;
       dc_has_xhp_keyword = c.sc_has_xhp_keyword;
       dc_module = c.sc_module;
+      dc_is_module_level_trait =
+        Attributes.mem SN.UserAttributes.uaModuleLevelTrait c.sc_user_attributes;
       dc_name = snd c.sc_name;
       dc_pos = fst c.sc_name;
       dc_tparams;

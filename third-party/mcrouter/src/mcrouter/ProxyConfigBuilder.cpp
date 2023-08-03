@@ -23,6 +23,18 @@
 namespace facebook {
 namespace memcache {
 namespace mcrouter {
+namespace {
+const std::string kMcrouterOptionPrefix = "mcr_opts-";
+
+template <class T>
+bool tryToString(const boost::any& value, std::string& res) {
+  if (boost::any_cast<T*>(&value) != nullptr) {
+    res = folly::to<std::string>(*boost::any_cast<T*>(value));
+    return true;
+  }
+  return false;
+}
+} // namespace
 
 ProxyConfigBuilder::ProxyConfigBuilder(
     const McrouterOptions& opts,
@@ -31,29 +43,9 @@ ProxyConfigBuilder::ProxyConfigBuilder(
     const std::string& routerInfoName)
     : json_(nullptr) {
   McImportResolver importResolver(configApi);
-  int sr_linked = 0;
-  if (opts.enable_service_router && mcrouter::gSRInitHook) {
-    sr_linked = 1;
-  }
-  folly::StringKeyedUnorderedMap<folly::dynamic> globalParams{
-      {"default-route", opts.default_route.str()},
-      {"default-region", opts.default_route.getRegion().str()},
-      {"default-cluster", opts.default_route.getCluster().str()},
-      {"hostid", globals::hostid()},
-      {"router-name", opts.router_name},
-      {"service-name", opts.service_name},
-      {"service-router-capable", sr_linked},
-      {"router-info-name", routerInfoName}};
-
-  auto additionalParams = additionalConfigParams();
   folly::json::metadata_map configMetadataMap;
-  for (auto& it : additionalParams) {
-    globalParams.emplace(it.first, std::move(it.second));
-  }
-  for (const auto& param : opts.config_params) {
-    globalParams.emplace(param.first, param.second);
-  }
 
+  auto globalParams = buildGlobalParams(opts, routerInfoName);
   json_ = ConfigPreprocessor::getConfigWithoutMacros(
       jsonC, importResolver, std::move(globalParams), &configMetadataMap);
 
@@ -76,6 +68,57 @@ ProxyConfigBuilder::ProxyConfigBuilder(
       }
     }
   }
+}
+
+folly::StringKeyedUnorderedMap<folly::dynamic>
+ProxyConfigBuilder::buildGlobalParams(
+    const McrouterOptions& opts,
+    const std::string& routerInfoName) {
+  int sr_linked = 0;
+  if (opts.enable_service_router && mcrouter::gSRInitHook) {
+    sr_linked = 1;
+  }
+  folly::StringKeyedUnorderedMap<folly::dynamic> globalParams{
+      {"default-route", opts.default_route.str()},
+      {"default-region", opts.default_route.getRegion().str()},
+      {"default-cluster", opts.default_route.getCluster().str()},
+      {"hostid", globals::hostid()},
+      {"router-name", opts.router_name},
+      {"service-name", opts.service_name},
+      {"service-router-capable", sr_linked},
+      {"router-info-name", routerInfoName}};
+
+  auto additionalParams = additionalConfigParams();
+  for (auto& it : additionalParams) {
+    globalParams.emplace(it.first, std::move(it.second));
+  }
+
+  for (const auto& param : opts.config_params) {
+    globalParams.emplace(param.first, param.second);
+  }
+
+  opts.forEach([&globalParams](
+                   const std::string& name,
+                   McrouterOptionData::Type type,
+                   const boost::any& value) {
+    if (type == McrouterOptionData::Type::integer ||
+        type == McrouterOptionData::Type::toggle) {
+      std::string res;
+      if (tryToString<int64_t>(value, res) || tryToString<bool>(value, res) ||
+          tryToString<int>(value, res) || tryToString<uint32_t>(value, res) ||
+          tryToString<size_t>(value, res) ||
+          tryToString<uint16_t>(value, res) ||
+          tryToString<unsigned int>(value, res)) {
+        globalParams.emplace(kMcrouterOptionPrefix + name, res);
+        return;
+      }
+      throwLogic(
+          "ProxyConfigBuilder::buildGlobalParams: Unsupported option type: {}, {}",
+          value.type().name(),
+          name);
+    }
+  });
+  return globalParams;
 }
 } // namespace mcrouter
 } // namespace memcache

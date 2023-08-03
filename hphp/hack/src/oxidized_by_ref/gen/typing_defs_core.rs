@@ -3,7 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 //
-// @generated SignedSource<<2c26758f93399334dbeb0ab4ab6cea63>>
+// @generated SignedSource<<2d458ca5379337cb980ed1c1cf70bd6d>>
 //
 // To regenerate this file, run:
 //   hphp/hack/src/oxidized_regen.sh
@@ -170,7 +170,6 @@ arena_deserializer::impl_deserialize_in_arena!(PosByteString<'arena>);
 #[derive(
     Clone,
     Copy,
-    Debug,
     Deserialize,
     Eq,
     EqModuloPos,
@@ -233,6 +232,37 @@ arena_deserializer::impl_deserialize_in_arena!(DependentType);
 
 #[derive(
     Clone,
+    Copy,
+    Debug,
+    Deserialize,
+    Eq,
+    EqModuloPos,
+    FromOcamlRepIn,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
+#[rust_to_ocaml(attr = "deriving (eq, hash, show)")]
+#[repr(C, u8)]
+pub enum UserAttributeParam<'a> {
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    Classname(&'a str),
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    EnumClassLabel(&'a str),
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    String(&'a bstr::BStr),
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    Int(&'a str),
+}
+impl<'a> TrivialDrop for UserAttributeParam<'a> {}
+arena_deserializer::impl_deserialize_in_arena!(UserAttributeParam<'arena>);
+
+#[derive(
+    Clone,
     Debug,
     Deserialize,
     Eq,
@@ -253,7 +283,7 @@ pub struct UserAttribute<'a> {
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
     pub name: PosId<'a>,
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
-    pub classname_params: &'a [&'a str],
+    pub params: &'a [UserAttributeParam<'a>],
 }
 impl<'a> TrivialDrop for UserAttribute<'a> {}
 arena_deserializer::impl_deserialize_in_arena!(UserAttribute<'arena>);
@@ -456,6 +486,11 @@ pub enum Ty_<'a> {
     /// mixed exists only in the decl_phase phase because it is desugared into ?nonnull
     /// during the localization phase.
     Tmixed,
+    /// Various intepretations, depending on context.
+    ///   inferred type e.g. (vec<_> $x) ==> $x[0]
+    ///   placeholder in refinement e.g. $x as Vector<_>
+    ///   placeholder for higher-kinded formal type parameter e.g. foo<T1<_>>(T1<int> $_)
+    Twildcard,
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
     Tlike(&'a Ty<'a>),
     Tany(tany_sentinel::TanySentinel),
@@ -483,18 +518,8 @@ pub enum Ty_<'a> {
     /// Tuple, with ordered list of the types of the elements of the tuple.
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
     Ttuple(&'a [&'a Ty<'a>]),
-    /// Whether all fields of this shape are known, types of each of the
-    /// known arms.
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
-    #[rust_to_ocaml(inline_tuple)]
-    Tshape(
-        &'a (
-            TypeOrigin<'a>,
-            &'a Ty<'a>,
-            t_shape_map::TShapeMap<'a, &'a ShapeFieldType<'a>>,
-        ),
-    ),
-    Tvar(ident::Ident),
+    Tshape(&'a ShapeType<'a>),
     /// The type of a generic parameter. The constraints on a generic parameter
     /// are accessed through the lenv.tpenv component of the environment, which
     /// is set up when checking the body of a function or method. See uses of
@@ -547,6 +572,7 @@ pub enum Ty_<'a> {
     #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
     #[rust_to_ocaml(inline_tuple)]
     Tnewtype(&'a (&'a str, &'a [&'a Ty<'a>], &'a Ty<'a>)),
+    Tvar(ident::Ident),
     /// This represents a type alias that lacks necessary type arguments. Given
     /// type Foo<T1,T2> = ...
     /// Tunappliedalias "Foo" stands for usages of plain Foo, without supplying
@@ -729,6 +755,34 @@ pub struct RefinedConstBounds<'a> {
 }
 impl<'a> TrivialDrop for RefinedConstBounds<'a> {}
 arena_deserializer::impl_deserialize_in_arena!(RefinedConstBounds<'arena>);
+
+/// Whether all fields of this shape are known, types of each of the
+/// known arms.
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    EqModuloPos,
+    FromOcamlRepIn,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep
+)]
+#[rust_to_ocaml(and)]
+#[repr(C)]
+pub struct ShapeType<'a>(
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)] pub TypeOrigin<'a>,
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)] pub &'a Ty<'a>,
+    #[serde(deserialize_with = "arena_deserializer::arena", borrow)]
+    pub  t_shape_map::TShapeMap<'a, &'a ShapeFieldType<'a>>,
+);
+impl<'a> TrivialDrop for ShapeType<'a> {}
+arena_deserializer::impl_deserialize_in_arena!(ShapeType<'arena>);
 
 #[derive(
     Clone,

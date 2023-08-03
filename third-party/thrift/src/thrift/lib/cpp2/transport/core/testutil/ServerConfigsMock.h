@@ -21,6 +21,7 @@
 #include <folly/experimental/observer/SimpleObservable.h>
 #include <thrift/lib/cpp/transport/THeader.h>
 #include <thrift/lib/cpp2/async/ResponseChannel.h>
+#include <thrift/lib/cpp2/server/AdaptiveConcurrency.h>
 #include <thrift/lib/cpp2/server/CPUConcurrencyController.h>
 #include <thrift/lib/cpp2/server/ServerConfigs.h>
 #include <thrift/lib/cpp2/server/ThriftServerConfig.h>
@@ -78,7 +79,7 @@ class ServerConfigsMock : public ServerConfigs {
 
   bool getTosReflect() const override { return false; }
 
-  AdaptiveConcurrencyController& getAdaptiveConcurrencyController() {
+  AdaptiveConcurrencyController& getAdaptiveConcurrencyController() override {
     return adaptiveConcurrencyController_;
   }
   const AdaptiveConcurrencyController& getAdaptiveConcurrencyController()
@@ -132,7 +133,7 @@ class ServerConfigsMock : public ServerConfigs {
     return {};
   }
 
-  folly::Executor::KeepAlive<> getHandlerExecutorKeepAlive() const {
+  folly::Executor::KeepAlive<> getHandlerExecutorKeepAlive() const override {
     return {};
   }
 
@@ -150,7 +151,8 @@ class ServerConfigsMock : public ServerConfigs {
       oConfig_{AdaptiveConcurrencyController::Config{}};
   AdaptiveConcurrencyController adaptiveConcurrencyController_{
       oConfig_.getObserver(),
-      thriftServerConfig_.getMaxRequests().getObserver()};
+      thriftServerConfig_.getMaxRequests().getObserver(),
+      thriftServerConfig_};
 
   folly::observer::SimpleObservable<
       apache::thrift::CPUConcurrencyController::Config>

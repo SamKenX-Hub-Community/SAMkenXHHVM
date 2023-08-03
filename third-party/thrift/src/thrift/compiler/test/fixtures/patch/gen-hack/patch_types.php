@@ -20,6 +20,7 @@ namespace facebook\thrift\op;
  */
 <<\ThriftTypeInfo(shape('uri' => 'facebook.com/thrift/op/PatchOp'))>>
 enum PatchOp: int {
+  Unspecified = 0;
   /**
    * Set the value. Supersedes all other ops.
    * 
@@ -67,8 +68,8 @@ enum PatchOp: int {
   /**
    * Remove if present.
    * 
-   * A key/value-based remove for set/list, 'saturating subtract' for
-   * numeric/'counting' types, and 'remove by key' for maps.
+   * A key/value-based remove for set, 'saturating subtract' for
+   * numeric/'counting' types, 'remove by key' for map, and `remove by field id` for struct.
    */
   Remove = 7;
   /**
@@ -80,13 +81,11 @@ enum PatchOp: int {
   Add = 8;
   /**
    * Put/append/invert a value, with the following semantics:
-   * - Identical to 'add' for set;
    * - 'update or insert' for maps;
    * - 'append' for list, string or binary; and
    * - 'invert' for boolean.
    */
   Put = 9;
-  Unspecified = 0;
 }
 
 class PatchOp_TEnumStaticMetadata implements \IThriftEnumStaticMetadata {
@@ -95,6 +94,7 @@ class PatchOp_TEnumStaticMetadata implements \IThriftEnumStaticMetadata {
       shape(
         "name" => "patch.PatchOp",
         "elements" => dict[
+          0 => "Unspecified",
           1 => "Assign",
           2 => "Clear",
           3 => "PatchPrior",
@@ -104,7 +104,6 @@ class PatchOp_TEnumStaticMetadata implements \IThriftEnumStaticMetadata {
           7 => "Remove",
           8 => "Add",
           9 => "Put",
-          0 => "Unspecified",
         ],
       )
     );
@@ -112,12 +111,7 @@ class PatchOp_TEnumStaticMetadata implements \IThriftEnumStaticMetadata {
 
   public static function getAllStructuredAnnotations()[write_props]: \TEnumAnnotations {
     return shape(
-      'enum' => dict[
-        '\facebook\thrift\annotation\GenDefaultEnumValue' => \facebook\thrift\annotation\GenDefaultEnumValue::fromShape(
-          shape(
-          )
-        ),
-      ],
+      'enum' => dict[],
       'constants' => dict[
       ],
     );
@@ -125,8 +119,8 @@ class PatchOp_TEnumStaticMetadata implements \IThriftEnumStaticMetadata {
 }
 
 /**
- * An annotation that indicates a patch representation
- * should be generated for the associated definition.
+ * An annotation that indicates a patch representation should be generated for
+ * the associated definition.
  *
  * Original thrift struct:-
  * GeneratePatch

@@ -31,6 +31,11 @@ namespace thrift {
 namespace compiler {
 namespace {
 
+t_field& rust_box(t_field& node) {
+  node.set_annotation("rust.box");
+  return node;
+}
+
 // TODO(afuller): Index all types by uri, and find them that way.
 const char* getPatchTypeName(t_base_type::type base_type) {
   switch (base_type) {
@@ -75,7 +80,7 @@ t_field_id getNormalizedFieldId(const t_field& field) {
 // A fluent function to set the doc string on a given node.
 template <typename N>
 N& doc(std::string txt, N& node) {
-  node.set_doc(std::move(txt) + "\n");
+  node.set_doc(std::move(txt) + "\n", {});
   return node;
 }
 
@@ -235,13 +240,6 @@ struct PatchGen : StructGen {
   }
 
   // {kPatchPriorId}: {patch_type} patch;
-  t_field& patchList(t_type_ref patch_type) {
-    return doc(
-        "Patches list values by index. Applies second.",
-        field(kPatchPriorId, patch_type, "patch"));
-  }
-
-  // {kPatchPriorId}: {patch_type} patch;
   t_field& patchPrior(t_type_ref patch_type) {
     return doc(
         "Patches any previously set values. Applies second.",
@@ -368,7 +366,10 @@ t_struct& patch_generator::add_ensure_struct(
   StructGen gen{
       annot, gen_suffix_struct(annot, orig, "EnsureStruct"), program_};
   gen.add_frozen_exclude();
-  for (const auto& field : orig.fields_id_order()) {
+  for (const t_field* field : orig.fields_id_order()) {
+    if (!field->type().resolved()) {
+      continue;
+    }
     box(gen.field(field->id(), field->type(), field->name()));
   }
   return gen;
@@ -380,6 +381,9 @@ t_struct& patch_generator::add_field_patch(
   // creating FieldPatch.
   std::map<t_field_id, t_type_ref> types; // Ordered by field id.
   for (const auto& field : orig.fields()) {
+    if (!field.type().resolved()) {
+      continue;
+    }
     if (t_type_ref patch_type =
             find_patch_type(get_field_annotation(annot, field), orig, field)) {
       types[field.id()] = patch_type;
@@ -425,9 +429,13 @@ t_struct& patch_generator::add_struct_patch(
     return gen;
   }
   t_type_ref patch_type = add_field_patch(annot, value_type);
-  gen.patchPrior(patch_type);
-  gen.ensureStruct(add_ensure_struct(annot, value_type));
-  gen.patchAfter(patch_type);
+  rust_box(gen.patchPrior(patch_type));
+  rust_box(gen.ensureStruct(add_ensure_struct(annot, value_type)));
+  rust_box(gen.patchAfter(patch_type));
+  if (const auto* p = program_.scope()->find_type("patch.FieldIdList")) {
+    // Box it in rust to avoid stack-overflow
+    rust_box(gen.remove(*p));
+  }
   gen.set_adapter("StructPatchAdapter");
   return gen;
 }
@@ -551,16 +559,6 @@ t_struct& patch_generator::gen_suffix_struct(
   return generated;
 }
 
-t_struct& patch_generator::gen_prefix_struct(
-    const t_node& annot, const t_named& orig, const char* prefix) {
-  t_struct& generated = gen_struct(
-      annot, prefix + orig.name(), prefix_uri_name(orig.uri(), prefix));
-  if (const auto* cpp_name = orig.find_annotation_or_null("cpp.name")) {
-    generated.set_annotation("cpp.name", prefix + *cpp_name);
-  }
-  return generated;
-}
-
 t_struct& patch_generator::gen_patch(
     const t_const& annot,
     const t_structured& orig,
@@ -582,14 +580,6 @@ t_struct& patch_generator::gen_patch(
   const auto* ttype = type->get_true_type();
   if (auto* list = dynamic_cast<const t_list*>(ttype)) {
     // TODO(afuller): support 'replace' op.
-    auto elem_patch_type = find_patch_type(
-        annot, orig, list->elem_type(), field_id, traversal_order + 1);
-    if (const auto* p = program_.scope()->find_type("patch.ListPatchIndex")) {
-      gen.patchList(inst_map(t_type_ref::from_ptr(p), elem_patch_type));
-    }
-    // TODO(afuller): Support sets for all types in all languages, and switch
-    // this to a set instead of a list.
-    gen.remove(inst_list(list->elem_type()));
     gen.prepend(type);
     gen.append(type);
     gen.set_adapter("ListPatchAdapter");
@@ -601,14 +591,16 @@ t_struct& patch_generator::gen_patch(
   } else if (auto* map = dynamic_cast<const t_map*>(ttype)) {
     // TODO(afuller): support 'removeIf' op.
     // TODO(afuller): support 'replace' op.
-    auto val_patch_type = find_patch_type(
-        annot, orig, map->val_type(), field_id, traversal_order + 1);
-    gen.patchPrior(inst_map(map->key_type(), val_patch_type));
-    gen.addMap(type);
-    gen.patchAfter(inst_map(map->key_type(), val_patch_type));
-    gen.remove(inst_set(map->key_type()));
-    gen.put(type);
-    gen.set_adapter("MapPatchAdapter");
+    if (map->key_type().resolved() && map->val_type().resolved()) {
+      auto val_patch_type = find_patch_type(
+          annot, orig, map->val_type(), field_id, traversal_order + 1);
+      gen.patchPrior(inst_map(map->key_type(), val_patch_type));
+      gen.addMap(type);
+      gen.patchAfter(inst_map(map->key_type(), val_patch_type));
+      gen.remove(inst_set(map->key_type()));
+      gen.put(type);
+      gen.set_adapter("MapPatchAdapter");
+    }
   } else {
     gen.set_adapter("AssignPatchAdapter");
   }

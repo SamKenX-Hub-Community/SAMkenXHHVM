@@ -41,7 +41,7 @@ let remove_tyvar_from_lower_bound env var lower_bound =
     | (_, Tvar v) when Ident.equal v var -> (env, MakeType.nothing Reason.none)
     | (r, Toption ty) ->
       let (env, ty) = remove env ty in
-      (env, MakeType.nullable_locl r ty)
+      (env, MakeType.nullable r ty)
     | (r, Tunion tyl) ->
       let (env, tyl) = List.fold_map tyl ~init:env ~f:remove in
       let tyl = List.filter tyl ~f:(fun ty -> not (is_nothing ty)) in
@@ -107,7 +107,7 @@ let remove_tyvar_from_upper_bound env var upper_bound =
     | (_, Tvar v) when Ident.equal v var -> (env, MakeType.mixed Reason.none)
     | (r, Toption ty) ->
       let (env, ty) = remove env ty in
-      (env, MakeType.nullable_locl r ty)
+      (env, MakeType.nullable r ty)
     | (r, Tunion tyl) ->
       let (env, tyl) = List.fold_map tyl ~init:env ~f:remove in
       let ty =
@@ -201,7 +201,7 @@ let err_if_var_in_ty_pure env var ty =
         primary
         @@ Primary.Unification_cycle
              {
-               pos = Typing_env.get_tyvar_pos env var;
+               pos = Env.get_tyvar_pos env var;
                ty_name =
                  lazy
                    Typing_print.(
@@ -215,6 +215,6 @@ let err_if_var_in_ty_pure env var ty =
 let err_if_var_in_ty env var ty =
   match err_if_var_in_ty_pure env var ty with
   | (ty, Some err) ->
-    Typing_error_utils.add_typing_error err;
+    Typing_error_utils.add_typing_error ~env err;
     ty
   | (ty, _) -> ty

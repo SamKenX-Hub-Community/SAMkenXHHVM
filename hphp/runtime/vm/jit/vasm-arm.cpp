@@ -351,7 +351,6 @@ struct Vgen {
   void emit(const ldbindretaddr& i);
   void emit(const lea& i);
   void emit(const leap& i);
-  void emit(const leav& i);
   void emit(const lead& i);
   void emit(const loadb& i) { a->Ldrb(W(i.d), M(i.s)); }
   void emit(const loadl& i) { a->Ldr(W(i.d), M(i.s)); }
@@ -1050,12 +1049,6 @@ void Vgen::emit(const lea& i) {
   }
 }
 
-void Vgen::emit(const leav& i) {
-  auto const addr = a->frontier();
-  emit(leap{reg::rip[(intptr_t)addr], i.d});
-  env.leas.push_back({addr, i.s});
-}
-
 void Vgen::emit(const leap& i) {
   vixl::Label imm_data;
   vixl::Label after_data;
@@ -1708,6 +1701,22 @@ void lower(const VLS& e, restoreripm& i, Vlabel b, size_t z) {
     v << load{i.s, rlr()};
   });
 }
+
+void lower(const VLS& e, saverips& /*i*/, Vlabel b, size_t z) {
+  lower_impl(e.unit, b, z, [&] (Vout& v) {
+    // Push LR twice to keep stack aligned.
+    v << pushp{rlr(), rlr()};
+  });
+}
+
+void lower(const VLS& e, restorerips& /*i*/, Vlabel b, size_t z) {
+  lower_impl(e.unit, b, z, [&] (Vout& v) {
+    // Pop LR and the stack alignment padding.
+    v << popp{PhysReg(rAsm), rlr()};
+  });
+}
+
+///////////////////////////////////////////////////////////////////////////////
 
 void lower(const VLS& e, stublogue& /*i*/, Vlabel b, size_t z) {
   lower_impl(e.unit, b, z, [&] (Vout& v) {

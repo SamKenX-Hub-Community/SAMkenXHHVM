@@ -2,11 +2,13 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
+
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::iter;
 use std::str::FromStr;
 
+use bstr::ByteSlice;
 use emit_pos::emit_pos;
 use emit_pos::emit_pos_then;
 use env::emitter::Emitter;
@@ -282,10 +284,12 @@ mod inout_locals {
         ) -> Result<(), ()> {
             // f(inout $v) or f(&$v)
             if let ast::Expr_::Call(expr) = p {
-                let (_, _, args, uarg) = &**expr;
+                let ast::CallExpr {
+                    args, unpacked_arg, ..
+                } = &**expr;
                 args.iter()
                     .for_each(|(pk, arg)| handle_arg(c.env, false, c.i, pk, arg, c.state));
-                if let Some(arg) = uarg.as_ref() {
+                if let Some(arg) = unpacked_arg.as_ref() {
                     handle_arg(c.env, false, c.i, &ParamKind::Pnormal, arg, c.state)
                 }
                 Ok(())
@@ -842,13 +846,18 @@ pub fn emit_await<'a, 'arena, 'decl>(
     expr: &ast::Expr,
 ) -> Result<InstrSeq<'arena>> {
     let ast::Expr(_, _, e) = expr;
-
-    let cant_inline_gen_functions = !emitter.options().hhbc.jit_enable_rename_function;
+    let can_inline_gen_functions = !emitter
+        .options()
+        .function_is_renamable(emitter_special_functions::GENA.into());
     match e.as_call() {
-        Some((ast::Expr(_, _, ast::Expr_::Id(id)), _, args, None))
-            if (cant_inline_gen_functions
-                && args.len() == 1
-                && string_utils::strip_global_ns(&id.1) == "gena") =>
+        Some(ast::CallExpr {
+            func: ast::Expr(_, _, ast::Expr_::Id(id)),
+            args,
+            unpacked_arg: None,
+            ..
+        }) if (can_inline_gen_functions
+            && args.len() == 1
+            && string_utils::strip_global_ns(&id.1) == emitter_special_functions::GENA) =>
         {
             inline_gena_call(emitter, env, error::expect_normal_paramkind(&args[0])?)
         }
@@ -2572,7 +2581,7 @@ fn emit_special_function<'a, 'arena, 'decl>(
             let call = ast::Expr(
                 (),
                 pos.clone(),
-                ast::Expr_::mk_call(expr_id, vec![], args[1..].to_owned(), uarg.cloned()),
+                ast::Expr_::mk_call(ast::CallExpr { func: expr_id, targs: vec![], args: args[1..].to_owned(), unpacked_arg: uarg.cloned() }),
             );
             let ignored_expr = emit_ignored_expr(e, env, &Pos::NONE, &call)?;
             Ok(Some(InstrSeq::gather(vec![
@@ -3278,15 +3287,15 @@ fn emit_label<'a, 'arena, 'decl>(
     let label_string = label.1.to_string();
     let label = Expr_::String(bstr::BString::from(label_string));
     let label = ast::Expr((), pos.clone(), label);
-    let call_expr = (
-        create_opaque_value,
-        vec![],
-        vec![
+    let call_expr = ast::CallExpr {
+        func: create_opaque_value,
+        targs: vec![],
+        args: vec![
             (ParamKind::Pnormal, enum_class_label_index),
             (ParamKind::Pnormal, label),
         ],
-        None,
-    );
+        unpacked_arg: None,
+    };
     emit_call_expr(emitter, env, pos, None, false, &call_expr)
 }
 
@@ -3296,23 +3305,23 @@ fn emit_call_expr<'a, 'arena, 'decl>(
     pos: &Pos,
     async_eager_label: Option<Label>,
     readonly_return: bool,
-    (expr, targs, args, uarg): &(
-        ast::Expr,
-        Vec<ast::Targ>,
-        Vec<(ParamKind, ast::Expr)>,
-        Option<ast::Expr>,
-    ),
+    call_expr: &ast::CallExpr,
 ) -> Result<InstrSeq<'arena>> {
-    let jit_enable_rename_function = e.options().hhbc.jit_enable_rename_function;
     use ast::Expr;
     use ast::Expr_;
-    match (&expr.2, &args[..], uarg) {
+    let ast::CallExpr {
+        func,
+        targs,
+        args,
+        unpacked_arg,
+    } = call_expr;
+    match (&func.2, &args[..], unpacked_arg) {
         (Expr_::Id(id), _, None) if id.1 == pseudo_functions::ISSET => {
             emit_call_isset_exprs(e, env, pos, args)
         }
         (Expr_::Id(id), args, None)
             if (id.1 == fb::IDX || id.1 == fb::IDXREADONLY)
-                && !jit_enable_rename_function
+                && !e.options().function_is_renamable(id.1.as_bytes().as_bstr())
                 && (args.len() == 2 || args.len() == 3) =>
         {
             emit_idx(e, env, pos, args)
@@ -3329,6 +3338,18 @@ fn emit_call_expr<'a, 'arena, 'decl>(
                 emit_expr(e, env, arg1)?,
                 emit_pos(pos),
                 instr::pop_l(e.named_local("$86metadata".into())),
+                instr::null(),
+            ]))
+        }
+        (Expr_::Id(id), [(pk, arg1)], None)
+            if id.1 == emitter_special_functions::SET_PRODUCT_ATTRIBUTION_ID
+                || id.1 == emitter_special_functions::SET_PRODUCT_ATTRIBUTION_ID_DEFERRED =>
+        {
+            error::ensure_normal_paramkind(pk)?;
+            Ok(InstrSeq::gather(vec![
+                emit_expr(e, env, arg1)?,
+                emit_pos(pos),
+                instr::pop_l(e.named_local("$86productAttributionData".into())),
                 instr::null(),
             ]))
         }
@@ -3367,10 +3388,10 @@ fn emit_call_expr<'a, 'arena, 'decl>(
                 e,
                 env,
                 pos,
-                expr,
+                func,
                 targs,
                 args,
-                uarg.as_ref(),
+                unpacked_arg.as_ref(),
                 async_eager_label,
                 readonly_return,
             )?;
@@ -5807,13 +5828,10 @@ fn emit_lval_op<'a, 'arena, 'decl>(
 fn can_use_as_rhs_in_list_assignment(expr: &ast::Expr_) -> Result<bool> {
     use aast::Expr_;
     Ok(match expr {
-        Expr_::Call(c)
-            if ((c.0).2)
-                .as_id()
-                .map_or(false, |id| id.1 == special_functions::ECHO) =>
-        {
-            false
-        }
+        Expr_::Call(box aast::CallExpr {
+            func: ast::Expr(_, _, Expr_::Id(id)),
+            ..
+        }) if id.1 == special_functions::ECHO => false,
         Expr_::ObjGet(o) if o.as_ref().3 == ast::PropOrMethod::IsProp => true,
         Expr_::ClassGet(c) if c.as_ref().2 == ast::PropOrMethod::IsProp => true,
         Expr_::Lvar(_)
@@ -6429,7 +6447,7 @@ fn fixup_type_arg<'a, 'b, 'arena>(
             use ast::Id;
             match h {
                 H_::Happly(Id(_, id), _) if self.erased_tparams.contains(&id.as_str()) => {
-                    Ok(*id = "_".into())
+                    Ok(*h = H_::Hwildcard)
                 }
                 _ => h.recurse(c, self.object()),
             }

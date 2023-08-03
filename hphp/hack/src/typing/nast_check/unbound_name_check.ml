@@ -98,8 +98,7 @@ let check_module_if_present env id_opt =
   Option.iter id_opt ~f:(check_module_name env)
 
 let check_package_name env (pos, name) =
-  if
-    Package.Info.package_exists (Provider_context.get_package_info env.ctx) name
+  if PackageInfo.package_exists (Provider_context.get_package_info env.ctx) name
   then
     ()
   else
@@ -121,19 +120,19 @@ let check_type_name
     | Some reified ->
       (* TODO: These throw typing errors instead of naming errors *)
       if not allow_generics then
-        Typing_error_utils.add_typing_error
-          Typing_error.(primary @@ Primary.Generics_not_allowed pos);
+        Errors.add_error
+          Nast_check_error.(to_user_error @@ Generics_not_allowed pos);
       begin
         match reified with
         | Aast.Erased ->
-          Typing_error_utils.add_typing_error
-            Typing_error.(
-              primary @@ Primary.Generic_at_runtime { pos; prefix = "Erased" })
+          Errors.add_error
+            Nast_check_error.(
+              to_user_error @@ Generic_at_runtime { pos; prefix = "Erased" })
         | Aast.SoftReified ->
-          Typing_error_utils.add_typing_error
-            Typing_error.(
-              primary
-              @@ Primary.Generic_at_runtime { pos; prefix = "Soft reified" })
+          Errors.add_error
+            Nast_check_error.(
+              to_user_error
+              @@ Generic_at_runtime { pos; prefix = "Soft reified" })
         | Aast.Reified -> ()
       end
     | None -> begin
@@ -264,7 +263,7 @@ let handler ctx =
     method! at_expr env (_, _, e) =
       match e with
       | Aast.FunctionPointer (Aast.FP_id ((p, name) as id), _)
-      | Aast.Call ((_, _, Aast.Id ((p, name) as id)), _, _, _) ->
+      | Aast.(Call { func = (_, _, Aast.Id ((p, name) as id)); _ }) ->
         let () = check_fun_name env id in
         { env with seen_names = SMap.add name p env.seen_names }
       | Aast.Id ((p, name) as id) ->

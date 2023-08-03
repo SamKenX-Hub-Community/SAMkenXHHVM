@@ -54,8 +54,6 @@ import sys
 from collections.abc import Sequence, Set, Mapping, Iterable
 import weakref as __weakref
 import builtins as _builtins
-cimport facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
-import facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
 
 cimport module.types_reflection as _types_reflection
 
@@ -356,4 +354,3 @@ cdef class SecretStruct(thrift.py3.types.Struct):
         py_deprecated_types = importlib.import_module("module.ttypes")
         return thrift.util.converter.to_py_struct(py_deprecated_types.SecretStruct, self)
 myStruct = MyStruct._fbthrift_create(constant_shared_ptr(cmyStruct()))
-MyId = int

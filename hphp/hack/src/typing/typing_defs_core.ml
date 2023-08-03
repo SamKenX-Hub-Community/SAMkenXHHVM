@@ -174,9 +174,16 @@ type dependent_type =
   | DTexpr of Ident.t
 [@@deriving eq, hash, ord, show]
 
+type user_attribute_param =
+  | Classname of string
+  | EnumClassLabel of string
+  | String of t_byte_string
+  | Int of string
+[@@deriving eq, hash, show]
+
 type user_attribute = {
   ua_name: pos_id;
-  ua_classname_params: string list;
+  ua_params: user_attribute_param list;
 }
 [@@deriving eq, hash, show]
 
@@ -261,6 +268,12 @@ and _ ty_ =
        * mixed exists only in the decl_phase phase because it is desugared into ?nonnull
        * during the localization phase.
        *)
+  | Twildcard : decl_phase ty_
+      (** Various intepretations, depending on context.
+        *   inferred type e.g. (vec<_> $x) ==> $x[0]
+        *   placeholder in refinement e.g. $x as Vector<_>
+        *   placeholder for higher-kinded formal type parameter e.g. foo<T1<_>>(T1<int> $_)
+        *)
   | Tlike : decl_ty -> decl_phase ty_
   (*========== Following Types Exist in Both Phases ==========*)
   | Tany : TanySentinel.t -> 'phase ty_
@@ -285,13 +298,7 @@ and _ ty_ =
        * function, method, lambda, etc. *)
   | Ttuple : 'phase ty list -> 'phase ty_
       (** Tuple, with ordered list of the types of the elements of the tuple. *)
-  | Tshape :
-      type_origin * 'phase ty * 'phase shape_field_type TShapeMap.t
-      -> 'phase ty_
-      (** Whether all fields of this shape are known, types of each of the
-       * known arms.
-       *)
-  | Tvar : Ident.t -> 'phase ty_
+  | Tshape : 'phase shape_type -> 'phase ty_
   | Tgeneric : string * 'phase ty list -> 'phase ty_
       (** The type of a generic parameter. The constraints on a generic parameter
        * are accessed through the lenv.tpenv component of the environment, which
@@ -338,6 +345,7 @@ and _ ty_ =
        * The second parameter is the list of type arguments to the type.
        *)
   (*========== Below Are Types That Cannot Be Declared In User Code ==========*)
+  | Tvar : Ident.t -> locl_phase ty_
   | Tunapplied_alias : string -> locl_phase ty_
       (** This represents a type alias that lacks necessary type arguments. Given
            type Foo<T1,T2> = ...
@@ -377,6 +385,12 @@ and 'phase refined_const_bounds = {
   tr_lower: 'phase ty list;
   tr_upper: 'phase ty list;
 }
+
+(** Whether all fields of this shape are known, types of each of the
+  * known arms.
+  *)
+and 'phase shape_type =
+  type_origin * 'phase ty * 'phase shape_field_type TShapeMap.t
 
 and 'ty capability =
   | CapDefaults of Pos_or_decl.t
@@ -475,6 +489,12 @@ module Flags = struct
     {
       ft with
       ft_flags = set_bit ft_flags_readonly_this readonly_this ft.ft_flags;
+    }
+
+  let set_ft_returns_readonly ft readonly_return =
+    {
+      ft with
+      ft_flags = set_bit ft_flags_returns_readonly readonly_return ft.ft_flags;
     }
 
   let get_ft_is_function_pointer ft =
@@ -583,6 +603,7 @@ module Pp = struct
     | Tany _ -> Format.pp_print_string fmt "Tany"
     | Tthis -> Format.pp_print_string fmt "Tthis"
     | Tmixed -> Format.pp_print_string fmt "Tmixed"
+    | Twildcard -> Format.pp_print_string fmt "Twildcard"
     | Tdynamic -> Format.pp_print_string fmt "Tdynamic"
     | Tnonnull -> Format.pp_print_string fmt "Tnonnull"
     | Tapply (a0, a1) ->
@@ -888,6 +909,7 @@ module Pp = struct
     Format.fprintf fmt "@[%s =@ " "ft_ifc_decl";
     pp_ifc_fun_decl fmt x.ft_ifc_decl;
     Format.fprintf fmt "@]";
+    Format.fprintf fmt ";@ ";
 
     Format.fprintf fmt "@[%s =@ " "ft_cross_package";
     pp_cross_package_decl fmt x.ft_cross_package;

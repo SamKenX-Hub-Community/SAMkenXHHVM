@@ -5,6 +5,7 @@
 
 pub mod dump_expr_tree;
 
+use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,7 +27,6 @@ use error::Error;
 use error::ErrorKind;
 use hhbc::FatalOp;
 use hhbc::Unit;
-use ocamlrep::rc::RcOc;
 use options::HhbcFlags;
 use options::Hhvm;
 use options::Options;
@@ -34,6 +34,11 @@ use options::ParserOptions;
 use oxidized::ast;
 use oxidized::decl_parser_options::DeclParserOptions;
 use oxidized::namespace_env::Env as NamespaceEnv;
+use oxidized::naming_error::NamingError;
+use oxidized::naming_phase_error::ExperimentalFeature;
+use oxidized::naming_phase_error::NamingPhaseError;
+use oxidized::nast_check_error::NastCheckError;
+use oxidized::parsing_error::ParsingError;
 use oxidized::pos::Pos;
 use parser_core_types::indexed_source_text::IndexedSourceText;
 use parser_core_types::source_text::SourceText;
@@ -106,7 +111,7 @@ impl NativeEnv {
 
     pub fn to_decl_parser_options(&self) -> DeclParserOptions {
         let auto_namespace_map = self.hhvm.aliased_namespaces_cloned().collect();
-        // Keep in sync with getDeclFlags in runtime-option.cpp
+        // Keep in sync with RepoOptionsFlags::initDeclConfig() in runtime-option.cpp
         let lang_flags = &self.hhvm.parser_options;
         DeclParserOptions {
             auto_namespace_map,
@@ -116,6 +121,7 @@ impl NativeEnv {
             enable_xhp_class_modifier: lang_flags.po_enable_xhp_class_modifier,
             php5_compat_mode: true,
             hhvm_compat_mode: true,
+            keep_user_attributes: true,
             ..Default::default()
         }
     }
@@ -211,13 +217,13 @@ pub fn from_text<'decl>(
 
 fn rewrite_and_emit<'p, 'arena, 'decl>(
     emitter: &mut Emitter<'arena, 'decl>,
-    namespace_env: RcOc<NamespaceEnv>,
+    namespace_env: Arc<NamespaceEnv>,
     ast: &'p mut ast::Program,
     profile: &'p mut Profile,
 ) -> Result<Unit<'arena>, Error> {
     // First rewrite and modify `ast` in place.
     stack_limit::reset();
-    let result = rewrite_program::rewrite_program(emitter, ast, RcOc::clone(&namespace_env));
+    let result = rewrite_program::rewrite_program(emitter, ast, Arc::clone(&namespace_env));
     profile.rewrite_peak = stack_limit::peak() as u64;
     stack_limit::reset();
     let unit = match result {
@@ -284,7 +290,7 @@ pub fn unit_to_string(
 
 fn emit_unit_from_ast<'arena, 'decl>(
     emitter: &mut Emitter<'arena, 'decl>,
-    namespace: RcOc<NamespaceEnv>,
+    namespace: Arc<NamespaceEnv>,
     ast: &mut ast::Program,
 ) -> Result<Unit<'arena>, Error> {
     emit_unit(emitter, namespace, ast)
@@ -292,7 +298,7 @@ fn emit_unit_from_ast<'arena, 'decl>(
 
 fn check_readonly_and_emit<'arena, 'decl>(
     emitter: &mut Emitter<'arena, 'decl>,
-    namespace_env: RcOc<NamespaceEnv>,
+    namespace_env: Arc<NamespaceEnv>,
     ast: &mut ast::Program,
     profile: &mut Profile,
 ) -> Result<Unit<'arena>, Error> {
@@ -323,7 +329,7 @@ fn emit_unit_from_text<'arena, 'decl>(
     profile.log_enabled = emitter.options().log_extern_compiler_perf();
     let type_directed = emitter.decl_provider.is_some();
 
-    let namespace_env = RcOc::new(NamespaceEnv::empty(
+    let namespace_env = Arc::new(NamespaceEnv::empty(
         emitter.options().hhvm.aliased_namespaces_cloned().collect(),
         true, /* is_codegen */
         emitter
@@ -338,7 +344,7 @@ fn emit_unit_from_text<'arena, 'decl>(
         emitter.options(),
         source_text,
         !flags.disable_toplevel_elaboration,
-        RcOc::clone(&namespace_env),
+        Arc::clone(&namespace_env),
         flags.is_systemlib,
         emitter.for_debugger_eval,
         type_directed,
@@ -347,13 +353,20 @@ fn emit_unit_from_text<'arena, 'decl>(
 
     let ((unit, profile), codegen_t) = match parse_result {
         Ok(mut ast) => {
-            elab::elaborate_program_for_codegen(RcOc::clone(&namespace_env), &path, &mut ast);
-            profile_rust::time(move || {
-                (
-                    check_readonly_and_emit(emitter, namespace_env, &mut ast, profile),
-                    profile,
-                )
-            })
+            match elab::elaborate_program_for_codegen(Arc::clone(&namespace_env), &path, &mut ast) {
+                Ok(()) => profile_rust::time(move || {
+                    (
+                        check_readonly_and_emit(emitter, namespace_env, &mut ast, profile),
+                        profile,
+                    )
+                }),
+                Err(errs) => profile_rust::time(move || {
+                    (
+                        emit_fatal_naming_phase_error(emitter.alloc, &errs[0]),
+                        profile,
+                    )
+                }),
+            }
         }
         Err(ParseError(pos, msg, fatal_op)) => {
             profile_rust::time(move || (emit_fatal(emitter.alloc, fatal_op, pos, msg), profile))
@@ -363,6 +376,243 @@ fn emit_unit_from_text<'arena, 'decl>(
     match unit {
         Ok(unit) => Ok(unit),
         Err(e) => Err(anyhow!("Unhandled Emitter error: {}", e)),
+    }
+}
+
+fn emit_fatal_naming_phase_error<'arena>(
+    alloc: &'arena bumpalo::Bump,
+    err: &NamingPhaseError,
+) -> Result<Unit<'arena>, Error> {
+    match err {
+        NamingPhaseError::Naming(err) => emit_fatal_naming_error(alloc, err),
+        NamingPhaseError::NastCheck(err) => emit_fatal_nast_check_error(alloc, err),
+        NamingPhaseError::UnexpectedHint(_) => todo!(),
+        NamingPhaseError::MalformedAccess(_) => todo!(),
+        NamingPhaseError::ExperimentalFeature(err) => {
+            emit_fatal_experimental_feature_error(alloc, err)
+        }
+        NamingPhaseError::Parsing(err) => emit_fatal_parsing_error(alloc, err),
+    }
+}
+
+fn emit_fatal_naming_error<'arena>(
+    alloc: &'arena bumpalo::Bump,
+    err: &NamingError,
+) -> Result<Unit<'arena>, Error> {
+    match err {
+        NamingError::UnsupportedTraitUseAs(_) => todo!(),
+        NamingError::UnsupportedInsteadOf(_) => todo!(),
+        NamingError::UnexpectedArrow { .. } => todo!(),
+        NamingError::MissingArrow { .. } => todo!(),
+        NamingError::DisallowedXhpType { .. } => todo!(),
+        NamingError::NameIsReserved { .. } => todo!(),
+        NamingError::DollardollarUnused(_) => todo!(),
+        NamingError::MethodNameAlreadyBound { .. } => todo!(),
+        NamingError::ErrorNameAlreadyBound { .. } => todo!(),
+        NamingError::UnboundName { .. } => todo!(),
+        NamingError::InvalidFunPointer { .. } => todo!(),
+        NamingError::Undefined { .. } => todo!(),
+        NamingError::UndefinedInExprTree { .. } => todo!(),
+        NamingError::ThisReserved(_) => todo!(),
+        NamingError::StartWithT(_) => todo!(),
+        NamingError::AlreadyBound { .. } => todo!(),
+        NamingError::UnexpectedTypedef { .. } => todo!(),
+        NamingError::FieldNameAlreadyBound(_) => todo!(),
+        NamingError::PrimitiveTopLevel(_) => todo!(),
+        NamingError::PrimitiveInvalidAlias { .. } => todo!(),
+        NamingError::DynamicNewInStrictMode(_) => todo!(),
+        NamingError::InvalidTypeAccessRoot { .. } => todo!(),
+        NamingError::DuplicateUserAttribute { .. } => todo!(),
+        NamingError::InvalidMemoizeLabel { .. } => todo!(),
+        NamingError::UnboundAttributeName { .. } => todo!(),
+        NamingError::ThisNoArgument(_) => todo!(),
+        NamingError::ObjectCast(_) => todo!(),
+        NamingError::ThisHintOutsideClass(_) => todo!(),
+        NamingError::ParentOutsideClass(_) => todo!(),
+        NamingError::SelfOutsideClass(_) => todo!(),
+        NamingError::StaticOutsideClass(_) => todo!(),
+        NamingError::ThisTypeForbidden { .. } => todo!(),
+        NamingError::NonstaticPropertyWithLsb(_) => todo!(),
+        NamingError::LowercaseThis { .. } => todo!(),
+        NamingError::ClassnameParam(_) => todo!(),
+        NamingError::TparamAppliedToType { .. } => todo!(),
+        NamingError::TparamWithTparam { .. } => todo!(),
+        NamingError::ShadowedTparam { .. } => todo!(),
+        NamingError::MissingTypehint(_) => todo!(),
+        NamingError::ExpectedVariable(_) => todo!(),
+        NamingError::TooManyArguments(_) => todo!(),
+        NamingError::TooFewArguments(_) => todo!(),
+        NamingError::ExpectedCollection { .. } => todo!(),
+        NamingError::IllegalCLASS(_) => todo!(),
+        NamingError::IllegalTRAIT(_) => todo!(),
+        NamingError::IllegalFun(_) => todo!(),
+        NamingError::IllegalMemberVariableClass(_) => todo!(),
+        NamingError::IllegalMethFun(_) => todo!(),
+        NamingError::IllegalInstMeth(_) => todo!(),
+        NamingError::IllegalMethCaller(_) => todo!(),
+        NamingError::IllegalClassMeth(_) => todo!(),
+        NamingError::LvarInObjGet { .. } => todo!(),
+        NamingError::ClassMethNonFinalSelf { .. } => todo!(),
+        NamingError::ClassMethNonFinalCLASS { .. } => todo!(),
+        NamingError::ConstWithoutTypehint { .. } => todo!(),
+        NamingError::PropWithoutTypehint { .. } => todo!(),
+        NamingError::IllegalConstant(_) => todo!(),
+        NamingError::InvalidRequireImplements(_) => todo!(),
+        NamingError::InvalidRequireExtends(_) => todo!(),
+        NamingError::InvalidRequireClass(_) => todo!(),
+        NamingError::DidYouMean { .. } => todo!(),
+        NamingError::UsingInternalClass { .. } => todo!(),
+        NamingError::TooFewTypeArguments(_) => todo!(),
+        NamingError::DynamicClassNameInStrictMode(_) => todo!(),
+        NamingError::XhpOptionalRequiredAttr { .. } => todo!(),
+        NamingError::XhpRequiredWithDefault { .. } => todo!(),
+        NamingError::ArrayTypehintsDisallowed(_) => todo!(),
+        NamingError::WildcardHintDisallowed(_) => todo!(),
+        NamingError::WildcardTparamDisallowed(_) => todo!(),
+        NamingError::IllegalUseOfDynamicallyCallable { .. } => todo!(),
+        NamingError::ParentInFunctionPointer { .. } => todo!(),
+        NamingError::SelfInNonFinalFunctionPointer { .. } => todo!(),
+        NamingError::InvalidWildcardContext(_) => todo!(),
+        NamingError::ReturnOnlyTypehint { .. } => todo!(),
+        NamingError::UnexpectedTypeArguments(_) => todo!(),
+        NamingError::TooManyTypeArguments(_) => todo!(),
+        NamingError::ThisAsLexicalVariable(_) => todo!(),
+        NamingError::HKTUnsupportedFeature { .. } => todo!(),
+        NamingError::HKTPartialApplication { .. } => todo!(),
+        NamingError::HKTWildcard(_) => todo!(),
+        NamingError::HKTImplicitArgument { .. } => todo!(),
+        NamingError::HKTClassWithConstraintsUsed { .. } => todo!(),
+        NamingError::HKTAliasWithImplicitConstraints { .. } => todo!(),
+        NamingError::ExplicitConsistentConstructor { .. } => todo!(),
+        NamingError::ModuleDeclarationOutsideAllowedFiles(_) => todo!(),
+        NamingError::DynamicMethodAccess(_) => todo!(),
+        NamingError::DeprecatedUse { .. } => todo!(),
+        NamingError::UnnecessaryAttribute { .. } => todo!(),
+        NamingError::TparamNonShadowingReuse { .. } => todo!(),
+        NamingError::DynamicHintDisallowed(_) => todo!(),
+        NamingError::IllegalTypedLocal {
+            join,
+            id_pos,
+            id_name,
+            def_pos: _,
+        } => {
+            // For now, we can only generate this particular error. All of the
+            // infrastructure for displaying naming errors is in OCaml, and until
+            // the naming phase is completely ported, we can just special case the
+            // ones that might come up.
+            let msg = if *join {
+                "It is assigned in another branch. Consider moving the definition to an enclosing block."
+            } else {
+                "It is already defined. Typed locals must have their type declared before they can be assigned."
+            };
+            emit_unit::emit_fatal_unit(
+                alloc,
+                FatalOp::Parse,
+                id_pos.clone(),
+                format!("Illegal definition of typed local variable {id_name}. {msg}"),
+            )
+        }
+    }
+}
+
+fn emit_fatal_nast_check_error<'arena>(
+    _alloc: &'arena bumpalo::Bump,
+    err: &NastCheckError,
+) -> Result<Unit<'arena>, Error> {
+    match err {
+        NastCheckError::RepeatedRecordFieldName { .. } => todo!(),
+        NastCheckError::DynamicallyCallableReified(_) => todo!(),
+        NastCheckError::NoConstructParent(_) => todo!(),
+        NastCheckError::NonstaticMethodInAbstractFinalClass(_) => todo!(),
+        NastCheckError::ConstructorRequired { .. } => todo!(),
+        NastCheckError::NotInitialized { .. } => todo!(),
+        NastCheckError::CallBeforeInit { .. } => todo!(),
+        NastCheckError::AbstractWithBody(_) => todo!(),
+        NastCheckError::NotAbstractWithoutTypeconst(_) => todo!(),
+        NastCheckError::TypeconstDependsOnExternalTparam { .. } => todo!(),
+        NastCheckError::InterfaceWithPartialTypeconst(_) => todo!(),
+        NastCheckError::PartiallyAbstractTypeconstDefinition(_) => todo!(),
+        NastCheckError::RefinementInTypestruct { .. } => todo!(),
+        NastCheckError::MultipleXhpCategory(_) => todo!(),
+        NastCheckError::ReturnInGen(_) => todo!(),
+        NastCheckError::ReturnInFinally(_) => todo!(),
+        NastCheckError::ToplevelBreak(_) => todo!(),
+        NastCheckError::ToplevelContinue(_) => todo!(),
+        NastCheckError::ContinueInSwitch(_) => todo!(),
+        NastCheckError::AwaitInSyncFunction { .. } => todo!(),
+        NastCheckError::InterfaceUsesTrait(_) => todo!(),
+        NastCheckError::StaticMemoizedFunction(_) => todo!(),
+        NastCheckError::Magic { .. } => todo!(),
+        NastCheckError::NonInterface { .. } => todo!(),
+        NastCheckError::ToStringReturnsString(_) => todo!(),
+        NastCheckError::ToStringVisibility(_) => todo!(),
+        NastCheckError::UsesNonTrait { .. } => todo!(),
+        NastCheckError::RequiresNonClass { .. } => todo!(),
+        NastCheckError::RequiresFinalClass { .. } => todo!(),
+        NastCheckError::AbstractBody(_) => todo!(),
+        NastCheckError::InterfaceWithMemberVariable(_) => todo!(),
+        NastCheckError::InterfaceWithStaticMemberVariable(_) => todo!(),
+        NastCheckError::IllegalFunctionName { .. } => todo!(),
+        NastCheckError::EntrypointArguments(_) => todo!(),
+        NastCheckError::EntrypointGenerics(_) => todo!(),
+        NastCheckError::VariadicMemoize(_) => todo!(),
+        NastCheckError::AbstractMethodMemoize(_) => todo!(),
+        NastCheckError::InstancePropertyInAbstractFinalClass(_) => todo!(),
+        NastCheckError::InoutParamsSpecial(_) => todo!(),
+        NastCheckError::InoutParamsMemoize { .. } => todo!(),
+        NastCheckError::InoutInTransformedPseudofunction { .. } => todo!(),
+        NastCheckError::ReadingFromAppend(_) => todo!(),
+        NastCheckError::ListRvalue(_) => todo!(),
+        NastCheckError::IllegalDestructor(_) => todo!(),
+        NastCheckError::IllegalContext { .. } => todo!(),
+        NastCheckError::CaseFallthrough { .. } => todo!(),
+        NastCheckError::DefaultFallthrough(_) => todo!(),
+        NastCheckError::PhpLambdaDisallowed(_) => todo!(),
+        NastCheckError::InternalMethodWithInvalidVisibility { .. } => todo!(),
+        NastCheckError::PrivateAndFinal(_) => todo!(),
+        NastCheckError::InternalMemberInsidePublicTrait { .. } => todo!(),
+        NastCheckError::AttributeConflictingMemoize { .. } => todo!(),
+        NastCheckError::SoftInternalWithoutInternal(_) => todo!(),
+        NastCheckError::WrongExpressionKindBuiltinAttribute { .. } => todo!(),
+        NastCheckError::AttributeTooManyArguments { .. } => todo!(),
+        NastCheckError::AttributeTooFewArguments { .. } => todo!(),
+        NastCheckError::AttributeNotExactNumberOfArgs { .. } => todo!(),
+        NastCheckError::AttributeParamType { .. } => todo!(),
+        NastCheckError::AttributeNoAutoDynamic(_) => todo!(),
+        NastCheckError::GenericAtRuntime { .. } => todo!(),
+        NastCheckError::GenericsNotAllowed(_) => todo!(),
+        NastCheckError::LocalVariableModifiedAndUsed { .. } => todo!(),
+        NastCheckError::LocalVariableModifiedTwice { .. } => todo!(),
+        NastCheckError::AssignDuringCase(_) => todo!(),
+        NastCheckError::ReadBeforeWrite { .. } => todo!(),
+        NastCheckError::LateinitWithDefault(_) => todo!(),
+        NastCheckError::MissingAssign(_) => todo!(),
+    }
+}
+
+fn emit_fatal_experimental_feature_error<'arena>(
+    _alloc: &'arena bumpalo::Bump,
+    err: &ExperimentalFeature,
+) -> Result<Unit<'arena>, Error> {
+    match err {
+        ExperimentalFeature::LikeType(_) => todo!(),
+        ExperimentalFeature::Supportdyn(_) => todo!(),
+        ExperimentalFeature::ConstAttr(_) => todo!(),
+        ExperimentalFeature::ConstStaticProp(_) => todo!(),
+        ExperimentalFeature::IFCInferFlows(_) => todo!(),
+    }
+}
+
+fn emit_fatal_parsing_error<'arena>(
+    _alloc: &'arena bumpalo::Bump,
+    err: &ParsingError,
+) -> Result<Unit<'arena>, Error> {
+    match err {
+        ParsingError::FixmeFormat(_) => todo!(),
+        ParsingError::HhIgnoreComment(_) => todo!(),
+        ParsingError::ParsingError { .. } => todo!(),
+        ParsingError::XhpParsingError { .. } => todo!(),
+        ParsingError::PackageConfigError { .. } => todo!(),
     }
 }
 
@@ -408,7 +658,7 @@ fn parse_file(
     opts: &Options,
     source_text: SourceText<'_>,
     elaborate_namespaces: bool,
-    namespace_env: RcOc<NamespaceEnv>,
+    namespace_env: Arc<NamespaceEnv>,
     is_systemlib: bool,
     for_debugger_eval: bool,
     type_directed: bool,
@@ -425,8 +675,12 @@ fn parse_file(
     };
 
     let indexed_source_text = IndexedSourceText::new(source_text);
-    let ast_result =
-        AastParser::from_text_with_namespace_env(&aast_env, namespace_env, &indexed_source_text);
+    let ast_result = AastParser::from_text_with_namespace_env(
+        &aast_env,
+        namespace_env,
+        &indexed_source_text,
+        HashSet::default(),
+    );
     match ast_result {
         Err(AastError::Other(msg)) => Err(ParseError(Pos::NONE, msg, FatalOp::Parse)),
         Err(AastError::NotAHackFile()) => Err(ParseError(

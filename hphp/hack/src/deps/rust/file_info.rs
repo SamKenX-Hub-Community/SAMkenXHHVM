@@ -13,6 +13,7 @@ use no_pos_hash::NoPosHash;
 use ocamlrep::FromOcamlRep;
 use ocamlrep::FromOcamlRepIn;
 use ocamlrep::ToOcamlRep;
+use ocamlrep_caml_builtins::Int64;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -65,7 +66,7 @@ arena_deserializer::impl_deserialize_in_arena!(Mode);
     Serialize,
     ToOcamlRep,
 )]
-#[rust_to_ocaml(attr = "deriving (eq, show, enum, ord)")]
+#[rust_to_ocaml(attr = "deriving (eq, (show { with_path = false }), enum, ord)")]
 #[repr(u8)]
 pub enum NameType {
     Fun = 3,
@@ -99,7 +100,75 @@ arena_deserializer::impl_deserialize_in_arena!(NameType);
 #[repr(C, u8)]
 pub enum Pos {
     Full(pos::Pos),
-    File(NameType, ocamlrep::rc::RcOc<relative_path::RelativePath>),
+    File(NameType, std::sync::Arc<relative_path::RelativePath>),
+}
+
+/// An id contains a pos, name and a optional decl hash. The decl hash is None
+/// only in the case when we didn't compute it for performance reasons
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    FromOcamlRep,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep,
+)]
+#[rust_to_ocaml(attr = "deriving (eq, show)")]
+#[repr(C)]
+pub struct Id(pub Pos, pub String, pub Option<Int64>);
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    EqModuloPos,
+    FromOcamlRep,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep,
+)]
+#[rust_to_ocaml(attr = "deriving eq")]
+#[repr(C)]
+pub struct HashType(pub Option<Int64>);
+
+/// The record produced by the parsing phase.
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Eq,
+    FromOcamlRep,
+    Hash,
+    NoPosHash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+    ToOcamlRep,
+)]
+#[rust_to_ocaml(attr = "deriving show")]
+#[repr(C)]
+pub struct FileInfo {
+    pub hash: HashType,
+    pub file_mode: Option<Mode>,
+    pub funs: Vec<Id>,
+    pub classes: Vec<Id>,
+    pub typedefs: Vec<Id>,
+    pub consts: Vec<Id>,
+    pub modules: Vec<Id>,
+    /// None if loaded from saved state
+    pub comments: Option<Vec<(pos::Pos, Comment)>>,
 }
 
 /// The simplified record used after parsing.

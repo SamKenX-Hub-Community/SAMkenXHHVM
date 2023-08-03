@@ -2,7 +2,7 @@
     { fd_namespace =
       { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
         ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-        ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+        ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
       fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([3:10-22], "\\takes_an_int");
       fd_fun =
       { f_span = [3:1-41]; f_readonly_this = None; f_annotation = (); 
@@ -21,7 +21,7 @@
      { fd_namespace =
        { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
          ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-         ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+         ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
        fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([5:10-25], "\\pipe_param_call");
        fd_fun =
        { f_span = [5:1-7:2]; f_readonly_this = None; f_annotation = (); 
@@ -39,7 +39,9 @@
              (Expr
                 ((), [6:3-25],
                  (Pipe (([6:3-25], $$), ((), [6:3-5], (Lvar ([6:3-5], $x))),
-                    ((), [6:9-25], (Call (((), [6:9-21], (Id ([6:9-21], "\\takes_an_int"))), [], [(Pnormal, ((), [6:22-24], (Dollardollar ([6:22-24], $$))))], None))))))))
+                    ((), [6:9-25],
+                     (Call { func = ((), [6:9-21], (Id ([6:9-21], "\\takes_an_int"))); targs = []; args = [(Pnormal, ((), [6:22-24], (Dollardollar ([6:22-24], $$))))]; unpacked_arg = None }))
+                    )))))
              ]
            };
          f_fun_kind = FSync; f_user_attributes = []; f_external = false; 
@@ -49,7 +51,7 @@
      { fd_namespace =
        { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
          ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-         ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+         ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
        fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([9:10-25], "\\pipe_local_call");
        fd_fun =
        { f_span = [9:1-12:2]; f_readonly_this = None; f_annotation = (); 
@@ -62,7 +64,9 @@
               (Expr
                  ((), [11:3-25],
                   (Pipe (([11:3-25], $$), ((), [11:3-5], (Lvar ([11:3-5], $x))),
-                     ((), [11:9-25], (Call (((), [11:9-21], (Id ([11:9-21], "\\takes_an_int"))), [], [(Pnormal, ((), [11:22-24], (Dollardollar ([11:22-24], $$))))], None))))))))
+                     ((), [11:9-25],
+                      (Call { func = ((), [11:9-21], (Id ([11:9-21], "\\takes_an_int"))); targs = []; args = [(Pnormal, ((), [11:22-24], (Dollardollar ([11:22-24], $$))))]; unpacked_arg = None }))
+                     )))))
              ]
            };
          f_fun_kind = FSync; f_user_attributes = []; f_external = false; 
@@ -85,7 +89,7 @@
        c_namespace =
        { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
          ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-         ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+         ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
        c_user_attributes = []; c_file_attributes = []; c_docs_url = None; 
        c_enum = None; c_doc_comment = None; c_emit_id = None; c_internal = false; 
        c_module = None });
@@ -93,7 +97,7 @@
      { fd_namespace =
        { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
          ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-         ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+         ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
        fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([18:10-22], "\\pipe_taccess");
        fd_fun =
        { f_span = [18:1-21:2]; f_readonly_this = None; f_annotation = (); 
@@ -119,7 +123,7 @@
      { fd_namespace =
        { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
          ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-         ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+         ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
        fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([23:10-27], "\\pipe_taccess_call");
        fd_fun =
        { f_span = [23:1-25:2]; f_readonly_this = None; f_annotation = (); 
@@ -132,9 +136,11 @@
                 ((), [24:3-35],
                  (Pipe (([24:3-35], $$), ((), [24:3-7], (Lvar ([24:3-7], $foo))),
                     ((), [24:11-35],
-                     (Call (((), [24:11-23], (Id ([24:11-23], "\\takes_an_int"))), 
-                        [], [(Pnormal, ((), [24:24-34], (Class_get (((), [24:24-26], (CIexpr ((), [24:24-26], (Dollardollar ([24:24-26], $$))))), (CGstring ([24:28-34], "$myInt")), Is_prop))))], None
-                        )))
+                     (Call
+                        { func = ((), [24:11-23], (Id ([24:11-23], "\\takes_an_int"))); 
+                          targs = [];
+                          args = [(Pnormal, ((), [24:24-34], (Class_get (((), [24:24-26], (CIexpr ((), [24:24-26], (Dollardollar ([24:24-26], $$))))), (CGstring ([24:28-34], "$myInt")), Is_prop))))];
+                          unpacked_arg = None }))
                     )))))
              ]
            };

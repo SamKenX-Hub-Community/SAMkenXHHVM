@@ -263,8 +263,8 @@ let build_signature ctx pos_map_opt source_text params ctxs ret progress =
       let decl_json_pos =
         List.filter_map sym_pos ~f:(fun (source_pos, pos) ->
             match XRefs.PosMap.find_opt source_pos pos_map with
-            | None -> None
-            | Some XRefs.{ target; _ } -> Some (target, pos))
+            | Some (XRefs.{ target; _ } :: _) -> Some (target, pos)
+            | _ -> None)
       in
       let decl_json_aggr_pos = aggregate_pos decl_json_pos in
       let (fact_id, progress) = type_info ~ty decl_json_aggr_pos progress in
@@ -290,11 +290,14 @@ let build_signature ctx pos_map_opt source_text params ctxs ret progress =
   in
   (signature, progress)
 
+let readonly_assoc key = function
+  | None -> []
+  | Some elem -> [(key, Build_json.build_readonly_kind_json elem)]
+
 let method_defn ctx source_text meth decl_id progress =
+  let m_tparams = Util.remove_generated_tparams meth.m_tparams in
   let tparams =
-    List.map
-      meth.m_tparams
-      ~f:(Build_json.build_type_param_json ctx source_text)
+    List.map m_tparams ~f:(Build_json.build_type_param_json ctx source_text)
   in
   let (signature, progress) =
     build_signature
@@ -306,22 +309,34 @@ let method_defn ctx source_text meth decl_id progress =
       meth.m_ret
       progress
   in
+  let readonly_ret = readonly_assoc "readonlyRet" meth.m_readonly_ret in
+  let is_readonly_this =
+    if meth.m_readonly_this then
+      [("isReadonlyThis", JSON_Bool meth.m_readonly_this)]
+    else
+      []
+  in
   let json =
     JSON_Object
-      [
-        ("declaration", Build_json.build_id_json decl_id);
-        ("signature", signature);
-        ("visibility", Build_json.build_visibility_json meth.m_visibility);
-        ("isAbstract", JSON_Bool meth.m_abstract);
-        ("isAsync", Build_json.build_is_async_json meth.m_fun_kind);
-        ("isFinal", JSON_Bool meth.m_final);
-        ("isStatic", JSON_Bool meth.m_static);
-        ( "attributes",
-          Build_json.build_attributes_json_nested
-            source_text
-            meth.m_user_attributes );
-        ("typeParams", JSON_Array tparams);
-      ]
+      (List.concat
+         [
+           [
+             ("declaration", Build_json.build_id_json decl_id);
+             ("signature", signature);
+             ("visibility", Build_json.build_visibility_json meth.m_visibility);
+             ("isAbstract", JSON_Bool meth.m_abstract);
+             ("isAsync", Build_json.build_is_async_json meth.m_fun_kind);
+             ("isFinal", JSON_Bool meth.m_final);
+             ("isStatic", JSON_Bool meth.m_static);
+             ( "attributes",
+               Build_json.build_attributes_json_nested
+                 source_text
+                 meth.m_user_attributes );
+             ("typeParams", JSON_Array tparams);
+           ];
+           readonly_ret;
+           is_readonly_this;
+         ])
   in
   Fact_acc.add_fact Predicate.(Hack MethodDefinition) json progress
 
@@ -475,8 +490,9 @@ let func_decl name progress =
 let func_defn ctx source_text fd decl_id progress =
   let elem = fd.fd_fun in
   let prog = namespace_decl_opt fd.fd_namespace progress in
+  let fd_tparams = Util.remove_generated_tparams fd.fd_tparams in
   let tparams =
-    List.map fd.fd_tparams ~f:(Build_json.build_type_param_json ctx source_text)
+    List.map fd_tparams ~f:(Build_json.build_type_param_json ctx source_text)
   in
   let (mf, prog) = module_field fd.fd_module fd.fd_internal prog in
   let (signature, prog) =
@@ -489,19 +505,25 @@ let func_defn ctx source_text fd decl_id progress =
       elem.f_ret
       prog
   in
+  let readonly_ret = readonly_assoc "readonlyRet" elem.f_readonly_ret in
   let json_fields =
-    mf
-    @ [
-        ("declaration", Build_json.build_id_json decl_id);
-        ("signature", signature);
-        ("isAsync", Build_json.build_is_async_json elem.f_fun_kind);
-        ( "attributes",
-          Build_json.build_attributes_json_nested
-            source_text
-            elem.f_user_attributes );
-        ("typeParams", JSON_Array tparams);
+    List.concat
+      [
+        mf;
+        [
+          ("declaration", Build_json.build_id_json decl_id);
+          ("signature", signature);
+          ("isAsync", Build_json.build_is_async_json elem.f_fun_kind);
+          ( "attributes",
+            Build_json.build_attributes_json_nested
+              source_text
+              elem.f_user_attributes );
+          ("typeParams", JSON_Array tparams);
+        ];
+        readonly_ret;
       ]
   in
+
   Fact_acc.add_fact
     Predicate.(Hack FunctionDefinition)
     (JSON_Object json_fields)
@@ -678,10 +700,10 @@ let method_occ receiver_class name progress =
     (JSON_Object json)
     progress
 
-let file_call
-    ~path pos ~callee_xref ~call_args ~dispatch_arg ~receiver_type progress =
+let file_call ~path pos ~callee_infos ~call_args ~dispatch_arg progress =
+  let callee_xrefs = List.map callee_infos ~f:(fun ti -> ti.XRefs.target) in
   let receiver_type =
-    match receiver_type with
+    match List.find_map callee_infos ~f:(fun ti -> ti.XRefs.receiver_type) with
     | None -> []
     | Some receiver_type -> [("receiver_type", receiver_type)]
   in
@@ -690,19 +712,23 @@ let file_call
     | None -> receiver_type
     | Some dispatch_arg -> ("dispatch_arg", dispatch_arg) :: receiver_type
   in
-  let xref_dispatch =
-    match callee_xref with
-    | None -> dispatch_arg
-    | Some callee_xref -> ("callee_xref", callee_xref) :: dispatch_arg
+  (* pick an abitrary target, but resolved if possible. "declaration"
+     before "occurrence" *)
+  let callee_xref =
+    match List.sort ~compare:Hh_json.JsonKey.compare callee_xrefs with
+    | [] -> []
+    | hd :: _ -> [("callee_xref", hd)]
   in
   let json =
     JSON_Object
-      ([
-         ("file", Build_json.build_file_json_nested path);
-         ("callee_span", Build_json.build_bytespan_json pos);
-         ("call_args", JSON_Array call_args);
-       ]
-      @ xref_dispatch)
+      (callee_xref
+      @ dispatch_arg
+      @ [
+          ("file", Build_json.build_file_json_nested path);
+          ("callee_span", Build_json.build_bytespan_json pos);
+          ("call_args", JSON_Array call_args);
+          ("callee_xrefs", JSON_Array callee_xrefs);
+        ])
   in
   Fact_acc.add_fact Predicate.(Hack FileCall) json progress
 

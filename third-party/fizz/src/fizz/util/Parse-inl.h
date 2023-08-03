@@ -18,7 +18,11 @@ inline CipherSuite parse(folly::StringPiece s) {
       {"TLS_CHACHA20_POLY1305_SHA256",
        CipherSuite::TLS_CHACHA20_POLY1305_SHA256},
       {"TLS_AES_128_OCB_SHA256_EXPERIMENTAL",
-       CipherSuite::TLS_AES_128_OCB_SHA256_EXPERIMENTAL}};
+       CipherSuite::TLS_AES_128_OCB_SHA256_EXPERIMENTAL},
+      {"TLS_AEGIS_128L_SHA256_EXPERIMENTAL",
+       CipherSuite::TLS_AEGIS_128L_SHA256_EXPERIMENTAL},
+      {"TLS_AEGIS_256_SHA384_EXPERIMENTAL",
+       CipherSuite::TLS_AEGIS_256_SHA384_EXPERIMENTAL}};
 
   auto location = stringToCiphers.find(s);
   if (location != stringToCiphers.end()) {
@@ -57,10 +61,10 @@ inline NamedGroup parse(folly::StringPiece s) {
       {"secp521r1", NamedGroup::secp521r1},
       {"x25519", NamedGroup::x25519},
       {"secp384r1_bikel3", NamedGroup::secp384r1_bikel3},
-      {"cecpq2", NamedGroup::cecpq2},
       {"x25519_kyber512", NamedGroup::x25519_kyber512},
       {"secp256r1_kyber512", NamedGroup::secp256r1_kyber512},
-      {"x25519_kyber768", NamedGroup::x25519_kyber768},
+      {"x25519_kyber768_draft00", NamedGroup::x25519_kyber768_draft00},
+      {"secp256r1_kyber768_draft00", NamedGroup::secp256r1_kyber768_draft00},
       {"secp384r1_kyber768", NamedGroup::secp384r1_kyber768}};
 
   auto location = stringToGroups.find(s);

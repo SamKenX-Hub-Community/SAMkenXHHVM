@@ -3,10 +3,11 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 
+use std::ops::Range;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use ocamlrep::ptr::UnsafeOcamlPtr;
-use ocamlrep::rc::RcOc;
 use ocamlrep::ToOcamlRep;
 use ocamlrep_ocamlpool::ocaml_ffi;
 use ocamlrep_ocamlpool::to_ocaml;
@@ -42,7 +43,7 @@ ocaml_ffi! {
                     let end_bol = info.beginning_of_line(end_lnum);
 
                     Pos::from_lnum_bol_offset(
-                        RcOc::new(RelativePath::make(
+                        Arc::new(RelativePath::make(
                             Prefix::Dummy,
                             PathBuf::from(filename.clone()),
                         )),
@@ -72,7 +73,8 @@ ocaml_ffi! {
                     .iter()
                     .map(|(name, package)| {
                         let convert = |x: &Spanned<String>| -> PosId {
-                            let pos = pos_from_span(x.span());
+                            let Range { start, end } = x.span();
+                            let pos = pos_from_span((start, end));
                             let id = x.to_owned().into_inner();
                             (pos, id)
                         };

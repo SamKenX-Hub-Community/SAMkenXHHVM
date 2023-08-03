@@ -26,7 +26,15 @@
 
 namespace HPHP {
 
+struct Class;
+struct Func;
 struct StringData;
+
+enum class DeployKind {
+  Hard,
+  Soft,
+  HardOrSoft,
+};
 
 struct PackageInfo {
   struct Package {
@@ -42,9 +50,11 @@ struct PackageInfo {
     }
   };
 
+  using PackageSet = hphp_vector_string_set;
+
   struct Deployment {
-    hphp_vector_string_set m_packages;
-    hphp_vector_string_set m_soft_packages;
+    PackageSet m_packages;
+    PackageSet m_soft_packages;
     std::vector<std::shared_ptr<re2::RE2>> m_domains;
 
     template <typename SerDe> void serde(SerDe& sd) {
@@ -71,29 +81,56 @@ struct PackageInfo {
   const PackageMap& packages() const { return m_packages; }
   const DeploymentMap& deployments() const { return m_deployments; }
 
+  PackageInfo(PackageMap& packages, DeploymentMap& deployments);
+  PackageInfo() = default;
+
   const Deployment* getActiveDeployment() const;
   bool isPackageInActiveDeployment(const StringData* package) const;
 
-  bool moduleInPackage(const StringData* module,
-                       const Package& package) const;
-
   bool moduleInDeployment(const StringData* module,
                           const Deployment& deployment,
-                          bool allowSoft = true) const;
+                          DeployKind deployKind) const;
+
+  bool moduleInASoftPackage(const StringData* module) const;
 
   std::string mangleForCacheKey() const;
 
   template <typename SerDe> void serde(SerDe& sd) {
     sd(m_packages, stdltstr{})
       (m_deployments, stdltstr{})
+      (m_globToPackage)
       ;
   }
 
   static PackageInfo fromFile(const std::filesystem::path&);
   static PackageInfo defaults();
 
+private:
+  std::string findPackageInRange(const std::string& moduleName,
+                                 size_t start, size_t end) const;
+
+  std::string getPackageForModule(const StringData* module) const;
+
+  bool moduleInPackages(const StringData* module,
+                        const PackageSet& packageSet) const;
+
+public:
   PackageMap m_packages;
   DeploymentMap m_deployments;
+
+private:
+  std::vector<std::pair<std::string, std::string>> m_globToPackage;
+
 };
+
+bool will_symbol_raise_deployment_boundary_violation(
+  const PackageInfo& packageInfo,
+  const Func& callee
+);
+
+bool will_symbol_raise_deployment_boundary_violation(
+  const PackageInfo& packageInfo,
+  const Class& callee
+);
 
 } // namespace HPHP

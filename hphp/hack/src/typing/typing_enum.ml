@@ -134,7 +134,7 @@ let enum_check_type env (pos : Pos_or_decl.t) ur ty_interface ty _on_error =
     match ty_interface with
     | Some interface ->
       (if not (is_valid_base interface) then
-        Typing_error_utils.add_typing_error
+        Typing_error_utils.add_typing_error ~env
         @@ Typing_error.(
              enum
              @@ Primary.Enum.Enum_type_bad
@@ -167,7 +167,25 @@ let enum_check_type env (pos : Pos_or_decl.t) ur ty_interface ty _on_error =
         ty_arraykey
         callback
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  let ty_base = Option.value ~default:ty ty_interface in
+  (* Enforcement of case types for enum/enum classes is wonky.
+   * Forbid for now until we can more thoroughly audit the behavior *)
+  (match get_node ty_base with
+  | Tnewtype (name, _, _) ->
+    (match Typing_env.get_typedef env name with
+    | Some { td_vis = Aast.CaseType; td_pos; _ } ->
+      Typing_error_utils.add_typing_error ~env
+      @@ Typing_error.(
+           enum
+           @@ Primary.Enum.Enum_type_bad_case_type
+                {
+                  pos = Pos_or_decl.unsafe_to_raw_pos pos;
+                  ty_name = lazy (Typing_print.full_strip_ns env ty_base);
+                  case_type_decl_pos = td_pos;
+                })
+    | _ -> ())
+  | _ -> ());
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
   env
 
 (* Check an enum declaration of the form
@@ -210,7 +228,7 @@ let enum_class_check env tc consts const_types =
       let ((env, ty_err1), ty_exp) =
         Phase.localize_no_subst env ~ignore_errors:false ty_exp
       in
-      Option.iter ~f:Typing_error_utils.add_typing_error ty_err1;
+      Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err1;
       let ((env, ty_err2), ty_interface) =
         match ty_interface with
         | Some dty ->
@@ -220,7 +238,7 @@ let enum_class_check env tc consts const_types =
           (env, Some lty)
         | None -> ((env, None), None)
       in
-      Option.iter ~f:Typing_error_utils.add_typing_error ty_err2;
+      Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err2;
       (* Check that ty_exp <: arraykey *)
       let env =
         enum_check_type
@@ -239,7 +257,7 @@ let enum_class_check env tc consts const_types =
           let ((env, ty_err1), ty) =
             Phase.localize_no_subst env ~ignore_errors:false ty
           in
-          Option.iter ~f:Typing_error_utils.add_typing_error ty_err1;
+          Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err1;
           let env =
             enum_check_type
               env
@@ -270,5 +288,5 @@ let enum_class_check env tc consts const_types =
       (env, Typing_error.multiple_opt ty_errs)
     | None -> (env, None)
   in
-  Option.iter ~f:Typing_error_utils.add_typing_error ty_err_opt;
+  Option.iter ~f:(Typing_error_utils.add_typing_error ~env) ty_err_opt;
   env

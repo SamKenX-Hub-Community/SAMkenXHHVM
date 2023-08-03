@@ -23,7 +23,6 @@ let get_default_provider_context () =
     ~tcopt:hh_parser_options
     ~backend:provider_backend
     ~deps_mode:(Typing_deps_mode.InMemoryMode None)
-    ~package_info:Package.Info.empty
 
 let get_naming_table_and_errors provider_context path =
   let sqlite_path = Some path in
@@ -79,18 +78,6 @@ let calculate_diff naming_table1 naming_table2 errors1 errors2 =
         match Naming_table.get_file_info naming_table1 path with
         | None -> { acc with added_files = path :: acc.added_files }
         | _ -> acc)
-  in
-  let errors1 =
-    List.fold
-      ~f:(fun acc (_phase, path_set) -> Relative_path.Set.union path_set acc)
-      ~init:Relative_path.Set.empty
-      errors1
-  in
-  let errors2 =
-    List.fold
-      ~f:(fun acc (_phase, path_set) -> Relative_path.Set.union path_set acc)
-      ~init:Relative_path.Set.empty
-      errors2
   in
   let removed_errors =
     Relative_path.Set.elements (Relative_path.Set.diff errors1 errors2)

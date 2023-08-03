@@ -18,15 +18,13 @@ namespace java test.fixtures.basicannotations
 namespace java.swift test.fixtures.basicannotations
 
 include "thrift/annotation/cpp.thrift"
+include "thrift/annotation/go.thrift"
 
 enum MyEnum {
   MyValue1 = 0,
   MyValue2 = 1,
   DOMAIN = 2 (cpp.name = 'REALM'),
 } (cpp.name = "YourEnum")
-
-@cpp.StrongType
-typedef i16 MyId
 
 struct MyStructNestedAnnotation {
   1: string name;
@@ -43,6 +41,8 @@ struct MyStruct {
   # glibc has macros with this name, Thrift should be able to prevent collisions
   2: i64 major (cpp.name = 'majorVer', go.name = 'MajorVer');
   # package is a reserved keyword in Java, Thrift should be able to handle this
+  @go.Name{name = "PackageName"}
+  @go.Tag{tag = 'tag:"some_package"'}
   1: string package (java.swift.name = '_package');
   # should generate valid code even with double quotes in an annotation
   3: string annotation_with_quote (go.tag = 'tag:"somevalue"');
@@ -52,7 +52,6 @@ struct MyStruct {
   7: MyEnum my_enum;
   8: list<string> (cpp.type = "std::deque<std::string>") cpp_type_annotation;
   9: MyUnion my_union;
-  10: MyId my_id;
 } (
   cpp.name = "YourStruct",
   android.generate_builder,
@@ -60,6 +59,10 @@ struct MyStruct {
   thrift.uri = "facebook.com/thrift/compiler/test/fixtures/basic-annotations/src/module/MyStruct",
   hack.attributes = "\SomeClass(\AnotherClass::class)",
 )
+
+@go.Name{name = "IncredibleStruct"}
+typedef MyStruct AwesomeStruct
+typedef MyStruct FantasticStruct (go.name = "BrilliantStruct")
 
 const MyStruct myStruct = {
   "major": 42,
@@ -71,6 +74,7 @@ service MyService {
   void ping() throws (1: MyException myExcept);
   string getRandomData();
   bool hasDataById(1: i64 id);
+  @go.Name{name = "GoGetDataById"}
   string getDataById(1: i64 id);
   void putDataById(
     1: i64 id,
@@ -103,3 +107,10 @@ service BadService {
   performs BadInteraction;
   i32 bar();
 } (cpp.name = "GoodService")
+
+service FooBarBazService {
+  @go.Name{name = "FooStructured"}
+  void foo();
+  void bar() (go.name = 'BarNonStructured');
+  void baz();
+}

@@ -81,7 +81,7 @@ func NewIncluded() *Included {
     return (&Included{}).
         SetMyIntFieldNonCompat(0).
         SetMyTransitiveFieldNonCompat(
-              *transitive.NewFoo(),
+              *transitive.ExampleFoo,
           )
 }
 
@@ -99,7 +99,7 @@ func (x *Included) GetMyTransitiveFieldNonCompat() *transitive.Foo {
 
 func (x *Included) GetMyTransitiveField() *transitive.Foo {
     if !x.IsSetMyTransitiveField() {
-        return transitive.NewFoo()
+        return NewIncluded().MyTransitiveField
     }
 
     return x.MyTransitiveField
@@ -198,7 +198,9 @@ func (x *Included) DefaultGetMyTransitiveField() *transitive.Foo {
 }
 
 func (x *Included) String() string {
-    return fmt.Sprintf("%+v", x)
+    type IncludedAlias Included
+    valueAlias := (*IncludedAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

@@ -177,7 +177,7 @@ let nth_param ctx recv i : string option =
     let { Tast_provider.Compute_tast.tast; _ } =
       Tast_provider.compute_tast_quarantined ~ctx ~entry
     in
-
+    let tast = tast.Tast_with_dynamic.under_normal_assumptions in
     SymbolOccurrence.(
       (match recv with
       | FunctionReceiver fun_name -> nth_fun_param tast fun_name i
@@ -451,6 +451,7 @@ let make_hover_info under_dynamic_result ctx env_and_ty entry occurrence def_opt
         | ({ type_ = Method _; _ }, Some (env, ty))
         | ({ type_ = ClassConst _; _ }, Some (env, ty))
         | ({ type_ = Property _; _ }, Some (env, ty)) ->
+          let ty = Tast_env.strip_dynamic env ty in
           defined_in
           ^ Tast_env.print_ty_with_identity env (LoclTy ty) occurrence def_opt
         | ({ type_ = GConst; _ }, Some (env, ty)) ->
@@ -534,13 +535,6 @@ let go_quarantined
     ~(entry : Provider_context.entry)
     ~(line : int)
     ~(column : int) : HoverService.result =
-  let ctx =
-    Provider_context.map_tcopt ctx ~f:(fun tcopt ->
-        if TypecheckerOptions.enable_sound_dynamic tcopt then
-          GlobalOptions.{ tcopt with tco_tast_under_dynamic = true }
-        else
-          tcopt)
-  in
   let identities =
     ServerIdentifyFunction.go_quarantined ~ctx ~entry ~line ~column
   in

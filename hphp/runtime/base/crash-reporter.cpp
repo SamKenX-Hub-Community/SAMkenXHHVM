@@ -60,6 +60,7 @@ enum class CrashReportStage {
   SpinOnCrash,
   CheckFD,
   CreateCppStack,
+  CreateCppStackFallback,
   ReportHeader,
   ReportAssertDetail,
   ReportTrap,
@@ -144,7 +145,7 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
       if (RuntimeOption::EvalDumpRingBufferOnCrash) {
         Trace::dumpRingBuffer(RuntimeOption::EvalDumpRingBufferOnCrash, 0);
       }
-      // fall through
+      [[fallthrough]];
     case CrashReportStage::SpinOnCrash:
       s_crash_report_stage = CrashReportStage::CheckFD;
       if (RuntimeOption::EvalSpinOnCrash) {
@@ -155,7 +156,7 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
         write(STDERR_FILENO, buf, strlen(buf));
         for (;;) sleep(1);
       }
-      // fall through
+      [[fallthrough]];
     case CrashReportStage::CheckFD:
       s_crash_report_stage = CrashReportStage::CreateCppStack;
       if (fd < 0) {
@@ -164,16 +165,22 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
         raise(sig);
         return;
       }
-      // fall through
+      [[fallthrough]];
     case CrashReportStage::CreateCppStack:
-      s_crash_report_stage = CrashReportStage::ReportHeader;
+      s_crash_report_stage = CrashReportStage::CreateCppStackFallback;
 
       // Turn on stack traces for coredumps
       StackTrace::Enabled = true;
       StackTrace::FunctionIgnorelist = s_newIgnorelist;
       StackTrace::FunctionIgnorelistCount = 5;
       st.emplace();
-      // fall through
+      [[fallthrough]];
+    case CrashReportStage::CreateCppStackFallback:
+      s_crash_report_stage = CrashReportStage::ReportHeader;
+      // If the attempt to create the cpp stack failed above, try it
+      // again, using a simpler fallback.
+      if (!st.has_value()) st.emplace(true, true);
+      [[fallthrough]];
     case CrashReportStage::ReportHeader:
       s_crash_report_stage = CrashReportStage::ReportAssertDetail;
       {
@@ -190,9 +197,9 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
 
           return 0;
         }();
-        st->log(strsignal(sig), fd, compilerId().begin(), debuggerCount);
+        StackTraceNoHeap::log(strsignal(sig), fd, compilerId().begin(), debuggerCount);
       }
-      // fall through
+      [[fallthrough]];
     case CrashReportStage::ReportAssertDetail:
     {
       // Don't point s_crash_report_stage to the next one. We want to
@@ -202,7 +209,7 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
         write(fd, msg.c_str(), msg.size());
         ::fsync(fd);
       }
-      // fall through
+      [[fallthrough]];
     }
     case CrashReportStage::ReportTrap:
       s_crash_report_stage = CrashReportStage::DumpTreadmill;
@@ -214,7 +221,7 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
                   sig_addr, reason->file, reason->line);
         }
       }
-      // fall through
+      [[fallthrough]];
     case CrashReportStage::DumpTreadmill:
       s_crash_report_stage = CrashReportStage::ReportCppStack;
       ::fsync(fd);
@@ -225,14 +232,19 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
         "----------------------------\n%s\n",
         Treadmill::dumpTreadmillInfo(true).data()
       );
-      // fall through
+      [[fallthrough]];
     case CrashReportStage::ReportCppStack:
       s_crash_report_stage = CrashReportStage::ReportPhpStack;
 
       // flush so if C++ stack walking crashes, we still have this output so far
       ::fsync(fd);
-      st->printStackTrace(fd);
-      // fall through
+      if (st.has_value()) {
+        st->printStackTrace(fd);
+      } else {
+        folly::StringPiece msg{"(Unable to obtain cpp stack trace)"};
+        write(fd, msg.begin(), msg.size());
+      }
+      [[fallthrough]];
     case CrashReportStage::ReportPhpStack:
       // flush so if php stack-walking crashes, we still have this output so far
       ::fsync(fd);
@@ -251,7 +263,7 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
 
       s_crash_report_stage = CrashReportStage::DumpTransDB;
 
-      // fall through
+      [[fallthrough]];
     case CrashReportStage::ReportApproximatePhpStack:
       if (s_crash_report_stage == CrashReportStage::ReportApproximatePhpStack) {
         // We were unable to find a fixup for the backtrace; scan the stack to
@@ -276,14 +288,14 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
         }
       }
 
-      // fall through
+      [[fallthrough]];
     case CrashReportStage::DumpTransDB:
       s_crash_report_stage = CrashReportStage::DumpProfileData;
 
       if (jit::transdb::enabled() && RuntimeOption::EvalJit) {
         jit::tc::dump(true);
       }
-      // fall through
+      [[fallthrough]];
     case CrashReportStage::DumpProfileData: {
       s_crash_report_stage = CrashReportStage::SendEmail;
       auto frontier = kDebugAddr;
@@ -317,7 +329,7 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
       auto const& stacktraceFile = RuntimeOption::StackTraceFilename;
       mapFileIn(stacktraceFile, s_stacktrace_start, s_stacktrace_end);
     }
-      // fall through
+      [[fallthrough]];
     case CrashReportStage::SendEmail:
       s_crash_report_stage = CrashReportStage::Log;
 
@@ -333,7 +345,7 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
                 RuntimeOption::CoreDumpEmail.c_str());
         FileUtil::ssystem(cmdline);
       }
-      // fall through
+      [[fallthrough]];
     case CrashReportStage::Log:
       s_crash_report_stage = CrashReportStage::Done;
 
@@ -371,7 +383,7 @@ void bt_handler(int sigin, siginfo_t* info, void* args) {
         // to allocate memory for the ELF file.
         g_context->syncGdbState();
       }
-      // fall through
+      [[fallthrough]];
     case CrashReportStage::Done:
       // re-raise the signal and pass it to the default handler
       // to terminate the process.

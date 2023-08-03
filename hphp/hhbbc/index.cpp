@@ -84,14 +84,6 @@ using namespace extern_worker;
 
 //////////////////////////////////////////////////////////////////////
 
-// This lets us create res::Class from anywhere within this file
-// without having to explicitly friend all of the the internals.
-struct UnresolvedClassMaker {
-  static res::Class make(SString name) { return res::Class { name }; }
-};
-
-//////////////////////////////////////////////////////////////////////
-
 namespace {
 
 //////////////////////////////////////////////////////////////////////
@@ -118,64 +110,6 @@ static_assert(CheckSize<MKey, 16>(), "");
 static_assert(CheckSize<IterArgs, 16>(), "");
 static_assert(CheckSize<FCallArgs, 8>(), "");
 static_assert(CheckSize<RepoAuthType, 8>(), "");
-
-//////////////////////////////////////////////////////////////////////
-
-/*
- * One-to-one case insensitive map, where the keys are static strings
- * and the values are some T.
- *
- * Elements are not stable under insert/erase.
- */
-template<class T> using ISStringToOneT =
-  hphp_fast_map<
-    SString,
-    T,
-    string_data_hash,
-    string_data_isame
-  >;
-
-/*
- * One-to-one case sensitive map, where the keys are static strings
- * and the values are some T.
- *
- * Elements are not stable under insert/erase.
- *
- * Static strings are always uniquely defined by their pointer, so
- * pointer hashing/comparison is sufficient.
- */
-template<class T> using SStringToOneT = hphp_fast_map<SString, T>;
-
-/*
- * One-to-one case sensitive concurrent map, where the keys are static
- * strings and the values are some T.
- *
- * Concurrent insertions and lookups are supported.
- *
- * Static strings are always uniquely defined by their pointer, so
- * pointer hashing/comparison is sufficient.
- */
-template<class T> using SStringToOneConcurrentT =
-  folly_concurrent_hash_map_simd<SString, T>;
-
-/*
- * One-to-one case insensitive concurrent map, where the keys are
- * static strings and the values are some T.
- *
- * Concurrent insertions and lookups are supported.
- */
-template<class T> using ISStringToOneConcurrentT =
-  folly_concurrent_hash_map_simd<SString, T,
-                                 string_data_hash, string_data_isame>;
-
-/*
- * Case sensitive static string set.
- */
-using SStringSet = hphp_fast_set<SString>;
-/*
- * Case insensitive static string set.
- */
-using ISStringSet = hphp_fast_set<SString, string_data_hash, string_data_isame>;
 
 //////////////////////////////////////////////////////////////////////
 
@@ -213,23 +147,11 @@ using DepMap =
 
 /*
  * Each ClassInfo has a table of public static properties with these entries.
- * The `initializerType' is for use during refine_public_statics, and
- * inferredType will always be a supertype of initializerType.
  */
 struct PublicSPropEntry {
-  Type inferredType;
-  Type initializerType;
-  const php::Prop* prop;
-  uint32_t refinements;
-  /*
-   * This flag is set during analysis to indicate that we resolved the
-   * initial value (and updated it on the php::Class). This doesn't
-   * need to be atomic, because only one thread can resolve the value
-   * (the one processing the 86sinit), and it's been joined by the
-   * time we read the flag in refine_public_statics.
-   */
-  bool initialValueResolved;
-  bool everModified;
+  Type inferredType{TInitCell};
+  uint32_t refinements{0};
+  bool everModified{true};
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -415,6 +337,35 @@ PropState make_unknown_propstate(const Index& index,
 
 //////////////////////////////////////////////////////////////////////
 
+bool func_supports_AER(const php::Func* func) {
+  // Async functions always support async eager return, and no other
+  // functions support it yet.
+  return func->isAsync && !func->isGenerator;
+}
+
+uint32_t func_num_inout(const php::Func* func) {
+  if (!func->hasInOutArgs) return 0;
+  uint32_t count = 0;
+  for (auto& p : func->params) count += p.inout;
+  return count;
+}
+
+PrepKind func_param_prep(const php::Func* f, uint32_t paramId) {
+  auto const sz = f->params.size();
+  if (paramId >= sz) return PrepKind{TriBool::No, TriBool::No};
+  PrepKind kind;
+  kind.inOut = yesOrNo(f->params[paramId].inout);
+  kind.readonly = yesOrNo(f->params[paramId].readonly);
+  return kind;
+}
+
+uint32_t numNVArgs(const php::Func& f) {
+  uint32_t cnt = f.params.size();
+  return cnt && f.params[cnt - 1].isVariadic ? cnt - 1 : cnt;
+}
+
+//////////////////////////////////////////////////////////////////////
+
 }
 
 /*
@@ -485,6 +436,13 @@ struct FuncInfo2 {
    * name.
    */
   SString name;
+
+  /*
+   * The php::Func representing this function. This field is not
+   * serialized. If you wish to make use of it, it must be fixed up
+   * manually after deserialization.
+   */
+  const php::Func* func = nullptr;
 
   /*
    * The best-known return type of the function, if we have any
@@ -670,6 +628,8 @@ size_t FuncFamily::StaticInfo::hash() const {
   return hash;
 }
 
+//////////////////////////////////////////////////////////////////////
+
 namespace {
 
 struct PFuncVecHasher {
@@ -729,6 +689,10 @@ struct FFStaticInfoPtrEquals {
   }
 };
 
+//////////////////////////////////////////////////////////////////////
+
+}
+
 /*
  * Sometimes function resolution can't determine which exact function
  * something will call, but can restrict it to a family of functions.
@@ -761,6 +725,10 @@ struct FuncFamily2 {
   using Id = SHA1;
 
   Id m_id;
+  // All methods in a func family should have the same name. However,
+  // multiple func families may have the same name (so this is not an
+  // unique identifier).
+  SString m_name;
   // Methods used by a regular classes
   std::vector<MethRef> m_regular;
   // Methods used exclusively by non-regular classes, but as a private
@@ -845,8 +813,17 @@ struct FuncFamily2 {
   Optional<StaticInfo> m_allStatic;
   Optional<StaticInfo> m_regularStatic;
 
+  const StaticInfo& infoFor(bool regular) const {
+    if (regular) {
+      assertx(m_regularStatic.has_value());
+      return *m_regularStatic;
+    }
+    return *m_allStatic;
+  }
+
   template <typename SerDe> void serde(SerDe& sd) {
     sd(m_id)
+      (m_name)
       (m_regular)
       (m_nonRegularPrivate)
       (m_nonRegular)
@@ -855,6 +832,8 @@ struct FuncFamily2 {
       ;
   }
 };
+
+namespace {
 
 // Func families are (usually) very small, but we have a lot of
 // them. To reduce remote worker overhead, we bundle func families
@@ -1328,13 +1307,6 @@ struct ClassInfo {
   /*
    * Property types for public static properties, declared on this exact class
    * (i.e. not flattened in the hierarchy).
-   *
-   * These maps always have an entry for each public static property declared
-   * in this class, so it can also be used to check if this class declares a
-   * public static property of a given name.
-   *
-   * Note: the effective type we can assume a given static property may hold is
-   * not just the value in these maps.
    */
   SStringToOneT<PublicSPropEntry> publicStaticProps;
 
@@ -1606,6 +1578,12 @@ struct ClassInfo2 {
   bool hasBadRedeclareProp{true};
 
   /*
+   * Track if this class has any properties with initial values that might
+   * violate their type-hints.
+   */
+  bool hasBadInitialPropValues{true};
+
+  /*
    * Track if this class has any const props (including inherited ones).
    */
   bool hasConstProp{false};
@@ -1682,6 +1660,7 @@ struct ClassInfo2 {
       (methodFamilies, string_data_lt{})
       (funcInfos)
       (hasBadRedeclareProp)
+      (hasBadInitialPropValues)
       (hasConstProp)
       (subHasConstProp)
       (hasReifiedParent)
@@ -1806,26 +1785,6 @@ const ClassInfo* ClassInfo::withoutNonRegularEquivalent() {
 
 //////////////////////////////////////////////////////////////////////
 
-namespace {
-
-uint32_t numNVArgs(const php::Func& f) {
-  uint32_t cnt = f.params.size();
-  return cnt && f.params[cnt - 1].isVariadic ? cnt - 1 : cnt;
-}
-
-PrepKind func_param_prep(const php::Func* f, uint32_t paramId) {
-  auto const sz = f->params.size();
-  if (paramId >= sz) return PrepKind{TriBool::No, TriBool::No};
-  PrepKind kind;
-  kind.inOut = yesOrNo(f->params[paramId].inout);
-  kind.readonly = yesOrNo(f->params[paramId].readonly);
-  return kind;
-}
-
-}
-
-//////////////////////////////////////////////////////////////////////
-
 namespace res {
 
 bool Class::same(const Class& o) const {
@@ -1835,42 +1794,92 @@ bool Class::same(const Class& o) const {
 bool Class::exactSubtypeOfExact(const Class& o,
                                 bool nonRegularL,
                                 bool nonRegularR) const {
-  // Unresolved classes are never exact, so they shouldn't be passed.
-  assertx(!val.left());
-  assertx(!o.val.left());
-  // Otherwise two exact resolved classes are only subtypes of another
-  // if they're the same. One additional complication is if the class
-  // isn't regular and we're not considering non-regular classes. In
-  // that case, the class is actually Bottom, and we need to apply the
-  // rules of subtyping to Bottom (Bottom is a subtype of everything,
-  // but nothing is a subtype of it).
-  auto const c1 = val.right();
-  auto const c2 = o.val.right();
-  auto const bottomL = !nonRegularL && !is_regular_class(*c1->cls);
-  auto const bottomR = !nonRegularR && !is_regular_class(*c2->cls);
-  return bottomL || (!bottomR && c1 == c2);
+  // Two exact classes are only subtypes of another if they're the
+  // same. One additional complication is if the class isn't regular
+  // and we're not considering non-regular classes. In that case, the
+  // class is actually Bottom, and we need to apply the rules of
+  // subtyping to Bottom (Bottom is a subtype of everything, but
+  // nothing is a subtype of it).
+  if (auto const lname = val.left()) {
+    // For unresolved classes, we can't actually check if
+    // is_regular_class(), so we need to be pessimistic.
+    if (auto const rname = o.val.left()) {
+      // Two exact unresolved classes are only guarantee to subtypes
+      // of another if they're the same name and the lhs might not
+      // become Bottom, but the rhs could (we're assuming the class
+      // might not be regular). NB: if the class doesn't actually
+      // exist, this is correct as both sides will be Bottom.
+      return (!nonRegularL || nonRegularR) && lname->isame(rname);
+    }
+    // If the rhs is resolved, it's similar to the unresolved case,
+    // except we can know whether the class is regular or not. If an
+    // unresolved and resolved refer to the same class, the resolved
+    // one is considered a subtype of the unresolved one.
+    auto const c2 = o.val.right();
+    return
+      !nonRegularL &&
+      lname->isame(c2->cls->name) &&
+      !is_regular_class(*c2->cls);
+  } else if (auto const rname = o.val.left()) {
+    auto const c1 = val.right();
+    return
+      rname->isame(c1->cls->name) &&
+      (!nonRegularL || nonRegularR || is_regular_class(*c1->cls));
+  } else {
+    // Otherwise both sides are resolved and we can do a precise
+    // check.
+    auto const c1 = val.right();
+    auto const c2 = o.val.right();
+    auto const bottomL = !nonRegularL && !is_regular_class(*c1->cls);
+    auto const bottomR = !nonRegularR && !is_regular_class(*c2->cls);
+    return bottomL || (!bottomR && c1 == c2);
+  }
 }
 
 bool Class::exactSubtypeOf(const Class& o,
                            bool nonRegularL,
                            bool nonRegularR) const {
-  // Unresolved classes are never exact, so it should not show up on
-  // the lhs.
-  assertx(!val.left());
+  if (auto const lname = val.left()) {
+    // For unresolved classes, we can't actually check if
+    // is_regular_class(), so we need to be pessimistic and assume
+    // either side could go to Bottom if nonRegular is false.
+    if (auto const rname = o.val.left()) {
+      return (!nonRegularL || nonRegularR) && lname->isame(rname);
+    }
+    auto const c2 = o.val.right();
+    if (lname->isame(c2->cls->name)) {
+      // If they represent the same class, the lhs isn't a subtype of
+      // the rhs because the lhs is unresolved. The only exception is
+      // if the lhs is actually Bottom because it's not regular and we
+      // don't want those.
+      return !nonRegularL && !is_regular_class(*c2->cls);
+    }
+    if (c2->cls->attrs & AttrTrait) return false;
+    // The lhs is unresolved, but the rhs is resolved. Check to see if
+    // lhs exists on rhs subclass-list and is not filtered out from
+    // being a non-regular class.
+    for (auto const sub : c2->subclassList) {
+      if (!sub->cls->name->isame(lname)) continue;
+      return !nonRegularL || nonRegularR || is_regular_class(*sub->cls);
+    }
+    return false;
+  }
 
   auto const c1 = val.right();
   // If we want to exclude non-regular classes on either side, and the
   // lhs is not regular, there's no subtype relation. If nonRegularL
   // is false, then lhs is just a bottom (and bottom is a subtype of
-  // everything), and if nonRegularR is false, then the rhs doesn't
-  // contain any non-regular classes, so lhs cannot be part of it.
+  // everything), and if nonRegularR is false, then the rhs might not
+  // contain any non-regular classes, so lhs is not guaranteed to be
+  // part of it.
   if ((!nonRegularL || !nonRegularR) && !is_regular_class(*c1->cls)) {
     return !nonRegularL;
   }
 
   if (auto const rname = o.val.left()) {
     // The lhs is resolved, but the rhs is not. The lhs is a subtype
-    // of rhs if any of its bases have the same name.
+    // of rhs if any of its bases have the same name or if it
+    // implements rname.
     for (auto const base : c1->baseList) {
       if (base->cls->name->isame(rname)) return true;
     }
@@ -1898,22 +1907,61 @@ bool Class::subSubtypeOf(const Class& o,
     // The lhs is unresolved, but the rhs is resolved. We can use the
     // rhs subclass list to see if the lhs is on it.
     auto const c2 = o.val.right();
-    if (c2->cls->attrs & AttrTrait) {
-      return nonRegularR && c2->cls->name->isame(lname);
+    if (lname->isame(c2->cls->name)) {
+      // If they represent the same class, the lhs isn't a subtype of
+      // the rhs because the lhs is unresolved. The only exception is
+      // if the lhs is actually Bottom because it's not regular (and
+      // none of it's children are) and we don't want those.
+      return
+        !nonRegularL &&
+        !is_regular_class(*c2->cls) &&
+        !c2->hasRegularSubclass;
     }
+    if (c2->cls->attrs & AttrTrait) return false;
+    // The lhs is unresolved, but the rhs is resolved. Check to see if
+    // lhs exists on rhs subclass-list and is not filtered out from
+    // being a non-regular class.
     for (auto const sub : c2->subclassList) {
-      if (!nonRegularR && !is_regular_class(*sub->cls)) continue;
-      if (sub->cls->name->isame(lname)) return true;
+      if (!sub->cls->name->isame(lname)) continue;
+      return !nonRegularL || nonRegularR || is_regular_class(*sub->cls);
     }
     return false;
   } else if (auto const rname = o.val.left()) {
     auto const c1 = val.right();
     // The lhs is resolved, but the rhs is not. The lhs is a subtype
-    // of rhs if any of its bases have the same name.
+    // of rhs if any of its bases have the same name or if it
+    // implements rname.
+
+    if (!is_regular_class(*c1->cls)) {
+      // If the lhs could contains non-regular types, but the rhs can
+      // not, then the lhs cannot ever be a subtype of rhs (because
+      // lhs is non-regular itself).
+      if (nonRegularL) {
+        if (!nonRegularR) return false;
+      } else if (!c1->hasRegularSubclass) {
+        // If lhs is excluding non-regular classes, and lhs does not
+        // have any regular subclasses (and lhs itself is
+        // non-regular), then lhs is a Bottom, so always a subtype.
+        return true;
+      }
+    }
     for (auto const base : c1->baseList) {
       if (base->cls->name->isame(rname)) return true;
     }
-    return c1->implInterfaces.count(rname);
+    if (c1->implInterfaces.count(rname)) return true;
+    // The above checks are sufficient if the lhs is regular or if
+    // we're considering non-regular classes. Otherwise, we need to
+    // check all of the lhs regular children if they implement rname.
+    if (is_regular_class(*c1->cls) || nonRegularL) return false;
+    return std::all_of(
+      begin(c1->subclassList),
+      end(c1->subclassList),
+      [&] (const ClassInfo* sub) {
+        return
+          !is_regular_class(*sub->cls) ||
+          sub->implInterfaces.count(rname);
+      }
+    );
   }
 
   auto const c1 = val.right();
@@ -1987,29 +2035,60 @@ bool Class::subSubtypeOf(const Class& o,
 bool Class::exactCouldBeExact(const Class& o,
                               bool nonRegularL,
                               bool nonRegularR) const {
-  // Unresolved classes can never be exact, so they shouldn't show up
-  // on either side.
-  assertx(!val.left());
-  assertx(!o.val.left());
-  // Two resolved exact classes can only be each other if they're the
-  // same class. The only complication is if the class isn't regular
-  // and we're not considering non-regular classes. In that case, the
-  // class is actually Bottom, a Bottom can never could-be anything
-  // (not even itself).
-  auto const c1 = val.right();
-  auto const c2 = o.val.right();
-  if (c1 != c2) return false;
-  auto const bottomL = !nonRegularL && !is_regular_class(*c1->cls);
-  auto const bottomR = !nonRegularR && !is_regular_class(*c2->cls);
-  return !bottomL && !bottomR;
+  if (auto const lname = val.left()) {
+    if (auto const rname = o.val.left()) return lname->isame(rname);
+    // An unresolved lhs and a resolved rhs can only be each other if
+    // their name is the same and neither side can become a Bottom.
+    auto const c2 = o.val.right();
+    return lname->isame(c2->cls->name) &&
+      ((nonRegularL && nonRegularR) ||
+       is_regular_class(*c2->cls) ||
+       c2->hasRegularSubclass);
+  } else if (auto const rname = o.val.left()) {
+    auto const c1 = val.right();
+    return rname->isame(c1->cls->name) &&
+      ((nonRegularL && nonRegularR) ||
+       is_regular_class(*c1->cls) ||
+       c1->hasRegularSubclass);
+  } else {
+    // Two resolved exact classes can only be each other if they're the
+    // same class. The only complication is if the class isn't regular
+    // and we're not considering non-regular classes. In that case, the
+    // class is actually Bottom, a Bottom can never could-be anything
+    // (not even itself).
+    auto const c1 = val.right();
+    auto const c2 = o.val.right();
+    if (c1 != c2) return false;
+    auto const bottomL = !nonRegularL && !is_regular_class(*c1->cls);
+    auto const bottomR = !nonRegularR && !is_regular_class(*c2->cls);
+    return !bottomL && !bottomR;
+  }
 }
 
 bool Class::exactCouldBe(const Class& o,
                          bool nonRegularL,
                          bool nonRegularR) const {
-  // Unresolved classes can never be exact, so they shouldn't show up
-  // on the lhs.
-  assertx(!val.left());
+  if (auto const lname = val.left()) {
+    // Two unresolved classes can always potentially be each other.
+    if (o.val.left()) return true;
+    // The lhs is unresolved but the rhs is resolved. The lhs can only
+    // be the rhs if it's on the rhs's subclass list.
+    auto const c2 = o.val.right();
+    if (lname->isame(c2->cls->name)) {
+      // If they're the same name, we still need to check if either
+      // side goes to Bottom.
+      return (nonRegularL && nonRegularR) || is_regular_class(*c2->cls);
+    }
+    // Traits don't have subclasses in the sense we care about here.
+    if (c2->cls->attrs & AttrTrait) return false;
+    for (auto const sub : c2->subclassList) {
+      if (!sub->cls->name->isame(lname)) continue;
+      // We found the class. If it's not regular and either side wants
+      // only regular classes, no match is possible.
+      return (nonRegularL && nonRegularR) || is_regular_class(*sub->cls);
+    }
+    return false;
+  }
 
   // Otherwise the check is very similar to exactSubtypeOf (except for
   // the handling of bottoms).
@@ -2454,9 +2533,12 @@ ClassInfo* Class::commonAncestor(ClassInfo* a, ClassInfo* b) {
 // the range includes a mix of resolved and unresolved classes, the
 // unresolved classes will be used to narrow the classes passed to the
 // callable, but the unresolved classes themself will not be passed to
-// the callable .If the callable returns false, iteration is
+// the callable. If the callable returns false, iteration is
 // stopped. If includeNonRegular is true, non-regular subclasses are
-// visited (normally they are skipped).
+// visited (normally they are skipped). The callable also receives a
+// bool which indicates whether the class passed to the callable
+// represents an exact type or a sub type. The only case where the
+// type can be a sub type is if all classes are unresolved.
 template <typename F>
 void Class::visitEverySub(folly::Range<const Class*> classes,
                           bool includeNonRegular,
@@ -2468,14 +2550,14 @@ void Class::visitEverySub(folly::Range<const Class*> classes,
   if (classes.size() == 1) {
     auto const cinfo = classes.front().val.right();
     if (!cinfo) {
-      f(classes.front());
+      f(classes.front(), false);
     } else if (cinfo->cls->attrs & AttrTrait) {
-      if (includeNonRegular) f(Class { cinfo });
+      if (includeNonRegular) f(Class { cinfo }, true);
     } else {
       assertx(!cinfo->subclassList.empty());
       for (auto const sub : cinfo->subclassList) {
         if (!includeNonRegular && !is_regular_class(*sub->cls)) continue;
-        if (!f(Class { sub })) break;
+        if (!f(Class { sub }, true)) break;
       }
     }
     return;
@@ -2517,7 +2599,7 @@ void Class::visitEverySub(folly::Range<const Class*> classes,
     assertx(common.empty());
     for (auto const c : classes) {
       assertx(c.val.left());
-      if (!f(c)) break;
+      if (!f(c, false)) break;
     }
     return;
   }
@@ -2569,7 +2651,7 @@ void Class::visitEverySub(folly::Range<const Class*> classes,
   // callable.
   for (auto const c : common) {
     assertx(IMPLIES(!includeNonRegular, is_regular_class(*c->cls)));
-    if (!f(Class { c })) return;
+    if (!f(Class { c }, true)) return;
   }
 }
 
@@ -2786,11 +2868,12 @@ TinyVector<Class, 2> Class::combine(folly::Range<const Class*> classes1,
     visitEverySub(
       classes,
       nonRegular,
-      [&] (res::Class c) {
+      [&] (res::Class c, bool isExact) {
         // visitEverySub will only report an unresolved class if the
         // entire list is unresolved, and we deal with that case
         // specially below and shouldn't get here.
         assertx(c.val.right());
+        assertx(isExact);
         // We'll only "visit" exact sub-classes, so only use
         // processNormal here.
         processNormal(c.val.right());
@@ -2849,7 +2932,9 @@ TinyVector<Class, 2> Class::combine(folly::Range<const Class*> classes1,
       auto const subtypeOf = std::any_of(
         classes2.begin(), classes2.end(),
         [&] (res::Class c2) {
-          return c2.subSubtypeOf(c1, either, either);
+          return isSub2
+            ? c2.subSubtypeOf(c1, either, either)
+            : c2.exactSubtypeOf(c1, either, either);
         }
       );
       if (subtypeOf) common.emplace_back(c1);
@@ -2858,7 +2943,9 @@ TinyVector<Class, 2> Class::combine(folly::Range<const Class*> classes1,
       auto const subtypeOf = std::any_of(
         classes1.begin(), classes1.end(),
         [&] (res::Class c1) {
-          return c1.subSubtypeOf(c2, either, either);
+          return isSub1
+            ? c1.subSubtypeOf(c2, either, either)
+            : c1.exactSubtypeOf(c2, either, either);
         }
       );
       if (subtypeOf) common.emplace_back(c2);
@@ -2881,7 +2968,7 @@ Class::removeNonRegular(folly::Range<const Class*> classes) {
   visitEverySub(
     classes,
     false,
-    [&] (res::Class c) {
+    [&] (res::Class c, bool isExact) {
       // Unresolved classes are always "regular" (we can't tell
       // otherwise), so they remain as is.
       if (c.val.left()) {
@@ -2893,6 +2980,7 @@ Class::removeNonRegular(folly::Range<const Class*> classes) {
       // were resolved.
       auto const cinfo = c.val.right();
       assertx(cinfo);
+      assertx(isExact);
       assertx(is_regular_class(*cinfo->cls));
 
       if (!commonBase) {
@@ -2983,12 +3071,13 @@ TinyVector<Class, 2> Class::intersect(folly::Range<const Class*> classes1,
     visitEverySub(
       lhs,
       bothNonRegular,
-      [&] (res::Class c) {
+      [&] (res::Class c, bool isExact) {
         auto const cinfo = c.val.right();
         // We shouldn't use visitEverySub if the class list is nothing
         // but unresolved classes, so we should never get an
         // unresolved class in the callback.
         assertx(cinfo);
+        assertx(isExact);
         assertx(IMPLIES(!bothNonRegular, is_regular_class(*cinfo->cls)));
 
         // Could this class be a class in the other list? If not, ignore
@@ -3097,25 +3186,24 @@ bool Class::couldBeIsect(folly::Range<const Class*> classes1,
 
   auto const bothNonReg = nonRegular1 && nonRegular2;
 
-  // Otherwise decompose the first class list into each of it's exact
+  // Decompose the first class list into each of it's exact
   // subclasses, and do a could-be check against every class on the
   // second list. This is precise since the lhs is always exact.
   auto couldBe = false;
   visitEverySub(
     classes1,
     bothNonReg,
-    [&] (res::Class c) {
-      if (!c.val.left()) {
-        for (auto const o : classes2) {
-          if (!c.exactCouldBe(o, bothNonReg, bothNonReg)) return true;
+    [&] (res::Class c, bool isExact) {
+      couldBe = std::all_of(
+        classes2.begin(),
+        classes2.end(),
+        [&] (Class c2) {
+          return isExact
+            ? c.exactCouldBe(c2, bothNonReg, bothNonReg)
+            : c.subCouldBe(c2, bothNonReg, bothNonReg);
         }
-      } else {
-        for (auto const o : classes2) {
-          if (!c.subCouldBe(o, bothNonReg, bothNonReg)) return true;
-        }
-      }
-      couldBe = true;
-      return false;
+      );
+      return !couldBe;
     }
   );
   return couldBe;
@@ -3124,6 +3212,8 @@ bool Class::couldBeIsect(folly::Range<const Class*> classes1,
 Class Class::unresolvedWaitHandle() {
   return Class { s_Awaitable.get() };
 }
+
+//////////////////////////////////////////////////////////////////////
 
 Func::Func(Rep val)
   : val(val)
@@ -3134,16 +3224,24 @@ SString Func::name() const {
     val,
     [&] (FuncName s)   { return s.name; },
     [&] (MethodName s) { return s.name; },
-    [&] (FuncInfo* fi) { return fi->func->name; },
-    [&] (Method m)     { return m.func->name; },
+    [&] (Fun f)        { return f.finfo->func->name; },
+    [&] (Fun2 f)       { return f.finfo->name; },
+    [&] (Method m)     { return m.finfo->func->name; },
+    [&] (Method2 m)    { return m.finfo->name; },
     [&] (MethodFamily fam) {
       return fam.family->possibleFuncs().front().ptr()->name;
     },
-    [&] (MethodOrMissing m) { return m.func->name; },
+    [&] (MethodFamily2 fam) { return fam.family->m_name; },
+    [&] (MethodOrMissing m) { return m.finfo->func->name; },
+    [&] (MethodOrMissing2 m) { return m.finfo->name; },
     [&] (Missing m) { return m.name; },
     [&] (const Isect& i) {
       assertx(i.families.size() > 1);
       return i.families[0]->possibleFuncs().front().ptr()->name;
+    },
+    [&] (const Isect2& i) {
+      assertx(i.families.size() > 1);
+      return i.families[0]->m_name;
     }
   );
 }
@@ -3154,12 +3252,17 @@ const php::Func* Func::exactFunc() const {
     val,
     [&](FuncName)                    { return Ret{}; },
     [&](MethodName)                  { return Ret{}; },
-    [&](FuncInfo* fi)                { return fi->func; },
-    [&](Method m)                    { return m.func; },
+    [&](Fun f)                       { return f.finfo->func; },
+    [&](Fun2 f)                      { return f.finfo->func; },
+    [&](Method m)                    { return m.finfo->func; },
+    [&](Method2 m)                   { return m.finfo->func; },
     [&](MethodFamily)                { return Ret{}; },
+    [&](MethodFamily2)               { return Ret{}; },
     [&](MethodOrMissing)             { return Ret{}; },
+    [&](MethodOrMissing2)            { return Ret{}; },
     [&](Missing)                     { return Ret{}; },
-    [&](const Isect&)                { return Ret{}; }
+    [&](const Isect&)                { return Ret{}; },
+    [&](const Isect2&)               { return Ret{}; }
   );
 }
 
@@ -3168,12 +3271,17 @@ TriBool Func::exists() const {
     val,
     [&](FuncName)                    { return TriBool::Maybe; },
     [&](MethodName)                  { return TriBool::Maybe; },
-    [&](FuncInfo*)                   { return TriBool::Yes; },
+    [&](Fun)                         { return TriBool::Yes; },
+    [&](Fun2)                        { return TriBool::Yes; },
     [&](Method)                      { return TriBool::Yes; },
+    [&](Method2)                     { return TriBool::Yes; },
     [&](MethodFamily)                { return TriBool::Maybe; },
+    [&](MethodFamily2)               { return TriBool::Maybe; },
     [&](MethodOrMissing)             { return TriBool::Maybe; },
+    [&](MethodOrMissing2)            { return TriBool::Maybe; },
     [&](Missing)                     { return TriBool::No; },
-    [&](const Isect&)                { return TriBool::Maybe; }
+    [&](const Isect&)                { return TriBool::Maybe; },
+    [&](const Isect2&)               { return TriBool::Maybe; }
   );
 }
 
@@ -3182,14 +3290,21 @@ bool Func::isFoldable() const {
     val,
     [&](FuncName)   { return false; },
     [&](MethodName) { return false; },
-    [&](FuncInfo* fi) {
-      return fi->func->attrs & AttrIsFoldable;
+    [&](Fun f) {
+      return f.finfo->func->attrs & AttrIsFoldable;
     },
-    [&](Method m) { return m.func->attrs & AttrIsFoldable; },
+    [&](Fun2 f) {
+      return f.finfo->func->attrs & AttrIsFoldable;
+    },
+    [&](Method m)  { return m.finfo->func->attrs & AttrIsFoldable; },
+    [&](Method2 m) { return m.finfo->func->attrs & AttrIsFoldable; },
     [&](MethodFamily)    { return false; },
+    [&](MethodFamily2)   { return false; },
     [&](MethodOrMissing) { return false; },
+    [&](MethodOrMissing2){ return false; },
     [&](Missing)         { return false; },
-    [&](const Isect&)    { return false; }
+    [&](const Isect&)    { return false; },
+    [&](const Isect2&)   { return false; }
   );
 }
 
@@ -3198,16 +3313,28 @@ bool Func::couldHaveReifiedGenerics() const {
     val,
     [&](FuncName s) { return true; },
     [&](MethodName) { return true; },
-    [&](FuncInfo* fi) { return fi->func->isReified; },
-    [&](Method m) { return m.func->isReified; },
+    [&](Fun f) { return f.finfo->func->isReified; },
+    [&](Fun2 f) { return f.finfo->func->isReified; },
+    [&](Method m) { return m.finfo->func->isReified; },
+    [&](Method2 m) { return m.finfo->func->isReified; },
     [&](MethodFamily fa) {
       return fa.family->infoFor(fa.regularOnly).m_static->m_maybeReified;
     },
-    [&](MethodOrMissing m) { return m.func->isReified; },
+    [&](MethodFamily2 fa) {
+      return fa.family->infoFor(fa.regularOnly).m_maybeReified;
+    },
+    [&](MethodOrMissing m) { return m.finfo->func->isReified; },
+    [&](MethodOrMissing2 m) { return m.finfo->func->isReified; },
     [&](Missing) { return false; },
     [&](const Isect& i) {
       for (auto const ff : i.families) {
         if (!ff->infoFor(i.regularOnly).m_static->m_maybeReified) return false;
+      }
+      return true;
+    },
+    [&](const Isect2& i) {
+      for (auto const ff : i.families) {
+        if (!ff->infoFor(i.regularOnly).m_maybeReified) return false;
       }
       return true;
     }
@@ -3231,19 +3358,36 @@ bool Func::mightCareAboutDynCalls() const {
     [&](MethodName) {
       return mightCareAboutClsMeth || mightCareAboutInstMeth;
     },
-    [&](FuncInfo* fi) {
-      return dyn_call_error_level(fi->func) > 0;
+    [&](Fun f) {
+      return dyn_call_error_level(f.finfo->func) > 0;
     },
-    [&](Method m) { return dyn_call_error_level(m.func) > 0; },
+    [&](Fun2 f) {
+      return dyn_call_error_level(f.finfo->func) > 0;
+    },
+    [&](Method m)  { return dyn_call_error_level(m.finfo->func) > 0; },
+    [&](Method2 m) { return dyn_call_error_level(m.finfo->func) > 0; },
     [&](MethodFamily fa) {
       return
         fa.family->infoFor(fa.regularOnly).m_static->m_maybeCaresAboutDynCalls;
     },
-    [&](MethodOrMissing m) { return dyn_call_error_level(m.func) > 0; },
+    [&](MethodFamily2 fa) {
+      return
+        fa.family->infoFor(fa.regularOnly).m_maybeCaresAboutDynCalls;
+    },
+    [&](MethodOrMissing m)  { return dyn_call_error_level(m.finfo->func) > 0; },
+    [&](MethodOrMissing2 m) { return dyn_call_error_level(m.finfo->func) > 0; },
     [&](Missing m) { return false; },
     [&](const Isect& i) {
       for (auto const ff : i.families) {
         if (!ff->infoFor(i.regularOnly).m_static->m_maybeCaresAboutDynCalls) {
+          return false;
+        }
+      }
+      return true;
+    },
+    [&](const Isect2& i) {
+      for (auto const ff : i.families) {
+        if (!ff->infoFor(i.regularOnly).m_maybeCaresAboutDynCalls) {
           return false;
         }
       }
@@ -3257,16 +3401,28 @@ bool Func::mightBeBuiltin() const {
     val,
     [&](FuncName s) { return true; },
     [&](MethodName) { return true; },
-    [&](FuncInfo* fi) { return fi->func->attrs & AttrBuiltin; },
-    [&](Method m) { return m.func->attrs & AttrBuiltin; },
+    [&](Fun f) { return f.finfo->func->attrs & AttrBuiltin; },
+    [&](Fun2 f) { return f.finfo->func->attrs & AttrBuiltin; },
+    [&](Method m) { return m.finfo->func->attrs & AttrBuiltin; },
+    [&](Method2 m) { return m.finfo->func->attrs & AttrBuiltin; },
     [&](MethodFamily fa) {
       return fa.family->infoFor(fa.regularOnly).m_static->m_maybeBuiltin;
     },
-    [&](MethodOrMissing m) { return m.func->attrs & AttrBuiltin; },
+    [&](MethodFamily2 fa) {
+      return fa.family->infoFor(fa.regularOnly).m_maybeBuiltin;
+    },
+    [&](MethodOrMissing m) { return m.finfo->func->attrs & AttrBuiltin; },
+    [&](MethodOrMissing2 m) { return m.finfo->func->attrs & AttrBuiltin; },
     [&](Missing m) { return false; },
     [&](const Isect& i) {
       for (auto const ff : i.families) {
         if (!ff->infoFor(i.regularOnly).m_static->m_maybeBuiltin) return false;
+      }
+      return true;
+    },
+    [&](const Isect2& i) {
+      for (auto const ff : i.families) {
+        if (!ff->infoFor(i.regularOnly).m_maybeBuiltin) return false;
       }
       return true;
     }
@@ -3278,13 +3434,19 @@ uint32_t Func::minNonVariadicParams() const {
     val,
     [&] (FuncName) { return 0; },
     [&] (MethodName) { return 0; },
-    [&] (FuncInfo* fi) { return numNVArgs(*fi->func); },
-    [&] (Method m) { return numNVArgs(*m.func); },
+    [&] (Fun f) { return numNVArgs(*f.finfo->func); },
+    [&] (Fun2 f) { return numNVArgs(*f.finfo->func); },
+    [&] (Method m) { return numNVArgs(*m.finfo->func); },
+    [&] (Method2 m) { return numNVArgs(*m.finfo->func); },
     [&] (MethodFamily fa) {
       return
         fa.family->infoFor(fa.regularOnly).m_static->m_minNonVariadicParams;
     },
-    [&] (MethodOrMissing m) { return numNVArgs(*m.func); },
+    [&] (MethodFamily2 fa) {
+      return fa.family->infoFor(fa.regularOnly).m_minNonVariadicParams;
+    },
+    [&] (MethodOrMissing m) { return numNVArgs(*m.finfo->func); },
+    [&] (MethodOrMissing2 m) { return numNVArgs(*m.finfo->func); },
     [&] (Missing) { return 0; },
     [&] (const Isect& i) {
       uint32_t nv = 0;
@@ -3292,6 +3454,16 @@ uint32_t Func::minNonVariadicParams() const {
         nv = std::max(
           nv,
           ff->infoFor(i.regularOnly).m_static->m_minNonVariadicParams
+        );
+      }
+      return nv;
+    },
+    [&] (const Isect2& i) {
+      uint32_t nv = 0;
+      for (auto const ff : i.families) {
+        nv = std::max(
+          nv,
+          ff->infoFor(i.regularOnly).m_minNonVariadicParams
         );
       }
       return nv;
@@ -3304,13 +3476,19 @@ uint32_t Func::maxNonVariadicParams() const {
     val,
     [&] (FuncName) { return std::numeric_limits<uint32_t>::max(); },
     [&] (MethodName) { return std::numeric_limits<uint32_t>::max(); },
-    [&] (FuncInfo* fi) { return numNVArgs(*fi->func); },
-    [&] (Method m) { return numNVArgs(*m.func); },
+    [&] (Fun f) { return numNVArgs(*f.finfo->func); },
+    [&] (Fun2 f) { return numNVArgs(*f.finfo->func); },
+    [&] (Method m) { return numNVArgs(*m.finfo->func); },
+    [&] (Method2 m) { return numNVArgs(*m.finfo->func); },
     [&] (MethodFamily fa) {
       return
         fa.family->infoFor(fa.regularOnly).m_static->m_maxNonVariadicParams;
     },
-    [&] (MethodOrMissing m) { return numNVArgs(*m.func); },
+    [&] (MethodFamily2 fa) {
+      return fa.family->infoFor(fa.regularOnly).m_maxNonVariadicParams;
+    },
+    [&] (MethodOrMissing m) { return numNVArgs(*m.finfo->func); },
+    [&] (MethodOrMissing2 m) { return numNVArgs(*m.finfo->func); },
     [&] (Missing) { return 0; },
     [&] (const Isect& i) {
       auto nv = std::numeric_limits<uint32_t>::max();
@@ -3318,6 +3496,16 @@ uint32_t Func::maxNonVariadicParams() const {
         nv = std::min(
           nv,
           ff->infoFor(i.regularOnly).m_static->m_maxNonVariadicParams
+        );
+      }
+      return nv;
+    },
+    [&] (const Isect2& i) {
+      auto nv = std::numeric_limits<uint32_t>::max();
+      for (auto const ff : i.families) {
+        nv = std::min(
+          nv,
+          ff->infoFor(i.regularOnly).m_maxNonVariadicParams
         );
       }
       return nv;
@@ -3330,18 +3518,35 @@ const RuntimeCoeffects* Func::requiredCoeffects() const {
     val,
     [&] (FuncName) { return nullptr; },
     [&] (MethodName) { return nullptr; },
-    [&] (FuncInfo* fi) { return &fi->func->requiredCoeffects; },
-    [&] (Method m) { return &m.func->requiredCoeffects; },
+    [&] (Fun f) { return &f.finfo->func->requiredCoeffects; },
+    [&] (Fun2 f) { return &f.finfo->func->requiredCoeffects; },
+    [&] (Method m) { return &m.finfo->func->requiredCoeffects; },
+    [&] (Method2 m) { return &m.finfo->func->requiredCoeffects; },
     [&] (MethodFamily fa) {
       return fa.family->infoFor(fa.regularOnly)
         .m_static->m_requiredCoeffects.get_pointer();
     },
-    [&] (MethodOrMissing m) { return &m.func->requiredCoeffects; },
+    [&] (MethodFamily2 fa) {
+      return
+        fa.family->infoFor(fa.regularOnly).m_requiredCoeffects.get_pointer();
+    },
+    [&] (MethodOrMissing m) { return &m.finfo->func->requiredCoeffects; },
+    [&] (MethodOrMissing2 m) { return &m.finfo->func->requiredCoeffects; },
     [&] (Missing) { return nullptr; },
     [&] (const Isect& i) {
       const RuntimeCoeffects* coeffects = nullptr;
       for (auto const ff : i.families) {
         auto const& info = *ff->infoFor(i.regularOnly).m_static;
+        if (!info.m_requiredCoeffects) continue;
+        assertx(IMPLIES(coeffects, *coeffects == *info.m_requiredCoeffects));
+        if (!coeffects) coeffects = info.m_requiredCoeffects.get_pointer();
+      }
+      return coeffects;
+    },
+    [&] (const Isect2& i) {
+      const RuntimeCoeffects* coeffects = nullptr;
+      for (auto const ff : i.families) {
+        auto const& info = ff->infoFor(i.regularOnly);
         if (!info.m_requiredCoeffects) continue;
         assertx(IMPLIES(coeffects, *coeffects == *info.m_requiredCoeffects));
         if (!coeffects) coeffects = info.m_requiredCoeffects.get_pointer();
@@ -3356,13 +3561,19 @@ const CompactVector<CoeffectRule>* Func::coeffectRules() const {
     val,
     [&] (FuncName) { return nullptr; },
     [&] (MethodName) { return nullptr; },
-    [&] (FuncInfo* fi) { return &fi->func->coeffectRules; },
-    [&] (Method m) { return &m.func->coeffectRules; },
+    [&] (Fun f) { return &f.finfo->func->coeffectRules; },
+    [&] (Fun2 f) { return &f.finfo->func->coeffectRules; },
+    [&] (Method m) { return &m.finfo->func->coeffectRules; },
+    [&] (Method2 m) { return &m.finfo->func->coeffectRules; },
     [&] (MethodFamily fa) {
       return fa.family->infoFor(fa.regularOnly)
         .m_static->m_coeffectRules.get_pointer();
     },
-    [&] (MethodOrMissing m) { return &m.func->coeffectRules; },
+    [&] (MethodFamily2 fa) {
+      return fa.family->infoFor(fa.regularOnly).m_coeffectRules.get_pointer();
+    },
+    [&] (MethodOrMissing m) { return &m.finfo->func->coeffectRules; },
+    [&] (MethodOrMissing2 m) { return &m.finfo->func->coeffectRules; },
     [&] (Missing) { return nullptr; },
     [&] (const Isect& i) {
       const CompactVector<CoeffectRule>* coeffects = nullptr;
@@ -3383,6 +3594,272 @@ const CompactVector<CoeffectRule>* Func::coeffectRules() const {
         if (!coeffects) coeffects = info.m_coeffectRules.get_pointer();
       }
       return coeffects;
+    },
+    [&] (const Isect2& i) {
+      const CompactVector<CoeffectRule>* coeffects = nullptr;
+      for (auto const ff : i.families) {
+        auto const& info = ff->infoFor(i.regularOnly);
+        if (!info.m_coeffectRules) continue;
+        assertx(
+          IMPLIES(
+            coeffects,
+            std::is_permutation(
+              begin(*coeffects),
+              end(*coeffects),
+              begin(*info.m_coeffectRules),
+              end(*info.m_coeffectRules)
+            )
+          )
+        );
+        if (!coeffects) coeffects = info.m_coeffectRules.get_pointer();
+      }
+      return coeffects;
+    }
+  );
+}
+
+TriBool Func::supportsAsyncEagerReturn() const {
+  return match<TriBool>(
+    val,
+    [&] (FuncName)   { return TriBool::Maybe; },
+    [&] (MethodName) { return TriBool::Maybe; },
+    [&] (Fun f)      { return yesOrNo(func_supports_AER(f.finfo->func)); },
+    [&] (Fun2 f)     { return yesOrNo(func_supports_AER(f.finfo->func)); },
+    [&] (Method m)   { return yesOrNo(func_supports_AER(m.finfo->func)); },
+    [&] (Method2 m)  { return yesOrNo(func_supports_AER(m.finfo->func)); },
+    [&] (MethodFamily fam) {
+      return fam.family->infoFor(fam.regularOnly).m_static->m_supportsAER;
+    },
+    [&] (MethodFamily2 fam) {
+      return fam.family->infoFor(fam.regularOnly).m_supportsAER;
+    },
+    [&] (MethodOrMissing m)  {
+      return yesOrNo(func_supports_AER(m.finfo->func));
+    },
+    [&] (MethodOrMissing2 m) {
+      return yesOrNo(func_supports_AER(m.finfo->func));
+    },
+    [&] (Missing) { return TriBool::No; },
+    [&] (const Isect& i) {
+      auto aer = TriBool::Maybe;
+      for (auto const ff : i.families) {
+        auto const& info = *ff->infoFor(i.regularOnly).m_static;
+        if (info.m_supportsAER == TriBool::Maybe) continue;
+        assertx(IMPLIES(aer != TriBool::Maybe, aer == info.m_supportsAER));
+        if (aer == TriBool::Maybe) aer = info.m_supportsAER;
+      }
+      return aer;
+    },
+    [&] (const Isect2& i) {
+      auto aer = TriBool::Maybe;
+      for (auto const ff : i.families) {
+        auto const& info = ff->infoFor(i.regularOnly);
+        if (info.m_supportsAER == TriBool::Maybe) continue;
+        assertx(IMPLIES(aer != TriBool::Maybe, aer == info.m_supportsAER));
+        if (aer == TriBool::Maybe) aer = info.m_supportsAER;
+      }
+      return aer;
+    }
+  );
+}
+
+Optional<uint32_t> Func::lookupNumInoutParams() const {
+  return match<Optional<uint32_t>>(
+    val,
+    [&] (FuncName s)   -> Optional<uint32_t> { return std::nullopt; },
+    [&] (MethodName s) -> Optional<uint32_t> { return std::nullopt; },
+    [&] (Fun f)     { return func_num_inout(f.finfo->func); },
+    [&] (Fun2 f)    { return func_num_inout(f.finfo->func); },
+    [&] (Method m)  { return func_num_inout(m.finfo->func); },
+    [&] (Method2 m) { return func_num_inout(m.finfo->func); },
+    [&] (MethodFamily fam) {
+      return fam.family->infoFor(fam.regularOnly).m_static->m_numInOut;
+    },
+    [&] (MethodFamily2 fam) {
+      return fam.family->infoFor(fam.regularOnly).m_numInOut;
+    },
+    [&] (MethodOrMissing m)  { return func_num_inout(m.finfo->func); },
+    [&] (MethodOrMissing2 m) { return func_num_inout(m.finfo->func); },
+    [&] (Missing)            { return 0; },
+    [&] (const Isect& i) {
+      Optional<uint32_t> numInOut;
+      for (auto const ff : i.families) {
+        auto const& info = *ff->infoFor(i.regularOnly).m_static;
+        if (!info.m_numInOut) continue;
+        assertx(IMPLIES(numInOut, *numInOut == *info.m_numInOut));
+        if (!numInOut) numInOut = info.m_numInOut;
+      }
+      return numInOut;
+    },
+    [&] (const Isect2& i) {
+      Optional<uint32_t> numInOut;
+      for (auto const ff : i.families) {
+        auto const& info = ff->infoFor(i.regularOnly);
+        if (!info.m_numInOut) continue;
+        assertx(IMPLIES(numInOut, *numInOut == *info.m_numInOut));
+        if (!numInOut) numInOut = info.m_numInOut;
+      }
+      return numInOut;
+    }
+  );
+}
+
+PrepKind Func::lookupParamPrep(uint32_t paramId) const {
+  auto const fromFuncFamily = [&] (FuncFamily* ff, bool regularOnly) {
+    auto const& info = *ff->infoFor(regularOnly).m_static;
+    if (paramId >= info.m_paramPreps.size()) {
+      return PrepKind{TriBool::No, TriBool::No};
+    }
+    return info.m_paramPreps[paramId];
+  };
+  auto const fromFuncFamily2 = [&] (const FuncFamily2* ff, bool regularOnly) {
+    auto const& info = ff->infoFor(regularOnly);
+    if (paramId >= info.m_paramPreps.size()) {
+      return PrepKind{TriBool::No, TriBool::No};
+    }
+    return info.m_paramPreps[paramId];
+  };
+
+  return match<PrepKind>(
+    val,
+    [&] (FuncName s)         { return PrepKind{TriBool::Maybe, TriBool::Maybe}; },
+    [&] (MethodName s)       { return PrepKind{TriBool::Maybe, TriBool::Maybe}; },
+    [&] (Fun f)              { return func_param_prep(f.finfo->func, paramId); },
+    [&] (Fun2 f)             { return func_param_prep(f.finfo->func, paramId); },
+    [&] (Method m)           { return func_param_prep(m.finfo->func, paramId); },
+    [&] (Method2 m)          { return func_param_prep(m.finfo->func, paramId); },
+    [&] (MethodFamily f)     { return fromFuncFamily(f.family, f.regularOnly); },
+    [&] (MethodFamily2 f)    { return fromFuncFamily2(f.family, f.regularOnly); },
+    [&] (MethodOrMissing m)  { return func_param_prep(m.finfo->func, paramId); },
+    [&] (MethodOrMissing2 m) { return func_param_prep(m.finfo->func, paramId); },
+    [&] (Missing)            { return PrepKind{TriBool::No, TriBool::Yes}; },
+    [&] (const Isect& i) {
+      auto inOut = TriBool::Maybe;
+      auto readonly = TriBool::Maybe;
+
+      for (auto const ff : i.families) {
+        auto const prepKind = fromFuncFamily(ff, i.regularOnly);
+        if (prepKind.inOut != TriBool::Maybe) {
+          assertx(IMPLIES(inOut != TriBool::Maybe, inOut == prepKind.inOut));
+          if (inOut == TriBool::Maybe) inOut = prepKind.inOut;
+        }
+
+        if (prepKind.readonly != TriBool::Maybe) {
+          assertx(
+            IMPLIES(readonly != TriBool::Maybe, readonly == prepKind.readonly)
+          );
+          if (readonly == TriBool::Maybe) readonly = prepKind.readonly;
+        }
+      }
+
+      return PrepKind{inOut, readonly};
+    },
+    [&] (const Isect2& i) {
+      auto inOut = TriBool::Maybe;
+      auto readonly = TriBool::Maybe;
+
+      for (auto const ff : i.families) {
+        auto const prepKind = fromFuncFamily2(ff, i.regularOnly);
+        if (prepKind.inOut != TriBool::Maybe) {
+          assertx(IMPLIES(inOut != TriBool::Maybe, inOut == prepKind.inOut));
+          if (inOut == TriBool::Maybe) inOut = prepKind.inOut;
+        }
+
+        if (prepKind.readonly != TriBool::Maybe) {
+          assertx(
+            IMPLIES(readonly != TriBool::Maybe, readonly == prepKind.readonly)
+          );
+          if (readonly == TriBool::Maybe) readonly = prepKind.readonly;
+        }
+      }
+
+      return PrepKind{inOut, readonly};
+    }
+  );
+}
+
+TriBool Func::lookupReturnReadonly() const {
+  return match<TriBool>(
+    val,
+    [&] (FuncName)     { return TriBool::Maybe; },
+    [&] (MethodName)   { return TriBool::Maybe; },
+    [&] (Fun f)        { return yesOrNo(f.finfo->func->isReadonlyReturn); },
+    [&] (Fun2 f)       { return yesOrNo(f.finfo->func->isReadonlyReturn); },
+    [&] (Method m)     { return yesOrNo(m.finfo->func->isReadonlyReturn); },
+    [&] (Method2 m)    { return yesOrNo(m.finfo->func->isReadonlyReturn); },
+    [&] (MethodFamily fam) {
+      return fam.family->infoFor(fam.regularOnly).m_static->m_isReadonlyReturn;
+    },
+    [&] (MethodFamily2 fam) {
+      return fam.family->infoFor(fam.regularOnly).m_isReadonlyReturn;
+    },
+    [&] (MethodOrMissing m)  { return yesOrNo(m.finfo->func->isReadonlyReturn); },
+    [&] (MethodOrMissing2 m) { return yesOrNo(m.finfo->func->isReadonlyReturn); },
+    [&] (Missing)            { return TriBool::No; },
+    [&] (const Isect& i) {
+      auto readOnly = TriBool::Maybe;
+      for (auto const ff : i.families) {
+        auto const& info = *ff->infoFor(i.regularOnly).m_static;
+        if (info.m_isReadonlyReturn == TriBool::Maybe) continue;
+        assertx(IMPLIES(readOnly != TriBool::Maybe,
+                        readOnly == info.m_isReadonlyReturn));
+        if (readOnly == TriBool::Maybe) readOnly = info.m_isReadonlyReturn;
+      }
+      return readOnly;
+    },
+    [&] (const Isect2& i) {
+      auto readOnly = TriBool::Maybe;
+      for (auto const ff : i.families) {
+        auto const& info = ff->infoFor(i.regularOnly);
+        if (info.m_isReadonlyReturn == TriBool::Maybe) continue;
+        assertx(IMPLIES(readOnly != TriBool::Maybe,
+                        readOnly == info.m_isReadonlyReturn));
+        if (readOnly == TriBool::Maybe) readOnly = info.m_isReadonlyReturn;
+      }
+      return readOnly;
+    }
+  );
+}
+
+TriBool Func::lookupReadonlyThis() const {
+  return match<TriBool>(
+    val,
+    [&] (FuncName s)   { return TriBool::Maybe; },
+    [&] (MethodName s) { return TriBool::Maybe; },
+    [&] (Fun f)        { return yesOrNo(f.finfo->func->isReadonlyThis); },
+    [&] (Fun2 f)       { return yesOrNo(f.finfo->func->isReadonlyThis); },
+    [&] (Method m)     { return yesOrNo(m.finfo->func->isReadonlyThis); },
+    [&] (Method2 m)    { return yesOrNo(m.finfo->func->isReadonlyThis); },
+    [&] (MethodFamily fam) {
+      return fam.family->infoFor(fam.regularOnly).m_static->m_isReadonlyThis;
+    },
+    [&] (MethodFamily2 fam) {
+      return fam.family->infoFor(fam.regularOnly).m_isReadonlyThis;
+    },
+    [&] (MethodOrMissing m)  { return yesOrNo(m.finfo->func->isReadonlyThis); },
+    [&] (MethodOrMissing2 m) { return yesOrNo(m.finfo->func->isReadonlyThis); },
+    [&] (Missing)            { return TriBool::No; },
+    [&] (const Isect& i) {
+      auto readOnly = TriBool::Maybe;
+      for (auto const ff : i.families) {
+        auto const& info = *ff->infoFor(i.regularOnly).m_static;
+        if (info.m_isReadonlyThis == TriBool::Maybe) continue;
+        assertx(IMPLIES(readOnly != TriBool::Maybe,
+                        readOnly == info.m_isReadonlyThis));
+        if (readOnly == TriBool::Maybe) readOnly = info.m_isReadonlyThis;
+      }
+      return readOnly;
+    },
+    [&] (const Isect2& i) {
+      auto readOnly = TriBool::Maybe;
+      for (auto const ff : i.families) {
+        auto const& info = ff->infoFor(i.regularOnly);
+        if (info.m_isReadonlyThis == TriBool::Maybe) continue;
+        assertx(IMPLIES(readOnly != TriBool::Maybe,
+                        readOnly == info.m_isReadonlyThis));
+        if (readOnly == TriBool::Maybe) readOnly = info.m_isReadonlyThis;
+      }
+      return readOnly;
     }
   );
 }
@@ -3393,12 +3870,17 @@ std::string show(const Func& f) {
     f.val,
     [&](Func::FuncName s)        {},
     [&](Func::MethodName)        {},
-    [&](FuncInfo*)               { ret += "*"; },
+    [&](Func::Fun)               { ret += "*"; },
+    [&](Func::Fun2)              { ret += "*"; },
     [&](Func::Method)            { ret += "*"; },
+    [&](Func::Method2)           { ret += "*"; },
     [&](Func::MethodFamily)      { ret += "+"; },
+    [&](Func::MethodFamily2)     { ret += "+"; },
     [&](Func::MethodOrMissing)   { ret += "-"; },
+    [&](Func::MethodOrMissing2)  { ret += "-"; },
     [&](Func::Missing)           { ret += "!"; },
-    [&](const Func::Isect&)      { ret += "&"; }
+    [&](const Func::Isect&)      { ret += "&"; },
+    [&](const Func::Isect2&)     { ret += "&"; }
   );
   return ret;
 }
@@ -3649,7 +4131,8 @@ DependencyContext make_dep(const FuncFamily* family) {
   return DependencyContext{DependencyContextType::FuncFamily, family};
 }
 
-DependencyContext dep_context(IndexData& data, const Context& ctx) {
+DependencyContext dep_context(IndexData& data, const Context& baseCtx) {
+  auto const& ctx = baseCtx.forDep();
   if (!ctx.cls || !data.useClassDependencies) return make_dep(ctx.func);
   auto const cls = ctx.cls->closureContextCls
     ? data.classes.at(ctx.cls->closureContextCls)
@@ -3794,21 +4277,6 @@ using TMIData = TraitMethodImportData<TraitMethod, TMIOps>;
 
 //////////////////////////////////////////////////////////////////////
 
-uint32_t func_num_inout(const php::Func* func) {
-  if (!func->hasInOutArgs) return 0;
-  uint32_t count = 0;
-  for (auto& p : func->params) count += p.inout;
-  return count;
-}
-
-bool func_supports_AER(const php::Func* func) {
-  // Async functions always support async eager return, and no other
-  // functions support it yet.
-  return func->isAsync && !func->isGenerator;
-}
-
-//////////////////////////////////////////////////////////////////////
-
 template <typename T, typename R>
 void add_symbol_to_index(R& map, T t, const char* type) {
   auto const name = t->name;
@@ -3845,12 +4313,11 @@ void attribute_setter(const Attr& attrs, bool set, Attr attr) {
 
 void add_system_constants_to_index(IndexData& index) {
   for (auto cnsPair : Native::getConstants()) {
-    assertx(cnsPair.second.m_type != KindOfUninit ||
-            cnsPair.second.dynamic());
+    assertx(cnsPair.second.m_type != KindOfUninit);
     auto pc = new php::Constant {
       cnsPair.first,
       cnsPair.second,
-      AttrUnique | AttrPersistent
+      AttrPersistent
     };
     add_symbol_to_index(index.constants, pc, "constant");
   }
@@ -4690,13 +5157,13 @@ void check_local_invariants(const IndexData& data) {
 
 Type adjust_closure_context(const Index& index, const CallContext& ctx) {
   if (ctx.callee->cls && ctx.callee->cls->closureContextCls) {
-    auto withClosureContext = Context {
-      index.lookup_func_unit(*ctx.callee),
+    auto const withClosureContext = Context {
+      ctx.callee->unit,
       ctx.callee,
       index.lookup_closure_context(*ctx.callee->cls)
     };
-    if (auto const rcls = index.selfCls(withClosureContext)) {
-      return setctx(subObj(*rcls));
+    if (auto const s = selfCls(index, withClosureContext)) {
+      return setctx(toobj(*s));
     }
     return TObj;
   }
@@ -4704,6 +5171,7 @@ Type adjust_closure_context(const Index& index, const CallContext& ctx) {
 }
 
 Type context_sensitive_return_type(IndexData& data,
+                                   const Context& ctx,
                                    CallContext callCtx,
                                    Type returnType) {
   constexpr auto max_interp_nexting_level = 2;
@@ -4719,7 +5187,7 @@ Type context_sensitive_return_type(IndexData& data,
         !constraint.isTypeVar() &&
         !constraint.isTypeConstant()) {
       auto const ctx = Context {
-        data.units.at(finfo->func->unit),
+        finfo->func->unit,
         finfo->func,
         finfo->func->cls
       };
@@ -4774,9 +5242,10 @@ Type context_sensitive_return_type(IndexData& data,
     auto const func = finfo->func;
     auto const wf = php::WideFunc::cns(func);
     auto const calleeCtx = AnalysisContext {
-      data.units.at(func->unit),
+      func->unit,
       wf,
-      func->cls
+      func->cls,
+      &ctx.forDep()
     };
     auto const ty = analyze_func_inline(
       *data.m_index,
@@ -4829,6 +5298,26 @@ visit_parent_cinfo(const ClassInfo* cinfo, F fun) -> decltype(fun(cinfo)) {
     }
   }
   return {};
+}
+
+//////////////////////////////////////////////////////////////////////
+
+// The type of a public static property, considering only it's initial
+// value.
+Type initial_type_for_public_sprop(const Index& index,
+                                   const php::Class& cls,
+                                   const php::Prop& prop) {
+  /*
+   * If the initializer type is TUninit, it means an 86sinit provides
+   * the actual initialization type or it is AttrLateInit. So we don't
+   * want to include the Uninit (which isn't really a user-visible
+   * type for the property) or by the time we union things in we'll
+   * have inferred nothing much.
+   */
+  auto const ty = from_cell(prop.val);
+  if (ty.subtypeOf(BUninit)) return TBottom;
+  if (prop.attrs & AttrSystemInitialValue) return ty;
+  return adjust_type_for_prop(index, cls, &prop.typeConstraint, ty);
 }
 
 Type lookup_public_prop_impl(
@@ -4960,7 +5449,7 @@ PropMergeResult prop_tc_effects(const Index& index,
   // Otherwise check every generic upper-bound. We'll feed the
   // narrowed type into each successive round. If we reach the point
   // where we'll know we'll definitely fail, just stop.
-  for (auto ub : prop.ubs) {
+  for (auto ub : prop.ubs.m_constraints) {
     applyFlagsToUB(ub, prop.typeConstraint);
     auto r = check(ub, result.adjusted);
     result.throws &= r.throws;
@@ -5003,9 +5492,28 @@ PropLookupResult lookup_static_impl(IndexData& data,
       case AttrPublic:
       case AttrProtected: {
         if (ctx.unit) add_dependency(data, &prop, ctx, Dep::PublicSProp);
+        if (!data.seenPublicSPropMutations) {
+          // If we haven't recorded any mutations yet, we need to be
+          // conservative and consider only the type-hint and initial
+          // value.
+          return union_of(
+            adjust_type_for_prop(
+              *data.m_index,
+              *ci->cls,
+              &prop.typeConstraint,
+              TInitCell
+            ),
+            initial_type_for_public_sprop(*data.m_index, *ci->cls, prop)
+          );
+        }
         auto const it = ci->publicStaticProps.find(propName);
-        assertx(it != end(ci->publicStaticProps));
-        return remove_uninit(it->second.inferredType);
+        if (it == end(ci->publicStaticProps)) {
+          // We've recorded mutations, but have information for this
+          // property. That means there's no mutations so only
+          // consider the initial value.
+          return initial_type_for_public_sprop(*data.m_index, *ci->cls, prop);
+        }
+        return it->second.inferredType;
       }
       case AttrPrivate: {
         assertx(clsCtx == ci);
@@ -5171,7 +5679,7 @@ PropMergeResult merge_static_type_impl(IndexData& data,
 
     ITRACE(
       6, "merging {} into {}::${}\n",
-      show(effects.adjusted), ci->cls->name, prop.name
+      show(effects), ci->cls->name, prop.name
     );
 
     switch (prop.attrs & (AttrPublic|AttrProtected|AttrPrivate)) {
@@ -5181,6 +5689,9 @@ PropMergeResult merge_static_type_impl(IndexData& data,
          // If the property is internal, accessing it may throw
          // TODO(T131951529): we can do better by checking modules here
         if ((prop.attrs & AttrInternal) && effects.throws == TriBool::No) {
+          ITRACE(6, "{}::${} is internal, "
+                 "being pessimistic with regards to throwing\n",
+                 ci->cls->name, prop.name);
           return PropMergeResult{
             effects.adjusted,
             TriBool::Maybe
@@ -5667,7 +6178,7 @@ struct FlattenJob {
                     std::vector<SString> missingTypes) {
     LocalIndex index;
 
-    for (auto const tc : typeMappings) {
+    for (auto& tc : typeMappings) {
       auto const name = tc.name;
       always_assert(index.m_typeMappings.emplace(name, std::move(tc)).second);
     }
@@ -6445,7 +6956,9 @@ private:
         if (!base.isUnresolved()) return base.type();
         auto const tm = index.typeMapping(base.typeName());
         if (!tm) return AnnotType::Unresolved;
-        return tm->type;
+        // enums cannot use case types
+        assertx(tm->typeAndValueUnion.size() == 1);
+        return tm->typeAndValueUnion[0].type;
       }();
       if (!enumSupportsAnnot(baseType)) {
         ITRACE(2,
@@ -6640,8 +7153,9 @@ private:
 
     if (cls.attrs & AttrInterface) return true;
 
+    auto clsHasModuleLevelTrait = cls.userAttributes.count(s___ModuleLevelTrait.get());
     for (auto const& p : cls.properties) {
-      if (!add_property(cinfo, state, p.name, p, cinfo.name, false)) {
+      if (!add_property(cinfo, state, p.name, p, cinfo.name, false, clsHasModuleLevelTrait)) {
         return false;
       }
     }
@@ -6656,12 +7170,12 @@ private:
       auto const& trait = index.cls(traitName);
       auto const& traitInfo = index.classInfo(traitName);
       for (auto const& p : trait.properties) {
-        if (!add_property(cinfo, state, p.name, p, cinfo.name, true)) {
+        if (!add_property(cinfo, state, p.name, p, cinfo.name, true, false)) {
           return false;
         }
       }
       for (auto const& p : traitInfo.traitProps) {
-        if (!add_property(cinfo, state, p.name, p, cinfo.name, true)) {
+        if (!add_property(cinfo, state, p.name, p, cinfo.name, true, false)) {
           return false;
         }
       }
@@ -6675,7 +7189,15 @@ private:
                            SString name,
                            const php::Prop& prop,
                            SString src,
-                           bool trait) {
+                           bool trait,
+                           bool moduleLevelTrait) {
+    if (moduleLevelTrait && (prop.attrs & AttrInternal)) {
+      ITRACE(2,
+             "Adding property failed for `{}' because "
+             "property `{}' is internal and public traits cannot define internal properties\n",
+             cinfo.name, prop.name);
+      return false;
+    }
     auto const [it, emplaced] =
       state.m_propIndices.emplace(name, state.m_props.size());
     if (emplaced) {
@@ -6737,7 +7259,7 @@ private:
                                State& dst,
                                const State& src) {
     for (auto const& [name, src, prop] : src.m_props) {
-      if (!add_property(cinfo, dst, name, prop, src, false)) {
+      if (!add_property(cinfo, dst, name, prop, src, false, false)) {
         return false;
       }
     }
@@ -7150,9 +7672,17 @@ private:
     }
 
     auto idx = cinfo.methods.size();
+    auto clsHasModuleLevelTrait = cls.userAttributes.count(s___ModuleLevelTrait.get());
 
     // Now add our methods.
     for (auto const& m : cls.methods) {
+      if (clsHasModuleLevelTrait && (m->attrs & AttrInternal)) {
+        ITRACE(2,
+            "Adding methods failed for `{}' because "
+            "method `{}' is internal and public traits cannot define internal methods\n",
+            cls.name, m->name);
+        return false;
+      }
       auto const emplaced = cinfo.methods.emplace(m->name, MethTabEntry { *m });
       if (emplaced.second) {
         ITRACE(
@@ -7853,20 +8383,28 @@ private:
 
     // Is this name a type-alias or enum?
     if (auto const tm = index.typeMapping(name)) {
+      if (tm->typeAndValueUnion.size() > 1) {
+        // TODO(T151885113): Support multiple constraints created by case types
+        // for param, return, upper bound and property type hints
+        always_assert(RO::EvalTreatCaseTypesAsMixed);
+      }
+      assertx(tm->typeAndValueUnion.size() == 1);
+      auto const tm_type = tm->typeAndValueUnion[0].type;
       // Whatever it's an alias of isn't valid, so leave unresolved.
-      if (tm->type == AnnotType::Unresolved) return;
+      if (tm_type == AnnotType::Unresolved) return;
       auto const value = [&] () -> SString {
         // Store the first enum encountered during resolution. This
         // lets us fixup the type later if needed.
         if (tm->firstEnum) return tm->firstEnum;
-        if (tm->type == AnnotType::Object) {
-          assertx(tm->value);
-          return tm->value;
+        if (tm_type == AnnotType::Object) {
+          auto const tm_value = tm->typeAndValueUnion[0].value;
+          assertx(tm_value);
+          return tm_value;
         }
         return nullptr;
       }();
       tc.resolveType(
-        tm->type,
+        tm_type,
         tm->nullable,
         value
       );
@@ -7887,10 +8425,10 @@ private:
                                       ISStringSet* uses) {
     for (auto& p : func.params) {
       update_type_constraint(index, p.typeConstraint, uses);
-      for (auto& ub : p.upperBounds) update_type_constraint(index, ub, uses);
+      for (auto& ub : p.upperBounds.m_constraints) update_type_constraint(index, ub, uses);
     }
     update_type_constraint(index, func.retTypeConstraint, uses);
-    for (auto& ub : func.returnUBs) update_type_constraint(index, ub, uses);
+    for (auto& ub : func.returnUBs.m_constraints) update_type_constraint(index, ub, uses);
   }
 
   static void update_type_constraints(const LocalIndex& index,
@@ -7902,7 +8440,7 @@ private:
     for (auto& meth : cls.methods) update_type_constraints(index, *meth, uses);
     for (auto& prop : cls.properties) {
       update_type_constraint(index, prop.typeConstraint, uses);
-      for (auto& ub : prop.ubs) update_type_constraint(index, ub, uses);
+      for (auto& ub : prop.ubs.m_constraints) update_type_constraint(index, ub, uses);
     }
   }
 
@@ -7925,24 +8463,24 @@ private:
       if (f.isGenerator) {
         if (f.isAsync) {
           // Async generators always return AsyncGenerator object.
-          return objExact(UnresolvedClassMaker::make(s_AsyncGenerator.get()));
+          return objExact(res::Class::makeUnresolved(s_AsyncGenerator.get()));
         }
         // Non-async generators always return Generator object.
-        return objExact(UnresolvedClassMaker::make(s_Generator.get()));
+        return objExact(res::Class::makeUnresolved(s_Generator.get()));
       }
 
       auto const make_type = [&] (const TypeConstraint& tc) {
         auto lookup = type_from_constraint(
           tc,
           TInitCell,
-          [] (SString name) { return UnresolvedClassMaker::make(name); },
-          [&] () -> Optional<res::Class> {
+          [] (SString name) { return res::Class::makeUnresolved(name); },
+          [&] () -> Optional<Type> {
             if (!f.cls) return std::nullopt;
             auto const& cls = f.cls->closureContextCls
               ? index.cls(f.cls->closureContextCls)
               : *f.cls;
             if (cls.attrs & AttrTrait) return std::nullopt;
-            return UnresolvedClassMaker::make(cls.name);
+            return subCls(res::Class::makeUnresolved(cls.name));
           }
         );
         if (lookup.coerceClassToString == TriBool::Yes) {
@@ -7954,10 +8492,10 @@ private:
       };
 
       auto const process = [&] (const TypeConstraint& tc,
-                                const CompactVector<TypeConstraint>& ubs) {
+                                const TypeIntersectionConstraint& ubs) {
         auto ret = TInitCell;
         ret = intersection_of(std::move(ret), make_type(tc));
-        for (auto const& ub : ubs) {
+        for (auto const& ub : ubs.m_constraints) {
           ret = intersection_of(std::move(ret), make_type(ub));
         }
         return ret;
@@ -8014,13 +8552,56 @@ private:
                                   php::Class& cls,
                                   ClassInfo2& cinfo) {
     assertx(cinfo.hasBadRedeclareProp);
+    assertx(cinfo.hasBadInitialPropValues);
 
     auto const isClosure = is_closure(cls);
 
     cinfo.hasBadRedeclareProp = false;
+    cinfo.hasBadInitialPropValues = false;
     for (auto& prop : cls.properties) {
       assertx(!(prop.attrs & AttrNoBadRedeclare));
       assertx(!(prop.attrs & AttrNoImplicitNullable));
+      assertx(!(prop.attrs & AttrInitialSatisfiesTC));
+
+      // Check whether the property's initial value satisfies it's
+      // type-hint.
+      auto const initialSatisfies = [&] {
+        if (isClosure) return true;
+        if (is_used_trait(cls)) return false;
+        if (prop.attrs & (AttrSystemInitialValue | AttrLateInit)) return true;
+
+        auto const initial = from_cell(prop.val);
+        if (initial.subtypeOf(BUninit)) return false;
+
+        auto const make_type = [&] (const TypeConstraint& tc) {
+          auto lookup = type_from_constraint(
+            tc,
+            TInitCell,
+            [] (SString name) { return res::Class::makeUnresolved(name); },
+            [&] () -> Optional<Type> {
+              auto const& ctx = cls.closureContextCls
+                ? index.cls(cls.closureContextCls)
+                : cls;
+              if (ctx.attrs & AttrTrait) return std::nullopt;
+              return subCls(res::Class::makeUnresolved(ctx.name));
+            }
+          );
+          return unctx(std::move(lookup.lower));
+        };
+
+        if (!initial.subtypeOf(make_type(prop.typeConstraint))) return false;
+        for (auto ub : prop.ubs.m_constraints) {
+          applyFlagsToUB(ub, prop.typeConstraint);
+          if (!initial.subtypeOf(make_type(ub))) return false;
+        }
+        return true;
+      }();
+
+      if (initialSatisfies) {
+        attribute_setter(prop.attrs, true, AttrInitialSatisfiesTC);
+      } else {
+        cinfo.hasBadInitialPropValues = true;
+      }
 
       auto const noBadRedeclare = [&] {
         // Closures should never have redeclared properties.
@@ -8061,9 +8642,9 @@ private:
             return false;
           }
 
-          for (auto ub : prop.ubs) {
+          for (auto ub : prop.ubs.m_constraints) {
             applyFlagsToUB(ub, prop.typeConstraint);
-            for (auto pub : parentProp->ubs) {
+            for (auto pub : parentProp->ubs.m_constraints) {
               update_type_constraint(index, pub, nullptr);
               applyFlagsToUB(pub, parentProp->typeConstraint);
               if (ub.maybeInequivalentForProp(pub)) return false;
@@ -8224,10 +8805,10 @@ private:
                      const ISStringSet& missing) {
     for (auto& p : func.params) {
       update(p.typeConstraint, missing);
-      for (auto& ub : p.upperBounds) update(ub, missing);
+      for (auto& ub : p.upperBounds.m_constraints) update(ub, missing);
     }
     auto updated = update(func.retTypeConstraint, missing);
-    for (auto& ub : func.returnUBs) updated |= update(ub, missing);
+    for (auto& ub : func.returnUBs.m_constraints) updated |= update(ub, missing);
     if (updated) {
       // One of the return constraints corresponds to a missing
       // type. This means the function can never return and must have
@@ -8247,7 +8828,7 @@ private:
     }
     for (auto& prop : cls.properties) {
       update(prop.typeConstraint, missing);
-      for (auto& ub : prop.ubs) update(ub, missing);
+      for (auto& ub : prop.ubs.m_constraints) update(ub, missing);
     }
   }
 };
@@ -8312,6 +8893,8 @@ struct IndexFlattenMetadata {
 
 //////////////////////////////////////////////////////////////////////
 
+constexpr size_t kNumTypeMappingRounds = 20;
+
 /*
  * Update the type-mappings in the program so they all point to their
  * ultimate type. After this step, every type-mapping that still has
@@ -8331,146 +8914,161 @@ void flatten_type_mappings(IndexData& index,
     [&] (const TypeMapping* typeMapping) {
       Optional<ISStringSet> seen;
       auto nullable = typeMapping->nullable;
-      auto name = typeMapping->value;
       auto firstEnum = typeMapping->firstEnum;
 
       auto enumMeta = folly::get_ptr(meta.cls, typeMapping->name);
 
-      if (typeMapping->type != AnnotType::Unresolved) {
-        // If the type-mapping is already resolved, we mainly take it
-        // as is. The exception is if it's an enum, in which case we
-        // validate the underlying base type.
-        assertx(typeMapping->type != AnnotType::Object);
-        if (!enumMeta) return *typeMapping;
-        if (!enumSupportsAnnot(typeMapping->type)) {
-          FTRACE(
-            2, "Type-mapping '{}' is invalid because it resolves to "
-            "invalid enum type {}\n",
-            typeMapping->name,
-            annotName(typeMapping->type)
-          );
-          auto ty = *typeMapping;
-          ty.type = AnnotType::Unresolved;
-          return ty;
-        }
-        return *typeMapping;
-      }
+      php::TypeAlias::TypeAndValueUnion tvu;
 
-      for (size_t rounds = 0;; ++rounds) {
-        name = normalizeNS(name);
+      for (auto const& [type, value] : typeMapping->typeAndValueUnion) {
+        auto name = value;
 
-        if (auto const next = folly::get_ptr(meta.typeMappings, name)) {
-          nullable |= next->nullable;
-          if (!firstEnum) firstEnum = next->firstEnum;
-
-          if (enumMeta && next->firstEnum) {
-            enumMeta->deps.emplace(next->firstEnum);
+        if (type != AnnotType::Unresolved) {
+          // If the type-mapping is already resolved, we mainly take it
+          // as is. The exception is if it's an enum, in which case we
+          // validate the underlying base type.
+          assertx(type != AnnotType::Object);
+          if (!enumMeta) {
+            tvu.emplace_back(php::TypeAndValue{type, value});
+            continue;
           }
+          if (!enumSupportsAnnot(type)) {
+            FTRACE(
+              2, "Type-mapping '{}' is invalid because it resolves to "
+              "invalid enum type {}\n",
+              typeMapping->name,
+              annotName(type)
+            );
+            tvu.emplace_back(php::TypeAndValue{AnnotType::Unresolved, value});
+            continue;
+          }
+          tvu.emplace_back(php::TypeAndValue{type, value});
+          continue;
+        }
 
-          if (next->type != AnnotType::Unresolved) {
-            assertx(next->type != AnnotType::Object);
-            if (firstEnum && !enumSupportsAnnot(next->type)) {
+        std::queue<LSString> queue;
+        queue.push(name);
+
+        for (size_t rounds = 0;; ++rounds) {
+          if (queue.empty()) break;
+          name = normalizeNS(queue.back());
+          queue.pop();
+
+          if (auto const next = folly::get_ptr(meta.typeMappings, name)) {
+            nullable |= next->nullable;
+            if (!firstEnum) firstEnum = next->firstEnum;
+
+            if (enumMeta && next->firstEnum) {
+              enumMeta->deps.emplace(next->firstEnum);
+            }
+
+            for (auto const& [next_type, next_value] : next->typeAndValueUnion) {
+              if (next_type == AnnotType::Unresolved) {
+                queue.push(next_value);
+                continue;
+              }
+              assertx(next_type != AnnotType::Object);
+              if (firstEnum && !enumSupportsAnnot(next_type)) {
+                FTRACE(
+                  2, "Type-mapping '{}' is invalid because it resolves to "
+                  "invalid enum type {}{}\n",
+                  typeMapping->name,
+                  annotName(next_type),
+                  firstEnum->isame(typeMapping->name)
+                    ? "" : folly::sformat(" (via {})", firstEnum)
+                );
+                tvu.emplace_back(php::TypeAndValue{AnnotType::Unresolved, name});
+                continue;
+              }
+              tvu.emplace_back(php::TypeAndValue{next_type, next_value});
+            }
+          } else if (index.classRefs.count(name)) {
+            if (firstEnum) {
               FTRACE(
                 2, "Type-mapping '{}' is invalid because it resolves to "
-                "invalid enum type {}{}\n",
+                "invalid object '{}' for enum type (via {})\n",
                 typeMapping->name,
-                annotName(next->type),
-                firstEnum->isame(typeMapping->name)
-                  ? "" : folly::sformat(" (via {})", firstEnum)
+                name,
+                firstEnum
+              );
+            }
+
+            tvu.emplace_back(php::TypeAndValue {
+              firstEnum ? AnnotType::Unresolved : AnnotType::Object,
+              name
+            });
+            break;
+          } else {
+            FTRACE(
+              2, "Type-mapping '{}' is invalid because it involves "
+              "non-existent type '{}'{}\n",
+              typeMapping->name,
+              name,
+              (firstEnum && !firstEnum->isame(typeMapping->name))
+                ? folly::sformat(" (via {})", firstEnum) : ""
+            );
+            tvu.emplace_back(php::TypeAndValue{AnnotType::Unresolved, name});
+            break;
+          }
+
+          // Deal with cycles. Since we don't expect to encounter them, just
+          // use a counter until we hit a chain length of kNumTypeMappingRounds,
+          // then start tracking the names we resolve.
+          if (rounds == kNumTypeMappingRounds) {
+            seen.emplace();
+            seen->insert(name);
+          } else if (rounds > kNumTypeMappingRounds) {
+            if (!seen->insert(name).second) {
+              FTRACE(
+                2, "Type-mapping '{}' is invalid because it's definition "
+                "is circular with '{}'\n",
+                typeMapping->name,
+                name
               );
               return TypeMapping {
                 typeMapping->name,
-                name,
                 firstEnum,
-                AnnotType::Unresolved,
+                {php::TypeAndValue{AnnotType::Unresolved, name}},
                 nullable
               };
             }
-            return TypeMapping {
-              typeMapping->name,
-              next->value,
-              firstEnum,
-              next->type,
-              nullable
-            };
-          }
-
-          name = next->value;
-        } else if (index.classRefs.count(name)) {
-          if (firstEnum) {
-            FTRACE(
-              2, "Type-mapping '{}' is invalid because it resolves to "
-              "invalid object '{}' for enum type (via {})\n",
-              typeMapping->name,
-              name,
-              firstEnum
-            );
-          }
-
-          return TypeMapping {
-            typeMapping->name,
-            name,
-            firstEnum,
-            firstEnum ? AnnotType::Unresolved : AnnotType::Object,
-            nullable
-          };
-        } else {
-          FTRACE(
-            2, "Type-mapping '{}' is invalid because it involves "
-            "non-existent type '{}'{}\n",
-            typeMapping->name,
-            name,
-            (firstEnum && !firstEnum->isame(typeMapping->name))
-              ? folly::sformat(" (via {})", firstEnum) : ""
-          );
-          return TypeMapping {
-            typeMapping->name,
-            name,
-            firstEnum,
-            AnnotType::Unresolved,
-            nullable
-          };
-        }
-
-        // Deal with cycles. Since we don't expect to encounter them, just
-        // use a counter until we hit a chain length of 10, then start
-        // tracking the names we resolve.
-        if (rounds == 10) {
-          seen.emplace();
-          seen->insert(name);
-        } else if (rounds > 10) {
-          if (!seen->insert(name).second) {
-            FTRACE(
-              2, "Type-mapping '{}' is invalid because it's definition "
-              "is circular with '{}'\n",
-              typeMapping->name,
-              name
-            );
-            return TypeMapping {
-              typeMapping->name,
-              name,
-              firstEnum,
-              AnnotType::Unresolved,
-              nullable
-            };
           }
         }
       }
+      assertx(!tvu.empty());
+      return TypeMapping {
+        typeMapping->name,
+        firstEnum,
+        std::move(tvu),
+        nullable
+      };
     }
   );
 
   for (auto& after : resolved) {
+    assertx(!after.typeAndValueUnion.empty());
     auto const name = after.name;
+    bool unresolved = std::any_of(after.typeAndValueUnion.begin(),
+                                  after.typeAndValueUnion.end(),
+                                  [](const php::TypeAndValue& tv) {
+                                    return tv.type == AnnotType::Unresolved;
+                                  });
+    using namespace folly::gen;
     FTRACE(
-      4, "Type-mapping '{}' flattened to {}{}{}\n",
+      4, "Type-mapping '{}' flattened to {}({}){}\n",
       name,
-      annotName(after.type),
-      (after.value && !after.value->empty())
-        ? folly::sformat(" ({})", after.value) : "",
+      from(after.typeAndValueUnion)
+        | map([&] (const php::TypeAndValue& tv) { return annotName(tv.type); })
+        | unsplit<std::string>("|"),
+      from(after.typeAndValueUnion)
+        | map([&] (const php::TypeAndValue& tv) {
+            return tv.value && !tv.value->empty() ? tv.value->toCppString() : "";
+          })
+        | unsplit<std::string>("|"),
       (after.firstEnum && !after.firstEnum->isame(name))
         ? folly::sformat(" (via {})", after.firstEnum) : ""
     );
-    if (after.type == AnnotType::Unresolved && meta.cls.count(name)) {
+    if (unresolved && meta.cls.count(name)) {
       FTRACE(4, "  Marking enum '{}' as uninstantiable\n", name);
       meta.cls.at(name).uninstantiable = true;
     }
@@ -9938,7 +10536,7 @@ protected:
       auto& info = infos.at(name);
       entries.emplace_back(
         name,
-        make_method_family_entry(index, std::move(info))
+        make_method_family_entry(index, name, std::move(info))
       );
     }
     return entries;
@@ -10441,6 +11039,7 @@ protected:
   // Create (or re-use an existing) FuncFamily for the given MethInfo.
   static FuncFamily2::Id make_func_family(
     LocalIndex& index,
+    SString name,
     Data::MethInfo info
   ) {
     // We should have more than one method because otherwise we
@@ -10527,6 +11126,7 @@ protected:
 
     auto ff = std::make_unique<FuncFamily2>();
     ff->m_id = id;
+    ff->m_name = name;
     ff->m_regular = std::move(regular);
     ff->m_nonRegularPrivate = std::move(nonRegularPrivate);
     ff->m_nonRegular = std::move(nonRegular);
@@ -10581,6 +11181,7 @@ protected:
   // Translate a MethInfo into the appropriate FuncFamilyEntry
   static FuncFamilyEntry make_method_family_entry(
     LocalIndex& index,
+    SString name,
     Data::MethInfo info
   ) {
     FuncFamilyEntry entry;
@@ -10595,7 +11196,7 @@ protected:
       // we need a func family.
       assertx(info.allStatic);
       assertx(info.regularStatic);
-      auto const ff = make_func_family(index, std::move(info));
+      auto const ff = make_func_family(index, name, std::move(info));
       entry.m_meths = FuncFamilyEntry::BothFF{ff};
     } else if (!info.regularMeths.empty() ||
                !info.nonRegularPrivateMeths.empty()) {
@@ -10619,7 +11220,7 @@ protected:
         // disjoint, overall there's more than one method so need a
         // func family.
         auto const nonRegularPrivate = info.regularMeths.empty();
-        auto const ff = make_func_family(index, std::move(info));
+        auto const ff = make_func_family(index, name, std::move(info));
         entry.m_meths = FuncFamilyEntry::FFAndSingle{ff, r, nonRegularPrivate};
       }
     } else if (info.nonRegularMeths.size() > 1) {
@@ -10628,7 +11229,7 @@ protected:
       // the non-regular variant, but the regular variant is empty.
       assertx(info.allStatic);
       assertx(!info.regularStatic);
-      auto const ff = make_func_family(index, std::move(info));
+      auto const ff = make_func_family(index, name, std::move(info));
       entry.m_meths = FuncFamilyEntry::FFAndNone{ff};
     } else if (!info.nonRegularMeths.empty()) {
       // There's exactly one nonRegularMeths method (and nothing for
@@ -10845,7 +11446,7 @@ protected:
         // and a child class could be regular. Even if the child class
         // doesn't override the method, it changes it from non-regular
         // to regular.
-        entry = make_method_family_entry(index, std::move(info));
+        entry = make_method_family_entry(index, name, std::move(info));
 
         if (mte.attrs & AttrNoOverride) {
           // However, even if the entry changes with AttrNoOverride,
@@ -10891,7 +11492,7 @@ protected:
       for (auto& [name, info] : data.methods) {
         if (cinfo->methods.count(name)) continue;
         assertx(!is_special_method_name(name));
-        auto entry = make_method_family_entry(index, std::move(info));
+        auto entry = make_method_family_entry(index, name, std::move(info));
         always_assert(
           cinfo->methodFamilies.emplace(name, std::move(entry)).second
         );
@@ -10990,7 +11591,7 @@ struct AggregateNameOnlyJob: public BuildSubclassListJob {
   >;
 
   static Output
-  run(std::vector<std::vector<FuncFamilyEntry>> allEntries,
+  run(std::vector<std::pair<SString, std::vector<FuncFamilyEntry>>> allEntries,
       Variadic<FuncFamilyGroup> funcFamilies) {
     LocalIndex index;
 
@@ -11006,7 +11607,7 @@ struct AggregateNameOnlyJob: public BuildSubclassListJob {
 
     OutputMeta meta;
 
-    for (auto const& entries : allEntries) {
+    for (auto const& [name, entries] : allEntries) {
       Data::MethInfo info;
       info.complete = false;
       info.regularComplete = false;
@@ -11053,7 +11654,7 @@ struct AggregateNameOnlyJob: public BuildSubclassListJob {
       }
 
       meta.nameOnly.emplace_back(
-        make_method_family_entry(index, std::move(info))
+        make_method_family_entry(index, name, std::move(info))
       );
     }
 
@@ -11587,7 +12188,7 @@ void aggregate_name_only_entries(
 
     if (names.empty()) HPHP_CORO_RETURN(Updates{});
 
-    std::vector<std::vector<FuncFamilyEntry>> entries;
+    std::vector<std::pair<SString, std::vector<FuncFamilyEntry>>> entries;
     std::vector<Ref<FuncFamilyGroup>> funcFamilies;
 
     entries.reserve(names.size());
@@ -11595,8 +12196,8 @@ void aggregate_name_only_entries(
     // be provided to the job.
     for (auto const n : names) {
       auto& e = work.at(n);
-      entries.emplace_back(std::move(e));
-      for (auto const& entry : entries.back()) {
+      entries.emplace_back(n, std::move(e));
+      for (auto const& entry : entries.back().second) {
         match<void>(
           entry.m_meths,
           [&] (const FuncFamilyEntry::BothFF& e) {
@@ -12000,6 +12601,13 @@ std::vector<InterfaceConflicts> build_subclass_lists(IndexData& index,
 
 //////////////////////////////////////////////////////////////////////
 
+Index::Input::UnitMeta make_native_unit_meta(IndexData& index) {
+  auto unit = make_native_unit();
+  auto const name = unit->filename;
+  auto unitRef = coro::wait(index.client->store(std::move(unit)));
+  return Index::Input::UnitMeta { std::move(unitRef), name };
+}
+
 // Set up the async state, populate the (initial) table of
 // extern-worker refs in the Index, and build some metadata needed for
 // class flattening.
@@ -12027,6 +12635,10 @@ IndexFlattenMetadata make_remote(IndexData& index,
     },
     index.executor->sticky()
   );
+
+  // Create a fake unit to store native constants and add it as an
+  // input.
+  input.units.emplace_back(make_native_unit_meta(index));
 
   IndexFlattenMetadata flattenMeta;
   SStringToOneT<SString> methCallerUnits;
@@ -12565,6 +13177,7 @@ void make_class_infos_local(
       std::sort(begin(cinfo->subclassList), end(cinfo->subclassList));
 
       cinfo->hasBadRedeclareProp = rcinfo->hasBadRedeclareProp;
+      cinfo->hasBadInitialPropValues = rcinfo->hasBadInitialPropValues;
       cinfo->hasConstProp = rcinfo->hasConstProp;
       cinfo->hasReifiedParent = rcinfo->hasReifiedParent;
       cinfo->subHasConstProp = rcinfo->subHasConstProp;
@@ -13186,6 +13799,9 @@ void make_local(IndexData& index) {
     {
       std::scoped_lock<std::mutex> _{lock};
       for (auto& unit : chunk.units) {
+        // Local execution doesn't need the native unit, so strip it
+        // out.
+        if (is_native_unit(*unit)) continue;
         program->units.emplace_back(std::move(unit));
       }
       for (auto& cls : chunk.classes) {
@@ -13434,26 +14050,6 @@ void Index::for_each_unit_class_mutable(php::Unit& unit,
 
 //////////////////////////////////////////////////////////////////////
 
-void Index::preinit_bad_initial_prop_values() {
-  trace_time tracer("preinit bad initial prop values", m_data->sample);
-  parallel::for_each(
-    m_data->allClassInfos,
-    [&] (std::unique_ptr<ClassInfo>& cinfo) {
-      if (is_used_trait(*cinfo->cls)) return;
-
-      cinfo->hasBadInitialPropValues = false;
-      for (auto& prop : const_cast<php::Class*>(cinfo->cls)->properties) {
-        if (prop_might_have_bad_initial_value(*this, *cinfo->cls, prop)) {
-          cinfo->hasBadInitialPropValues = true;
-          prop.attrs = (Attr)(prop.attrs & ~AttrInitialSatisfiesTC);
-        } else {
-          prop.attrs |= AttrInitialSatisfiesTC;
-        }
-      }
-    }
-  );
-}
-
 void Index::preresolve_type_structures() {
   trace_time tracer("pre-resolve type-structures", m_data->sample);
 
@@ -13646,19 +14242,6 @@ Index::lookup_extra_methods(const php::Class* cls) const {
 
 //////////////////////////////////////////////////////////////////////
 
-Optional<res::Class> Index::resolve_class(const php::Class* cls) const {
-  auto const it = m_data->classInfo.find(cls->name);
-  if (it == end(m_data->classInfo)) return std::nullopt;
-  auto const cinfo = it->second;
-
-  assertx(cinfo->cls == cls);
-  if (is_closure_base(*cinfo->cls)) {
-    // Force Closure to be unresolved
-    return res::Class { cls->name.get() };
-  }
-  return res::Class { cinfo };
-}
-
 Optional<res::Class> Index::resolve_class(SString clsName) const {
   clsName = normalizeNS(clsName);
 
@@ -13673,73 +14256,16 @@ Optional<res::Class> Index::resolve_class(SString clsName) const {
   return res::Class { cinfo };
 }
 
-res::Class Index::resolve_class_name_only(SString clsName) const {
-  clsName = normalizeNS(clsName);
-  return res::Class { clsName };
-}
-
-Optional<res::Class> Index::selfCls(const Context& ctx) const {
-  if (!ctx.cls || is_used_trait(*ctx.cls)) return std::nullopt;
-  return resolve_class(ctx.cls);
-}
-
-Optional<res::Class> Index::parentCls(const Context& ctx) const {
-  if (!ctx.cls || !ctx.cls->parentName) return std::nullopt;
-  if (auto const rcls = resolve_class(ctx.cls)) {
-    if (auto const parent = rcls->parent()) return parent;
-  }
-  return resolve_class(ctx.cls->parentName);
-}
-
 const php::TypeAlias* Index::lookup_type_alias(SString name) const {
   auto const it = m_data->typeAliases.find(name);
   if (it == m_data->typeAliases.end()) return nullptr;
   return it->second;
 }
 
-std::pair<res::Class, const php::Class*>
-Index::resolve_closure_class(Context ctx, SString name) const {
-  auto const it = m_data->classes.find(name);
-  always_assert_flog(
-    it != m_data->classes.end(),
-    "Unknown closure class `{}`",
-    name
-  );
-  auto const cls = it->second;
-  assertx(cls->unit == ctx.unit->filename);
-  assertx(is_closure(*cls));
-  auto const rcls = resolve_class(cls);
-
-  // Closure classes must be unique and defined in the unit that uses
-  // the CreateCl opcode, so resolution must succeed.
-  always_assert_flog(
-    rcls && rcls->resolved(),
-    "A closure class ({}) failed to resolve",
-    cls->name
-  );
-
-  return { *rcls, cls };
-}
-
-res::Class Index::builtin_class(SString name) const {
-  auto const rcls = resolve_class(name);
-  // Builtin classes should always be resolved, except for Closure,
-  // which are force to be unresolved.
-  always_assert_flog(
-    rcls.has_value() &&
-    (name->isame(s_Closure.get()) ||
-     (rcls->val.right() &&
-      (rcls->val.right()->cls->attrs & AttrBuiltin))),
-    "A builtin class ({}) failed to resolve",
-    name->data()
-  );
-  return *rcls;
-}
-
 res::Class Index::wait_handle_class() const {
   return m_data->lazyWaitHandleCls.get(
     [&] {
-      auto const awaitable = builtin_class(s_Awaitable.get());
+      auto const awaitable = builtin_class(*this, s_Awaitable.get());
       auto const without = awaitable.withoutNonRegular();
       assertx(without.has_value());
       return *without;
@@ -13757,7 +14283,7 @@ template <typename P, typename G>
 res::Func Index::rfunc_from_dcls(const DCls& dcls,
                                  SString name,
                                  const P& process,
-                                 const G& general) {
+                                 const G& general) const {
   if (!dcls.isIsect()) {
     // If this isn't an intersection, there's only one cinfo to
     // process and we're done.
@@ -13800,11 +14326,11 @@ res::Func Index::rfunc_from_dcls(const DCls& dcls,
       func.val,
       [&] (Func::MethodName) {},
       [&] (Func::Method m) {
-        assertx(IMPLIES(singleMethod, singleMethod == m.func));
+        assertx(IMPLIES(singleMethod, singleMethod == m.finfo->func));
         assertx(IMPLIES(singleMethod, isect.families.empty()));
         assertx(missing != TriBool::Yes);
         if (!singleMethod) {
-          singleMethod = m.func;
+          singleMethod = m.finfo->func;
           isect.families.clear();
         }
         missing = TriBool::No;
@@ -13825,7 +14351,7 @@ res::Func Index::rfunc_from_dcls(const DCls& dcls,
         isect.regularOnly |= fam.regularOnly;
       },
       [&] (Func::MethodOrMissing m) {
-        assertx(IMPLIES(singleMethod, singleMethod == m.func));
+        assertx(IMPLIES(singleMethod, singleMethod == m.finfo->func));
         assertx(IMPLIES(singleMethod, isect.families.empty()));
         if (missing == TriBool::Yes) {
           assertx(!singleMethod);
@@ -13833,7 +14359,7 @@ res::Func Index::rfunc_from_dcls(const DCls& dcls,
           return;
         }
         if (!singleMethod) {
-          singleMethod = m.func;
+          singleMethod = m.finfo->func;
           isect.families.clear();
         }
       },
@@ -13843,9 +14369,14 @@ res::Func Index::rfunc_from_dcls(const DCls& dcls,
         isect.families.clear();
         missing = TriBool::Yes;
       },
-      [&] (Func::FuncName)     { always_assert(false); },
-      [&] (FuncInfo*)          { always_assert(false); },
-      [&] (const Func::Isect&) { always_assert(false); }
+      [&] (Func::FuncName)         { always_assert(false); },
+      [&] (Func::Fun)              { always_assert(false); },
+      [&] (Func::Fun2)             { always_assert(false); },
+      [&] (Func::Method2)          { always_assert(false); },
+      [&] (Func::MethodFamily2)    { always_assert(false); },
+      [&] (Func::MethodOrMissing2) { always_assert(false); },
+      [&] (const Func::Isect&)     { always_assert(false); },
+      [&] (const Func::Isect2&)    { always_assert(false); }
     );
   }
 
@@ -13858,9 +14389,11 @@ res::Func Index::rfunc_from_dcls(const DCls& dcls,
     // MethodName or MethodOrMissing, so include that fact here by
     // using MethodOrMissing.
     if (missing == TriBool::Maybe) {
-      return Func { Func::MethodOrMissing { singleMethod } };
+      return Func {
+        Func::MethodOrMissing { func_info(*m_data, singleMethod) }
+      };
     }
-    return Func { Func::Method { singleMethod } };
+    return Func { Func::Method { func_info(*m_data, singleMethod) } };
   }
   // We only got unresolved classes. If missing is TriBool::Yes, the
   // function doesn't exist. Otherwise be pessimistic.
@@ -13932,7 +14465,7 @@ res::Func Index::resolve_method(Context ctx,
     if (auto const ff = entry.funcFamily()) {
       return Func { Func::MethodFamily { ff, !includeNonRegular } };
     } else if (auto const f = entry.func()) {
-      return Func { Func::MethodOrMissing { f } };
+      return Func { Func::MethodOrMissing { func_info(*m_data, f) } };
     } else {
       return Func { Func::Missing { name } };
     }
@@ -13981,7 +14514,7 @@ res::Func Index::resolve_method(Context ctx,
       if (auto const ff = entry.funcFamily()) {
         return Func { Func::MethodFamily { ff, true } };
       } else if (auto const func = entry.func()) {
-        return Func { Func::Method { func } };
+        return Func { Func::Method { func_info(*m_data, func) } };
       } else {
         always_assert(false);
       }
@@ -13994,11 +14527,11 @@ res::Func Index::resolve_method(Context ctx,
     // and they have special inheritance semantics.
     if (is_special_method_name(name)) {
       // If we know the class exactly, we can use ftarget.
-      if (isExact) return Func { Func::Method { ftarget } };
+      if (isExact) return Func { Func::Method { func_info(*m_data, ftarget) } };
       // The method isn't overwritten, but they don't inherit, so it
       // could be missing.
       if (meth.attrs & AttrNoOverride) {
-        return Func { Func::MethodOrMissing { ftarget } };
+        return Func { Func::MethodOrMissing { func_info(*m_data, ftarget) } };
       }
       // Otherwise be pessimistic.
       return Func { Func::MethodName { name } };
@@ -14015,7 +14548,7 @@ res::Func Index::resolve_method(Context ctx,
       // private method (defined on this class), then that's what
       // we'll call.
       if ((meth.attrs & AttrPrivate) && meth.topLevel()) {
-        return Func { Func::Method { ftarget } };
+        return Func { Func::Method { func_info(*m_data, ftarget) } };
       }
     } else if ((meth.attrs & AttrPrivate) || meth.hasPrivateAncestor()) {
       // Otherwise the context doesn't match the current class. If the
@@ -14042,7 +14575,9 @@ res::Func Index::resolve_method(Context ctx,
         // Otherwise do normal lookup.
         return nullptr;
       }();
-      if (ancestor) return Func { Func::Method { ancestor } };
+      if (ancestor) {
+        return Func { Func::Method { func_info(*m_data, ancestor) } };
+      }
     }
     // If none of the above cases trigger, we still might call a
     // private method (in a child class), but the func-family logic
@@ -14065,7 +14600,7 @@ res::Func Index::resolve_method(Context ctx,
         if (!cinfo->hasRegularSubclass) {
           return Func { Func::Missing { name } };
         }
-        return Func { Func::Method { ftarget } };
+        return Func { Func::Method { func_info(*m_data, ftarget) } };
       }
       // We can't use the base class (because it's non-regular), but
       // the method is overridden by a regular subclass.
@@ -14080,8 +14615,8 @@ res::Func Index::resolve_method(Context ctx,
           return Func { Func::MethodFamily { ff, true } };
         } else if (auto const f = aux.func()) {
           return aux.isComplete()
-            ? Func { Func::Method { f } }
-            : Func { Func::MethodOrMissing { f } };
+            ? Func { Func::Method { func_info(*m_data, f) } }
+            : Func { Func::MethodOrMissing { func_info(*m_data, f) } };
         } else {
           return Func { Func::Missing { name } };
         }
@@ -14095,7 +14630,7 @@ res::Func Index::resolve_method(Context ctx,
       // the method isn't overridden we know it must be just ftarget
       // (the override bits include it being missing in a subclass, so
       // we know it cannot be missing either).
-      return Func { Func::Method { ftarget } };
+      return Func { Func::Method { func_info(*m_data, ftarget) } };
     }
 
     // Look up the entry in the normal method family table and use
@@ -14109,8 +14644,8 @@ res::Func Index::resolve_method(Context ctx,
       return Func { Func::MethodFamily { ff, !includeNonRegular } };
     } else if (auto const f = fam.func()) {
       return (!includeNonRegular || fam.isComplete())
-        ? Func { Func::Method { f } }
-        : Func { Func::MethodOrMissing { f } };
+        ? Func { Func::Method { func_info(*m_data, f) } }
+        : Func { Func::MethodOrMissing { func_info(*m_data, f) } };
     } else {
       always_assert(false);
     }
@@ -14178,7 +14713,7 @@ res::Func Index::resolve_ctor(const Type& obj) const {
             (isExact || !cinfo->hasRegularSubclass)) {
           return Func { Func::Missing { s_construct.get() } };
         }
-        return Func { Func::Method { ftarget } };
+        return Func { Func::Method { func_info(*m_data, ftarget) } };
       }
 
       // If this isn't a regular class, we need to check the "aux"
@@ -14192,8 +14727,8 @@ res::Func Index::resolve_ctor(const Type& obj) const {
             return Func { Func::MethodFamily { ff, true } };
           } else if (auto const f = aux.func()) {
             return aux.isComplete()
-              ? Func { Func::Method { f } }
-              : Func { Func::MethodOrMissing { f } };
+              ? Func { Func::Method { func_info(*m_data, f) } }
+              : Func { Func::MethodOrMissing { func_info(*m_data, f) } };
           } else {
             // Ctor doesn't exist in any regular subclasses. This can
             // happen with interfaces. The ctor might get the default
@@ -14216,7 +14751,7 @@ res::Func Index::resolve_ctor(const Type& obj) const {
       } else if (auto const f = fam.func()) {
         // Since we're looking at the regular subset, we can assume
         // the set is complete, regardless of the flag on fam.
-        return Func { Func::Method { f } };
+        return Func { Func::Method { func_info(*m_data, f) } };
       } else {
         always_assert(false);
       }
@@ -14231,68 +14766,18 @@ res::Func Index::resolve_ctor(const Type& obj) const {
 res::Func Index::resolve_func(SString name) const {
   name = normalizeNS(name);
   auto const it = m_data->funcs.find(name);
-  if (it == end(m_data->funcs)) return res::Func { res::Func::Missing {} };
+  if (it == end(m_data->funcs)) return res::Func { res::Func::Missing { name } };
   auto const func = it->second;
-  assertx(func->attrs & AttrUnique);
-  return res::Func { func_info(*m_data, func) };
+  assertx(func->attrs & AttrPersistent);
+  return res::Func { res::Func::Fun { func_info(*m_data, func) } };
 }
 
-bool Index::could_have_reified_type(Context ctx,
-                                    const TypeConstraint& tc) const {
-  if (ctx.func->isClosureBody) {
-    for (auto i = ctx.func->params.size();
-         i < ctx.func->locals.size();
-         ++i) {
-      auto const name = ctx.func->locals[i].name;
-      if (!name) return false; // named locals do not appear after unnamed local
-      if (isMangledReifiedGenericInClosure(name)) return true;
-    }
-    return false;
-  }
-  if (!tc.isObject()) return false;
-  auto const cls = resolve_class(tc.clsName());
-  assertx(cls.has_value());
-  return cls->couldHaveReifiedGenerics();
-}
-
-TriBool
-Index::supports_async_eager_return(res::Func rfunc) const {
-  return match<TriBool>(
-    rfunc.val,
-    [&](res::Func::FuncName)   { return TriBool::Maybe; },
-    [&](res::Func::MethodName) { return TriBool::Maybe; },
-    [&](FuncInfo* finfo) {
-      return yesOrNo(func_supports_AER(finfo->func));
-    },
-    [&](res::Func::Method m) {
-      return yesOrNo(func_supports_AER(m.func));
-    },
-    [&](res::Func::MethodFamily fam) {
-      return fam.family->infoFor(fam.regularOnly).m_static->m_supportsAER;
-    },
-    [&](res::Func::MethodOrMissing m) {
-      return yesOrNo(func_supports_AER(m.func));
-    },
-    [&](res::Func::Missing) { return TriBool::No; },
-    [&](const res::Func::Isect& i) {
-      auto aer = TriBool::Maybe;
-      for (auto const ff : i.families) {
-        auto const& info = *ff->infoFor(i.regularOnly).m_static;
-        if (info.m_supportsAER == TriBool::Maybe) continue;
-        assertx(IMPLIES(aer != TriBool::Maybe, aer == info.m_supportsAER));
-        if (aer == TriBool::Maybe) aer = info.m_supportsAER;
-      }
-      return aer;
-    }
-  );
+res::Func Index::resolve_func_or_method(const php::Func& f) const {
+  if (!f.cls) return res::Func { res::Func::Fun { func_info(*m_data, &f) } };
+  return res::Func { res::Func::Method { func_info(*m_data, &f) } };
 }
 
 bool Index::is_effect_free_raw(const php::Func* func) const {
-  return func_info(*m_data, func)->effectFree;
-}
-
-bool Index::is_effect_free(Context ctx, const php::Func* func) const {
-  add_dependency(*m_data, func, ctx, Dep::InlineDepthLimit);
   return func_info(*m_data, func)->effectFree;
 }
 
@@ -14312,13 +14797,13 @@ bool Index::is_effect_free(Context ctx, res::Func rfunc) const {
     rfunc.val,
     [&](res::Func::FuncName)   { return false; },
     [&](res::Func::MethodName) { return false; },
-    [&](FuncInfo* finfo)       {
-      add_dependency(*m_data, finfo->func, ctx, Dep::InlineDepthLimit);
-      return finfo->effectFree;
+    [&](res::Func::Fun f)      {
+      add_dependency(*m_data, f.finfo->func, ctx, Dep::InlineDepthLimit);
+      return f.finfo->effectFree;
     },
     [&] (res::Func::Method m) {
-      add_dependency(*m_data, m.func, ctx, Dep::InlineDepthLimit);
-      return func_info(*m_data, m.func)->effectFree;
+      add_dependency(*m_data, m.finfo->func, ctx, Dep::InlineDepthLimit);
+      return m.finfo->effectFree;
     },
     [&] (res::Func::MethodFamily fam) {
       return processFF(fam.family, fam.regularOnly);
@@ -14330,8 +14815,18 @@ bool Index::is_effect_free(Context ctx, res::Func rfunc) const {
         if (processFF(ff, i.regularOnly)) return true;
       }
       return false;
-    }
+    },
+    [&] (res::Func::Fun2)             -> bool { always_assert(false); },
+    [&] (res::Func::Method2)          -> bool { always_assert(false); },
+    [&] (res::Func::MethodFamily2)    -> bool { always_assert(false); },
+    [&] (res::Func::MethodOrMissing2) -> bool { always_assert(false); },
+    [&] (res::Func::Isect2&)          -> bool { always_assert(false); }
   );
+}
+
+bool Index::func_depends_on_arg(const php::Func* func, size_t arg) const {
+  auto const& finfo = *func_info(*m_data, func);
+  return arg >= finfo.unusedParams.size() || !finfo.unusedParams.test(arg);
 }
 
 // Helper function: Given a DCls, visit every subclass it represents,
@@ -14371,8 +14866,9 @@ bool Index::visit_every_dcls_cls(const DCls& dcls, const F& f) const {
   res::Class::visitEverySub(
     isect,
     dcls.containsNonRegular(),
-    [&] (res::Class c) {
+    [&] (res::Class c, bool isExact) {
       if (auto const cinfo = c.val.right()) {
+        assertx(isExact);
         return f(cinfo);
       }
       unresolved = true;
@@ -14640,25 +15136,23 @@ Index::lookup_class_type_constant(
 
 Type Index::lookup_constant(Context ctx, SString cnsName) const {
   auto iter = m_data->constants.find(cnsName);
-  if (iter == end(m_data->constants)) {
-    return TInitCell;
-  }
+  if (iter == end(m_data->constants)) return TBottom;
 
   auto constant = iter->second;
   if (type(constant->val) != KindOfUninit) {
     return from_cell(constant->val);
   }
 
+  // Assume a runtime call to Constant::get(), which will invoke
+  // 86cinit_<cnsName>(). Look up it's return type.
+
   auto const func_name = Constant::funcNameFromName(cnsName);
   assertx(func_name && "func_name will never be nullptr");
 
   auto rfunc = resolve_func(func_name);
-  return lookup_return_type(ctx, nullptr, rfunc, Dep::ConstVal);
-}
+  assertx(rfunc.exactFunc());
 
-bool Index::func_depends_on_arg(const php::Func* func, int arg) const {
-  auto const& finfo = *func_info(*m_data, func);
-  return arg >= finfo.unusedParams.size() || !finfo.unusedParams.test(arg);
+  return lookup_return_type(ctx, nullptr, rfunc, Dep::ConstVal);
 }
 
 Type Index::lookup_foldable_return_type(Context ctx,
@@ -14666,7 +15160,6 @@ Type Index::lookup_foldable_return_type(Context ctx,
   auto const func = calleeCtx.callee;
   constexpr auto max_interp_nexting_level = 2;
   static __thread uint32_t interp_nesting_level;
-  static __thread Context base_ctx;
 
   auto const ctxType = adjust_closure_context(*this, calleeCtx);
 
@@ -14717,10 +15210,8 @@ Type Index::lookup_foldable_return_type(Context ctx,
     return TInitCell;
   }
 
-  if (!interp_nesting_level) {
-    base_ctx = ctx;
-  } else if (interp_nesting_level > max_interp_nexting_level) {
-    add_dependency(*m_data, func, base_ctx, Dep::InlineDepthLimit);
+  if (interp_nesting_level > max_interp_nexting_level) {
+    add_dependency(*m_data, func, ctx, Dep::InlineDepthLimit);
     return TInitCell;
   }
 
@@ -14731,7 +15222,7 @@ Type Index::lookup_foldable_return_type(Context ctx,
     auto const wf = php::WideFunc::cns(func);
     auto const fa = analyze_func_inline(
       *this,
-      AnalysisContext { m_data->units.at(func->unit), wf, func->cls },
+      AnalysisContext { func->unit, wf, func->cls, &ctx.forDep() },
       ctxType,
       calleeCtx.args,
       nullptr,
@@ -14750,24 +15241,6 @@ Type Index::lookup_foldable_return_type(Context ctx,
     assertx(acc->second == contextType);
   }
   return contextType;
-}
-
-Type Index::lookup_return_type(Context ctx,
-                               MethodsInfo* methods,
-                               const php::Func* f,
-                               Dep dep) const {
-  if (methods) {
-    if (auto ret = methods->lookupReturnType(*f)) {
-      return unctx(std::move(*ret));
-    }
-  }
-  auto it = func_info(*m_data, f);
-  if (it->func) {
-    assertx(it->func == f);
-    add_dependency(*m_data, f, ctx, dep);
-    return it->returnTy;
-  }
-  return TInitCell;
 }
 
 Type Index::lookup_return_type(Context ctx,
@@ -14806,15 +15279,15 @@ Type Index::lookup_return_type(Context ctx,
     rfunc.val,
     [&] (res::Func::FuncName)   { return TInitCell; },
     [&] (res::Func::MethodName) { return TInitCell; },
-    [&] (FuncInfo* finfo) {
-      add_dependency(*m_data, finfo->func, ctx, dep);
-      return unctx(finfo->returnTy);
+    [&] (res::Func::Fun f) {
+      add_dependency(*m_data, f.finfo->func, ctx, dep);
+      return unctx(f.finfo->returnTy);
     },
-    [&] (res::Func::Method m)          { return meth(m.func); },
+    [&] (res::Func::Method m)          { return meth(m.finfo->func); },
     [&] (res::Func::MethodFamily fam)  {
       return funcFamily(fam.family, fam.regularOnly);
     },
-    [&] (res::Func::MethodOrMissing m) { return meth(m.func); },
+    [&] (res::Func::MethodOrMissing m) { return meth(m.finfo->func); },
     [&] (res::Func::Missing)           { return TBottom; },
     [&] (const res::Func::Isect& i) {
       auto ty = TInitCell;
@@ -14822,7 +15295,12 @@ Type Index::lookup_return_type(Context ctx,
         ty &= funcFamily(ff, i.regularOnly);
       }
       return ty;
-    }
+    },
+    [&] (res::Func::Fun2)             -> Type { always_assert(false); },
+    [&] (res::Func::Method2)          -> Type { always_assert(false); },
+    [&] (res::Func::MethodFamily2)    -> Type { always_assert(false); },
+    [&] (res::Func::MethodOrMissing2) -> Type { always_assert(false); },
+    [&] (res::Func::Isect2&)          -> Type { always_assert(false); }
   );
 }
 
@@ -14865,6 +15343,7 @@ Type Index::lookup_return_type(Context caller,
 
     return context_sensitive_return_type(
       *m_data,
+      caller,
       { finfo->func, args, context },
       std::move(returnType)
     );
@@ -14878,19 +15357,20 @@ Type Index::lookup_return_type(Context caller,
     [&] (res::Func::MethodName) {
       return lookup_return_type(caller, methods, rfunc, dep);
     },
-    [&] (FuncInfo* finfo) {
-      add_dependency(*m_data, finfo->func, caller, dep);
+    [&] (res::Func::Fun f) {
+      add_dependency(*m_data, f.finfo->func, caller, dep);
       return context_sensitive_return_type(
         *m_data,
-        { finfo->func, args, context },
-        finfo->returnTy
+        caller,
+        { f.finfo->func, args, context },
+        f.finfo->returnTy
       );
     },
-    [&] (res::Func::Method m)          { return meth(m.func); },
+    [&] (res::Func::Method m)          { return meth(m.finfo->func); },
     [&] (res::Func::MethodFamily fam)  {
       return funcFamily(fam.family, fam.regularOnly);
     },
-    [&] (res::Func::MethodOrMissing m) { return meth(m.func); },
+    [&] (res::Func::MethodOrMissing m) { return meth(m.finfo->func); },
     [&] (res::Func::Missing)           { return TBottom; },
     [&] (const res::Func::Isect& i) {
       auto ty = TInitCell;
@@ -14898,8 +15378,22 @@ Type Index::lookup_return_type(Context caller,
         ty &= funcFamily(ff, i.regularOnly);
       }
       return ty;
-    }
+    },
+    [&] (res::Func::Fun2)             -> Type { always_assert(false); },
+    [&] (res::Func::Method2)          -> Type { always_assert(false); },
+    [&] (res::Func::MethodFamily2)    -> Type { always_assert(false); },
+    [&] (res::Func::MethodOrMissing2) -> Type { always_assert(false); },
+    [&] (res::Func::Isect2&)          -> Type { always_assert(false); }
   );
+}
+
+std::pair<Type, size_t> Index::lookup_return_type_raw(const php::Func* f) const {
+  auto it = func_info(*m_data, f);
+  if (it->func) {
+    assertx(it->func == f);
+    return { it->returnTy, it->returnRefinements };
+  }
+  return { TInitCell, 0 };
 }
 
 CompactVector<Type>
@@ -14915,181 +15409,6 @@ Index::lookup_closure_use_vars(const php::Func* func,
   }
   if (move) return std::move(it->second);
   return it->second;
-}
-
-std::pair<Type, size_t> Index::lookup_return_type_raw(const php::Func* f) const {
-  auto it = func_info(*m_data, f);
-  if (it->func) {
-    assertx(it->func == f);
-    return { it->returnTy, it->returnRefinements };
-  }
-  return { TInitCell, 0 };
-}
-
-Optional<uint32_t> Index::lookup_num_inout_params(
-  Context,
-  res::Func rfunc
-) const {
-  return match<Optional<uint32_t>>(
-    rfunc.val,
-    [&] (res::Func::FuncName s) -> Optional<uint32_t> {
-      return std::nullopt;
-    },
-    [&] (res::Func::MethodName s) -> Optional<uint32_t> {
-      return std::nullopt;
-    },
-    [&] (FuncInfo* finfo) {
-      return func_num_inout(finfo->func);
-    },
-    [&] (res::Func::Method m) {
-      return func_num_inout(m.func);
-    },
-    [&] (res::Func::MethodFamily fam) -> Optional<uint32_t> {
-      return fam.family->infoFor(fam.regularOnly).m_static->m_numInOut;
-    },
-    [&] (res::Func::MethodOrMissing m) {
-      return func_num_inout(m.func);
-    },
-    [&] (res::Func::Missing) { return 0; },
-    [&] (const res::Func::Isect& i) {
-      Optional<uint32_t> numInOut;
-      for (auto const ff : i.families) {
-        auto const& info = *ff->infoFor(i.regularOnly).m_static;
-        if (!info.m_numInOut) continue;
-        assertx(IMPLIES(numInOut, *numInOut == *info.m_numInOut));
-        if (!numInOut) numInOut = info.m_numInOut;
-      }
-      return numInOut;
-    }
-  );
-}
-
-PrepKind Index::lookup_param_prep(Context,
-                                  res::Func rfunc,
-                                  uint32_t paramId) const {
-  auto const fromFuncFamily = [&] (FuncFamily* ff, bool regularOnly) {
-    auto const& info = *ff->infoFor(regularOnly).m_static;
-    if (paramId >= info.m_paramPreps.size()) {
-      return PrepKind{TriBool::No, TriBool::No};
-    }
-    return info.m_paramPreps[paramId];
-  };
-
-  return match<PrepKind>(
-    rfunc.val,
-    [&] (res::Func::FuncName s) {
-      return PrepKind{TriBool::Maybe, TriBool::Maybe};
-    },
-    [&] (res::Func::MethodName s) {
-      return PrepKind{TriBool::Maybe, TriBool::Maybe};
-    },
-    [&] (FuncInfo* finfo) {
-      return func_param_prep(finfo->func, paramId);
-    },
-    [&] (res::Func::Method m) {
-      return func_param_prep(m.func, paramId);
-    },
-    [&] (res::Func::MethodFamily fam) {
-      return fromFuncFamily(fam.family, fam.regularOnly);
-    },
-    [&] (res::Func::MethodOrMissing m) {
-      return func_param_prep(m.func, paramId);
-    },
-    [&] (res::Func::Missing) {
-      return PrepKind{TriBool::No, TriBool::Yes};
-    },
-    [&] (const res::Func::Isect& i) {
-      auto inOut = TriBool::Maybe;
-      auto readonly = TriBool::Maybe;
-
-      for (auto const ff : i.families) {
-        auto const prepKind = fromFuncFamily(ff, i.regularOnly);
-        if (prepKind.inOut != TriBool::Maybe) {
-          assertx(IMPLIES(inOut != TriBool::Maybe, inOut == prepKind.inOut));
-          if (inOut == TriBool::Maybe) inOut = prepKind.inOut;
-        }
-
-        if (prepKind.readonly != TriBool::Maybe) {
-          assertx(
-            IMPLIES(readonly != TriBool::Maybe, readonly == prepKind.readonly)
-          );
-          if (readonly == TriBool::Maybe) readonly = prepKind.readonly;
-        }
-      }
-
-      return PrepKind{inOut, readonly};
-    }
-  );
-}
-
-TriBool Index::lookup_return_readonly(
-  Context,
-  res::Func rfunc
-) const {
-  return match<TriBool>(
-    rfunc.val,
-    [&] (res::Func::FuncName s) { return TriBool::Maybe; },
-    [&] (res::Func::MethodName s) { return TriBool::Maybe; },
-    [&] (FuncInfo* finfo) {
-      return yesOrNo(finfo->func->isReadonlyReturn);
-    },
-    [&] (res::Func::Method m) {
-      return yesOrNo(m.func->isReadonlyReturn);
-    },
-    [&] (res::Func::MethodFamily fam) {
-      return fam.family->infoFor(fam.regularOnly).m_static->m_isReadonlyReturn;
-    },
-    [&] (res::Func::MethodOrMissing m) {
-      return yesOrNo(m.func->isReadonlyReturn);
-    },
-    [&] (res::Func::Missing) { return TriBool::No; },
-    [&] (const res::Func::Isect& i) {
-      auto readOnly = TriBool::Maybe;
-      for (auto const ff : i.families) {
-        auto const& info = *ff->infoFor(i.regularOnly).m_static;
-        if (info.m_isReadonlyReturn == TriBool::Maybe) continue;
-        assertx(IMPLIES(readOnly != TriBool::Maybe,
-                        readOnly == info.m_isReadonlyReturn));
-        if (readOnly == TriBool::Maybe) readOnly = info.m_isReadonlyReturn;
-      }
-      return readOnly;
-    }
-  );
-}
-
-TriBool Index::lookup_readonly_this(
-  Context,
-  res::Func rfunc
-) const {
-  return match<TriBool>(
-    rfunc.val,
-    [&] (res::Func::FuncName s) { return TriBool::Maybe; },
-    [&] (res::Func::MethodName s) { return TriBool::Maybe; },
-    [&] (FuncInfo* finfo) {
-      return yesOrNo(finfo->func->isReadonlyThis);
-    },
-    [&] (res::Func::Method m) {
-      return yesOrNo(m.func->isReadonlyThis);
-    },
-    [&] (res::Func::MethodFamily fam) {
-      return fam.family->infoFor(fam.regularOnly).m_static->m_isReadonlyThis;
-    },
-    [&] (res::Func::MethodOrMissing m) {
-      return yesOrNo(m.func->isReadonlyThis);
-    },
-    [&] (res::Func::Missing) { return TriBool::No; },
-    [&] (const res::Func::Isect& i) {
-      auto readOnly = TriBool::Maybe;
-      for (auto const ff : i.families) {
-        auto const& info = *ff->infoFor(i.regularOnly).m_static;
-        if (info.m_isReadonlyThis == TriBool::Maybe) continue;
-        assertx(IMPLIES(readOnly != TriBool::Maybe,
-                        readOnly == info.m_isReadonlyThis));
-        if (readOnly == TriBool::Maybe) readOnly = info.m_isReadonlyThis;
-      }
-      return readOnly;
-    }
-  );
 }
 
 PropState
@@ -15142,10 +15461,31 @@ PropState Index::lookup_public_statics(const php::Class* cls) const {
 
     auto [ty, everModified] = [&] {
       if (!cinfo) return std::make_pair(TInitCell, true);
+
+      if (!m_data->seenPublicSPropMutations) {
+        return std::make_pair(
+          union_of(
+            adjust_type_for_prop(
+              *this,
+              *cls,
+              &prop.typeConstraint,
+              TInitCell
+            ),
+            initial_type_for_public_sprop(*this, *cls, prop)
+          ),
+          true
+        );
+      }
+
       auto const it = cinfo->publicStaticProps.find(prop.name);
-      assertx(it != end(cinfo->publicStaticProps));
+      if (it == end(cinfo->publicStaticProps)) {
+        return std::make_pair(
+          initial_type_for_public_sprop(*this, *cls, prop),
+          false
+        );
+      }
       return std::make_pair(
-        remove_uninit(it->second.inferredType),
+        it->second.inferredType,
         it->second.everModified
       );
     }();
@@ -15209,7 +15549,7 @@ PropLookupResult Index::lookup_static(Context ctx,
     // I don't think this can ever fail (we should always be able to
     // resolve the class since we're currently processing it). If it
     // does, be conservative.
-    auto const rCtx = resolve_class(ctx.cls);
+    auto const rCtx = resolve_class(ctx.cls->name);
     if (!rCtx || rCtx->val.left()) return conservative();
     ctxCls = rCtx->val.right();
   }
@@ -15373,7 +15713,7 @@ PropMergeResult Index::merge_static_type(
 
   const ClassInfo* ctxCls = nullptr;
   if (ctx.cls) {
-    auto const rCtx = resolve_class(ctx.cls);
+    auto const rCtx = resolve_class(ctx.cls->name);
     // We should only be not able to resolve our own context if the
     // class is not instantiable. In that case, the merge can't
     // happen.
@@ -15431,6 +15771,10 @@ DependencyContext Index::dependency_context(const Context& ctx) const {
   return dep_context(*m_data, ctx);
 }
 
+bool Index::using_class_dependencies() const {
+  return m_data->useClassDependencies;
+}
+
 void Index::use_class_dependencies(bool f) {
   if (f != m_data->useClassDependencies) {
     m_data->dependencyMap.clear();
@@ -15438,58 +15782,9 @@ void Index::use_class_dependencies(bool f) {
   }
 }
 
-void Index::init_public_static_prop_types() {
-  trace_time tracer("init public static prop types", m_data->sample);
-
-  for (auto const& cinfo : m_data->allClassInfos) {
-    for (auto const& prop : cinfo->cls->properties) {
-      if (!(prop.attrs & (AttrPublic|AttrProtected)) ||
-          !(prop.attrs & AttrStatic)) {
-        continue;
-      }
-
-      /*
-       * If the initializer type is TUninit, it means an 86sinit provides the
-       * actual initialization type or it is AttrLateInit.  So we don't want to
-       * include the Uninit (which isn't really a user-visible type for the
-       * property) or by the time we union things in we'll have inferred nothing
-       * much.
-       */
-      auto const initial = [&] {
-        auto const tyRaw = from_cell(prop.val);
-        if (tyRaw.subtypeOf(BUninit)) return TBottom;
-        if (prop.attrs & AttrSystemInitialValue) return tyRaw;
-        return adjust_type_for_prop(
-          *this, *cinfo->cls, &prop.typeConstraint, tyRaw
-        );
-      }();
-
-      cinfo->publicStaticProps[prop.name] =
-        PublicSPropEntry {
-          union_of(
-            adjust_type_for_prop(
-              *this,
-              *cinfo->cls,
-              &prop.typeConstraint,
-              TInitCell
-            ),
-            initial
-          ),
-          initial,
-          &prop,
-          0,
-          false,
-          true
-      };
-    }
-  }
-}
-
-void Index::refine_class_constants(
-  const Context& ctx,
-  const CompactVector<std::pair<size_t, ClsConstInfo>>& resolved,
-  DependencyContextSet& deps
-) {
+void Index::refine_class_constants(const Context& ctx,
+                                   const ResolvedConstants& resolved,
+                                   DependencyContextSet& deps) {
   if (resolved.empty()) return;
 
   auto changed = false;
@@ -15545,41 +15840,39 @@ void Index::refine_class_constants(
 void Index::refine_constants(const FuncAnalysisResult& fa,
                              DependencyContextSet& deps) {
   auto const& func = fa.ctx.func;
-  if (func->cls != nullptr) return;
-
-  auto const val = tv(fa.inferredReturn);
-  if (!val) return;
+  if (func->cls) return;
 
   auto const cns_name = Constant::nameFromFuncName(func->name);
   if (!cns_name) return;
 
-  auto& cs = fa.ctx.unit->constants;
-  auto it = std::find_if(
-    cs.begin(),
-    cs.end(),
-    [&] (auto const& c) {
-      return cns_name->same(c->name);
-    });
-  assertx(it != cs.end() && "Did not find constant");
-  (*it)->val = val.value();
-  find_deps(*m_data, func, Dep::ConstVal, deps);
-}
-
-void Index::fixup_return_type(const php::Func* func,
-                              Type& retTy) const {
-  if (func->isGenerator) {
-    if (func->isAsync) {
-      // Async generators always return AsyncGenerator object.
-      retTy = objExact(builtin_class(s_AsyncGenerator.get()));
-    } else {
-      // Non-async generators always return Generator object.
-      retTy = objExact(builtin_class(s_Generator.get()));
-    }
-  } else if (func->isAsync) {
-    // Async functions always return WaitH<T>, where T is the type returned
-    // internally.
-    retTy = wait_handle(*this, std::move(retTy));
+  auto const cns = m_data->constants.at(cns_name);
+  auto const val = tv(fa.inferredReturn);
+  if (!val) {
+    always_assert_flog(
+      type(cns->val) == KindOfUninit,
+      "Constant value invariant violated in {}.\n"
+      "    Value went from {} to {}",
+      cns_name,
+      show(from_cell(cns->val)),
+      show(fa.inferredReturn)
+    );
+    return;
   }
+
+  if (type(cns->val) != KindOfUninit) {
+    always_assert_flog(
+      from_cell(cns->val) == fa.inferredReturn,
+      "Constant value invariant violated in {}.\n"
+      "    Value went from {} to {}",
+      cns_name,
+      show(from_cell(cns->val)),
+      show(fa.inferredReturn)
+    );
+  } else {
+    cns->val = *val;
+  }
+
+  find_deps(*m_data, func, Dep::ConstVal, deps);
 }
 
 void Index::refine_return_info(const FuncAnalysisResult& fa,
@@ -15629,8 +15922,8 @@ void Index::refine_return_info(const FuncAnalysisResult& fa,
       // We've modifed the return type, so reset any cached FuncFamily
       // return types.
       resetFuncFamilies = true;
-      dep = is_scalar(fa.inferredReturn) ?
-        Dep::ReturnTy | Dep::InlineDepthLimit : Dep::ReturnTy;
+      dep = is_scalar(fa.inferredReturn)
+        ? Dep::ReturnTy | Dep::InlineDepthLimit : Dep::ReturnTy;
       finfo->returnRefinements += fa.localReturnRefinements + 1;
       if (finfo->returnRefinements > options.returnTypeRefineLimit) {
         FTRACE(1, "maxed out return type refinements at {}\n", error_loc());
@@ -15651,12 +15944,10 @@ void Index::refine_return_info(const FuncAnalysisResult& fa,
 
   always_assert_flog(
     !finfo->effectFree || fa.effectFree,
-    "Index effectFree changed from true to false in {} {}{}.\n",
+    "Index effectFree changed from true to false in {} {}.\n",
     func->unit,
-    func->cls
-      ? folly::to<std::string>(func->cls->name->data(), "::")
-      : std::string{},
-    func->name);
+    func_fullname(*func)
+  );
 
   if (finfo->effectFree != fa.effectFree) {
     finfo->effectFree = fa.effectFree;
@@ -15800,19 +16091,75 @@ void Index::record_public_static_mutations(const php::Func& func,
   m_data->publicSPropMutations.insert_or_assign(&func, std::move(mutations));
 }
 
-void Index::update_static_prop_init_val(const php::Class* cls,
-                                        SString name) const {
-  auto const cls_it = m_data->classInfo.find(cls->name);
-  if (cls_it == end(m_data->classInfo)) {
-    return;
+void Index::update_prop_initial_values(const Context& ctx,
+                                       const ResolvedPropInits& resolved,
+                                       DependencyContextSet& deps) {
+  auto& props = const_cast<php::Class*>(ctx.cls)->properties;
+
+  auto changed = false;
+  for (auto const& [idx, info] : resolved) {
+    assertx(idx < props.size());
+    auto& prop = props[idx];
+
+    if (info.satisfies) {
+      if (!(prop.attrs & AttrInitialSatisfiesTC)) {
+        attribute_setter(prop.attrs, true, AttrInitialSatisfiesTC);
+        changed = true;
+      }
+    } else {
+      always_assert_flog(
+        !(prop.attrs & AttrInitialSatisfiesTC),
+        "AttrInitialSatisfiesTC invariant violated for {}::{}\n"
+        "  Went from true to false",
+        ctx.cls->name, prop.name
+      );
+    }
+
+    always_assert_flog(
+      IMPLIES(!(prop.attrs & AttrDeepInit), !info.deepInit),
+      "AttrDeepInit invariant violated for {}::{}\n"
+      "  Went from false to true",
+      ctx.cls->name, prop.name
+    );
+    attribute_setter(prop.attrs, info.deepInit, AttrDeepInit);
+
+    if (type(info.val) != KindOfUninit) {
+      always_assert_flog(
+        type(prop.val) == KindOfUninit ||
+        from_cell(prop.val) == from_cell(info.val),
+        "Property initial value invariant violated for {}::{}\n"
+        "  Value went from {} to {}",
+        ctx.cls->name, prop.name,
+        show(from_cell(prop.val)), show(from_cell(info.val))
+      );
+      prop.val = info.val;
+    } else {
+      always_assert_flog(
+        type(prop.val) == KindOfUninit,
+        "Property initial value invariant violated for {}::{}\n"
+        " Value went from {} to not set",
+        ctx.cls->name, prop.name,
+        show(from_cell(prop.val))
+      );
+    }
   }
-  auto const cinfo = cls_it->second;
-  if (cinfo->cls != cls) {
-    return;
-  }
-  auto const it = cinfo->publicStaticProps.find(name);
-  if (it != cinfo->publicStaticProps.end()) {
-    it->second.initialValueResolved = true;
+  if (!changed) return;
+
+  auto const it = m_data->classInfo.find(ctx.cls->name);
+  if (it == end(m_data->classInfo)) return;
+  auto const cinfo = it->second;
+
+  assertx(cinfo->hasBadInitialPropValues);
+  auto const noBad = std::all_of(
+    begin(props), end(props),
+    [] (const php::Prop& prop) {
+      return bool(prop.attrs & AttrInitialSatisfiesTC);
+    }
+  );
+
+  if (noBad) {
+    cinfo->hasBadInitialPropValues = false;
+    find_deps(*m_data, ctx.cls, Dep::PropBadInitialValues, deps);
   }
 }
 
@@ -15850,114 +16197,92 @@ void Index::refine_public_statics(DependencyContextSet& deps) {
   m_data->seenPublicSPropMutations = true;
 
   // Refine known class state
-  for (auto const& cinfo : m_data->allClassInfos) {
-    for (auto& kv : cinfo->publicStaticProps) {
-      auto knownClsType = [&] {
-        auto const it = known.find(
-          PublicSPropMutations::KnownKey { cinfo.get(), kv.first }
-        );
-        // If we didn't see a mutation, the type is TBottom.
-        return it == end(known) ? TBottom : it->second;
-      }();
-
-      auto unknownClsType = [&] {
-        auto const it = unknown.find(kv.first);
-        // If we didn't see a mutation, the type is TBottom.
-        return it == end(unknown) ? TBottom : it->second;
-      }();
-
-      // We can't keep context dependent types in public properties.
-      auto newType = adjust_type_for_prop(
-        *this,
-        *cinfo->cls,
-        &kv.second.prop->typeConstraint,
-        unctx(union_of(std::move(knownClsType), std::move(unknownClsType)))
-      );
-
-      if (!newType.is(BBottom)) {
-        always_assert_flog(
-          kv.second.everModified,
-          "Static property index invariant violated on {}::{}:\n"
-          " everModified flag went from false to true",
-          cinfo->cls->name->data(),
-          kv.first->data()
-        );
-      } else {
-        kv.second.everModified = false;
-      }
-
-      if (kv.second.initialValueResolved) {
-        for (auto& prop : cinfo->cls->properties) {
-          if (prop.name != kv.first) continue;
-          kv.second.initializerType = from_cell(prop.val);
-          kv.second.initialValueResolved = false;
-          break;
+  parallel::for_each(
+    m_data->allClassInfos,
+    [&] (std::unique_ptr<ClassInfo>& cinfo) {
+      for (auto const& prop : cinfo->cls->properties) {
+        if (!(prop.attrs & (AttrPublic|AttrProtected)) ||
+            !(prop.attrs & AttrStatic)) {
+          continue;
         }
-        assertx(!kv.second.initialValueResolved);
-      }
 
-      // The type from the indexer doesn't contain the in-class initializer
-      // types. Add that here.
-      auto effectiveType =
-        union_of(std::move(newType), kv.second.initializerType);
-
-      /*
-       * We may only shrink the types we recorded for each property. (If a
-       * property type ever grows, the interpreter could infer something
-       * incorrect at some step.)
-       */
-      always_assert_flog(
-        effectiveType.subtypeOf(kv.second.inferredType),
-        "Static property index invariant violated on {}::{}:\n"
-        "  {} is not a subtype of {}",
-        cinfo->cls->name->data(),
-        kv.first->data(),
-        show(effectiveType),
-        show(kv.second.inferredType)
-      );
-
-      // Put a limit on the refinements to ensure termination. Since we only
-      // ever refine types, we can stop at any point and still maintain
-      // correctness.
-      if (effectiveType.strictSubtypeOf(kv.second.inferredType)) {
-        if (kv.second.refinements + 1 < options.publicSPropRefineLimit) {
-          find_deps(*m_data, kv.second.prop, Dep::PublicSProp, deps);
-          kv.second.inferredType = std::move(effectiveType);
-          ++kv.second.refinements;
-        } else {
-          FTRACE(
-            1, "maxed out public static property refinements for {}:{}\n",
-            cinfo->cls->name->data(),
-            kv.first->data()
+        auto knownClsType = [&] {
+          auto const it = known.find(
+            PublicSPropMutations::KnownKey { cinfo.get(), prop.name }
           );
+          // If we didn't see a mutation, the type is TBottom.
+          return it == end(known) ? TBottom : it->second;
+        }();
+
+        auto unknownClsType = [&] {
+          auto const it = unknown.find(prop.name);
+          // If we didn't see a mutation, the type is TBottom.
+          return it == end(unknown) ? TBottom : it->second;
+        }();
+
+        // We can't keep context dependent types in public properties.
+        auto newType = adjust_type_for_prop(
+          *this,
+          *cinfo->cls,
+          &prop.typeConstraint,
+          unctx(union_of(std::move(knownClsType), std::move(unknownClsType)))
+        );
+
+        auto& entry = cinfo->publicStaticProps[prop.name];
+
+        if (!newType.is(BBottom)) {
+          always_assert_flog(
+            entry.everModified,
+            "Static property index invariant violated on {}::{}:\n"
+            " everModified flag went from false to true",
+            cinfo->cls->name,
+            prop.name
+          );
+        } else {
+          entry.everModified = false;
+        }
+
+        // The type from the mutations doesn't contain the in-class
+        // initializer types. Add that here.
+        auto effectiveType = union_of(
+          std::move(newType),
+          initial_type_for_public_sprop(*this, *cinfo->cls, prop)
+        );
+
+        /*
+         * We may only shrink the types we recorded for each property. (If a
+         * property type ever grows, the interpreter could infer something
+         * incorrect at some step.)
+         */
+        always_assert_flog(
+          effectiveType.subtypeOf(entry.inferredType),
+          "Static property index invariant violated on {}::{}:\n"
+          "  {} is not a subtype of {}",
+          cinfo->cls->name,
+          prop.name,
+          show(effectiveType),
+          show(entry.inferredType)
+        );
+
+        // Put a limit on the refinements to ensure termination. Since
+        // we only ever refine types, we can stop at any point and still
+        // maintain correctness.
+        if (effectiveType.strictSubtypeOf(entry.inferredType)) {
+          if (entry.refinements + 1 < options.publicSPropRefineLimit) {
+            find_deps(*m_data, &prop, Dep::PublicSProp, deps);
+            entry.inferredType = std::move(effectiveType);
+            ++entry.refinements;
+          } else {
+            FTRACE(
+              1, "maxed out public static property refinements for {}:{}\n",
+              cinfo->cls->name,
+              prop.name
+            );
+          }
         }
       }
     }
-  }
-}
-
-void Index::refine_bad_initial_prop_values(const php::Class* cls,
-                                           bool value,
-                                           DependencyContextSet& deps) {
-  assertx(!is_used_trait(*cls));
-  auto const it = m_data->classInfo.find(cls->name);
-  if (it == end(m_data->classInfo)) {
-    return;
-  }
-  auto const cinfo = it->second;
-  if (cinfo->cls != cls) {
-    return;
-  }
-  always_assert_flog(
-    cinfo->hasBadInitialPropValues || !value,
-    "Bad initial prop values going from false to true on {}",
-    cls->name->data()
   );
-
-  if (cinfo->hasBadInitialPropValues && !value) {
-    cinfo->hasBadInitialPropValues = false;
-    find_deps(*m_data, cls, Dep::PropBadInitialValues, deps);
-  }
 }
 
 bool Index::frozen() const {
@@ -16062,20 +16387,7 @@ void Index::thaw() {
 
 //////////////////////////////////////////////////////////////////////
 
-// Return true if we know for sure that one php::Class must derive
-// from another at runtime, in all possible instantiations.
-bool Index::must_be_derived_from(const php::Class* cls,
-                                 const php::Class* parent) const {
-  if (cls == parent) return true;
-  auto const clsIt = m_data->classInfo.find(cls->name);
-  auto const parentIt = m_data->classInfo.find(parent->name);
-  if (clsIt == end(m_data->classInfo) || parentIt == end(m_data->classInfo)) {
-    return false;
-  }
-  return clsIt->second->derivedFrom(*parentIt->second);
-}
-
-//////////////////////////////////////////////////////////////////////
+PublicSPropMutations::PublicSPropMutations(bool enabled) : m_enabled{enabled} {}
 
 PublicSPropMutations::Data& PublicSPropMutations::get() {
   if (!m_data) m_data = std::make_unique<Data>();
@@ -16085,6 +16397,7 @@ PublicSPropMutations::Data& PublicSPropMutations::get() {
 void PublicSPropMutations::mergeKnown(const ClassInfo* ci,
                                       const php::Prop& prop,
                                       const Type& val) {
+  if (!m_enabled) return;
   ITRACE(4, "PublicSPropMutations::mergeKnown: {} {} {}\n",
          ci->cls->name->data(), prop.name, show(val));
 
@@ -16095,6 +16408,7 @@ void PublicSPropMutations::mergeKnown(const ClassInfo* ci,
 }
 
 void PublicSPropMutations::mergeUnknownClass(SString prop, const Type& val) {
+  if (!m_enabled) return;
   ITRACE(4, "PublicSPropMutations::mergeUnknownClass: {} {}\n",
          prop, show(val));
 
@@ -16103,6 +16417,7 @@ void PublicSPropMutations::mergeUnknownClass(SString prop, const Type& val) {
 }
 
 void PublicSPropMutations::mergeUnknown(Context ctx) {
+  if (!m_enabled) return;
   ITRACE(4, "PublicSPropMutations::mergeUnknown\n");
 
   /*

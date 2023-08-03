@@ -137,12 +137,34 @@ pub enum DependentType {
 
 #[derive(Clone, Debug, Eq, EqModuloPos, Hash, PartialEq, Serialize, Deserialize)]
 #[derive(ToOcamlRep, FromOcamlRep)]
-pub struct UserAttribute<P> {
-    pub name: Positioned<TypeName, P>,
-    pub classname_params: Box<[TypeName]>,
+pub enum UserAttributeParam {
+    Classname(TypeName),
+    EnumClassLabel(Symbol),
+    String(Bytes),
+    Int(Symbol),
 }
 
-walkable!(impl<R: Reason> for UserAttribute<R::Pos> => [name, classname_params]);
+walkable!(UserAttributeParam);
+
+#[derive(Clone, Debug, Eq, EqModuloPos, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(ToOcamlRep, FromOcamlRep)]
+pub struct UserAttribute<P> {
+    pub name: Positioned<TypeName, P>,
+    pub params: Box<[UserAttributeParam]>,
+}
+
+impl<P> UserAttribute<P> {
+    pub fn classname_params(&self) -> Vec<TypeName> {
+        (self.params.iter())
+            .filter_map(|p| match p {
+                UserAttributeParam::Classname(cn) => Some(*cn),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+walkable!(impl<R: Reason> for UserAttribute<R::Pos> => [name, params]);
 
 #[derive(Clone, Debug, Eq, EqModuloPos, Hash, PartialEq, Serialize, Deserialize)]
 #[derive(ToOcamlRep, FromOcamlRep)]
@@ -264,6 +286,12 @@ walkable!(ShapeFieldType<R> => [ty]);
 
 #[derive(Clone, Debug, Eq, EqModuloPos, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "R: Reason")]
+pub struct ShapeType<R: Reason>(pub Ty<R>, pub BTreeMap<TshapeFieldName, ShapeFieldType<R>>);
+
+walkable!(ShapeType<R> => [0, 1]);
+
+#[derive(Clone, Debug, Eq, EqModuloPos, Hash, PartialEq, Serialize, Deserialize)]
+#[serde(bound = "R: Reason")]
 pub enum Ty_<R: Reason> {
     /// The late static bound type of a class
     Tthis,
@@ -298,6 +326,7 @@ pub enum Ty_<R: Reason> {
     /// mixed exists only in the decl_phase phase because it is desugared into ?nonnull
     /// during the localization phase.
     Tmixed,
+    Twildcard,
     Tlike(Ty<R>),
     Tany,
     Tnonnull,
@@ -322,8 +351,7 @@ pub enum Ty_<R: Reason> {
     Ttuple(Box<[Ty<R>]>),
     /// Whether all fields of this shape are known, types of each of the
     /// known arms.
-    Tshape(Box<(Ty<R>, BTreeMap<TshapeFieldName, ShapeFieldType<R>>)>),
-    Tvar(Ident),
+    Tshape(Box<ShapeType<R>>),
     /// The type of a generic parameter. The constraints on a generic parameter
     /// are accessed through the lenv.tpenv component of the environment, which
     /// is set up when checking the body of a function or method. See uses of
@@ -363,7 +391,7 @@ impl<R: Reason> crate::visitor::Walkable<R> for Ty_<R> {
     fn recurse(&self, v: &mut dyn crate::visitor::Visitor<R>) {
         use Ty_::*;
         match self {
-            Tthis | Tmixed | Tany | Tnonnull | Tdynamic | Tprim(_) | Tvar(_) => {}
+            Tthis | Tmixed | Twildcard | Tany | Tnonnull | Tdynamic | Tprim(_) => {}
             Tapply(id_and_args) => {
                 let (_, args) = &**id_and_args;
                 args.accept(v)
@@ -372,7 +400,7 @@ impl<R: Reason> crate::visitor::Walkable<R> for Ty_<R> {
             Tfun(ft) => ft.accept(v),
             Ttuple(tys) | Tunion(tys) | Tintersection(tys) => tys.accept(v),
             Tshape(kind_and_fields) => {
-                let (_, fields) = &**kind_and_fields;
+                let ShapeType(_, fields) = &**kind_and_fields;
                 fields.accept(v)
             }
             Tgeneric(id_and_args) => {
@@ -594,6 +622,7 @@ pub struct FunElt<R: Reason> {
     pub php_std_lib: bool,
     pub support_dynamic_type: bool,
     pub no_auto_dynamic: bool,
+    pub no_auto_likes: bool,
 }
 
 walkable!(FunElt<R> => [ty]);

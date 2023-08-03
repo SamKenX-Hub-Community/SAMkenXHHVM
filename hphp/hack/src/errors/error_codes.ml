@@ -163,6 +163,8 @@ module Naming = struct
     | TypeConstantInEnumClassOutsideAllowedLocations [@value 2122]
     | InvalidBuiltinType [@value 2123]
     | InvalidMemoizeLabel [@value 2124]
+    | DynamicHintDisallowed [@value 2125]
+    | IllegalTypedLocal [@value 2126]
   (* Add new Naming codes here! Comment out when deprecating. *)
   [@@deriving enum, show { with_path = false }]
 
@@ -756,6 +758,7 @@ module Typing = struct
     | InvalidCrossPackage [@value 4472]
     | InvalidCrossPackageSoft [@value 4473]
     | AttributeNoAutoDynamic [@value 4474]
+    | IllegalCaseTypeVariants [@value 4475]
   (* Add new Typing codes here! Comment out when deprecating. *)
   [@@deriving enum, show { with_path = false }]
 

@@ -60,8 +60,10 @@ class t_program : public t_named {
    *
    * @param path - A *.thrift file path.
    */
-  explicit t_program(std::string path)
-      : t_program(std::move(path), std::make_shared<t_scope>()) {}
+  explicit t_program(std::string path, const t_program* parent = nullptr)
+      : t_program(
+            std::move(path),
+            parent ? parent->scope_ : std::make_shared<t_scope>()) {}
 
   void set_package(t_package package) { package_ = std::move(package); }
   const t_package& package() const { return package_; }
@@ -170,6 +172,23 @@ class t_program : public t_named {
     }
     return included_programs;
   }
+  /**
+   * As above, but excludes annotation files which shouldn't normally be
+   * included.
+   */
+  std::vector<t_program*> get_includes_for_codegen() const {
+    std::vector<t_program*> included_programs;
+    for (const auto& include : includes_) {
+      static const fmt::string_view prefix = "thrift/annotation/";
+      auto path = include->raw_path();
+      if (fmt::string_view(path.data(), std::min(path.size(), prefix.size())) ==
+          prefix) {
+        continue;
+      }
+      included_programs.push_back(include->get_program());
+    }
+    return included_programs;
+  }
 
   t_scope* scope() const { return scope_.get(); }
 
@@ -210,18 +229,6 @@ class t_program : public t_named {
   std::vector<std::string> gen_namespace_or_default(
       const std::string& language, namespace_config config) const;
 
-  /**
-   * This creates a new program for every thrift file in an
-   * include statement and sets their include_prefix by parsing
-   * the directory in which they were included from
-   *
-   * @param path         - A full thrift file path
-   * @param include_site - A full or relative thrift file path
-   * @param range        - The source range of the include statement
-   */
-  std::unique_ptr<t_program> add_include(
-      std::string path, std::string include_site, const source_range& range);
-
   void add_include(std::unique_ptr<t_include> include) {
     includes_.push_back(include.get());
     nodes_.push_back(std::move(include));
@@ -256,7 +263,8 @@ class t_program : public t_named {
   enum class value_id : int64_t {};
 
   // Adds value to intern list and returns ID
-  value_id intern_value(std::unique_ptr<t_const_value> val, t_type_ref type) {
+  value_id intern_value(std::unique_ptr<t_const_value> val) {
+    auto type = val->ttype();
     intern_list_.push_back(
         std::make_unique<t_const>(this, type, "", std::move(val)));
     return static_cast<value_id>(intern_list_.size());

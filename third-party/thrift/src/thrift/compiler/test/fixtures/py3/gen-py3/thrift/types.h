@@ -64,16 +64,6 @@ inline void reset_field<::facebook::thrift::annotation::ReserveIds>(
 }
 
 template<>
-inline void reset_field<::facebook::thrift::annotation::Legacy>(
-    ::facebook::thrift::annotation::Legacy& obj, uint16_t index) {
-  switch (index) {
-    case 0:
-      obj.message_ref().copy_from(default_inst<::facebook::thrift::annotation::Legacy>().message_ref());
-      return;
-  }
-}
-
-template<>
 inline void reset_field<::facebook::thrift::annotation::RequiresBackwardCompatibility>(
     ::facebook::thrift::annotation::RequiresBackwardCompatibility& obj, uint16_t index) {
   switch (index) {
@@ -147,13 +137,6 @@ inline void reset_field<::facebook::thrift::annotation::Mixin>(
 }
 
 template<>
-inline void reset_field<::facebook::thrift::annotation::Bit>(
-    ::facebook::thrift::annotation::Bit& obj, uint16_t index) {
-  switch (index) {
-  }
-}
-
-template<>
 inline void reset_field<::facebook::thrift::annotation::SerializeInFieldIdOrder>(
     ::facebook::thrift::annotation::SerializeInFieldIdOrder& obj, uint16_t index) {
   switch (index) {
@@ -164,26 +147,6 @@ template<>
 inline void reset_field<::facebook::thrift::annotation::BitmaskEnum>(
     ::facebook::thrift::annotation::BitmaskEnum& obj, uint16_t index) {
   switch (index) {
-  }
-}
-
-template<>
-inline void reset_field<::facebook::thrift::annotation::GenDefaultEnumValue>(
-    ::facebook::thrift::annotation::GenDefaultEnumValue& obj, uint16_t index) {
-  switch (index) {
-    case 0:
-      obj.name_ref().copy_from(default_inst<::facebook::thrift::annotation::GenDefaultEnumValue>().name_ref());
-      return;
-  }
-}
-
-template<>
-inline void reset_field<::facebook::thrift::annotation::GenEnumSet>(
-    ::facebook::thrift::annotation::GenEnumSet& obj, uint16_t index) {
-  switch (index) {
-    case 0:
-      obj.name_ref().copy_from(default_inst<::facebook::thrift::annotation::GenEnumSet>().name_ref());
-      return;
   }
 }
 
@@ -294,16 +257,6 @@ inline const std::unordered_map<std::string_view, std::string_view>& PyStructTra
 
 template<>
 inline const std::unordered_map<std::string_view, std::string_view>& PyStructTraits<
-    ::facebook::thrift::annotation::Legacy>::namesmap() {
-  static const folly::Indestructible<NamesMap> map {
-    {
-    }
-  };
-  return *map;
-}
-
-template<>
-inline const std::unordered_map<std::string_view, std::string_view>& PyStructTraits<
     ::facebook::thrift::annotation::RequiresBackwardCompatibility>::namesmap() {
   static const folly::Indestructible<NamesMap> map {
     {
@@ -404,16 +357,6 @@ inline const std::unordered_map<std::string_view, std::string_view>& PyStructTra
 
 template<>
 inline const std::unordered_map<std::string_view, std::string_view>& PyStructTraits<
-    ::facebook::thrift::annotation::Bit>::namesmap() {
-  static const folly::Indestructible<NamesMap> map {
-    {
-    }
-  };
-  return *map;
-}
-
-template<>
-inline const std::unordered_map<std::string_view, std::string_view>& PyStructTraits<
     ::facebook::thrift::annotation::SerializeInFieldIdOrder>::namesmap() {
   static const folly::Indestructible<NamesMap> map {
     {
@@ -425,26 +368,6 @@ inline const std::unordered_map<std::string_view, std::string_view>& PyStructTra
 template<>
 inline const std::unordered_map<std::string_view, std::string_view>& PyStructTraits<
     ::facebook::thrift::annotation::BitmaskEnum>::namesmap() {
-  static const folly::Indestructible<NamesMap> map {
-    {
-    }
-  };
-  return *map;
-}
-
-template<>
-inline const std::unordered_map<std::string_view, std::string_view>& PyStructTraits<
-    ::facebook::thrift::annotation::GenDefaultEnumValue>::namesmap() {
-  static const folly::Indestructible<NamesMap> map {
-    {
-    }
-  };
-  return *map;
-}
-
-template<>
-inline const std::unordered_map<std::string_view, std::string_view>& PyStructTraits<
-    ::facebook::thrift::annotation::GenEnumSet>::namesmap() {
   static const folly::Indestructible<NamesMap> map {
     {
     }

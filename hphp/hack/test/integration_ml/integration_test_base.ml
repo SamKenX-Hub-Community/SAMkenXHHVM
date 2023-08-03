@@ -115,7 +115,6 @@ let setup_server ?custom_config ?(hhi_files = []) ?edges_dir () : ServerEnv.env
   (* Initialize symbol index *)
   let sienv =
     SymbolIndex.initialize
-      ~globalrev:None
       ~gleanopt:env.ServerEnv.gleanopt
       ~namespace_map:[]
       ~provider_name:"LocalIndex"
@@ -270,32 +269,6 @@ let connect_persistent_client env =
     (Ide_info_store.get_client ());
   env
 
-let assert_errors_in_phase
-    (env : ServerEnv.env) (expected_count : int) (phase : Errors.phase) :
-    ServerEnv.env =
-  let all_phases = [Errors.Naming; Errors.Typing] in
-  let errors_in_phases =
-    List.map
-      ~f:(fun (phase : Errors.phase) ->
-        (phase, Errors.get_failed_files env.ServerEnv.errorl phase))
-      all_phases
-  in
-  let (decl_error_files, other_error_files) =
-    SaveStateService.partition_error_files_tf errors_in_phases [phase]
-  in
-  let count_of_errors = Relative_path.Set.cardinal decl_error_files in
-  if count_of_errors <> expected_count then
-    fail
-      (Printf.sprintf
-         "Expected %d errors in phase %s but got %d"
-         expected_count
-         (Errors.phase_to_string phase)
-         count_of_errors);
-
-  if Relative_path.Set.cardinal other_error_files <> 0 then
-    fail (Printf.sprintf "Expected %d" expected_count);
-  env
-
 let error_strings err_list =
   List.map ~f:(fun x -> Errors.to_string (User_error.to_absolute x)) err_list
 
@@ -387,15 +360,6 @@ let wait env =
    * last_command_time. Will not work on timers that compare against other
    * counters. *)
   ServerEnv.{ env with last_command_time = env.last_command_time -. 60.0 }
-
-let autocomplete env contents =
-  run_loop_once
-    env
-    {
-      default_loop_input with
-      persistent_client_request =
-        Some (Request (COMMANDLINE_AUTOCOMPLETE contents));
-    }
 
 let ide_autocomplete env (path, line, column) =
   let is_manually_invoked = false in
@@ -776,33 +740,17 @@ let list_to_string l =
   List.iter l ~f:(Printf.bprintf buf "%s ");
   Buffer.contents buf
 
-let assert_autocomplete loop_output expected =
+let assert_ide_autocomplete_does_not_contain loop_output not_expected =
   let results =
     match loop_output.persistent_client_response with
     | Some res -> res
     | _ -> fail "Expected autocomplete response"
   in
   let results =
-    results |> List.map ~f:(fun x -> x.AutocompleteTypes.res_label)
+    List.map results.AutocompleteTypes.completions ~f:(fun x ->
+        x.AutocompleteTypes.res_label)
   in
-  (* The autocomplete results out of hack are unsorted *)
-  let results_as_string =
-    results |> List.sort ~compare:String.compare |> list_to_string
-  in
-  let expected_as_string =
-    expected |> List.sort ~compare:String.compare |> list_to_string
-  in
-  assertEqual expected_as_string results_as_string
-
-let assert_autocomplete_does_not_contain loop_output not_expected =
-  let results =
-    match loop_output.persistent_client_response with
-    | Some res -> res
-    | _ -> fail "Expected autocomplete response"
-  in
-  let results =
-    List.map results ~f:(fun x -> x.AutocompleteTypes.res_label) |> SSet.of_list
-  in
+  let results = SSet.of_list results in
   let not_expected = SSet.of_list not_expected in
   let occured = SSet.inter results not_expected in
   if SSet.is_empty occured |> not then

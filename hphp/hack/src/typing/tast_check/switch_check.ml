@@ -14,13 +14,34 @@ open Utils
 module Env = Tast_env
 module Cls = Decl_provider.Class
 module SN = Naming_special_names
+module MakeType = Typing_make_type
+module Reason = Typing_reason
 
 type kind =
   | Enum
   | EnumClass
   | EnumClassLabel
 
-let get_constant tc kind (seen, has_default) case =
+let is_arraykey env ty = Env.is_sub_type env ty (MakeType.arraykey Reason.Rnone)
+
+let is_dynamic env ty = Env.is_sub_type env ty (MakeType.dynamic Reason.Rnone)
+
+let is_enum env ty =
+  let (env, ty) = Env.expand_type env ty in
+  match Typing_defs.get_node ty with
+  | Tnewtype (name, _, _) -> Env.is_enum env name
+  | _ -> false
+
+let is_like_enum env ty =
+  let (env, ty) = Env.expand_type env ty in
+  match Typing_defs.get_node ty with
+  | Typing_defs.Tunion [ty; dynamic_ty] when is_dynamic env dynamic_ty ->
+    is_enum env ty
+  | Typing_defs.Tunion [dynamic_ty; ty] when is_dynamic env dynamic_ty ->
+    is_enum env ty
+  | _ -> false
+
+let get_constant env tc kind (seen, has_default) case =
   let (kind, is_enum_class_label) =
     match kind with
     | Enum -> ("enum ", false)
@@ -31,6 +52,7 @@ let get_constant tc kind (seen, has_default) case =
     (* wish:T109260699 *)
     if String.( <> ) cls (Cls.name tc) then (
       Typing_error_utils.add_typing_error
+        ~env:(Tast_env.tast_env_as_typing_env env)
         Typing_error.(
           enum
           @@ Primary.Enum.Enum_switch_wrong_class
@@ -46,6 +68,7 @@ let get_constant tc kind (seen, has_default) case =
       | None -> (SMap.add const pos seen, has_default)
       | Some old_pos ->
         Typing_error_utils.add_typing_error
+          ~env:(Tast_env.tast_env_as_typing_env env)
           Typing_error.(
             enum
             @@ Primary.Enum.Enum_switch_redundant
@@ -61,11 +84,12 @@ let get_constant tc kind (seen, has_default) case =
     check_case pos cls const
   | Case ((_, pos, _), _) ->
     Typing_error_utils.add_typing_error
+      ~env:(Tast_env.tast_env_as_typing_env env)
       Typing_error.(enum @@ Primary.Enum.Enum_switch_not_const pos);
     (seen, has_default)
 
-let check_enum_exhaustiveness pos tc kind (caselist, dfl) coming_from_unresolved
-    =
+let check_enum_exhaustiveness
+    env pos tc kind (caselist, dfl) coming_from_unresolved =
   let str_kind =
     match kind with
     | Enum -> "Enum"
@@ -79,13 +103,13 @@ let check_enum_exhaustiveness pos tc kind (caselist, dfl) coming_from_unresolved
     let state = (SMap.empty, false) in
     let state =
       List.fold_left
-        ~f:(fun state c -> get_constant tc kind state (Aast.Case c))
+        ~f:(fun state c -> get_constant env tc kind state (Aast.Case c))
         ~init:state
         caselist
     in
     let state =
       Option.fold
-        ~f:(fun state c -> get_constant tc kind state (Aast.Default c))
+        ~f:(fun state c -> get_constant env tc kind state (Aast.Default c))
         ~init:state
         dfl
     in
@@ -116,7 +140,9 @@ let check_enum_exhaustiveness pos tc kind (caselist, dfl) coming_from_unresolved
     | _ -> None
   in
   Option.iter enum_err_opt ~f:(fun err ->
-      Typing_error_utils.add_typing_error @@ Typing_error.enum err)
+      Typing_error_utils.add_typing_error
+        ~env:(Tast_env.tast_env_as_typing_env env)
+      @@ Typing_error.enum err)
 
 (* Small reminder:
  * - enums are localized to `Tnewtype (name, _, _)` where name is the name of
@@ -169,7 +195,13 @@ let rec check_exhaustiveness_ env pos ty caselist enum_coming_from_unresolved =
         dep;
 
     let tc = unsafe_opt @@ Env.get_enum env id in
-    check_enum_exhaustiveness pos tc kind caselist enum_coming_from_unresolved;
+    check_enum_exhaustiveness
+      env
+      pos
+      tc
+      kind
+      caselist
+      enum_coming_from_unresolved;
     env
   in
   match get_node ty with
@@ -191,6 +223,9 @@ let rec check_exhaustiveness_ env pos ty caselist enum_coming_from_unresolved =
     in
     List.fold_left tyl ~init:env ~f:(fun env ty ->
         check_exhaustiveness_ env pos ty caselist new_enum)
+  | Tintersection [arraykey; like_ty]
+    when is_arraykey env arraykey && is_like_enum env like_ty ->
+    check_exhaustiveness_ env pos like_ty caselist enum_coming_from_unresolved
   | Tintersection tyl ->
     fst
     @@ Typing_utils.run_on_intersection env tyl ~f:(fun env ty ->
@@ -223,8 +258,12 @@ let rec check_exhaustiveness_ env pos ty caselist enum_coming_from_unresolved =
     Typing_defs.error_Tunapplied_alias_in_illegal_context ()
 
 let check_exhaustiveness env pos ty caselist =
-  let (_ : Env.env) = check_exhaustiveness_ env pos ty caselist false in
-  ()
+  let env = check_exhaustiveness_ env pos ty caselist false in
+  let tcopt = env |> Env.get_decl_env |> Decl_env.tcopt in
+  if TypecheckerOptions.tco_log_exhaustivity_check tcopt then
+    Env.ty_to_json env ty
+    |> Hh_json.json_to_string
+    |> Hh_logger.log "[hh_tco_log_exhaustivity_check] %s"
 
 let handler =
   object

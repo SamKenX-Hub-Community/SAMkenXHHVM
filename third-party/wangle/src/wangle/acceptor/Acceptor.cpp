@@ -88,8 +88,11 @@ void Acceptor::init(
 
     if (!sslCtxManager_) {
       sslCtxManager_ = std::make_unique<SSLContextManager>(
-          "vip_" + getName(), accConfig_.strictSSL, stats);
+          "vip_" + getName(),
+          SSLContextManagerSettings().setStrict(accConfig_.strictSSL),
+          stats);
     }
+    getFizzPeeker()->setSSLContextManager(sslCtxManager_);
     try {
       // If the default ctx is nullptr, we can assume it hasn't been configured
       // yet.
@@ -97,6 +100,15 @@ void Acceptor::init(
         for (const auto& sslCtxConfig : accConfig_.sslContextConfigs) {
           sslCtxManager_->addSSLContextConfig(
               sslCtxConfig,
+              accConfig_.sslCacheOptions,
+              &accConfig_.initialTicketSeeds,
+              accConfig_.bindAddress,
+              cacheProvider_);
+        }
+        for (const auto& sniConfig : accConfig_.sniConfigs) {
+          sslCtxManager_->addSSLContextConfig(
+              sniConfig.snis,
+              sniConfig.contextConfig,
               accConfig_.sslCacheOptions,
               &accConfig_.initialTicketSeeds,
               accConfig_.bindAddress,
@@ -208,11 +220,13 @@ void Acceptor::resetSSLContextConfigs(
     } else if (sslCtxManager_) {
       sslCtxManager_->resetSSLContextConfigs(
           accConfig_.sslContextConfigs,
+          accConfig_.sniConfigs,
           accConfig_.sslCacheOptions,
           nullptr,
           accConfig_.bindAddress,
           cacheProvider_);
     }
+    getFizzPeeker()->setSSLContextManager(sslCtxManager_);
   } catch (const std::runtime_error& ex) {
     LOG(ERROR) << "Failed to re-configure TLS: " << ex.what()
                << "will keep old config";
@@ -261,7 +275,7 @@ void Acceptor::acceptConnection(
     folly::NetworkSocket fdNetworkSocket,
     const SocketAddress& clientAddr,
     AcceptInfo info,
-    folly::AsyncTransport::LifecycleObserver* observer) noexcept {
+    folly::AsyncSocket::LegacyLifecycleObserver* observer) noexcept {
   int fd = fdNetworkSocket.toFd();
 
   namespace fsp = folly::portability::sockets;
@@ -288,7 +302,7 @@ void Acceptor::onDoneAcceptingConnection(
     const SocketAddress& clientAddr,
     std::chrono::steady_clock::time_point acceptTime,
     const AcceptInfo& info,
-    folly::AsyncTransport::LifecycleObserver* observer) noexcept {
+    folly::AsyncSocket::LegacyLifecycleObserver* observer) noexcept {
   TransportInfo tinfo;
   tinfo.timeBeforeEnqueue = info.timeBeforeEnqueue;
   processEstablishedConnection(fd, clientAddr, acceptTime, tinfo, observer);
@@ -299,7 +313,7 @@ void Acceptor::processEstablishedConnection(
     const SocketAddress& clientAddr,
     std::chrono::steady_clock::time_point acceptTime,
     TransportInfo& tinfo,
-    folly::AsyncTransport::LifecycleObserver* observer) noexcept {
+    folly::AsyncSocket::LegacyLifecycleObserver* observer) noexcept {
   bool shouldDoSSL = false;
   if (accConfig_.isSSL()) {
     CHECK(sslCtxManager_);
@@ -381,28 +395,58 @@ static std::string logContext(folly::AsyncTransport& transport) {
 AsyncTransport::UniquePtr Acceptor::transformTransport(
     AsyncTransport::UniquePtr sock) {
   if constexpr (fizz::platformCapableOfKTLS) {
+    fizz::KTLSRxPad rxPad = accConfig_.fizzConfig.expectNoPadKTLSRx
+        ? fizz::KTLSRxPad::RxExpectNoPad
+        : fizz::KTLSRxPad::RxPadUnknown;
     if (accConfig_.fizzConfig.preferKTLS) {
-      std::string sockLogContext;
-      if (VLOG_IS_ON(5)) {
-        sockLogContext = logContext(*sock);
-      }
+      if (accConfig_.fizzConfig.preferKTLSRx) {
+        std::string sockLogContext;
+        if (VLOG_IS_ON(5)) {
+          sockLogContext = logContext(*sock);
+        }
 
-      auto fizzSocket =
-          sock->getUnderlyingTransport<fizz::server::AsyncFizzServer>();
-      if (!fizzSocket) {
-        VLOG(5) << "Acceptor configured to prefer kTLS, but peer is not fizz. "
-                << sockLogContext;
-        return sock;
-      }
-      auto ktlsSockResult = fizz::tryConvertKTLS(*fizzSocket);
-      if (ktlsSockResult.hasValue()) {
-        VLOG(5) << "Upgraded socket to kTLS. " << sockLogContext;
-        return std::move(ktlsSockResult).value();
+        auto fizzSocket =
+            sock->getUnderlyingTransport<fizz::server::AsyncFizzServer>();
+        if (!fizzSocket) {
+          VLOG(5)
+              << "Acceptor configured to prefer kTLS Rx, but peer is not fizz. "
+              << sockLogContext;
+          return sock;
+        }
+        auto ktlsRxSockResult = fizz::tryConvertKTLSRx(*fizzSocket, rxPad);
+        if (ktlsRxSockResult.hasValue()) {
+          VLOG(5) << "Upgraded socket to kTLS Rx. " << sockLogContext;
+          return std::move(ktlsRxSockResult).value();
+        } else {
+          VLOG(5) << "Failed to upgrade to kTLS Rx. ex="
+                  << folly::exceptionStr(ktlsRxSockResult.error()) << " "
+                  << sockLogContext;
+          return sock;
+        }
       } else {
-        VLOG(5) << "Failed to upgrade to kTLS. ex="
-                << folly::exceptionStr(ktlsSockResult.error()) << " "
-                << sockLogContext;
-        return sock;
+        std::string sockLogContext;
+        if (VLOG_IS_ON(5)) {
+          sockLogContext = logContext(*sock);
+        }
+
+        auto fizzSocket =
+            sock->getUnderlyingTransport<fizz::server::AsyncFizzServer>();
+        if (!fizzSocket) {
+          VLOG(5)
+              << "Acceptor configured to prefer kTLS, but peer is not fizz. "
+              << sockLogContext;
+          return sock;
+        }
+        auto ktlsSockResult = fizz::tryConvertKTLS(*fizzSocket, rxPad);
+        if (ktlsSockResult.hasValue()) {
+          VLOG(5) << "Upgraded socket to kTLS. " << sockLogContext;
+          return std::move(ktlsSockResult).value();
+        } else {
+          VLOG(5) << "Failed to upgrade to kTLS. ex="
+                  << folly::exceptionStr(ktlsSockResult.error()) << " "
+                  << sockLogContext;
+          return sock;
+        }
       }
     }
   }

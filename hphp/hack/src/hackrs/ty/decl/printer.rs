@@ -36,6 +36,7 @@ impl<R: Reason> Display for Ty_<R> {
             Tany => write!(f, "_"),
             Tthis => write!(f, "this"),
             Tmixed => write!(f, "mixed"),
+            Twildcard => write!(f, "_"),
             Tnonnull => write!(f, "nonnull"),
             Tdynamic => write!(f, "dynamic"),
             Tprim(prim) => match prim {
@@ -50,7 +51,6 @@ impl<R: Reason> Display for Ty_<R> {
                 Prim::Tarraykey => write!(f, "arraykey"),
                 Prim::Tnoreturn => write!(f, "noreturn"),
             },
-            Tvar(id) => write!(f, "{}", id),
             Tlike(ty) => write!(f, "~{}", ty),
             Toption(ty) => write!(f, "?{}", ty),
             Taccess(ta) => write!(f, "{}::{}", ta.ty, ta.type_const.id()),

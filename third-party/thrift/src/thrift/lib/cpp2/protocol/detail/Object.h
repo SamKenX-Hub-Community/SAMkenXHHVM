@@ -16,8 +16,10 @@
 
 #pragma once
 
+#include <functional>
 #include <stack>
 #include <type_traits>
+#include <unordered_set>
 
 #include <fatal/type/same_reference_as.h>
 #include <folly/CPortability.h>
@@ -76,6 +78,8 @@ struct ValueHelper {
       result.doubleValue_ref() = value;
     } else if constexpr (type::base_type_v<TT> == type::BaseType::String) {
       result.stringValue_ref() = std::forward<T>(value);
+    } else {
+      static_assert(folly::always_false<T>, "Unknown Type Tag.");
     }
   }
 };
@@ -130,6 +134,14 @@ struct ValueHelper<type::map<K, V>> {
       ValueHelper<V>::set(result_map[key], forward_elem<C>(entry.second));
     }
   }
+};
+
+template <typename T, typename Tag>
+struct ValueHelper<type::cpp_type<T, Tag>> : ValueHelper<Tag> {};
+
+template <typename Adapter, typename Tag>
+struct ValueHelper<type::adapted<Adapter, Tag>> {
+  static_assert(folly::always_false<Adapter>, "Not Implemented.");
 };
 
 class BaseObjectAdapter {
@@ -207,7 +219,8 @@ class ObjectWriter : public BaseObjectAdapter {
   uint32_t writeSetEnd() {
     // insert elements from buffer into setValue
     std::vector<Value> setValues = getBufferFromStack();
-    std::set<Value>& setVal = cur().setValue_ref().ensure();
+    auto& setVal = cur().setValue_ref().ensure();
+    setVal.reserve(setValues.size());
     for (size_t i = 0; i < setValues.size(); i++) {
       setVal.emplace(std::move(setValues[i]));
     }
@@ -327,8 +340,8 @@ struct ValueHelper<TT, type::if_structured<TT>> {
   template <typename T>
   static void set(Value& result, T&& value) {
     ObjectWriter writer(&result);
-    op::detail::RecursiveEncode<type::infer_tag<folly::remove_cvref_t<T>>>{}(
-        writer, value);
+    op::encode<type::infer_tag<folly::remove_cvref_t<T>>>(
+        writer, std::forward<T>(value));
   }
 };
 
@@ -429,6 +442,7 @@ Value parseValue(Protocol& prot, TType arg_type, bool string_to_binary = true) {
       uint32_t size;
       auto& setValue = result.setValue_ref().ensure();
       prot.readSetBegin(elemType, size);
+      setValue.reserve(size);
       for (uint32_t i = 0; i < size; i++) {
         setValue.insert(parseValue(prot, elemType, string_to_binary));
       }
@@ -841,9 +855,13 @@ void serializeValue(
         }
       }
 
-      // Remember which keys are in the maskedData. Cannot use unordered_map
-      // as Value doesn't have a hash function.
-      std::set<Value> keys{};
+      // Remember which keys are in the maskedData. Note that the ownership of
+      // keys are managed by the maskedData.
+      std::unordered_set<
+          std::reference_wrapper<const Value>,
+          std::hash<Value>,
+          std::equal_to<Value>>
+          keys;
       prot.writeMapBegin(keyType, valueType, size);
       for (auto& [keyValueId, nestedMaskedData] : *maskedData.values_ref()) {
         const Value& key = getByValueId(*protocolData.keys(), keyValueId);

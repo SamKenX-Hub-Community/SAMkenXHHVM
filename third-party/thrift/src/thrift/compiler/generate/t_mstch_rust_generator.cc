@@ -18,6 +18,7 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -77,6 +78,10 @@ bool can_derive_ord(const t_type* type) {
 }
 
 struct rust_codegen_options {
+  // Name that the main crate uses to refer to its dependency on the types
+  // crate.
+  std::string types_crate;
+
   // Key: package name according to Thrift.
   // Value: rust_crate_name to use in generated code.
   std::map<std::string, std::string> cratemap;
@@ -98,8 +103,9 @@ struct rust_codegen_options {
   // True if we are generating a submodule rather than the whole crate.
   bool multifile_mode = false;
 
-  // List of extra sources to include at top-level of the crate.
-  std::vector<std::string> include_srcs;
+  // List of extra sources to include at top-level of each crate.
+  mstch::array lib_include_srcs;
+  mstch::array types_include_srcs;
 
   // The current program being generated and its Rust module path.
   const t_program* current_program;
@@ -172,6 +178,22 @@ FieldKind field_kind(const t_named& node) {
 // into the generated crate.
 bool has_nonstandard_type_annotation(const t_type* type) {
   return type->get_annotation("rust.type").find("::") != string::npos;
+}
+
+void parse_include_srcs(
+    mstch::array& elements, boost::optional<std::string> const& include_srcs) {
+  if (!include_srcs) {
+    return;
+  }
+  auto paths = *include_srcs;
+  string::size_type pos = 0;
+  while (pos != string::npos && pos < paths.size()) {
+    mstch::map node;
+    string::size_type next_pos = paths.find(':', pos);
+    node["program:include_src"] = paths.substr(pos, next_pos - pos);
+    elements.push_back(std::move(node));
+    pos = ((next_pos == string::npos) ? next_pos : next_pos + 1);
+  }
 }
 
 const t_const* find_structured_adapter_annotation(const t_named& node) {
@@ -408,17 +430,17 @@ mstch::node structured_annotations_node(
   std::vector<mstch::node> annotations;
 
   // Note, duplicate annotations are not allowed per the Thrift spec.
-  for (const t_const* annotation : named.structured_annotations()) {
+  for (const t_const& annotation : named.structured_annotations()) {
     auto direct_annotation = std::make_shared<mstch_rust_value>(
-        annotation->get_value(),
-        annotation->get_type(),
+        annotation.get_value(),
+        annotation.get_type(),
         depth,
         context,
         pos,
         options);
 
     mstch::node transitive;
-    const t_type* annotation_type = annotation->get_type();
+    const t_type* annotation_type = annotation.get_type();
     if ((*annotation_type).find_structured_annotation_or_null(kTransitiveUri)) {
       transitive = context.type_factory->make_mstch_object(
           annotation_type, context, pos);
@@ -459,6 +481,7 @@ class rust_mstch_program : public mstch_program {
         this,
         {
             {"program:types?", &rust_mstch_program::rust_has_types},
+            {"program:types", &rust_mstch_program::rust_types},
             {"program:structsOrEnums?",
              &rust_mstch_program::rust_structs_or_enums},
             {"program:nonexhaustiveStructs?",
@@ -479,7 +502,10 @@ class rust_mstch_program : public mstch_program {
              &rust_mstch_program::rust_nonstandard_types},
             {"program:docs?", &rust_mstch_program::rust_has_docs},
             {"program:docs", &rust_mstch_program::rust_docs},
-            {"program:include_srcs", &rust_mstch_program::rust_include_srcs},
+            {"program:lib_include_srcs",
+             &rust_mstch_program::rust_lib_include_srcs},
+            {"program:types_include_srcs",
+             &rust_mstch_program::rust_types_include_srcs},
             {"program:has_default_tests?",
              &rust_mstch_program::rust_has_default_tests},
             {"program:structs_for_default_test",
@@ -503,6 +529,15 @@ class rust_mstch_program : public mstch_program {
     return !program_->structs().empty() || !program_->enums().empty() ||
         !program_->typedefs().empty() || !program_->xceptions().empty();
   }
+
+  mstch::node rust_types() {
+    auto types = "::" + options_.types_crate;
+    if (options_.multifile_mode) {
+      types += "::" + mangle(program_->name());
+    }
+    return types;
+  }
+
   mstch::node rust_structs_or_enums() {
     return !program_->structs().empty() || !program_->enums().empty() ||
         !program_->xceptions().empty();
@@ -536,7 +571,7 @@ class rust_mstch_program : public mstch_program {
   mstch::node rust_package() { return get_import_name(program_, options_); }
   mstch::node rust_includes() {
     mstch::array includes;
-    for (auto* program : program_->get_included_programs()) {
+    for (auto* program : program_->get_includes_for_codegen()) {
       includes.push_back(
           context_.program_factory->make_mstch_object(program, context_, pos_));
     }
@@ -622,15 +657,8 @@ class rust_mstch_program : public mstch_program {
   }
   mstch::node rust_has_docs() { return program_->has_doc(); }
   mstch::node rust_docs() { return quoted_rust_doc(program_); }
-  mstch::node rust_include_srcs() {
-    mstch::array elements;
-    for (auto elem : options_.include_srcs) {
-      mstch::map node;
-      node["program:include_src"] = elem;
-      elements.push_back(node);
-    }
-    return elements;
-  }
+  mstch::node rust_lib_include_srcs() { return options_.lib_include_srcs; }
+  mstch::node rust_types_include_srcs() { return options_.types_include_srcs; }
   mstch::node rust_has_default_tests() {
     for (const t_struct* strct : program_->structs()) {
       for (const t_field& field : strct->fields()) {
@@ -1169,7 +1197,40 @@ class rust_mstch_enum : public mstch_enum {
             {"enum:docs?", &rust_mstch_enum::rust_has_doc},
             {"enum:docs", &rust_mstch_enum::rust_doc},
             {"enum:serde?", &rust_mstch_enum::rust_serde},
+            {"enum:derive", &rust_mstch_enum::rust_derive},
         });
+  }
+  mstch::node rust_derive() {
+    if (auto annotation = find_structured_derive_annotation(*enum_)) {
+      // Always replace `crate::` with the package name of where this annotation
+      // originated to support derives applied with `@scope.Transitive`.
+      // If the annotation originates from the same module, this will just
+      // return `crate::` anyways to be a no-op.
+      std::string package = get_import_name(annotation->program(), options_);
+
+      std::string ret;
+      std::string delimiter = "";
+
+      for (const auto& item : annotation->value()->get_map()) {
+        if (item.first->get_string() == "derives") {
+          for (const t_const_value* val : item.second->get_list()) {
+            auto str_val = val->get_string();
+
+            if (!package.empty() &&
+                boost::algorithm::starts_with(str_val, kRustCratePrefix)) {
+              str_val =
+                  package + "::" + str_val.substr(kRustCratePrefix.length());
+            }
+
+            ret = ret + delimiter + str_val;
+            delimiter = ", ";
+          }
+        }
+      }
+
+      return ret;
+    }
+    return mstch::node();
   }
   mstch::node rust_name() {
     if (!enum_->has_annotation("rust.name")) {
@@ -1264,16 +1325,15 @@ class mstch_rust_value : public mstch_base {
       const rust_codegen_options& options)
       : mstch_base(ctx, pos),
         const_value_(const_value),
-        type_(type),
+        local_type_(type),
+        type_(step_through_typedefs(type, false)),
         depth_(depth),
         options_(options) {
-    // Step through any non-newtype typedefs.
-    type_ = step_through_typedefs(type_, false);
-
     register_methods(
         this,
         {
             {"value:type", &mstch_rust_value::type},
+            {"value:local_type", &mstch_rust_value::local_type},
             {"value:newtype?", &mstch_rust_value::is_newtype},
             {"value:inner", &mstch_rust_value::inner},
             {"value:bool?", &mstch_rust_value::is_bool},
@@ -1299,7 +1359,6 @@ class mstch_rust_value : public mstch_base {
             {"value:unionVariant", &mstch_rust_value::union_variant},
             {"value:unionValue", &mstch_rust_value::union_value},
             {"value:enum?", &mstch_rust_value::is_enum},
-            {"value:enumPackage", &mstch_rust_value::enum_package},
             {"value:enumVariant", &mstch_rust_value::enum_variant},
             {"value:empty?", &mstch_rust_value::is_empty},
             {"value:indent", &mstch_rust_value::indent},
@@ -1308,6 +1367,10 @@ class mstch_rust_value : public mstch_base {
   }
   mstch::node type() {
     return context_.type_factory->make_mstch_object(type_, context_, pos_);
+  }
+  mstch::node local_type() {
+    return context_.type_factory->make_mstch_object(
+        local_type_, context_, pos_);
   }
   mstch::node is_newtype() {
     return type_->is_typedef() && type_->has_annotation("rust.newtype");
@@ -1401,8 +1464,8 @@ class mstch_rust_value : public mstch_base {
   }
   mstch::node map_entries();
   mstch::node is_struct() {
-    return (type_->is_struct() || type_->is_xception()) && !type_->is_union() &&
-        const_value_->get_type() == value_type::CV_MAP;
+    return (type_->is_struct() || type_->is_exception()) &&
+        !type_->is_union() && const_value_->get_type() == value_type::CV_MAP;
   }
   mstch::node struct_fields();
   mstch::node is_exhaustive();
@@ -1443,12 +1506,6 @@ class mstch_rust_value : public mstch_base {
     return mstch::node();
   }
   mstch::node is_enum() { return type_->is_enum(); }
-  mstch::node enum_package() {
-    if (type_->is_enum()) {
-      return get_import_name(type_->program(), options_);
-    }
-    return mstch::node();
-  }
   mstch::node enum_variant() {
     if (const_value_->is_enum()) {
       auto enum_value = const_value_->get_enum_value();
@@ -1486,7 +1543,15 @@ class mstch_rust_value : public mstch_base {
 
  private:
   const t_const_value* const_value_;
+
+  // The type (potentially a typedef) by which the value's type is known to the
+  // current crate.
+  const t_type* local_type_;
+
+  // The underlying type of the value after stepping through any non-newtype
+  // typedefs.
   const t_type* type_;
+
   unsigned depth_;
   const rust_codegen_options& options_;
 };
@@ -1934,6 +1999,11 @@ mstch::node rust_mstch_service::rust_all_exceptions() {
 }
 
 void t_mstch_rust_generator::generate_program() {
+  if (auto types_crate_flag = get_option("types_crate")) {
+    options_.types_crate =
+        boost::algorithm::replace_all_copy(*types_crate_flag, "-", "_");
+  }
+
   if (auto cratemap_flag = get_option("cratemap")) {
     auto cratemap = load_crate_map(*cratemap_flag);
     options_.multifile_mode = cratemap.multifile_mode;
@@ -1951,17 +2021,9 @@ void t_mstch_rust_generator::generate_program() {
     program_->set_include_prefix(*include_prefix_flag);
   }
 
-  if (auto include_srcs = get_option("include_srcs")) {
-    auto paths = *include_srcs;
-
-    string::size_type pos = 0;
-    while (pos != string::npos && pos < paths.size()) {
-      string::size_type next_pos = paths.find(':', pos);
-      auto path = paths.substr(pos, next_pos - pos);
-      options_.include_srcs.push_back(path);
-      pos = ((next_pos == string::npos) ? next_pos : next_pos + 1);
-    }
-  }
+  parse_include_srcs(options_.lib_include_srcs, get_option("lib_include_srcs"));
+  parse_include_srcs(
+      options_.types_include_srcs, get_option("types_include_srcs"));
 
   if (options_.multifile_mode) {
     options_.current_crate = "crate::" + mangle(program_->name());
@@ -2011,6 +2073,13 @@ void t_mstch_rust_generator::generate_program() {
   const auto& prog = cached_program(program_);
   render_to_file(prog, "lib.rs", "lib.rs");
   render_to_file(prog, "types.rs", "types.rs");
+  render_to_file(prog, "services.rs", "services.rs");
+  render_to_file(prog, "errors.rs", "errors.rs");
+  render_to_file(prog, "consts.rs", "consts.rs");
+  render_to_file(prog, "dependencies.rs", "dependencies.rs");
+  render_to_file(prog, "client.rs", "client.rs");
+  render_to_file(prog, "server.rs", "server.rs");
+  render_to_file(prog, "mock.rs", "mock.rs");
   write_output("namespace", namespace_rust);
 }
 
@@ -2126,13 +2195,13 @@ void t_mstch_rust_generator::fill_validator_list(validator_list& l) const {
 THRIFT_REGISTER_GENERATOR(
     mstch_rust,
     "Rust",
-    "    serde:           Derive serde Serialize/Deserialize traits for types\n"
-    "    noserver:        Don't emit server code\n"
-    "    include_prefix=: Set program:include_prefix.\n"
-    "    include_srcs=:   Additional Rust source file to include in output, "
-    "`:` separated\n"
-    "    cratemap=map:    Mapping file from services to crate names\n");
-
+    "    serde:               Derive serde Serialize/Deserialize traits for types\n"
+    "    noserver:            Don't emit server code\n"
+    "    include_prefix=:     Set program:include_prefix.\n"
+    "    lib_include_srcs=:   Additional Rust source files to include in lib crate, `:` separated\n"
+    "    types_include_srcs=: Additional Rust source files to include in types crate, `:` separated\n"
+    "    cratemap=map:    Mapping file from services to crate names\n"
+    "    types_crate=:        Name that the main crate uses to refer to its dependency on the types crate\n");
 } // namespace rust
 } // namespace compiler
 } // namespace thrift

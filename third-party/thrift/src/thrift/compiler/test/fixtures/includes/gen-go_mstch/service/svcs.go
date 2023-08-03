@@ -7,6 +7,7 @@ package service // [[[ program thrift source path ]]]
 import (
     "context"
     "fmt"
+    "sync"
 
     module "module"
     includes "includes"
@@ -21,6 +22,7 @@ var _ = includes.GoUnusedProtection__
 var _ = context.Background
 var _ = fmt.Printf
 var _ = thrift.ZERO
+var _ = sync.Mutex{}
 
 
 
@@ -63,6 +65,7 @@ func (c *MyServiceChannelClient) Open() error {
 // Deprecated: Use MyServiceChannelClient instead.
 type MyServiceClient struct {
     chClient *MyServiceChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ MyServiceClientInterface = &MyServiceClient{}
@@ -176,7 +179,7 @@ func (x *reqMyServiceQuery) GetSNonCompat() *module.MyStruct {
 
 func (x *reqMyServiceQuery) GetS() *module.MyStruct {
     if !x.IsSetS() {
-        return module.NewMyStruct()
+        return nil
     }
 
     return x.S
@@ -188,7 +191,7 @@ func (x *reqMyServiceQuery) GetINonCompat() *includes.Included {
 
 func (x *reqMyServiceQuery) GetI() *includes.Included {
     if !x.IsSetI() {
-        return includes.NewIncluded()
+        return nil
     }
 
     return x.I
@@ -307,7 +310,9 @@ func (x *reqMyServiceQuery) DefaultGetI() *includes.Included {
 }
 
 func (x *reqMyServiceQuery) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceQueryAlias reqMyServiceQuery
+    valueAlias := (*reqMyServiceQueryAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -413,7 +418,9 @@ func newRespMyServiceQuery() *respMyServiceQuery {
 }
 
 func (x *respMyServiceQuery) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceQueryAlias respMyServiceQuery
+    valueAlias := (*respMyServiceQueryAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -507,7 +514,7 @@ func (x *reqMyServiceHasArgDocs) GetSNonCompat() *module.MyStruct {
 
 func (x *reqMyServiceHasArgDocs) GetS() *module.MyStruct {
     if !x.IsSetS() {
-        return module.NewMyStruct()
+        return nil
     }
 
     return x.S
@@ -519,7 +526,7 @@ func (x *reqMyServiceHasArgDocs) GetINonCompat() *includes.Included {
 
 func (x *reqMyServiceHasArgDocs) GetI() *includes.Included {
     if !x.IsSetI() {
-        return includes.NewIncluded()
+        return nil
     }
 
     return x.I
@@ -638,7 +645,9 @@ func (x *reqMyServiceHasArgDocs) DefaultGetI() *includes.Included {
 }
 
 func (x *reqMyServiceHasArgDocs) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceHasArgDocsAlias reqMyServiceHasArgDocs
+    valueAlias := (*reqMyServiceHasArgDocsAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -744,7 +753,9 @@ func newRespMyServiceHasArgDocs() *respMyServiceHasArgDocs {
 }
 
 func (x *respMyServiceHasArgDocs) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceHasArgDocsAlias respMyServiceHasArgDocs
+    valueAlias := (*respMyServiceHasArgDocsAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -888,7 +899,7 @@ func (p *procFuncMyServiceQuery) Write(seqId int32, result thrift.WritableStruct
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Query", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("query", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -939,7 +950,7 @@ func (p *procFuncMyServiceHasArgDocs) Write(seqId int32, result thrift.WritableS
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("HasArgDocs", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("has_arg_docs", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {

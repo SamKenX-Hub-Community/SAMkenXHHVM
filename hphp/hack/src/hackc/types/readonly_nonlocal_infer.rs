@@ -234,16 +234,26 @@ impl<'decl> Infer<'decl> {
                 ));
                 (class_const, ty, ctx)
             }
-            Call(box (e1, ty_args, params, expr2_opt)) => {
+            Call(box aast::CallExpr {
+                func: e1,
+                targs,
+                args,
+                unpacked_arg: expr2_opt,
+            }) => {
                 let (e1, e1_ty, ctx) = self.infer_expr(e1, ctx, next_where);
                 let (param_kinds, param_exprs): (Vec<ast::ParamKind>, Vec<ast::Expr>) =
-                    params.iter().cloned().unzip();
+                    args.iter().cloned().unzip();
                 let (param_exprs, _param_tys, ctx) =
                     self.infer_exprs(&param_exprs, ctx, next_where);
                 let (expr2_opt, _expr2_opt_ty, ctx) =
                     self.infer_expr_opt(expr2_opt.as_ref(), ctx, next_where);
-                let params = param_kinds.into_iter().zip(param_exprs).collect();
-                let mut call = Call(box_tup!(e1, ty_args.clone(), params, expr2_opt));
+                let args = param_kinds.into_iter().zip(param_exprs).collect();
+                let mut call = Call(Box::new(aast::CallExpr {
+                    func: e1,
+                    targs: targs.clone(),
+                    args,
+                    unpacked_arg: expr2_opt,
+                }));
                 match &e1_ty {
                     Tyx::Fun(box ft) if returns_readonly(ft) => {
                         if where_.arg_of_readonly_expr {
@@ -701,12 +711,24 @@ impl<'decl> Infer<'decl> {
                 (Try(box_tup!(stmts, catches_out, finally)), ctx)
             }
             Noop => (Noop, ctx),
+            DeclareLocal(box (id, h, expr)) => {
+                if let Some(expr) = expr {
+                    let (new_expr, _expr_ty, ctx) = self.infer_expr(expr, ctx, next_where);
+                    (
+                        DeclareLocal(box_tup!(id.clone(), h.clone(), Some(new_expr))),
+                        ctx,
+                    )
+                } else {
+                    (st.clone(), ctx)
+                }
+            }
             Block(stmts) => {
                 let (stmts, ctx) = self.infer_stmts_block(stmts, ctx, next_where);
                 (Block(stmts), ctx)
             }
             Markup(_) => (st.clone(), ctx),
             AssertEnv(b) => (AssertEnv(b.clone()), ctx),
+            Match(..) => todo!("TODO(jakebailey): match statements"),
         };
         (ast::Stmt(pos.clone(), new_stmt), ctx)
     }

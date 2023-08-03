@@ -3,9 +3,11 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 
+use crate::custom_error_config::CustomErrorConfig;
 use crate::gen::global_options::GlobalOptions;
 use crate::gen::global_options::SavedState;
 use crate::gen::global_options::SavedStateLoading;
+use crate::gen::package_info::PackageInfo;
 use crate::gen::saved_state_rollouts::SavedStateRollouts;
 use crate::i_set;
 use crate::s_map;
@@ -40,15 +42,8 @@ impl Default for GlobalOptions {
             tco_num_local_workers: None,
             tco_max_typechecker_worker_memory_mb: None,
             tco_defer_class_declaration_threshold: None,
-            tco_prefetch_deferred_files: false,
-            tco_remote_type_check_threshold: 1_000_000,
-            tco_remote_type_check: true,
-            tco_remote_worker_key: None,
-            tco_remote_check_id: None,
-            tco_num_remote_workers: 0, // 4 in ocaml
             tco_locl_cache_capacity: 30,
             tco_locl_cache_node_threshold: 10_000,
-            so_remote_version_specifier: None,
             so_naming_sqlite_path: None,
             po_auto_namespace_map: vec![],
             po_codegen: false,
@@ -81,13 +76,11 @@ impl Default for GlobalOptions {
             tco_check_xhp_attribute: false,
             tco_check_redundant_generics: false,
             tco_disallow_unresolved_type_variables: false,
+            tco_custom_error_config: CustomErrorConfig::default(),
             po_enable_class_level_where_clauses: false,
             po_disable_legacy_soft_typehints: true,
             po_allowed_decl_fixme_codes: i_set::ISet::new(),
             po_allow_new_attribute_syntax: false,
-            tco_global_inference: false,
-            tco_gi_reinfer_types: vec![],
-            tco_ordered_solving: false,
             tco_const_static_props: false,
             po_disable_legacy_attribute_syntax: false,
             tco_const_attribute: false,
@@ -103,9 +96,7 @@ impl Default for GlobalOptions {
             po_enable_xhp_class_modifier: false, // true in ocaml
             po_disable_xhp_element_mangling: false, // true in ocaml
             po_disable_xhp_children_declarations: false, // true in ocaml
-            glean_service: String::new(),
-            glean_hostname: String::new(),
-            glean_port: 0,
+            po_keep_user_attributes: false,
             glean_reponame: String::new(), // "www.autocomplete" in ocaml
             symbol_write_ownership: false,
             symbol_write_root_path: String::new(), // "www" in ocaml
@@ -113,7 +104,7 @@ impl Default for GlobalOptions {
             symbol_write_ignore_paths: vec![],
             symbol_write_index_paths: vec![],
             symbol_write_index_paths_file: None,
-            symbol_write_include_hhi: true,
+            symbol_write_include_hhi: false,
             symbol_write_index_paths_file_output: None,
             symbol_write_sym_hash_in: None,
             symbol_write_exclude_out: None,
@@ -126,6 +117,7 @@ impl Default for GlobalOptions {
             tco_report_pos_from_reason: false,
             tco_typecheck_sample_rate: 1.0,
             tco_enable_sound_dynamic: false,
+            tco_pessimise_builtins: false,
             tco_enable_no_auto_dynamic: false,
             tco_skip_check_under_dynamic: false,
             tco_ifc_enabled: vec![],
@@ -161,10 +153,12 @@ impl Default for GlobalOptions {
             tco_populate_dead_unsafe_cast_heap: false,
             po_disallow_static_constants_in_default_func_args: false,
             tco_load_hack_64_distc_saved_state: false,
-            tco_ide_should_use_hack_64_distc: false,
-            tco_tast_under_dynamic: false,
             tco_rust_elab: false,
-            tco_ide_load_naming_table_on_disk: false,
+            dump_tast_hashes: false,
+            tco_autocomplete_mode: false,
+            tco_package_info: PackageInfo::default(),
+            po_unwrap_concurrent: false,
+            tco_log_exhaustivity_check: false,
         }
     }
 }

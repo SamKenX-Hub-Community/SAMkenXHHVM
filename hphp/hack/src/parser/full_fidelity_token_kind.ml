@@ -82,6 +82,7 @@ type t =
   | Keyset
   | Lateinit
   | List
+  | Match
   | Mixed
   | Module
   | Namespace
@@ -200,6 +201,7 @@ type t =
   | Readonly
   | Internal
   | Package
+  | Let
   (* Variable text tokens *)
   | ErrorToken
   | Name
@@ -293,6 +295,7 @@ let from_string keyword ~only_reserved =
   | "keyset" when not only_reserved -> Some Keyset
   | "lateinit" -> Some Lateinit
   | "list" -> Some List
+  | "match" when not only_reserved -> Some Match
   | "mixed" when not only_reserved -> Some Mixed
   | "module" -> Some Module
   | "namespace" -> Some Namespace
@@ -411,6 +414,7 @@ let from_string keyword ~only_reserved =
   | "readonly" -> Some Readonly
   | "internal" when not only_reserved -> Some Internal
   | "package" -> Some Package
+  | "let" when not only_reserved -> Some Let
   | _ -> None
 
 let to_string kind =
@@ -479,6 +483,7 @@ let to_string kind =
   | Keyset -> "keyset"
   | Lateinit -> "lateinit"
   | List -> "list"
+  | Match -> "match"
   | Mixed -> "mixed"
   | Module -> "module"
   | Namespace -> "namespace"
@@ -597,6 +602,7 @@ let to_string kind =
   | Readonly -> "readonly"
   | Internal -> "internal"
   | Package -> "package"
+  | Let -> "let"
   (* Variable text tokens *)
   | ErrorToken -> "error_token"
   | Name -> "name"

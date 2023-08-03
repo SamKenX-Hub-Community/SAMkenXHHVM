@@ -23,7 +23,7 @@
 #include "hphp/runtime/base/request-info.h"
 #include "hphp/runtime/base/unit-cache.h"
 #include "hphp/runtime/base/vanilla-dict.h"
-#include "hphp/runtime/ext/std/ext_std_closure.h"
+#include "hphp/runtime/ext/core/ext_core_closure.h"
 #include "hphp/runtime/ext/generator/ext_generator.h"
 #include "hphp/runtime/vm/bytecode.h"
 #include "hphp/util/conv-10.h"
@@ -507,6 +507,34 @@ void raiseModuleBoundaryViolation(const Class* cls,
     callerModule,
     cls->attrs() & AttrInternalSoft
   );
+}
+
+void raiseDeploymentBoundaryViolation(const Func* callee) {
+  if (!RO::EvalEnforceDeployment) return;
+  auto const packageInfo = g_context->getPackageInfo();
+  assertx(callee && !callee->isMethod());
+  auto const soft = packageInfo.moduleInASoftPackage(callee->moduleName());
+  auto const calleeName = folly::sformat("function {}", callee->name());
+  auto const errMsg = folly::sformat(
+    "Calling {} outside the active deployment is not allowed",
+    calleeName);
+  if (!soft) SystemLib::throwDeploymentBoundaryViolationExceptionObject(errMsg);
+  raise_warning(errMsg);
+}
+
+void raiseDeploymentBoundaryViolation(const Class* cls) {
+  if (!RO::EvalEnforceDeployment) return;
+  auto const packageInfo = g_context->getPackageInfo();
+  auto const soft = packageInfo.moduleInASoftPackage(cls->moduleName());
+  auto const symbolType =
+    isEnum(cls) ? "enum" : (isEnumClass(cls) ? "enum class" : "class");
+  auto const clsName = folly::sformat("{}", cls->name());
+  auto const errMsg = folly::sformat(
+    "Accessing {} {} outside the active deployment is not allowed",
+    symbolType,
+    clsName);
+  if (!soft) SystemLib::throwDeploymentBoundaryViolationExceptionObject(errMsg);
+  raise_warning(errMsg);
 }
 
 void raiseImplicitContextStateInvalid(const Func* func,

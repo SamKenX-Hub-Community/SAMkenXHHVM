@@ -8,11 +8,13 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use anyhow::Context;
 use anyhow::Result;
 use config_file::ConfigFile;
 pub use local_config::LocalConfig;
+use oxidized::custom_error_config::CustomErrorConfig;
 use oxidized::decl_parser_options::DeclParserOptions;
 use oxidized::global_options::GlobalOptions;
 use sha1::Digest;
@@ -66,6 +68,13 @@ impl HhConfig {
         packages_path
     }
 
+    pub fn create_custom_errors_path(hhconfig_path: &Path) -> PathBuf {
+        // Unwrap is safe because hhconfig_path is always at least one nonempty string
+        let mut packages_path = hhconfig_path.parent().unwrap().to_path_buf();
+        packages_path.push("CUSTOM_ERRORS.json");
+        packages_path
+    }
+
     pub fn from_files(
         hhconfig_path: impl AsRef<Path>,
         hh_conf_path: impl AsRef<Path>,
@@ -74,48 +83,88 @@ impl HhConfig {
         let hhconfig_path = hhconfig_path.as_ref();
         let package_config_pathbuf = Self::create_packages_path(hhconfig_path);
         let package_config_path = package_config_pathbuf.as_path();
+        let custom_error_config_path = Self::create_custom_errors_path(hhconfig_path);
         let (contents, mut hhconfig) = ConfigFile::from_file_with_contents(hhconfig_path)
             .with_context(|| hhconfig_path.display().to_string())?;
         // Grab extra config and use it to process the hash
-        let extra_contents: String = if package_config_path.exists() {
-            let bytes = std::fs::read(package_config_path).unwrap_or(vec![]);
+        let package_contents: String = if package_config_path.exists() {
+            let ctxt = || package_config_path.display().to_string();
+            let bytes = std::fs::read(&package_config_path).with_context(ctxt)?;
             String::from_utf8(bytes).unwrap()
         } else {
             String::new()
         };
-        let full_contents = contents + &extra_contents;
-        let hash = format!("{:x}", Sha1::digest(full_contents.as_bytes()));
+        let custom_error_contents: String = if custom_error_config_path.exists() {
+            let ctxt = || custom_error_config_path.as_path().display().to_string();
+            let bytes = std::fs::read(&custom_error_config_path).with_context(ctxt)?;
+            String::from_utf8(bytes).unwrap()
+        } else {
+            "[]".to_string()
+        };
+        let hash = Self::hash(
+            &hhconfig,
+            &contents,
+            &package_contents,
+            &custom_error_contents,
+        );
         hhconfig.apply_overrides(overrides);
         let hh_conf_path = hh_conf_path.as_ref();
         let mut hh_conf = ConfigFile::from_file(hh_conf_path)
             .with_context(|| hh_conf_path.display().to_string())?;
         hh_conf.apply_overrides(overrides);
+        let custom_error_config =
+            CustomErrorConfig::from_str(&custom_error_contents).unwrap_or_default();
         Ok(Self {
             hash,
-            ..Self::from_configs(hhconfig, hh_conf)?
+            ..Self::from_configs(hhconfig, hh_conf, custom_error_config)?
         })
     }
 
-    pub fn into_config_files(root: impl AsRef<Path>) -> Result<(ConfigFile, ConfigFile)> {
+    pub fn into_config_files(
+        root: impl AsRef<Path>,
+    ) -> Result<(ConfigFile, ConfigFile, CustomErrorConfig)> {
         let hhconfig_path = root.as_ref().join(FILE_PATH_RELATIVE_TO_ROOT);
         let hh_conf_path = system_config_path();
+        let custom_error_config_pathbuf = Self::create_custom_errors_path(hhconfig_path.as_path());
+        let custom_error_config_path = custom_error_config_pathbuf.as_path();
         let hh_config_file = ConfigFile::from_file(&hhconfig_path)
             .with_context(|| hhconfig_path.display().to_string())?;
         let hh_conf_file = ConfigFile::from_file(&hh_conf_path)
             .with_context(|| hh_conf_path.display().to_string())?;
-        Ok((hh_conf_file, hh_config_file))
+        let custom_error_config = CustomErrorConfig::from_path(custom_error_config_path)?;
+        Ok((hh_conf_file, hh_config_file, custom_error_config))
+    }
+
+    fn hash(
+        parsed: &ConfigFile,
+        config_contents: &str,
+        package_config: &str,
+        custom_error_config: &str,
+    ) -> String {
+        if let Some(hash) = parsed.get_str("override_hhconfig_hash") {
+            return hash.to_owned();
+        }
+        let mut hasher = Sha1::new();
+        hasher.update(config_contents.as_bytes());
+        hasher.update(package_config.as_bytes());
+        hasher.update(custom_error_config.as_bytes());
+        format!("{:x}", hasher.finalize())
     }
 
     pub fn from_slice(bytes: &[u8]) -> Result<Self> {
         let (hash, config) = ConfigFile::from_slice_with_sha1(bytes);
         Ok(Self {
             hash,
-            ..Self::from_configs(config, Default::default())?
+            ..Self::from_configs(config, Default::default(), Default::default())?
         })
     }
 
     /// Construct from .hhconfig and hh.conf files with CLI overrides already applied.
-    pub fn from_configs(hhconfig: ConfigFile, hh_conf: ConfigFile) -> Result<Self> {
+    pub fn from_configs(
+        hhconfig: ConfigFile,
+        hh_conf: ConfigFile,
+        custom_error_config: CustomErrorConfig,
+    ) -> Result<Self> {
         let current_rolled_out_flag_idx = hhconfig
             .get_int("current_saved_state_rollout_flag_index")
             .unwrap_or(Ok(isize::MIN))?;
@@ -129,7 +178,7 @@ impl HhConfig {
                 version,
                 current_rolled_out_flag_idx,
                 deactivate_saved_state_rollout,
-                hh_conf,
+                &hh_conf,
             )?,
             ..Self::default()
         };
@@ -139,10 +188,17 @@ impl HhConfig {
         go.tco_saved_state = c.local_config.saved_state.clone();
         go.po_allow_unstable_features = c.local_config.allow_unstable_features;
         go.tco_rust_elab = c.local_config.rust_elab;
+        go.tco_custom_error_config = custom_error_config;
+        go.dump_tast_hashes = match hh_conf.get_str("dump_tast_hashes") {
+            Some("true") => true,
+            _ => false,
+        };
 
         for (key, mut value) in hhconfig {
             match key.as_str() {
-                "current_saved_state_rollout_flag_index" | "deactivate_saved_state_rollout" => {
+                "current_saved_state_rollout_flag_index"
+                | "deactivate_saved_state_rollout"
+                | "override_hhconfig_hash" => {
                     // These were already queried for LocalConfig above.
                     // Ignore them so they aren't added to c.unknown.
                 }
@@ -196,7 +252,15 @@ impl HhConfig {
                     go.tco_enable_strict_string_concat_interp = parse_json(&value)?;
                 }
                 "allowed_expression_tree_visitors" => {
-                    go.tco_allowed_expression_tree_visitors = parse_svec(&value);
+                    let mut allowed_expression_tree_visitors = parse_svec(&value);
+                    // Fix up type names so they will match with elaborated names.
+                    // Keep this in sync with the Utils.add_ns loop in server/serverConfig.ml
+                    for ty in &mut allowed_expression_tree_visitors {
+                        if !ty.starts_with('\\') {
+                            *ty = format!("\\{}", ty)
+                        }
+                    }
+                    go.tco_allowed_expression_tree_visitors = allowed_expression_tree_visitors;
                 }
                 "locl_cache_capacity" => {
                     go.tco_locl_cache_capacity = parse_json(&value)?;
@@ -258,6 +322,9 @@ impl HhConfig {
                 "enable_sound_dynamic_type" => {
                     go.tco_enable_sound_dynamic = parse_json(&value)?;
                 }
+                "pessimise_builtins" => {
+                    go.tco_pessimise_builtins = parse_json(&value)?;
+                }
                 "enable_no_auto_dynamic" => {
                     go.tco_enable_no_auto_dynamic = parse_json(&value)?;
                 }
@@ -308,6 +375,9 @@ impl HhConfig {
                 }
                 "hh_distc_should_disable_trace_store" => {
                     c.hh_distc_should_disable_trace_store = parse_json(&value)?;
+                }
+                "log_exhaustivity_check" => {
+                    go.tco_log_exhaustivity_check = parse_json(&value)?;
                 }
                 _ => c.unknown.push((key, value)),
             }

@@ -9,7 +9,6 @@
 #include <thrift/lib/cpp2/gen/module_types_h.h>
 
 
-#include "thrift/annotation/gen-cpp2/thrift_types.h"
 #include "thrift/lib/thrift/gen-cpp2/schema_types.h"
 
 namespace apache {
@@ -77,14 +76,6 @@ template <> struct TEnumTraits<::cpp2::Result> {
 
 }} // apache::thrift
 
-namespace cpp2 {
-
-using _Result_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<Result>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _Result_EnumMapFactory::ValuesToNamesMapType _Result_VALUES_TO_NAMES;
-#endif
-} // cpp2
 
 // END declare_enums
 // BEGIN forward_declare

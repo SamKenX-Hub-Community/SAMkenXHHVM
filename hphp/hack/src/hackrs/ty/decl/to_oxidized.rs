@@ -38,13 +38,27 @@ impl<'a> ToOxidized<'a> for IfcFunDecl {
     }
 }
 
+impl<'a> ToOxidized<'a> for UserAttributeParam {
+    type Output = obr::typing_defs::UserAttributeParam<'a>;
+
+    fn to_oxidized(&self, arena: &'a bumpalo::Bump) -> Self::Output {
+        use obr::typing_defs::UserAttributeParam as P;
+        match self {
+            UserAttributeParam::Classname(cn) => P::Classname(cn.to_oxidized(arena)),
+            UserAttributeParam::EnumClassLabel(l) => P::EnumClassLabel(l.to_oxidized(arena)),
+            UserAttributeParam::String(s) => P::String(s.to_oxidized(arena).into()),
+            UserAttributeParam::Int(i) => P::Int(i.to_oxidized(arena)),
+        }
+    }
+}
+
 impl<'a, P: Pos> ToOxidized<'a> for UserAttribute<P> {
     type Output = &'a obr::typing_defs::UserAttribute<'a>;
 
     fn to_oxidized(&self, arena: &'a bumpalo::Bump) -> Self::Output {
         arena.alloc(obr::typing_defs::UserAttribute {
             name: self.name.to_oxidized(arena),
-            classname_params: self.classname_params.to_oxidized(arena),
+            params: self.params.to_oxidized(arena),
         })
     }
 }
@@ -146,6 +160,7 @@ impl<'a, R: Reason> ToOxidized<'a> for Ty_<R> {
             Ty_::Tthis => typing_defs::Ty_::Tthis,
             Ty_::Tapply(x) => typing_defs::Ty_::Tapply(x.to_oxidized(arena)),
             Ty_::Tmixed => typing_defs::Ty_::Tmixed,
+            Ty_::Twildcard => typing_defs::Ty_::Twildcard,
             Ty_::Tlike(x) => typing_defs::Ty_::Tlike(x.to_oxidized(arena)),
             Ty_::Tany => typing_defs::Ty_::Tany(obr::tany_sentinel::TanySentinel),
             Ty_::Tnonnull => typing_defs::Ty_::Tnonnull,
@@ -156,20 +171,19 @@ impl<'a, R: Reason> ToOxidized<'a> for Ty_<R> {
             Ty_::Ttuple(x) => typing_defs::Ty_::Ttuple(x.to_oxidized(arena)),
             Ty_::Tshape(shape) => {
                 let mut shape_fields = arena_collections::AssocListMut::new_in(arena);
-                let (shape_kind, shape_field_type_map): &(_, _) = shape;
+                let ShapeType(shape_kind, shape_field_type_map) = &**shape;
                 for (k, v) in shape_field_type_map.iter() {
                     let k = oxidize_shape_field_name(arena, *k, &v.field_name_pos);
                     shape_fields.insert_or_replace(TShapeField(k), v.to_oxidized(arena));
                 }
                 let shape_kind = shape_kind.to_oxidized(arena);
                 let shape_origin = typing_defs::TypeOrigin::MissingOrigin;
-                typing_defs::Ty_::Tshape(arena.alloc((
+                typing_defs::Ty_::Tshape(arena.alloc(typing_defs::ShapeType(
                     shape_origin,
                     shape_kind,
                     TShapeMap::from(shape_fields),
                 )))
             }
-            Ty_::Tvar(ident) => typing_defs::Ty_::Tvar((*ident).into()),
             Ty_::Tgeneric(x) => typing_defs::Ty_::Tgeneric(x.to_oxidized(arena)),
             Ty_::Tunion(x) => typing_defs::Ty_::Tunion(x.to_oxidized(arena)),
             Ty_::Tintersection(x) => typing_defs::Ty_::Tintersection(x.to_oxidized(arena)),
@@ -465,6 +479,7 @@ impl<'a, R: Reason> ToOxidized<'a> for folded::FoldedClass<R> {
             has_xhp_keyword,
             support_dynamic_type,
             module,
+            is_module_level_trait,
             tparams,
             where_constraints,
             substs,
@@ -504,6 +519,7 @@ impl<'a, R: Reason> ToOxidized<'a> for folded::FoldedClass<R> {
                 let (pos, id) = m.to_oxidized(arena);
                 obr::ast_defs::Id(pos, id)
             }),
+            is_module_level_trait: *is_module_level_trait,
             tparams: tparams.to_oxidized(arena),
             where_constraints: where_constraints.to_oxidized(arena),
             substs: substs.to_oxidized(arena),
@@ -758,6 +774,7 @@ impl<'a, R: Reason> ToOxidized<'a> for shallow::FunDecl<R> {
             php_std_lib,
             support_dynamic_type,
             no_auto_dynamic,
+            no_auto_likes,
         } = self;
         arena.alloc(obr::shallow_decl_defs::FunDecl {
             deprecated: deprecated.as_ref().map(|s| {
@@ -770,6 +787,7 @@ impl<'a, R: Reason> ToOxidized<'a> for shallow::FunDecl<R> {
             php_std_lib: *php_std_lib,
             support_dynamic_type: *support_dynamic_type,
             no_auto_dynamic: *no_auto_dynamic,
+            no_auto_likes: *no_auto_likes,
             module: module.as_ref().map(|m| {
                 let (pos, id) = m.to_oxidized(arena);
                 obr::ast_defs::Id(pos, id)

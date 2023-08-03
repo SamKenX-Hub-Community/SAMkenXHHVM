@@ -513,11 +513,13 @@ Test createListSetPatchTest(
       clearCase.test().emplace().objectPatch_ref() =
           makeClearTC<ContainerTag>(registry, protocol, value.value);
 
-      auto& removeCase = test.testCases()->emplace_back();
-      removeCase.name() = makeTestName(value, "remove");
-      removeCase.test().emplace().objectPatch_ref() =
-          makeContainerRemoveTC<ContainerTag, TT>(
-              registry, protocol, value.value, value.value);
+      if constexpr (std::is_same_v<CC, type::set_c>) {
+        auto& removeCase = test.testCases()->emplace_back();
+        removeCase.name() = makeTestName(value, "remove");
+        removeCase.test().emplace().objectPatch_ref() =
+            makeContainerRemoveTC<ContainerTag, TT>(
+                registry, protocol, value.value, value.value);
+      }
 
       auto& prependCase = test.testCases()->emplace_back();
       prependCase.name() = makeTestName(value, "prepend");
@@ -540,34 +542,6 @@ Test createListSetPatchTest(
       appendCase.test().emplace().objectPatch_ref() =
           makeContainerAppendTC<ContainerTag>(
               registry, protocol, value.value, patchValue);
-
-      if constexpr (std::is_same_v<CC, type::list_c>) {
-        using Container = type::native_type<ContainerTag>;
-
-        Container initial = {value.value};
-        auto newValue = valueToAssign<TT>();
-        Container expected = {newValue};
-
-        auto zigzagIndex = apache::thrift::util::i32ToZigzag(
-            static_cast<int32_t>(type::toOrdinal(0)));
-        auto keyValue = asValueStruct<type::i32_t>(zigzagIndex);
-        auto keyValuePatch = asValueStruct<type::struct_c>(
-            (op::patch_type<TT>() = toValue<TT>(newValue)).toThrift());
-
-        protocol::Value patchValue;
-        patchValue.mapValue_ref().ensure()[keyValue] = keyValuePatch;
-
-        auto& patchCase = test.testCases()->emplace_back();
-        patchCase.name() = makeTestName(value, "patch");
-        patchCase.test().emplace().objectPatch_ref() =
-            makePatchXTC<ContainerTag>(
-                registry,
-                protocol,
-                initial,
-                op::PatchOp::PatchPrior,
-                patchValue,
-                expected);
-      }
     }
   });
 

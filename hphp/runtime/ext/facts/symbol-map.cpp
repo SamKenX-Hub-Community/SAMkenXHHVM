@@ -94,42 +94,10 @@ typename std::
   return data.m_modulePath;
 }
 
-/**
- * Get all symbols of a given kind from the DB.
- */
-template <SymKind k>
-typename std::enable_if<
-    k == SymKind::Type,
-    AutoloadDB::MultiResult<AutoloadDB::SymbolPath>>::type
-getAllSymbolsFromDB(AutoloadDB& db) {
-  return db.getAllTypePaths();
-}
-template <SymKind k>
-typename std::enable_if<
-    k == SymKind::Function,
-    AutoloadDB::MultiResult<AutoloadDB::SymbolPath>>::type
-getAllSymbolsFromDB(AutoloadDB& db) {
-  return db.getAllFunctionPaths();
-}
-template <SymKind k>
-typename std::enable_if<
-    k == SymKind::Constant,
-    AutoloadDB::MultiResult<AutoloadDB::SymbolPath>>::type
-getAllSymbolsFromDB(AutoloadDB& db) {
-  return db.getAllConstantPaths();
-}
-template <SymKind k>
-typename std::enable_if<
-    k == SymKind::Module,
-    AutoloadDB::MultiResult<AutoloadDB::SymbolPath>>::type
-getAllSymbolsFromDB(AutoloadDB& db) {
-  return db.getAllModulePaths();
-}
-
 } // namespace
 
-AutoloadDBVault::AutoloadDBVault(AutoloadDB::Handle dbHandle)
-    : m_dbHandle{std::move(dbHandle)} {}
+AutoloadDBVault::AutoloadDBVault(AutoloadDB::Opener dbOpener)
+    : m_dbOpener{std::move(dbOpener)} {}
 
 std::shared_ptr<AutoloadDB> AutoloadDBVault::get() const {
   return m_dbs.withULockPtr([this](auto ulock) {
@@ -138,20 +106,20 @@ std::shared_ptr<AutoloadDB> AutoloadDBVault::get() const {
       return it->second;
     }
     auto wlock = ulock.moveFromUpgradeToWrite();
-    return wlock->insert({std::this_thread::get_id(), m_dbHandle()})
+    return wlock->insert({std::this_thread::get_id(), m_dbOpener()})
         .first->second;
   });
 }
 
 SymbolMap::SymbolMap(
     fs::path root,
-    AutoloadDB::Handle dbHandle,
+    AutoloadDB::Opener dbOpener,
     hphp_hash_set<Symbol<SymKind::Type>> indexedMethodAttrs)
     : m_exec{std::make_shared<folly::CPUThreadPoolExecutor>(
           1,
           std::make_shared<folly::NamedThreadFactory>("Autoload DB update"))},
       m_root{std::move(root)},
-      m_dbVault{std::move(dbHandle)},
+      m_dbVault{std::move(dbOpener)},
       m_indexedMethodAttrs{std::move(indexedMethodAttrs)} {
   assertx(m_root.is_absolute());
 }
@@ -308,54 +276,6 @@ std::vector<Symbol<SymKind::Type>> SymbolMap::getFileTypeAliases(
   return getFileTypeAliases(Path{path});
 }
 
-std::vector<std::pair<Symbol<SymKind::Type>, Path>> SymbolMap::getAllTypes() {
-  auto results = getAllSymbols<SymKind::Type>();
-  // Filter type aliases out
-  results.erase(
-      std::remove_if(
-          results.begin(),
-          results.end(),
-          [this](auto const& symbolPath) -> bool {
-            auto const& [symbol, path] = symbolPath;
-            auto [kind, _] = getKindAndFlags(symbol, path);
-            return kind == TypeKind::TypeAlias;
-          }),
-      results.end());
-  return results;
-}
-
-std::vector<std::pair<Symbol<SymKind::Function>, Path>>
-SymbolMap::getAllFunctions() {
-  return getAllSymbols<SymKind::Function>();
-}
-
-std::vector<std::pair<Symbol<SymKind::Constant>, Path>>
-SymbolMap::getAllConstants() {
-  return getAllSymbols<SymKind::Constant>();
-}
-
-std::vector<std::pair<Symbol<SymKind::Module>, Path>>
-SymbolMap::getAllModules() {
-  return getAllSymbols<SymKind::Module>();
-}
-
-std::vector<std::pair<Symbol<SymKind::Type>, Path>>
-SymbolMap::getAllTypeAliases() {
-  auto results = getAllSymbols<SymKind::Type>();
-  // Filter down to type aliases
-  results.erase(
-      std::remove_if(
-          results.begin(),
-          results.end(),
-          [this](auto const& symbolPath) -> bool {
-            auto const& [symbol, path] = symbolPath;
-            auto [kind, _] = getKindAndFlags(symbol, path);
-            return kind != TypeKind::TypeAlias;
-          }),
-      results.end());
-  return results;
-}
-
 std::vector<Symbol<SymKind::Type>> SymbolMap::getBaseTypes(
     Symbol<SymKind::Type> derivedType,
     DeriveKind kind) {
@@ -460,57 +380,6 @@ std::vector<Symbol<SymKind::Type>> SymbolMap::getDerivedTypes(
     const StringData& baseType,
     DeriveKind kind) {
   return getDerivedTypes(Symbol<SymKind::Type>{baseType}, kind);
-}
-
-std::vector<typename SymbolMap::DerivedTypeInfo>
-SymbolMap::getTransitiveDerivedTypes(
-    Symbol<SymKind::Type> baseType,
-    TypeKindMask kinds,
-    DeriveKindMask deriveKinds) {
-  std::vector<typename SymbolMap::DerivedTypeInfo> results;
-
-  hphp_hash_set<Symbol<SymKind::Type>> seen;
-  std::vector<Symbol<SymKind::Type>> stack;
-  stack.push_back(baseType);
-  while (!stack.empty()) {
-    auto type = stack.back();
-    stack.pop_back();
-
-    for (auto deriveKind :
-         {DeriveKind::Extends,
-          DeriveKind::RequireExtends,
-          DeriveKind::RequireImplements,
-          DeriveKind::RequireClass}) {
-      if (deriveKinds & static_cast<int>(deriveKind)) {
-        for (auto subtype : getDerivedTypes(type, deriveKind)) {
-          if (seen.count(subtype) > 0) {
-            continue;
-          }
-          seen.insert(subtype);
-
-          auto subtypePath = getSymbolPath(subtype);
-          auto [subtypeKind, subtypeFlags] =
-              getKindAndFlags(subtype, subtypePath);
-          if (kinds & static_cast<int>(subtypeKind)) {
-            stack.push_back(subtype);
-            results.push_back(
-                {subtype, subtypePath, subtypeKind, subtypeFlags});
-          }
-        }
-      }
-    }
-  }
-
-  return results;
-}
-
-std::vector<typename SymbolMap::DerivedTypeInfo>
-SymbolMap::getTransitiveDerivedTypes(
-    const StringData& baseType,
-    TypeKindMask kinds,
-    DeriveKindMask deriveKinds) {
-  return getTransitiveDerivedTypes(
-      Symbol<SymKind::Type>{baseType}, kinds, deriveKinds);
 }
 
 std::vector<Symbol<SymKind::Type>> SymbolMap::getAttributesOfType(
@@ -868,6 +737,54 @@ std::vector<Path> SymbolMap::getFilesWithAttribute(const StringData& attr) {
   return getFilesWithAttribute(Symbol<SymKind::Type>{attr});
 }
 
+std::vector<Path> SymbolMap::getFilesWithAttributeAndAnyValue(
+    Symbol<SymKind::Type> attr,
+    const folly::dynamic& value) {
+  using PathVec = std::vector<Path>;
+  auto paths = readOrUpdate<PathVec>(
+      [&](const Data& data) -> Optional<PathVec> {
+        auto pathsWithAttr = data.m_fileAttrs.getKeysWithAttribute(attr);
+        if (!pathsWithAttr) {
+          return std::nullopt;
+        }
+        PathVec pathsRet;
+        for (auto&& path : *pathsWithAttr) {
+          auto args = data.m_fileAttrs.getAttributeArgs(path, attr);
+          if (!args) {
+            return std::nullopt;
+          }
+          for (auto&& arg : *args) {
+            if (arg == value) {
+              pathsRet.push_back(path);
+              break;
+            }
+          }
+        }
+        return pathsRet;
+      },
+      [&](std::shared_ptr<AutoloadDB> db) -> PathVec {
+        auto dbPathDecls =
+            db->getFilesWithAttributeAndAnyValue(attr.slice(), value);
+        PathVec pathDecls;
+        pathDecls.reserve(dbPathDecls.size());
+        for (auto const& path : dbPathDecls) {
+          pathDecls.push_back(Path{path});
+        }
+        return pathDecls;
+      },
+      [&](Data& UNUSED data, PathVec pathsFromDB) -> PathVec {
+        // Not enough data to update the fileAttrs cache
+        return pathsFromDB;
+      });
+  return paths;
+}
+
+std::vector<Path> SymbolMap::getFilesWithAttributeAndAnyValue(
+    const StringData& attr,
+    const folly::dynamic& value) {
+  return getFilesWithAttributeAndAnyValue(Symbol<SymKind::Type>{attr}, value);
+}
+
 std::vector<folly::dynamic> SymbolMap::getTypeAttributeArgs(
     Symbol<SymKind::Type> type,
     Symbol<SymKind::Type> attr) {
@@ -1216,29 +1133,6 @@ Clock SymbolMap::dbClock() const {
   return getDB()->getClock();
 }
 
-hphp_hash_set<Path> SymbolMap::getAllPaths() const {
-  auto rlock = m_syncedData.rlock();
-
-  hphp_hash_set<Path> allPaths;
-  auto db = getDB();
-
-  for (auto&& [path, _] : db->getAllPathsAndHashes()) {
-    assertx(path.is_relative());
-    allPaths.insert(Path{path});
-  }
-  for (auto const& [path, _] : rlock->m_sha1Hashes) {
-    allPaths.insert(path);
-  }
-  for (auto const& [path, exists] : rlock->m_fileExistsMap) {
-    if (exists) {
-      assertx(allPaths.find(path) != allPaths.end());
-    } else {
-      allPaths.erase(path);
-    }
-  }
-  return allPaths;
-}
-
 hphp_hash_map<Path, SHA1> SymbolMap::getAllPathsWithHashes() const {
   auto rlock = m_syncedData.rlock();
   auto db = getDB();
@@ -1405,45 +1299,6 @@ void SymbolMap::updateDBPath(
   }
 }
 
-bool SymbolMap::isPathDeleted(Path path) const noexcept {
-  auto rlock = m_syncedData.rlock();
-  auto const& fileExistsMap = rlock->m_fileExistsMap;
-  auto const it = fileExistsMap.find(path);
-  return it != fileExistsMap.end() && !it->second;
-}
-
-template <SymKind k>
-std::vector<std::pair<Symbol<k>, Path>> SymbolMap::getAllSymbols() {
-  hphp_hash_map<Path, std::vector<Symbol<k>>> pathToSymbols;
-
-  auto db = getDB();
-  for (auto&& [symbol, path] : getAllSymbolsFromDB<k>(*db)) {
-    pathToSymbols[Path{path}].push_back(Symbol<k>{symbol});
-  }
-
-  m_syncedData.withRLock([&pathToSymbols](const Data& data) {
-    for (auto const& [path, _] : data.m_versions->m_versionMap) {
-      auto symbols = getPathSymMap<k>(data).getPathSymbols(path);
-      if (!symbols) {
-        continue;
-      }
-      pathToSymbols.erase(path);
-      for (auto symbol : *symbols) {
-        pathToSymbols[path].push_back(symbol);
-      }
-    }
-  });
-
-  std::vector<std::pair<Symbol<k>, Path>> results;
-  results.reserve(pathToSymbols.size());
-  for (auto const& [path, symbols] : pathToSymbols) {
-    for (auto const& symbol : symbols) {
-      results.push_back({symbol, path});
-    }
-  }
-  return results;
-}
-
 template <typename Ret, typename ReadFn, typename GetFromDBFn, typename WriteFn>
 Ret SymbolMap::readOrUpdate(
     ReadFn readFn,
@@ -1575,7 +1430,6 @@ SymbolMap::Data::Data()
       m_functionPath{m_versions},
       m_constantPath{m_versions},
       m_modulePath{m_versions},
-      m_methodPath{m_versions},
       m_inheritanceInfo{m_versions},
       m_typeAttrs{m_versions},
       m_typeAliasAttrs{m_versions},
@@ -1589,7 +1443,6 @@ void SymbolMap::Data::updatePath(
   m_versions->bumpVersion(path);
 
   typename PathToSymbolsMap<SymKind::Type>::Symbols types;
-  typename PathToMethodsMap::Methods methods;
   for (auto& type : facts.m_types) {
     always_assert(!type.m_name.empty());
     // ':' is a valid character in XHP classnames, but not Hack
@@ -1636,13 +1489,12 @@ void SymbolMap::Data::updatePath(
                 }),
             attributes.end());
       }
-
-      MethodDecl methodDecl{
-          .m_type = {.m_name = typeName, .m_path = path},
-          .m_method = Symbol<SymKind::Function>{method}};
-
-      m_methodAttrs.setAttributes(methodDecl, std::move(attributes));
-      methods.push_back(methodDecl);
+      if (!attributes.empty()) {
+        MethodDecl methodDecl{
+            .m_type = {.m_name = typeName, .m_path = path},
+            .m_method = Symbol<SymKind::Function>{method}};
+        m_methodAttrs.setAttributes(methodDecl, std::move(attributes));
+      }
     }
   }
 
@@ -1670,7 +1522,6 @@ void SymbolMap::Data::updatePath(
   m_typePath.replacePathSymbols(path, std::move(types));
   m_functionPath.replacePathSymbols(path, std::move(functions));
   m_constantPath.replacePathSymbols(path, std::move(constants));
-  m_methodPath.replacePathMethods(path, std::move(methods));
   m_sha1Hashes.insert_or_assign(path, SHA1{facts.m_sha1hex});
 
   m_fileExistsMap.insert_or_assign(path, true);

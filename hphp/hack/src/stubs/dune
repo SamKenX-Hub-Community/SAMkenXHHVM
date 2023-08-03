@@ -67,53 +67,6 @@
   (pps lwt_ppx ppx_deriving.std)))
 
 (library
- (name vfs_stubs)
- (wrapped false)
- (modules vfs)
- (libraries relative_path)
- (preprocess
-  (pps lwt_ppx ppx_deriving.std)))
-
-(library
- (name typing_service_delegate_types_stubs)
- (wrapped false)
- (modules typing_service_delegate_types)
- (preprocess
-  (pps lwt_ppx ppx_deriving.std)))
-
-(library
- (name typing_service_delegate_stubs)
- (wrapped false)
- (modules typing_service_delegate)
- (libraries typing_service_delegate_types_stubs typing_service_api)
- (preprocess
-  (pps lwt_ppx ppx_deriving.std)))
-
-(library
- (name remote_stubs)
- (wrapped false)
- (modules remoteWorker)
- (libraries
-  ci_util_stubs
-  errors
-  file_info
-  future
-  naming
-  relative_path
-  state_loader_stubs
-  sys_utils)
- (preprocess
-  (pps lwt_ppx ppx_deriving.std)))
-
-(library
- (name job_runner_stubs)
- (wrapped false)
- (modules jobRunner)
- (libraries jobRunner_sig core_kernel future utils_core)
- (preprocess
-  (pps lwt_ppx ppx_deriving.std)))
-
-(library
  (name state_loader_stubs)
  (wrapped false)
  (modules saved_state_loader state_loader_futures state_loader_lwt)
@@ -147,10 +100,10 @@
     (pps lwt_ppx ppx_deriving.std)))
 
 (library
-  (name hulk_rpc_ffi)
+  (name depgraph_decompress_ffi)
   (wrapped false)
   (modules
-    hulk_rpc_ffi)
+    depgraph_decompress_ffi)
   (preprocess
     (pps lwt_ppx ppx_deriving.std)))
 
@@ -162,26 +115,15 @@
   (pps lwt_ppx ppx_deriving.std)))
 
 (library
+ (name extract_method_plugins_stubs)
+ (wrapped false)
+ (modules extract_method_plugins))
+
+(library
  (name ci_util_stubs)
  (wrapped false)
  (modules ci_util)
  (libraries future)
- (preprocess
-  (pps lwt_ppx ppx_deriving.std)))
-
-(library
- (name glean_dependency_graph_convert_stubs)
- (wrapped false)
- (modules glean_dependency_graph_convert)
- (libraries hh_json collections)
- (preprocess
-  (pps lwt_ppx ppx_deriving.std)))
-
-(library
- (name glean_dependency_graph_stubs)
- (wrapped false)
- (modules glean_dependency_graph)
- (libraries hh_json collections)
  (preprocess
   (pps lwt_ppx ppx_deriving.std)))
 
@@ -218,13 +160,6 @@
  (name security_stubs)
  (wrapped false)
  (modules security)
- (preprocess
-  (pps lwt_ppx ppx_deriving.std)))
-
-(library
- (name server_remote_utils_stubs)
- (wrapped false)
- (modules serverRemoteUtils)
  (preprocess
   (pps lwt_ppx ppx_deriving.std)))
 

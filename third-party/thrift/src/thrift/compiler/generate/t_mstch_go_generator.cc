@@ -168,13 +168,13 @@ class mstch_go_program : public mstch_program {
   mstch::node go_gen_compat_setters() { return data_.compat_setters; }
   mstch::node thrift_imports() {
     mstch::array a;
-    for (const auto* program : program_->get_included_programs()) {
+    for (const auto* program : program_->get_includes_for_codegen()) {
       a.push_back(make_mstch_program_cached(program, context_));
     }
     return a;
   }
   mstch::node has_thrift_imports() {
-    return !program_->get_included_programs().empty();
+    return !program_->get_includes_for_codegen().empty();
   }
   mstch::node go_import_path() {
     return go::get_go_package_dir(program_, data_.package_override);
@@ -322,6 +322,8 @@ class mstch_go_field : public mstch_field {
             {"field:pointer?", &mstch_go_field::is_pointer},
             {"field:compat_setter_pointer?",
              &mstch_go_field::is_compat_setter_pointer},
+            {"field:compat_setter_value_op",
+             &mstch_go_field::compat_setter_value_op},
             {"field:nilable?", &mstch_go_field::is_nilable},
             {"field:dereference?", &mstch_go_field::should_dereference},
             {"field:key_str", &mstch_go_field::key_str},
@@ -372,17 +374,17 @@ class mstch_go_field : public mstch_field {
     auto real_type = field_->type()->get_true_type();
     return is_pointer_() && !go::is_type_go_struct(real_type);
   }
-  mstch::node is_compat_setter_pointer() {
-    // Whether this field's value should be a poitner in compat-setter.
-    // This is needed for a seamless migration from the legacy generator.
-    //
-    // Legacy generator would make optional fields with default values be
-    // impelemented as non-pointer fields. This is incorrect because such
-    // field cannot be unset (i.e set to nil) despite being optional.
-    // This ommision is fixed in the new generator, however, our compat
-    // setters must be backwards compatible to ensure graceful migration.
-    bool has_default_value = (field_->default_value() != nullptr);
-    return is_pointer_() && !(is_optional_() && has_default_value);
+  mstch::node is_compat_setter_pointer() { return is_compat_setter_pointer_(); }
+  mstch::node compat_setter_value_op() {
+    if (is_pointer_() && is_compat_setter_pointer_()) {
+      return std::string("");
+    } else if (is_pointer_() && !is_compat_setter_pointer_()) {
+      return std::string("&");
+    } else if (!is_pointer_() && !is_compat_setter_pointer_()) {
+      return std::string("");
+    } else { // if (!is_pointer_() && is_compat_setter_pointer_())
+      return std::string("*");
+    }
   }
   mstch::node key_str() {
     // Legacy schemas may have negative tags - replace minus with an underscore.
@@ -393,10 +395,10 @@ class mstch_go_field : public mstch_field {
     }
   }
   mstch::node has_go_tag() {
-    return field_->find_annotation_or_null("go.tag") != nullptr;
+    return go::get_go_tag_annotation(field_) != nullptr;
   }
   mstch::node go_tag() {
-    auto tag = field_->find_annotation_or_null("go.tag");
+    auto tag = go::get_go_tag_annotation(field_);
     if (tag != nullptr) {
       return *tag;
     }
@@ -421,6 +423,23 @@ class mstch_go_field : public mstch_field {
     return (go::is_type_go_struct(real_type) || is_inside_union_() ||
             is_optional_()) &&
         !go::is_type_nilable(real_type);
+  }
+
+  bool is_compat_setter_pointer_() {
+    // Whether this field's value should be a pointer in compat-setter.
+    // This is needed for a seamless migration from the legacy generator.
+    //
+    // Legacy generator treats optional fields with default values differently
+    // compared to the new generator (pointer vs non-pointer).
+    // This method helps with backwards compatibility.
+    bool has_default_value = (field_->default_value() != nullptr);
+    if (is_optional_() && has_default_value) {
+      auto real_type = field_->type()->get_true_type();
+      bool is_container =
+          (real_type->is_list() || real_type->is_map() || real_type->is_set());
+      return is_container;
+    }
+    return is_pointer_();
   }
 
   bool is_inside_union_() {
@@ -635,7 +654,10 @@ class mstch_go_typedef : public mstch_typedef {
         });
   }
   mstch::node go_name() { return go_name_(); }
-  mstch::node go_newtype() { return typedef_->has_annotation("go.newtype"); }
+  mstch::node go_newtype() {
+    return typedef_->find_structured_annotation_or_null(kGoNewTypeUri) !=
+        nullptr;
+  }
   mstch::node go_qualified_name() {
     auto prefix = go_package_alias_prefix(typedef_->program(), data_);
     auto name = go_name_();
@@ -671,11 +693,11 @@ class mstch_go_typedef : public mstch_typedef {
   go_codegen_data& data_;
 
   std::string go_name_() {
-    if (typedef_->has_annotation("go.name")) {
-      return typedef_->get_annotation("go.name");
-    } else {
-      return go::munge_ident(typedef_->name());
+    auto name_override = go::get_go_name_annotation(typedef_);
+    if (name_override != nullptr) {
+      return *name_override;
     }
+    return go::munge_ident(typedef_->name());
   }
 };
 
@@ -724,7 +746,7 @@ void t_mstch_go_generator::set_mstch_factories() {
 
 void t_mstch_go_generator::set_go_package_aliases() {
   auto program = get_program();
-  auto includes = program->get_included_programs();
+  auto includes = program->get_includes_for_codegen();
 
   // Prevent collisions with *this* program's package name
   auto pkg_name = go::get_go_package_base_name(program, data_.package_override);

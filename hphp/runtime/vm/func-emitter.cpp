@@ -189,10 +189,10 @@ void FuncEmitter::init(int l1, int l2, Attr attrs_,
                        const StringData* docComment_) {
   line1 = l1;
   line2 = l2;
-  attrs = fix_attrs(attrs_);
   docComment = docComment_;
+  attrs = attrs_;
 
-  if (!SystemLib::s_inited) assertx(attrs & AttrBuiltin);
+  assertx(!ue().isASystemLib() || attrs & AttrBuiltin);
 }
 
 void FuncEmitter::finish() {
@@ -211,30 +211,27 @@ const StaticString
   s_SoftInternal("__SoftInternal");
 
 Func* FuncEmitter::create(Unit& unit, PreClass* preClass /* = NULL */) const {
-  bool isGenerated = isdigit(name->data()[0]);
+  auto const isGenerated = [&]() -> bool {
+    auto slice = name->slice();
+    auto ns_pos = slice.rfind('\\');
+    return isdigit(slice.data()[ns_pos+1]);
+  }();
 
-  auto attrs = fix_attrs(this->attrs);
-  if (preClass && preClass->attrs() & AttrInterface) {
-    attrs |= AttrAbstract;
+  auto attrs = this->attrs;
+  assertx(IMPLIES(attrs & AttrIsMethCaller && RO::RepoAuthoritative,
+    attrs & AttrPersistent));
+
+  DEBUG_ONLY auto persistent = ue().isASystemLib() &&
+    (!RO::funcIsRenamable(name) || preClass || isGenerated);
+
+  assertx(IMPLIES(!RO::RepoAuthoritative && attrs & AttrPersistent, persistent));
+  assertx(IMPLIES(!RO::RepoAuthoritative && !(attrs & AttrPersistent), !persistent));
+
+  if (!(attrs & AttrPersistent) && attrs & AttrBuiltin) {
+    assertx(!preClass);
+    SystemLib::s_anyNonPersistentBuiltins = true;
   }
-  if (attrs & AttrIsMethCaller && RuntimeOption::RepoAuthoritative) {
-    attrs |= AttrPersistent | AttrUnique;
-  }
-  if (attrs & (AttrPersistent | AttrUnique) && !preClass) {
-    if ((RuntimeOption::EvalJitEnableRenameFunction ||
-         attrs & AttrInterceptable ||
-         (!RuntimeOption::RepoAuthoritative && SystemLib::s_inited))) {
-      if (attrs & AttrBuiltin) {
-        SystemLib::s_anyNonPersistentBuiltins = true;
-      }
-      attrs = Attr(attrs & ~(AttrPersistent | AttrUnique));
-    }
-  } else {
-    assertx(preClass || !(attrs & AttrBuiltin) || (attrs & AttrIsMethCaller));
-  }
-  if (isVariadic()) {
-    attrs |= AttrVariadicParam;
-  }
+
   if (isAsync && !isGenerator) {
     // Async functions can return results directly.
     attrs |= AttrSupportsAsyncEagerReturn;
@@ -244,6 +241,10 @@ Func* FuncEmitter::create(Unit& unit, PreClass* preClass /* = NULL */) const {
   if (attrs & AttrInternal &&
       userAttributes.find(s_SoftInternal.get()) != userAttributes.end()) {
     attrs |= AttrInternalSoft;
+  }
+
+  if (hasVar(s_86productAttributionData.get())) {
+    attrs |= AttrHasAttributionData;
   }
 
   auto const dynCallSampleRate = [&] () -> Optional<int64_t> {
@@ -366,10 +367,10 @@ Func* FuncEmitter::create(Unit& unit, PreClass* preClass /* = NULL */) const {
     Func::ParamInfo pi = params[i];
     fParams.push_back(pi);
     auto const& fromUBs = params[i].upperBounds;
-    if (!fromUBs.empty()) {
+    if (!fromUBs.isTop()) {
       auto& ub = f->extShared()->m_paramUBs[i];
-      ub.resize(fromUBs.size());
-      std::copy(fromUBs.begin(), fromUBs.end(), ub.begin());
+      ub.m_constraints.resize(fromUBs.m_constraints.size());
+      std::copy(fromUBs.m_constraints.begin(), fromUBs.m_constraints.end(), ub.m_constraints.begin());
       f->shared()->m_allFlags.m_hasParamsWithMultiUBs = true;
     }
   }
@@ -394,10 +395,10 @@ Func* FuncEmitter::create(Unit& unit, PreClass* preClass /* = NULL */) const {
   f->shared()->m_userAttributes = userAttributes;
   f->shared()->m_retTypeConstraint = retTypeConstraint;
   f->shared()->m_retUserType = retUserType;
-  if (!retUpperBounds.empty()) {
-    f->extShared()->m_returnUBs.resize(retUpperBounds.size());
-    std::copy(retUpperBounds.begin(), retUpperBounds.end(),
-              f->extShared()->m_returnUBs.begin());
+  if (!retUpperBounds.isTop()) {
+    f->extShared()->m_returnUBs.m_constraints.resize(retUpperBounds.m_constraints.size());
+    std::copy(retUpperBounds.m_constraints.begin(), retUpperBounds.m_constraints.end(),
+              f->extShared()->m_returnUBs.m_constraints.begin());
     f->shared()->m_allFlags.m_hasReturnWithMultiUBs = true;
   }
   f->shared()->m_originalFilename = originalFullName;

@@ -27,7 +27,7 @@ let enforce_param_not_disposable env param ty =
         Typing_error.Primary.Invalid_disposable_hint
           { pos = param.param_pos; class_name = Utils.strip_ns class_name })
 
-let check_param_has_hint param =
+let check_param_has_hint env param =
   let prim_err_opt =
     if Option.is_none (hint_of_type_hint param.param_type_hint) then
       Some
@@ -39,7 +39,7 @@ let check_param_has_hint param =
       None
   in
   Option.iter prim_err_opt ~f:(fun err ->
-      Typing_error_utils.add_typing_error @@ Typing_error.primary err)
+      Typing_error_utils.add_typing_error ~env @@ Typing_error.primary err)
 
 (* This function is used to determine the type of an argument.
  * When we want to type-check the body of a function, we need to
@@ -81,9 +81,9 @@ let check_param_has_hint param =
  *
  * A similar line of reasoning is applied for the static method create.
  *)
-let make_param_local_ty ~dynamic_mode env decl_hint param =
+let make_param_local_ty ~dynamic_mode ~no_auto_likes env decl_hint param =
   (* Don't check (again) for existence of hint in dynamic mode *)
-  if not dynamic_mode then check_param_has_hint param;
+  if not dynamic_mode then check_param_has_hint env param;
   match decl_hint with
   | None -> (env, None)
   | Some hint ->
@@ -125,17 +125,17 @@ let make_param_local_ty ~dynamic_mode env decl_hint param =
                 ty
             | _ -> ty
           in
-          (* For implicit pessimisation, wrap like around non-enforced inout parameters *)
+          (* For implicit pessimisation, without <<__NoAutoLikes>>, wrap like around non-enforced inout parameters *)
           match (et_enforced, param.param_callconv) with
-          | (Unenforced, Ast_defs.Pinout _) ->
-            Typing_make_type.like (get_reason ty) ty
+          | (Unenforced, Ast_defs.Pinout _) when not no_auto_likes ->
+            MakeType.like (get_reason ty) ty
           | _ -> ty
         else
           ty
       in
       Phase.localize_no_subst env ~ignore_errors:false ty
     in
-    Option.iter ty_err_opt ~f:Typing_error_utils.add_typing_error;
+    Option.iter ty_err_opt ~f:(Typing_error_utils.add_typing_error ~env);
     let ty =
       match get_node ty with
       | t when param.param_is_variadic ->
@@ -149,16 +149,16 @@ let make_param_local_ty ~dynamic_mode env decl_hint param =
     (* We do not permit hints to implement IDisposable or IAsyncDisposable *)
     let prim_err_opt = enforce_param_not_disposable env param ty in
     Option.iter prim_err_opt ~f:(fun err ->
-        Typing_error_utils.add_typing_error @@ Typing_error.primary err);
+        Typing_error_utils.add_typing_error ~env @@ Typing_error.primary err);
     (env, Some ty)
 
-let make_param_local_tys ~dynamic_mode env decl_tys params =
+let make_param_local_tys ~dynamic_mode ~no_auto_likes env decl_tys params =
   List.zip_exn params decl_tys
   |> List.map_env env ~f:(fun env (param, hint) ->
          let ty =
            if dynamic_mode then
              let dyn_ty =
-               Typing_make_type.dynamic
+               MakeType.dynamic
                  (Reason.Rsupport_dynamic_type
                     (Pos_or_decl.of_raw_pos param.param_pos))
              in
@@ -169,11 +169,11 @@ let make_param_local_tys ~dynamic_mode env decl_tys params =
                       env
                       ty ->
                Some
-                 (Typing_make_type.intersection
+                 (MakeType.intersection
                     (Reason.Rsupport_dynamic_type Pos_or_decl.none)
                     [ty; dyn_ty])
              | _ -> Some dyn_ty
            else
              hint
          in
-         make_param_local_ty ~dynamic_mode env ty param)
+         make_param_local_ty ~dynamic_mode ~no_auto_likes env ty param)

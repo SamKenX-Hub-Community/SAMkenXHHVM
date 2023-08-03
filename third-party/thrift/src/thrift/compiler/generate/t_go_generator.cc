@@ -40,6 +40,7 @@
 #include <sstream>
 #include <thrift/compiler/generate/t_concat_generator.h>
 #include <thrift/compiler/generate/t_generator.h>
+#include <thrift/compiler/lib/go/util.h>
 
 using namespace std;
 
@@ -58,11 +59,11 @@ static std::string package_flag;
  * considering annotations (if any are set).
  */
 const string get_func_name(const t_function* tfunction) {
-  auto func_name_override = tfunction->find_annotation_or_null("go.name");
-  if (func_name_override == nullptr) {
-    return tfunction->get_name();
+  auto name_override = go::get_go_name_annotation(tfunction);
+  if (name_override != nullptr) {
+    return *name_override;
   }
-  return *func_name_override;
+  return tfunction->get_name();
 }
 
 /**
@@ -131,7 +132,7 @@ class t_go_generator : public t_concat_generator {
   void generate_go_struct_definition(
       std::ofstream& out,
       const t_struct* tstruct,
-      bool is_xception = false,
+      bool is_exception = false,
       bool is_result = false,
       bool is_args = false);
   void generate_go_struct_initializer(
@@ -436,7 +437,7 @@ bool t_go_generator::omit_initialization(const t_field* tfield) {
 bool t_go_generator::type_need_reference(const t_type* type) {
   type = type->get_true_type();
   if (type->is_map() || type->is_set() || type->is_list() ||
-      type->is_struct() || type->is_xception() || type->is_binary()) {
+      type->is_struct() || type->is_exception() || type->is_binary()) {
     return false;
   }
   return true;
@@ -446,12 +447,13 @@ bool t_go_generator::type_need_reference(const t_type* type) {
 bool t_go_generator::is_pointer_field(
     const t_field* tfield, bool in_container_value) {
   (void)in_container_value;
-  if (tfield->has_annotation("cpp.ref")) {
+  if (tfield->find_structured_annotation_or_null(kCppRefUri) != nullptr ||
+      tfield->has_annotation("cpp.ref")) {
     return true;
   }
   const t_type* type = tfield->get_type()->get_true_type();
   // Structs in containers are pointers
-  if (type->is_struct() || type->is_xception()) {
+  if (type->is_struct() || type->is_exception()) {
     return true;
   }
   if (!(tfield->get_req() == t_field::e_req::optional)) {
@@ -485,7 +487,7 @@ bool t_go_generator::is_pointer_field(
     }
   } else if (type->is_enum()) {
     return !has_default;
-  } else if (type->is_struct() || type->is_xception()) {
+  } else if (type->is_struct() || type->is_exception()) {
     return true;
   } else if (type->is_map()) {
     return has_default;
@@ -845,7 +847,7 @@ void t_go_generator::init_generator() {
  * Renders all the imports necessary for including another Thrift program
  */
 string t_go_generator::render_includes() {
-  const vector<t_program*>& includes = program_->get_included_programs();
+  const vector<t_program*>& includes = program_->get_includes_for_codegen();
   string result = "";
   string unused_prot = "";
 
@@ -990,7 +992,7 @@ void t_go_generator::generate_typedef(const t_typedef* ttypedef) {
              << endl;
   }
   // Generate New* function
-  if (true_type->is_struct() || true_type->is_xception()) {
+  if (true_type->is_struct() || true_type->is_exception()) {
     const t_program* program = tbasetype->program();
     // only declare a return with a pointer if the concrete type isn't
     // already a pointer
@@ -1207,7 +1209,7 @@ string t_go_generator::render_const_value(
     } else {
       out << value->get_integer();
     }
-  } else if (type->is_struct() || type->is_xception()) {
+  } else if (type->is_struct() || type->is_exception()) {
     out << "&" << publicize(type_name(type)) << "{";
     indent_up();
     out << endl;
@@ -1477,7 +1479,7 @@ void t_go_generator::generate_go_struct_definition(
           type_to_go_type_with_opt(fieldType, is_pointer_field(*m_iter));
       string gotag;
       // Check for user override of db and json tags using "go.tag"
-      if (const auto* val = (*m_iter)->find_annotation_or_null("go.tag")) {
+      if (const auto* val = go::get_go_tag_annotation(*m_iter)) {
         gotag = *val;
       } else {
         gotag = "db:\"" + escape_string((*m_iter)->get_name()) + "\" ";
@@ -1941,10 +1943,6 @@ void t_go_generator::generate_go_struct_reader(
     out << indent() << "case " << field_id << ":" << endl;
     indent_up();
     thriftFieldTypeId = type_to_enum((*f_iter)->get_type());
-
-    if (thriftFieldTypeId == "thrift.BINARY") {
-      thriftFieldTypeId = "thrift.STRING";
-    }
 
     out << indent() << "if err := p." << field_method << "(iprot); err != nil {"
         << endl;
@@ -3125,7 +3123,7 @@ void t_go_generator::generate_deserialize_field(
         "CANNOT GENERATE DESERIALIZE CODE FOR void TYPE: " + name);
   }
 
-  if (type->is_struct() || type->is_xception()) {
+  if (type->is_struct() || type->is_exception()) {
     generate_deserialize_struct(
         out,
         (t_struct*)orig_type,
@@ -3428,7 +3426,7 @@ void t_go_generator::generate_serialize_field(
         "compiler error: cannot generate serialize for void type: " + name);
   }
 
-  if (type->is_struct() || type->is_xception()) {
+  if (type->is_struct() || type->is_exception()) {
     generate_serialize_struct(out, (t_struct*)type, name);
   } else if (type->is_container()) {
     generate_serialize_container(out, type, is_pointer_field(tfield), name);
@@ -3880,7 +3878,7 @@ string t_go_generator::type_to_enum(const t_type* type) {
     }
   } else if (type->is_enum()) {
     return "thrift.I32";
-  } else if (type->is_struct() || type->is_xception()) {
+  } else if (type->is_struct() || type->is_exception()) {
     return "thrift.STRUCT";
   } else if (type->is_map()) {
     return "thrift.MAP";
@@ -3979,7 +3977,7 @@ string t_go_generator::type_to_go_type_with_opt(
     }
   } else if (type->is_enum()) {
     return maybe_pointer + publicize(type_name(type));
-  } else if (type->is_struct() || type->is_xception()) {
+  } else if (type->is_struct() || type->is_exception()) {
     if (from_typedef) {
       return publicize(type_name(type));
     }
@@ -3999,7 +3997,7 @@ string t_go_generator::type_to_go_type_with_opt(
     return maybe_pointer + string("[]") + elemType;
   } else if (type->is_typedef()) {
     auto true_type = type->get_true_type();
-    if (true_type->is_struct() || true_type->is_xception()) {
+    if (true_type->is_struct() || true_type->is_exception()) {
       return "*" + publicize(type_name(type));
     }
     return maybe_pointer + publicize(type_name(type));
@@ -4017,7 +4015,7 @@ string t_go_generator::type_to_spec_args(const t_type* ttype) {
 
   if (ttype->is_base_type() || ttype->is_enum()) {
     return "nil";
-  } else if (ttype->is_struct() || ttype->is_xception()) {
+  } else if (ttype->is_struct() || ttype->is_exception()) {
     return "(" + type_name(ttype) + ", " + type_name(ttype) + ".thrift_spec)";
   } else if (ttype->is_map()) {
     return "(" + type_to_enum(((t_map*)ttype)->get_key_type()) + "," +

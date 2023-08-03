@@ -34,6 +34,8 @@
 #include <thrift/lib/cpp2/transport/rocket/framing/Frames.h>
 #include <thrift/lib/cpp2/transport/rocket/framing/Serializer.h>
 #include <thrift/lib/cpp2/transport/rocket/framing/Util.h>
+#include <thrift/lib/cpp2/transport/rocket/framing/parser/FrameLengthParserStrategy.h>
+#include <thrift/lib/cpp2/transport/rocket/framing/parser/ParserStrategy.h>
 
 namespace apache {
 namespace thrift {
@@ -96,13 +98,6 @@ void Parser<T>::getReadBufferOld(void** bufout, size_t* lenout) {
   if (LIKELY(
           allocType_ ==
           apache::thrift::RpcOptions::MemAllocType::ALLOC_DEFAULT)) {
-    if (periodicResizeBufferTimeout_ == 0) {
-      const auto now = std::chrono::steady_clock::now();
-      if (now - lastResizeTime_ > resizeBufferTimeout_) {
-        resizeBuffer();
-        lastResizeTime_ = now;
-      }
-    }
     readBuffer_.unshareOne();
     if (readBuffer_.length() == 0) {
       DCHECK(readBuffer_.capacity() > 0);
@@ -227,10 +222,8 @@ void Parser<T>::readDataAvailableOld(size_t nbytes) {
     owner_.handleFrame(std::move(frame));
   }
 
-  if (periodicResizeBufferTimeout_ != 0 && !isScheduled() &&
-      bufferSize_ > kMaxBufferSize) {
-    owner_.scheduleTimeout(
-        this, std::chrono::seconds(periodicResizeBufferTimeout_));
+  if (!isScheduled() && bufferSize_ > kMaxBufferSize) {
+    owner_.scheduleTimeout(this, kDefaultBufferResizeInterval);
   }
 }
 
@@ -444,7 +437,9 @@ void Parser<T>::readDataAvailableHybrid(size_t nbytes) {
 template <class T>
 void Parser<T>::getReadBuffer(void** bufout, size_t* lenout) {
   blockResize_ = true;
-  if (newBufferLogicEnabled_) {
+  if (useStrategyParser_) {
+    frameLengthParser_->getReadBuffer(bufout, lenout);
+  } else if (newBufferLogicEnabled_) {
     getReadBufferNew(bufout, lenout);
   } else if (hybridBufferLogicEnabled_) {
     getReadBufferHybrid(bufout, lenout);
@@ -458,7 +453,9 @@ void Parser<T>::readDataAvailable(size_t nbytes) noexcept {
   folly::DelayedDestruction::DestructorGuard dg(&this->owner_);
   blockResize_ = false;
   try {
-    if (newBufferLogicEnabled_) {
+    if (useStrategyParser_) {
+      frameLengthParser_->readDataAvailable(nbytes);
+    } else if (newBufferLogicEnabled_) {
       readDataAvailableNew(nbytes);
     } else if (hybridBufferLogicEnabled_) {
       readDataAvailableHybrid(nbytes);
@@ -508,33 +505,37 @@ void Parser<T>::readBufferAvailable(
     std::unique_ptr<folly::IOBuf> buf) noexcept {
   folly::DelayedDestruction::DestructorGuard dg(&this->owner_);
   try {
-    readBufQueue_.append(std::move(buf));
-    while (!readBufQueue_.empty()) {
-      if (readBufQueue_.chainLength() <
-          Serializer::kBytesForFrameOrMetadataLength) {
-        return;
-      }
-      folly::io::Cursor cursor(readBufQueue_.front());
-
-      if (!currentFrameLength_) {
-        currentFrameLength_ = Serializer::kBytesForFrameOrMetadataLength +
-            readFrameOrMetadataSize(cursor);
-        if (!owner_.incMemoryUsage(currentFrameLength_)) {
-          currentFrameLength_ = 0;
+    if (useStrategyParser_) {
+      frameLengthParser_->readBufferAvailable(std::move(buf));
+    } else {
+      readBufQueue_.append(std::move(buf));
+      while (!readBufQueue_.empty()) {
+        if (readBufQueue_.chainLength() <
+            Serializer::kBytesForFrameOrMetadataLength) {
           return;
         }
-      }
+        folly::io::Cursor cursor(readBufQueue_.front());
 
-      if (readBufQueue_.chainLength() < currentFrameLength_) {
-        return;
-      }
+        if (!currentFrameLength_) {
+          currentFrameLength_ = Serializer::kBytesForFrameOrMetadataLength +
+              readFrameOrMetadataSize(cursor);
+          if (!owner_.incMemoryUsage(currentFrameLength_)) {
+            currentFrameLength_ = 0;
+            return;
+          }
+        }
 
-      readBufQueue_.trimStart(Serializer::kBytesForFrameOrMetadataLength);
-      auto frame = readBufQueue_.split(
-          currentFrameLength_ - Serializer::kBytesForFrameOrMetadataLength);
-      owner_.handleFrame(std::move(frame));
-      owner_.decMemoryUsage(currentFrameLength_);
-      currentFrameLength_ = 0;
+        if (readBufQueue_.chainLength() < currentFrameLength_) {
+          return;
+        }
+
+        readBufQueue_.trimStart(Serializer::kBytesForFrameOrMetadataLength);
+        auto frame = readBufQueue_.split(
+            currentFrameLength_ - Serializer::kBytesForFrameOrMetadataLength);
+        owner_.handleFrame(std::move(frame));
+        owner_.decMemoryUsage(currentFrameLength_);
+        currentFrameLength_ = 0;
+      }
     }
   } catch (...) {
     auto exceptionStr =

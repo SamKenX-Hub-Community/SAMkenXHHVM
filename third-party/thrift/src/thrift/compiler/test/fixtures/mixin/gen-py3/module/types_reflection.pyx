@@ -14,7 +14,6 @@ from thrift.py3.reflection cimport (
     Qualifier as __Qualifier,
 )
 
-cimport facebook.thrift.annotation.thrift.types as _facebook_thrift_annotation_thrift_types
 
 cimport module.types as _module_types
 
@@ -40,6 +39,7 @@ cdef __StructSpec get_reflection__Mixin1():
         __FieldSpec._fbthrift_create(
             id=1,
             name="field1",
+            py_name="field1",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -65,6 +65,7 @@ cdef __StructSpec get_reflection__Mixin2():
         __FieldSpec._fbthrift_create(
             id=1,
             name="m1",
+            py_name="m1",
             type=_module_types.Mixin1,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -77,6 +78,7 @@ cdef __StructSpec get_reflection__Mixin2():
         __FieldSpec._fbthrift_create(
             id=2,
             name="field2",
+            py_name="field2",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.OPTIONAL,
@@ -102,6 +104,7 @@ cdef __StructSpec get_reflection__Mixin3Base():
         __FieldSpec._fbthrift_create(
             id=1,
             name="field3",
+            py_name="field3",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -127,6 +130,7 @@ cdef __StructSpec get_reflection__Foo():
         __FieldSpec._fbthrift_create(
             id=1,
             name="field4",
+            py_name="field4",
             type=str,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -139,6 +143,7 @@ cdef __StructSpec get_reflection__Foo():
         __FieldSpec._fbthrift_create(
             id=2,
             name="m2",
+            py_name="m2",
             type=_module_types.Mixin2,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,
@@ -151,6 +156,7 @@ cdef __StructSpec get_reflection__Foo():
         __FieldSpec._fbthrift_create(
             id=3,
             name="m3",
+            py_name="m3",
             type=_module_types.Mixin3Base,
             kind=__NumberType.NOT_A_NUMBER,
             qualifier=__Qualifier.UNQUALIFIED,

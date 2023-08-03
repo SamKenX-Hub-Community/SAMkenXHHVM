@@ -70,7 +70,6 @@ class THttpParser {
       std::unique_ptr<folly::IOBuf> buf) = 0;
   virtual std::unique_ptr<folly::IOBuf> constructHeader(
       std::unique_ptr<folly::IOBuf> buf,
-      const folly::F14NodeMap<std::string, std::string>& persistentWriteHeaders,
       const folly::F14NodeMap<std::string, std::string>& writeHeaders,
       const folly::F14NodeMap<std::string, std::string>* extraWriteHeaders) = 0;
 
@@ -116,11 +115,10 @@ class THttpParser {
 class THttpClientParser : public THttpParser {
  public:
   THttpClientParser() {}
-  THttpClientParser(std::string host, std::string path) {
-    host_ = host;
-    path_ = path;
-    userAgent_ = "C++/THttpClient";
-  }
+  THttpClientParser(std::string host, std::string path)
+      : host_{std::move(host)},
+        path_{std::move(path)},
+        userAgent_{"C++/THttpClient"} {}
 
   void setHost(const std::string& host) { host_ = host; }
   void setPath(const std::string& path) { path_ = path; }
@@ -131,7 +129,6 @@ class THttpClientParser : public THttpParser {
       std::unique_ptr<folly::IOBuf> buf) override;
   std::unique_ptr<folly::IOBuf> constructHeader(
       std::unique_ptr<folly::IOBuf> buf,
-      const folly::F14NodeMap<std::string, std::string>& persistentWriteHeaders,
       const folly::F14NodeMap<std::string, std::string>& writeHeaders,
       const folly::F14NodeMap<std::string, std::string>* extraWriteHeaders)
       override;

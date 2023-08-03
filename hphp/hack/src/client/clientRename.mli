@@ -17,25 +17,8 @@ val go :
   desc:string ->
   ClientEnv.client_check_env ->
   ClientEnv.rename_mode ->
-  string ->
-  string ->
-  unit Lwt.t
-
-val go_ide :
-  (unit -> ClientConnect.conn Lwt.t) ->
-  desc:string ->
-  ClientEnv.client_check_env ->
-  string ->
-  int ->
-  int ->
-  string ->
+  before:string ->
+  after:string ->
   unit Lwt.t
 
 val go_ide_from_patches : ServerRenameTypes.patch list -> bool -> unit
-
-val go_sound_dynamic :
-  (unit -> ClientConnect.conn Lwt.t) ->
-  ClientEnv.client_check_env ->
-  ClientEnv.rename_mode ->
-  string ->
-  string Lwt.t

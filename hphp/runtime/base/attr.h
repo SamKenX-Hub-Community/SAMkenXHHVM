@@ -91,21 +91,11 @@ enum Attr {
   AttrInitialSatisfiesTC   = (1u <<  9), //       |    X     |         //
   // Indicates this class or any of its subclasses is not mocked.
   AttrNoMock               = (1u <<  9), //    X  |          |         //
-  // Indicates that the function or class is uniquely named among functions or
-  // classes across the codebase.  Note that function and class names are in
-  // separate namespaces, so it is possible to have a Func and Class which
-  // share a name but both of which are unique.   |          |         //
-  AttrUnique               = (1u << 10), //    X  |          |    X    //
-                                         //       |          |         //
   // Indicates that this property is definitely not redeclaring a property in a
   // parent, or if it is, the type-hints of the two properties are equivalent
   // (and therefore requires no runtime check).
   AttrNoBadRedeclare       = (1u << 10), //       |    X     |         //
-  // Indicates that a function can be used with fb_rename_function---even if
-  // JitEnableRenameFunction is false --- and can be used with fb_intercept2.
-  // (Note: we could split this into two bits, since you can technically
-  // pessimize less for fb_intercept2 than you need to for fb_rename_function,
-  //  but we haven't done so at this point.)      |          |         //
+  // Indicates that a function can be used with fb_intercept2.
   AttrInterceptable        = (1u << 11), //       |          |    X    //
                                          //       |          |         //
   // This class is sealed                //       |          |         //
@@ -159,6 +149,9 @@ enum Attr {
                                          //       |          |         //
   // Set on all builtin functions, whether PHP or C++.
   AttrBuiltin              = (1u << 20), //    X  |          |    X    //
+                                         //       |          |         //
+  // Set on functions that have 86productAttributionData variable      //
+  AttrHasAttributionData   = (1u << 21), //       |          |    X    //
                                          //       |          |         //
   // Set on properties to indicate they can't be changed after construction
   // and on classes to indicate that all that class' properties are const.

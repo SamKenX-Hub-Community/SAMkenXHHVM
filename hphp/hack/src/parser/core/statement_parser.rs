@@ -17,6 +17,7 @@ use crate::parser_env::ParserEnv;
 use crate::parser_trait::Context;
 use crate::parser_trait::ExpectedTokens;
 use crate::parser_trait::ParserTrait;
+use crate::pattern_parser::PatternParser;
 use crate::smart_constructors::NodeType;
 use crate::smart_constructors::SmartConstructors;
 use crate::smart_constructors::Token;
@@ -169,6 +170,22 @@ where
         res
     }
 
+    fn with_pattern_parser<F, U>(&mut self, f: F) -> U
+    where
+        F: Fn(&mut PatternParser<'a, S>) -> U,
+    {
+        let mut pattern_parser: PatternParser<'_, S> = PatternParser::make(
+            self.lexer.clone(),
+            self.env.clone(),
+            self.context.clone(),
+            self.errors.clone(),
+            self.sc.clone(),
+        );
+        let res = f(&mut pattern_parser);
+        self.continue_from(pattern_parser);
+        res
+    }
+
     pub fn parse_statement(&mut self) -> S::Output {
         match self.peek_token_kind() {
             TokenKind::Async | TokenKind::Function => {
@@ -203,6 +220,7 @@ where
             }
             TokenKind::If => self.parse_if_statement(),
             TokenKind::Switch => self.parse_switch_statement(),
+            TokenKind::Match => self.parse_match_statement(),
             TokenKind::Try => self.parse_try_statement(),
             TokenKind::Break => self.parse_break_statement(),
             TokenKind::Continue => self.parse_continue_statement(),
@@ -222,6 +240,7 @@ where
             TokenKind::Echo => self.parse_echo_statement(),
             TokenKind::Concurrent => self.parse_concurrent_statement(),
             TokenKind::Unset => self.parse_unset_statement(),
+            TokenKind::Let => self.parse_declare_local_statement(),
             TokenKind::Case => {
                 let result = self.parse_case_label();
                 // TODO: This puts the error in the wrong place. We should highlight
@@ -792,6 +811,55 @@ where
         }
     }
 
+    fn parse_match_statement(&mut self) -> S::Output {
+        // SPEC:
+        //
+        // match-statement:
+        //   match  (  expression  )  {  match-statement-arms-opt  }
+        //
+        // match-statement-arms:
+        //   match-statement-arm
+        //   match-statement-arms match-statement-arm
+
+        let match_keyword_token = self.assert_token(TokenKind::Match);
+        let (left_paren_token, expr_node, right_paren_token) = self.parse_paren_expr();
+        let left_brace_token = self.require_left_brace();
+        let match_arms =
+            self.parse_terminated_list(|x| x.parse_match_statement_arm(), TokenKind::RightBrace);
+        if match_arms.is_missing() {
+            self.with_error(Errors::empty_match_statement);
+        }
+        let right_brace_token = self.require_right_brace();
+        self.sc_mut().make_match_statement(
+            match_keyword_token,
+            left_paren_token,
+            expr_node,
+            right_paren_token,
+            left_brace_token,
+            match_arms,
+            right_brace_token,
+        )
+    }
+
+    fn parse_match_statement_arm(&mut self) -> S::Output {
+        // SPEC:
+        //
+        // match-statement-arm:
+        //   pattern  =>  statement
+        //
+        // We parse any statement here, but only compound statements are
+        // currently permitted. We emit this error in a later pass.
+
+        if self.peek_token_kind() == TokenKind::Case {
+            self.skip_and_log_unexpected_token(/* generate_error = */ true);
+        }
+        let pattern = self.parse_pattern();
+        let arrow_token = self.require_token(TokenKind::EqualGreaterThan, Errors::error1028);
+        let body = self.parse_statement();
+        self.sc_mut()
+            .make_match_statement_arm(pattern, arrow_token, body)
+    }
+
     fn parse_catch_clause_opt(&mut self) -> Option<S::Output> {
         // SPEC
         // catch  (  type-specification-opt variable-name  )  compound-statement
@@ -913,6 +981,35 @@ where
         let semi_token = self.require_semicolon();
         self.sc_mut()
             .make_yield_break_statement(yield_token, break_token, semi_token)
+    }
+
+    fn parse_simple_initializer_opt(&mut self) -> S::Output {
+        if let TokenKind::Equal = self.peek_token_kind() {
+            let token = self.assert_token(TokenKind::Equal);
+            let init = self.parse_expression();
+            self.sc_mut().make_simple_initializer(token, init)
+        } else {
+            let pos = self.pos();
+            self.sc_mut().make_missing(pos)
+        }
+    }
+
+    fn parse_declare_local_statement(&mut self) -> S::Output {
+        let let_token = self.assert_token(TokenKind::Let);
+        let variable = self.parse_expression();
+        let colon_token = self.require_colon();
+        let hint =
+            self.with_type_parser(|p: &mut TypeParser<'a, S>| p.parse_type_specifier(true, true));
+        let simple_init = self.parse_simple_initializer_opt();
+        let semi_token = self.require_semicolon();
+        self.sc_mut().make_declare_local_statement(
+            let_token,
+            variable,
+            colon_token,
+            hint,
+            simple_init,
+            semi_token,
+        )
     }
 
     fn parse_default_label(&mut self) -> S::Output {
@@ -1054,5 +1151,9 @@ where
 
     fn parse_expression(&mut self) -> S::Output {
         self.with_expression_parser(|p: &mut ExpressionParser<'a, S>| p.parse_expression())
+    }
+
+    fn parse_pattern(&mut self) -> S::Output {
+        self.with_pattern_parser(|p: &mut PatternParser<'a, S>| p.parse_pattern())
     }
 }

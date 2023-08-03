@@ -35,7 +35,7 @@ type root_kind =
 type context = {
   id: pos_id;  (** The T in the type access C::T *)
   ety_env: expand_env;
-      (** The expand environment as passed in by Typing_phase.localize *)
+      (** The expand environment as passed in by Phase.localize *)
   generics_seen: TySet.t;
       (** A set of visited types used to avoid infinite loops during expansion. *)
   allow_abstract: bool;
@@ -85,7 +85,7 @@ let tp_name class_name id = class_name ^ "::" ^ snd id
     creating is known to be equal to some other type *)
 let abstract_or_exact env id ({ name; _ } as abstr) =
   let tp_name = tp_name name id in
-  if not (Typing_set.is_empty (Env.get_equal_bounds env tp_name [])) then
+  if not (TySet.is_empty (Env.get_equal_bounds env tp_name [])) then
     (* If the resulting abstract type is exactly equal to something,
        mark the result as exact.
        For example, if we have the following
@@ -111,16 +111,6 @@ let create_root_from_type_constant ctx env root (_class_pos, class_name) class_
   let { id = (id_pos, id_name) as id; _ } = ctx in
   match Env.get_typeconst env class_ id_name with
   | None ->
-    let typeconst_names =
-      List.map
-        ~f:(fun tc ->
-          let (tc_name, _) = tc in
-          tc_name)
-        (Cls.typeconsts class_)
-    in
-    let closest_member_name =
-      Env.most_similar id_name typeconst_names (fun tc_name -> tc_name)
-    in
     ( (env, None),
       Missing
         (Option.map
@@ -136,9 +126,7 @@ let create_root_from_type_constant ctx env root (_class_pos, class_name) class_
                         class_name;
                         class_pos = Cls.pos class_;
                         member_name = id_name;
-                        closest_member_name;
                         hint = None;
-                        quickfixes = [];
                       })) )
   | Some typeconst ->
     let name = tp_name class_name id in
@@ -363,6 +351,7 @@ let rec type_of_result ~ignore_errors ctx env root res =
       else
         None
     in
+    (* TODO akenn: this is a source of unsoundness *)
     let ty =
       Typing_utils.mk_tany env (Pos_or_decl.unsafe_to_raw_pos (get_pos root))
     in
@@ -455,8 +444,7 @@ let rec expand ctx env root =
            likely because originally there was `self::T` written.
            TODO(T54081153): fix `self` in traits and clean this up *)
         let allow_abstract =
-          Ast_defs.is_c_trait (Decl_provider.Class.kind ci)
-          || ctx.allow_abstract
+          Ast_defs.is_c_trait (Cls.kind ci) || ctx.allow_abstract
         in
 
         let ctx = { ctx with allow_abstract } in
@@ -485,13 +473,17 @@ let rec expand ctx env root =
           root_kind;
         }
       in
-
+      let is_supportdyn_mixed t =
+        let (is_supportdyn, _, t) = Typing_utils.strip_supportdyn env t in
+        is_supportdyn && Typing_utils.is_mixed env t
+      in
       (* Ignore seen bounds to avoid infinite loops *)
       let upper_bounds =
         let ub = Env.get_upper_bounds env s tyargs in
         TySet.filter
           (fun ty ->
-            (* Also ignore ~T if we've seen T *)
+            (not (is_supportdyn_mixed ty))
+            && (* Also ignore ~T if we've seen T *)
             not
               (TySet.mem (Typing_utils.strip_dynamic env ty) ctx.generics_seen))
           ub
@@ -638,9 +630,8 @@ let referenced_typeconsts env ety_env (root, ids) =
                 let ( >>= ) = Option.( >>= ) in
                 Option.value
                   ~default:acc
-                  ( Typing_env.get_class env class_name >>= fun class_ ->
-                    Typing_env.get_typeconst env class_ tconst
-                    >>= fun typeconst ->
+                  ( Env.get_class env class_name >>= fun class_ ->
+                    Env.get_typeconst env class_ tconst >>= fun typeconst ->
                     Some ((typeconst.Typing_defs.ttc_origin, tconst, pos) :: acc)
                   )
               | _ -> acc)

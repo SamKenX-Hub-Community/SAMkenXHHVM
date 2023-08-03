@@ -81,6 +81,7 @@ pub fn fmt_hint<'arena>(
                 format!("{}<{}>", name, fmt_hints(alloc, tparams, args)?)
             }
         }
+        Hwildcard => "_".into(),
         Hfun(hf) => {
             // TODO(mqian): Implement for inout parameters
             format!(
@@ -185,7 +186,7 @@ fn fmt_hints<'arena>(
 
 fn can_be_nullable(hint: &Hint_) -> bool {
     match hint {
-        Haccess(_, _) | Hfun(_) | Hdynamic | Hnonnull | Hmixed => false,
+        Haccess(_, _) | Hfun(_) | Hdynamic | Hnonnull | Hmixed | Hwildcard => false,
         Hoption(Hint(_, h)) => {
             if let Haccess(_, _) = **h {
                 true
@@ -210,7 +211,9 @@ fn hint_to_type_constraint<'arena>(
 ) -> Result<Constraint<'arena>> {
     let Hint(_, hint) = h;
     Ok(match &**hint {
-        Hdynamic | Hfun(_) | Hunion(_) | Hintersection(_) | Hmixed => Constraint::default(),
+        Hdynamic | Hfun(_) | Hunion(_) | Hintersection(_) | Hmixed | Hwildcard => {
+            Constraint::default()
+        }
         Haccess(_, _) => Constraint::make(
             Just("".into()),
             TypeConstraintFlags::ExtendedHint | TypeConstraintFlags::TypeConstant,
@@ -285,7 +288,7 @@ fn hint_to_type_constraint<'arena>(
                         _ => hint_to_type_constraint(alloc, kind, tparams, false, &hs[0]),
                     };
                 }
-                [h] if s == typehints::POISON_MARKER || s == typehints::SUPPORTDYN_MARKER => {
+                [h] if s == typehints::POISON_MARKER => {
                     return hint_to_type_constraint(alloc, kind, tparams, false, h);
                 }
                 [_h] if s == typehints::TANY_MARKER => {
@@ -460,6 +463,42 @@ pub fn hint_to_type_info<'arena>(
             try_add_nullable(nullable, hint, flags)
         },
     )
+}
+
+// Used from emit_typedef for potential case types
+pub fn hint_to_type_info_union<'arena>(
+    alloc: &'arena bumpalo::Bump,
+    kind: &Kind,
+    skipawaitable: bool,
+    nullable: bool,
+    tparams: &[&str],
+    hint: &Hint,
+) -> Result<ffi::Slice<'arena, TypeInfo<'arena>>> {
+    let Hint(_, h) = hint;
+    let mut result = vec![];
+    match &**h {
+        Hunion(hints) => {
+            for hint in hints {
+                result.push(hint_to_type_info(
+                    alloc,
+                    kind,
+                    skipawaitable,
+                    nullable,
+                    tparams,
+                    hint,
+                )?)
+            }
+        }
+        _ => result.push(hint_to_type_info(
+            alloc,
+            kind,
+            skipawaitable,
+            nullable,
+            tparams,
+            hint,
+        )?),
+    }
+    Ok(ffi::Slice::from_vec(alloc, result))
 }
 
 pub fn hint_to_class<'arena>(alloc: &'arena bumpalo::Bump, hint: &Hint) -> hhbc::ClassName<'arena> {

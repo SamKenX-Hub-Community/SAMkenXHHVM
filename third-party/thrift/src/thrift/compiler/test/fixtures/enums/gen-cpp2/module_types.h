@@ -9,7 +9,6 @@
 #include <thrift/lib/cpp2/gen/module_types_h.h>
 
 
-#include "thrift/annotation/gen-cpp2/thrift_types.h"
 
 namespace apache {
 namespace thrift {
@@ -68,18 +67,17 @@ enum class Metasyntactic {
   BAR = 2,
   BAZ = 3,
   BAX = 4,
-  Unspecified = 0,
 };
 
 
 
 enum class MyEnum1 {
+  ME1_0 = 0,
   ME1_1 = 1,
   ME1_2 = 2,
   ME1_3 = 3,
   ME1_5 = 5,
   ME1_6 = 6,
-  ME1_0 = 0,
 };
 
 
@@ -108,7 +106,6 @@ enum class MyEnum4 {
   ME4_B = 2147483646,
   ME4_C = 2147483647,
   ME4_D = -2147483648,
-  Unspecified = 0,
 };
 
 
@@ -117,7 +114,6 @@ enum class MyBitmaskEnum1 {
   ONE = 1,
   TWO = 2,
   FOUR = 4,
-  Unspecified = 0,
 };
 
 
@@ -126,7 +122,6 @@ enum class MyBitmaskEnum2 {
   ONE = 1,
   TWO = 2,
   FOUR = 4,
-  Unspecified = 0,
 };
 
 
@@ -158,7 +153,7 @@ template <> struct TEnumDataStorage<::test::fixtures::enums::Metasyntactic>;
 template <> struct TEnumTraits<::test::fixtures::enums::Metasyntactic> {
   using type = ::test::fixtures::enums::Metasyntactic;
 
-  static constexpr std::size_t const size = 5;
+  static constexpr std::size_t const size = 4;
   static folly::Range<type const*> const values;
   static folly::Range<folly::StringPiece const*> const names;
 
@@ -176,7 +171,7 @@ template <> struct TEnumTraits<::test::fixtures::enums::Metasyntactic> {
     (void)findName(value, &ret);
     return ret.data();
   }
-  static constexpr type min() { return type::Unspecified; }
+  static constexpr type min() { return type::FOO; }
   static constexpr type max() { return type::BAX; }
 };
 
@@ -270,7 +265,7 @@ template <> struct TEnumDataStorage<::test::fixtures::enums::MyEnum4>;
 template <> struct TEnumTraits<::test::fixtures::enums::MyEnum4> {
   using type = ::test::fixtures::enums::MyEnum4;
 
-  static constexpr std::size_t const size = 5;
+  static constexpr std::size_t const size = 4;
   static folly::Range<type const*> const values;
   static folly::Range<folly::StringPiece const*> const names;
 
@@ -298,7 +293,7 @@ template <> struct TEnumDataStorage<::test::fixtures::enums::MyBitmaskEnum1>;
 template <> struct TEnumTraits<::test::fixtures::enums::MyBitmaskEnum1> {
   using type = ::test::fixtures::enums::MyBitmaskEnum1;
 
-  static constexpr std::size_t const size = 4;
+  static constexpr std::size_t const size = 3;
   static folly::Range<type const*> const values;
   static folly::Range<folly::StringPiece const*> const names;
 
@@ -316,7 +311,7 @@ template <> struct TEnumTraits<::test::fixtures::enums::MyBitmaskEnum1> {
     (void)findName(value, &ret);
     return ret.data();
   }
-  static constexpr type min() { return type::Unspecified; }
+  static constexpr type min() { return type::ONE; }
   static constexpr type max() { return type::FOUR; }
 };
 
@@ -326,7 +321,7 @@ template <> struct TEnumDataStorage<::test::fixtures::enums::MyBitmaskEnum2>;
 template <> struct TEnumTraits<::test::fixtures::enums::MyBitmaskEnum2> {
   using type = ::test::fixtures::enums::MyBitmaskEnum2;
 
-  static constexpr std::size_t const size = 4;
+  static constexpr std::size_t const size = 3;
   static folly::Range<type const*> const values;
   static folly::Range<folly::StringPiece const*> const names;
 
@@ -344,51 +339,13 @@ template <> struct TEnumTraits<::test::fixtures::enums::MyBitmaskEnum2> {
     (void)findName(value, &ret);
     return ret.data();
   }
-  static constexpr type min() { return type::Unspecified; }
+  static constexpr type min() { return type::ONE; }
   static constexpr type max() { return type::FOUR; }
 };
 
 
 }} // apache::thrift
 
-namespace test { namespace fixtures { namespace enums {
-
-using _Metasyntactic_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<Metasyntactic>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _Metasyntactic_EnumMapFactory::ValuesToNamesMapType _Metasyntactic_VALUES_TO_NAMES;
-#endif
-using _MyEnum1_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<MyEnum1>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _MyEnum1_EnumMapFactory::ValuesToNamesMapType _MyEnum1_VALUES_TO_NAMES;
-#endif
-using _MyEnum2_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<MyEnum2>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _MyEnum2_EnumMapFactory::ValuesToNamesMapType _MyEnum2_VALUES_TO_NAMES;
-#endif
-using _MyEnum3_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<MyEnum3>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _MyEnum3_EnumMapFactory::ValuesToNamesMapType _MyEnum3_VALUES_TO_NAMES;
-#endif
-using _MyEnum4_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<MyEnum4>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _MyEnum4_EnumMapFactory::ValuesToNamesMapType _MyEnum4_VALUES_TO_NAMES;
-#endif
-using _MyBitmaskEnum1_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<MyBitmaskEnum1>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _MyBitmaskEnum1_EnumMapFactory::ValuesToNamesMapType _MyBitmaskEnum1_VALUES_TO_NAMES;
-#endif
-using _MyBitmaskEnum2_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<MyBitmaskEnum2>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _MyBitmaskEnum2_EnumMapFactory::ValuesToNamesMapType _MyBitmaskEnum2_VALUES_TO_NAMES;
-#endif
-}}} // test::fixtures::enums
 
 // END declare_enums
 // BEGIN forward_declare
@@ -461,11 +418,8 @@ class SomeStruct final  {
 
  public:
 
-  SomeStruct() :
-      __fbthrift_field_reasonable( ::test::fixtures::enums::Metasyntactic::FOO),
-      __fbthrift_field_fine( ::test::fixtures::enums::Metasyntactic::BAR),
-      __fbthrift_field_questionable(static_cast< ::test::fixtures::enums::Metasyntactic>(-1)) {
-  }
+  SomeStruct();
+
   // FragileConstructor for use in initialization lists only.
   [[deprecated("This constructor is deprecated")]]
   SomeStruct(apache::thrift::FragileConstructor, ::test::fixtures::enums::Metasyntactic reasonable__arg, ::test::fixtures::enums::Metasyntactic fine__arg, ::test::fixtures::enums::Metasyntactic questionable__arg, ::std::set<::std::int32_t> tags__arg);
@@ -477,6 +431,9 @@ class SomeStruct final  {
 
   SomeStruct& operator=(SomeStruct&&) noexcept;
   SomeStruct& operator=(const SomeStruct& src);
+
+  ~SomeStruct();
+
  private:
   ::test::fixtures::enums::Metasyntactic __fbthrift_field_reasonable;
  private:

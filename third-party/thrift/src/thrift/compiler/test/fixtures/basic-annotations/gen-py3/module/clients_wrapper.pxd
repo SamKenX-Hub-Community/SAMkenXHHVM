@@ -26,7 +26,6 @@ from thrift.py3.client cimport cClientWrapper
 
 cimport module.types as _module_types
 
-cimport facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
 
 cdef extern from "thrift/compiler/test/fixtures/basic-annotations/src/gen-cpp2/module_clients.h" namespace "::cpp2":
   cdef cppclass cMyServiceAsyncClient "::cpp2::MyServiceAsyncClient":
@@ -59,6 +58,13 @@ cdef extern from "thrift/compiler/test/fixtures/basic-annotations/src/gen-cpp2/m
 
 cdef extern from "<utility>" namespace "std":
   cdef unique_ptr[cBadServiceClientWrapper] move(unique_ptr[cBadServiceClientWrapper])
+
+cdef extern from "thrift/compiler/test/fixtures/basic-annotations/src/gen-cpp2/module_clients.h" namespace "::cpp2":
+  cdef cppclass cFooBarBazServiceAsyncClient "::cpp2::FooBarBazServiceAsyncClient":
+      pass
+
+cdef extern from "<utility>" namespace "std":
+  cdef unique_ptr[cFooBarBazServiceClientWrapper] move(unique_ptr[cFooBarBazServiceClientWrapper])
 
 cdef extern from "thrift/lib/cpp/TProcessorEventHandler.h" namespace "::apache::thrift":
   cdef cppclass cTProcessorEventHandler "apache::thrift::TProcessorEventHandler":
@@ -109,4 +115,13 @@ cdef extern from "thrift/compiler/test/fixtures/basic-annotations/src/gen-py3/mo
     void addEventHandler(const shared_ptr[cTProcessorEventHandler]& handler)
 
     cFollyFuture[cFollyUnit] foo(cRpcOptions, )
+
+
+  cdef cppclass cFooBarBazServiceClientWrapper "::cpp2::FooBarBazServiceClientWrapper":
+    void setPersistentHeader(const string& key, const string& value)
+    void addEventHandler(const shared_ptr[cTProcessorEventHandler]& handler)
+
+    cFollyFuture[cFollyUnit] foo(cRpcOptions, )
+    cFollyFuture[cFollyUnit] bar(cRpcOptions, )
+    cFollyFuture[cFollyUnit] baz(cRpcOptions, )
 

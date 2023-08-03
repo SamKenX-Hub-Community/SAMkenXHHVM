@@ -28,7 +28,6 @@
 #include <thrift/compiler/lib/const_util.h>
 #include <thrift/compiler/lib/schematizer.h>
 
-#include <thrift/lib/cpp/util/VarintUtils.h>
 #include <thrift/lib/cpp2/protocol/CompactProtocol.h>
 #include <thrift/lib/cpp2/protocol/DebugProtocol.h>
 #include <thrift/lib/cpp2/protocol/Serializer.h>
@@ -69,9 +68,10 @@ class t_ast_generator : public t_generator {
   void process_options(
       const std::map<std::string, std::string>& options) override {
     out_dir_base_ = "gen-ast";
-    protocol_ = ast_protocol::json;
+    bool protocol_set = false;
     for (auto& pair : options) {
       if (pair.first == "protocol") {
+        protocol_set = true;
         if (pair.second == "json") {
           protocol_ = ast_protocol::json;
         } else if (pair.second == "debug") {
@@ -82,13 +82,15 @@ class t_ast_generator : public t_generator {
           throw std::runtime_error(
               fmt::format("Unknown protocol `{}`", pair.second));
         }
-      } else if (pair.first == "zigzag") {
-        useZigzag_ = pair.second != "0";
       } else if (pair.first == "ast") {
       } else {
         throw std::runtime_error(
             fmt::format("Unknown option `{}`", pair.first));
       }
+    }
+    if (!protocol_set) {
+      throw std::runtime_error(
+          "Missing required argument protocol=json|debug|compact");
     }
   }
 
@@ -97,23 +99,21 @@ class t_ast_generator : public t_generator {
  private:
   template <typename Id>
   Id positionToId(size_t pos) {
-    return Id{useZigzag_ ? util::zigzagToI64(pos + 1) : int64_t(pos + 1)};
+    return Id{int64_t(pos + 1)};
   }
   template <typename Id>
   size_t idToPosition(Id id) {
-    return useZigzag_ ? util::i64ToZigzag(folly::to_underlying(id)) - 1
-                      : size_t(id) - 1;
+    return size_t(id) - 1;
   }
 
   std::ofstream f_out_;
   ast_protocol protocol_;
-  bool useZigzag_{false};
 };
 
 void t_ast_generator::generate_program() {
   boost::filesystem::create_directory(get_out_dir());
   std::string fname = fmt::format("{}/{}.ast", get_out_dir(), program_->name());
-  f_out_.open(fname.c_str());
+  f_out_.open(fname.c_str(), std::ios::out | std::ios::binary);
 
   cpp2::Ast ast;
   std::unordered_map<const t_program*, apache::thrift::type::ProgramId>
@@ -122,7 +122,6 @@ void t_ast_generator::generate_program() {
       definition_index;
 
   auto intern_value = [&](std::unique_ptr<t_const_value> val,
-                          t_type_ref = {},
                           t_program* = nullptr) {
     // TODO: deduplication
     auto& values = ast.values().ensure();
@@ -143,16 +142,52 @@ void t_ast_generator::generate_program() {
         continue;
       }
       defs.push_back(definition_index.at(&def));
+    }
+  };
 
+  auto set_source_range = [&](const t_named& def,
+                              type::DefinitionAttrs& attrs,
+                              const t_program* program = nullptr) {
+    program = program ? program : def.program();
+
+    {
       resolved_location begin(def.src_range().begin, source_mgr_);
       resolved_location end(def.src_range().end, source_mgr_);
-      cpp2::SourceRange range;
+      type::SourceRange& range = *attrs.sourceRange();
       range.programId() = program_index.at(program);
       range.beginLine() = begin.line();
       range.beginColumn() = begin.column();
       range.endLine() = end.line();
       range.endColumn() = end.column();
-      ast.sourceRanges()[definition_index.at(&def)] = range;
+    }
+
+    if (def.has_doc()) {
+      resolved_location begin(def.doc_range().begin, source_mgr_);
+      resolved_location end(def.doc_range().end, source_mgr_);
+      type::SourceRange& range = *attrs.docs()->sourceRange();
+      range.programId() = program_index.at(program);
+      range.beginLine() = begin.line();
+      range.beginColumn() = begin.column();
+      range.endLine() = end.line();
+      range.endColumn() = end.column();
+    }
+  };
+  auto set_child_source_ranges = [&](const auto& node, auto& parent_def) {
+    using Node = std::decay_t<decltype(node)>;
+    if constexpr (std::is_base_of_v<t_structured, Node>) {
+      int i = 0;
+      for (const auto& field : node.fields()) {
+        auto& def = parent_def.fields()[i++];
+        assert(def.name() == field.name());
+        set_source_range(field, *def.attrs(), node.program());
+      }
+    } else if constexpr (std::is_same_v<Node, t_enum>) {
+      int i = 0;
+      for (const auto& value : node.values()) {
+        auto& def = parent_def.values()[i++];
+        assert(def.name() == value.name());
+        set_source_range(value, *def.attrs(), node.program());
+      }
     }
   };
 
@@ -197,18 +232,19 @@ void t_ast_generator::generate_program() {
     // visits the children after this lambda returns.
   });
 
-#define THRIFT_ADD_VISITOR(kind)                               \
-  visitor.add_##kind##_visitor([&](const t_##kind& node) {     \
-    if (node.generated()) {                                    \
-      return;                                                  \
-    }                                                          \
-    auto& definitions = *ast.definitions();                    \
-    auto pos = definitions.size();                             \
-    definition_index[&node] =                                  \
-        positionToId<apache::thrift::type::DefinitionId>(pos); \
-    hydrate_const(                                             \
-        definitions.emplace_back().kind##Def_ref().ensure(),   \
-        *schema_source.gen_schema(node));                      \
+#define THRIFT_ADD_VISITOR(kind)                                     \
+  visitor.add_##kind##_visitor([&](const t_##kind& node) {           \
+    if (node.generated()) {                                          \
+      return;                                                        \
+    }                                                                \
+    auto& definitions = *ast.definitions();                          \
+    auto pos = definitions.size();                                   \
+    definition_index[&node] =                                        \
+        positionToId<apache::thrift::type::DefinitionId>(pos);       \
+    auto& def = definitions.emplace_back().kind##Def_ref().ensure(); \
+    hydrate_const(def, *schema_source.gen_schema(node));             \
+    set_source_range(node, *def.attrs());                            \
+    set_child_source_ranges(node, def);                              \
   })
   THRIFT_ADD_VISITOR(service);
   THRIFT_ADD_VISITOR(interaction);
@@ -224,7 +260,6 @@ void t_ast_generator::generate_program() {
 
   switch (protocol_) {
     case ast_protocol::json:
-      // TODO: use new json serializer when available.
       f_out_ << serialize<SimpleJSONProtocolWriter>(ast);
       break;
     case ast_protocol::debug:

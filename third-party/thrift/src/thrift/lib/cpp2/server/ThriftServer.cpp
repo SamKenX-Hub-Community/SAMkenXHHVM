@@ -41,6 +41,7 @@
 #include <folly/io/GlobalShutdownSocketSet.h>
 #include <folly/portability/Sockets.h>
 #include <folly/system/Pid.h>
+#include <quic/server/async_tran/QuicAsyncTransportServer.h>
 #include <thrift/lib/cpp/concurrency/InitThreadFactory.h>
 #include <thrift/lib/cpp/concurrency/PosixThreadFactory.h>
 #include <thrift/lib/cpp/concurrency/Thread.h>
@@ -81,6 +82,8 @@ FOLLY_GFLAGS_DEFINE_string(
 
 THRIFT_FLAG_DEFINE_bool(server_alpn_prefer_rocket, true);
 THRIFT_FLAG_DEFINE_bool(server_enable_stoptls, false);
+THRIFT_FLAG_DEFINE_bool(enable_mrl_check_for_thrift_server, false);
+THRIFT_FLAG_DEFINE_bool(enforce_mrl_check_for_thrift_server, false);
 
 THRIFT_FLAG_DEFINE_bool(dump_snapshot_on_long_shutdown, true);
 
@@ -90,7 +93,11 @@ THRIFT_FLAG_DEFINE_bool(enable_on_stop_serving, true);
 
 THRIFT_FLAG_DEFINE_bool(enable_io_queue_lag_detection, true);
 
-THRIFT_FLAG_DEFINE_bool(enforce_queue_concurrency_resource_pools, true);
+THRIFT_FLAG_DEFINE_bool(enforce_queue_concurrency_resource_pools, false);
+
+THRIFT_FLAG_DEFINE_bool(enable_quic, false);
+
+THRIFT_FLAG_DEFINE_bool(fizz_server_enable_hybrid_kex, false);
 
 namespace apache::thrift::detail {
 THRIFT_PLUGGABLE_FUNC_REGISTER(
@@ -124,6 +131,29 @@ namespace {
   std::exit(code);
 #endif
 }
+
+const quic::TransportSettings& getQuicTransportSettings() {
+  static quic::TransportSettings ts = ([]() {
+    quic::TransportSettings ts_;
+    ts_.advertisedInitialConnectionWindowSize = 60 * 1024 * 1024;
+    ts_.advertisedInitialBidiLocalStreamWindowSize = 60 * 1024 * 1024;
+    ts_.advertisedInitialMaxStreamsBidi = 1;
+    ts_.advertisedInitialMaxStreamsUni = 0;
+    ts_.numGROBuffers_ = quic::kMaxNumGROBuffers;
+    ts_.writeConnectionDataPacketsLimit = 50;
+    ts_.batchingMode = quic::QuicBatchingMode::BATCHING_MODE_GSO;
+    ts_.maxBatchSize = 50;
+    ts_.initCwndInMss = 100;
+    ts_.maxCwndInMss = quic::kLargeMaxCwndInMss;
+    ts_.maxRecvBatchSize = 64;
+    ts_.shouldRecvBatch = true;
+    ts_.shouldUseRecvmmsgForBatchRecv = true;
+    return ts_;
+  })();
+
+  return ts;
+}
+
 } // namespace
 
 namespace apache {
@@ -236,14 +266,6 @@ ThriftServer::ThriftServer(const ThriftServerInitialConfig& initialConfig)
   initializeDefaults();
 }
 
-ThriftServer::ThriftServer(
-    const std::shared_ptr<HeaderServerChannel>& serverChannel)
-    : ThriftServer() {
-  serverChannel_ = serverChannel;
-  setNumIOWorkerThreads(1);
-  setIdleTimeout(std::chrono::milliseconds(0));
-}
-
 void ThriftServer::initializeDefaults() {
   if (FLAGS_thrift_ssl_policy == "required") {
     sslPolicy_ = SSLPolicy::REQUIRED;
@@ -299,15 +321,6 @@ void ThriftServer::initializeDefaults() {
 
 ThriftServer::~ThriftServer() {
   tracker_.reset();
-  if (duplexWorker_) {
-    // usually ServerBootstrap::stop drains the workers, but ServerBootstrap
-    // doesn't know about duplexWorker_
-    duplexWorker_->drainAllConnections();
-
-    LOG_IF(ERROR, !duplexWorker_.unique())
-        << getActiveRequests() << " active Requests while in destructing"
-        << " duplex ThriftServer. Consider using startDuplex & stopDuplex";
-  }
 
   SCOPE_EXIT { stopController_.join(); };
 
@@ -482,12 +495,14 @@ void ThriftServer::setup() {
     // We don't use SIG_IGN here as child processes will inherit that handler.
     // Instead, we swallow the signal to enable SIGPIPE in children to behave
     // normally.
-    // Furthermore, setting flags to 0 and using sigaction prevents SA_RESTART
-    // from restarting syscalls after the handler completed. This is important
-    // for code using SIGPIPE to interrupt syscalls in other threads.
+    // Furthermore, the signal flags passed below to sigaction prevents
+    // SA_RESTART from restarting syscalls after the handler completed. This is
+    // important for code using SIGPIPE to interrupt syscalls in other threads.
+    // Also pass SA_ONSTACK to prevent using the default stack which causes
+    // panics in Go (see https://pkg.go.dev/os/signal).
     struct sigaction sa = {};
     sa.sa_handler = [](int) {};
-    sa.sa_flags = 0;
+    sa.sa_flags = SA_ONSTACK;
     sigemptyset(&sa.sa_mask);
     sigaction(SIGPIPE, &sa, nullptr);
 #endif
@@ -504,86 +519,89 @@ void ThriftServer::setup() {
 
     setupThreadManager();
 
-    if (!serverChannel_) {
-      ServerBootstrap::socketConfig.acceptBacklog = getListenBacklog();
-      ServerBootstrap::socketConfig.maxNumPendingConnectionsPerWorker =
-          getMaxNumPendingConnectionsPerWorker();
-      if (reusePort_.value_or(false)) {
-        ServerBootstrap::setReusePort(true);
-      }
-      if (enableTFO_) {
-        ServerBootstrap::socketConfig.enableTCPFastOpen = *enableTFO_;
-        ServerBootstrap::socketConfig.fastOpenQueueSize = fastOpenQueueSize_;
-      }
+    ServerBootstrap::socketConfig.acceptBacklog = getListenBacklog();
+    ServerBootstrap::socketConfig.maxNumPendingConnectionsPerWorker =
+        getMaxNumPendingConnectionsPerWorker();
+    if (reusePort_.value_or(false)) {
+      ServerBootstrap::setReusePort(true);
+    }
+    if (enableTFO_) {
+      ServerBootstrap::socketConfig.enableTCPFastOpen = *enableTFO_;
+      ServerBootstrap::socketConfig.fastOpenQueueSize = fastOpenQueueSize_;
+    }
 
-      ioThreadPool_->addObserver(
-          folly::IOThreadPoolDeadlockDetectorObserver::create(
-              ioThreadPool_->getName()));
-      ioObserverFactories.withRLock([this](auto& factories) {
-        for (auto& f : factories) {
-          ioThreadPool_->addObserver(f(
-              ioThreadPool_->getName(), ioThreadPool_->getThreadIdCollector()));
+    ioThreadPool_->addObserver(
+        folly::IOThreadPoolDeadlockDetectorObserver::create(
+            ioThreadPool_->getName()));
+    ioObserverFactories.withRLock([this](auto& factories) {
+      for (auto& f : factories) {
+        ioThreadPool_->addObserver(
+            f(ioThreadPool_->getName(), ioThreadPool_->getThreadIdCollector()));
+      }
+    });
+
+    // Resize the IO pool
+    ioThreadPool_->setNumThreads(nWorkers);
+    if (!acceptPool_) {
+      acceptPool_ = std::make_shared<folly::IOThreadPoolExecutor>(
+          nAcceptors_,
+          std::make_shared<folly::NamedThreadFactory>("Acceptor Thread"));
+    }
+
+    auto acceptorFactory = acceptorFactory_
+        ? acceptorFactory_
+        : std::make_shared<DefaultThriftAcceptorFactory>(this);
+    if (auto factory = dynamic_cast<wangle::AcceptorFactorySharedSSLContext*>(
+            acceptorFactory.get())) {
+      sharedSSLContextManager_ = factory->initSharedSSLContextManager();
+    }
+    ServerBootstrap::childHandler(std::move(acceptorFactory));
+
+    {
+      std::lock_guard<std::mutex> lock(ioGroupMutex_);
+      ServerBootstrap::group(acceptPool_, ioThreadPool_);
+    }
+    if (socket_) {
+      ServerBootstrap::bind(std::move(socket_));
+    } else if (!getAddress().isInitialized()) {
+      ServerBootstrap::bind(port_.value_or(0));
+    } else {
+      for (auto& address : addresses_) {
+        ServerBootstrap::bind(address);
+      }
+    }
+    // Update address_ with the address that we are actually bound to.
+    // (This is needed if we were supplied a pre-bound socket, or if
+    // address_'s port was set to 0, so an ephemeral port was chosen by
+    // the kernel.)
+    ServerBootstrap::getSockets()[0]->getAddress(&addresses_.at(0));
+
+    // we enable zerocopy for the server socket if the
+    // zeroCopyEnableFunc_ is valid
+    bool useZeroCopy = !!zeroCopyEnableFunc_;
+    for (auto& socket : getSockets()) {
+      auto* evb = socket->getEventBase();
+      evb->runImmediatelyOrRunInEventBaseThreadAndWait([&] {
+        socket->setShutdownSocketSet(wShutdownSocketSet_);
+        socket->setAcceptRateAdjustSpeed(acceptRateAdjustSpeed_);
+        socket->setZeroCopy(useZeroCopy);
+        socket->setQueueTimeout(getSocketQueueTimeout());
+        if (callbackAssignFunc_) {
+          socket->setCallbackAssignFunction(std::move(callbackAssignFunc_));
+        }
+
+        try {
+          socket->setTosReflect(tosReflect_);
+          socket->setListenerTos(listenerTos_);
+        } catch (std::exception const& ex) {
+          LOG(ERROR) << "Got exception setting up TOS settings: "
+                     << folly::exceptionStr(ex);
         }
       });
+    }
 
-      // Resize the IO pool
-      ioThreadPool_->setNumThreads(nWorkers);
-      if (!acceptPool_) {
-        acceptPool_ = std::make_shared<folly::IOThreadPoolExecutor>(
-            nAcceptors_,
-            std::make_shared<folly::NamedThreadFactory>("Acceptor Thread"));
-      }
-
-      auto acceptorFactory = acceptorFactory_
-          ? acceptorFactory_
-          : std::make_shared<DefaultThriftAcceptorFactory>(this);
-      if (auto factory = dynamic_cast<wangle::AcceptorFactorySharedSSLContext*>(
-              acceptorFactory.get())) {
-        sharedSSLContextManager_ = factory->initSharedSSLContextManager();
-      }
-      ServerBootstrap::childHandler(std::move(acceptorFactory));
-
-      {
-        std::lock_guard<std::mutex> lock(ioGroupMutex_);
-        ServerBootstrap::group(acceptPool_, ioThreadPool_);
-      }
-      if (socket_) {
-        ServerBootstrap::bind(std::move(socket_));
-      } else if (!getAddress().isInitialized()) {
-        ServerBootstrap::bind(port_.value_or(0));
-      } else {
-        for (auto& address : addresses_) {
-          ServerBootstrap::bind(address);
-        }
-      }
-      // Update address_ with the address that we are actually bound to.
-      // (This is needed if we were supplied a pre-bound socket, or if
-      // address_'s port was set to 0, so an ephemeral port was chosen by
-      // the kernel.)
-      ServerBootstrap::getSockets()[0]->getAddress(&addresses_.at(0));
-
-      // we enable zerocopy for the server socket if the
-      // zeroCopyEnableFunc_ is valid
-      bool useZeroCopy = !!zeroCopyEnableFunc_;
-      for (auto& socket : getSockets()) {
-        auto* evb = socket->getEventBase();
-        evb->runImmediatelyOrRunInEventBaseThreadAndWait([&] {
-          socket->setShutdownSocketSet(wShutdownSocketSet_);
-          socket->setAcceptRateAdjustSpeed(acceptRateAdjustSpeed_);
-          socket->setZeroCopy(useZeroCopy);
-          socket->setQueueTimeout(getSocketQueueTimeout());
-
-          try {
-            socket->setTosReflect(tosReflect_);
-            socket->setListenerTos(listenerTos_);
-          } catch (std::exception const& ex) {
-            LOG(ERROR) << "Got exception setting up TOS settings: "
-                       << folly::exceptionStr(ex);
-          }
-        });
-      }
-    } else {
-      startDuplex();
+    if (THRIFT_FLAG(enable_quic)) {
+      startQuicServer();
     }
 
 #if FOLLY_HAS_COROUTINES
@@ -683,11 +701,18 @@ void ThriftServer::setupThreadManager() {
     if (!useResourcePools()) {
       DCHECK(resourcePoolSet().empty());
       // We always need a threadmanager for cpp2.
-      LOG(INFO) << "Using thread manager (resource pools not enabled) "
-                << runtimeServerActions_.explain() << " on address/port "
-                << getAddressAsString() << " enable gflag:"
-                << FLAGS_thrift_experimental_use_resource_pools
-                << " disable gflag:" << FLAGS_thrift_disable_resource_pools;
+      auto explanation = fmt::format(
+          "runtime: {}, thrift flag: {}, enable gflag: {}, disable gflag: {}",
+          runtimeServerActions_.explain(),
+          THRIFT_FLAG(experimental_use_resource_pools),
+          FLAGS_thrift_experimental_use_resource_pools,
+          FLAGS_thrift_disable_resource_pools);
+      LOG(INFO)
+          << "Using thread manager (resource pools not enabled) on address/port "
+          << getAddressAsString() << ": " << explanation;
+      if (auto observer = getObserverShared()) {
+        observer->resourcePoolsDisabled(explanation);
+      }
       if (!threadManager_) {
         std::shared_ptr<apache::thrift::concurrency::ThreadManager>
             threadManager;
@@ -778,11 +803,16 @@ void ThriftServer::setupThreadManager() {
         THRIFT_SERVER_EVENT(resourcepoolsruntimedisallowed).log(*this);
       }
     } else {
+      auto explanation = fmt::format(
+          "thrift flag: {}, enable gflag: {}, dsiable gflag: {}",
+          THRIFT_FLAG(experimental_use_resource_pools),
+          FLAGS_thrift_experimental_use_resource_pools,
+          FLAGS_thrift_disable_resource_pools);
       LOG(INFO) << "Using resource pools on address/port "
-                << getAddressAsString() << " thrift flag:"
-                << THRIFT_FLAG(experimental_use_resource_pools)
-                << " enable gflag:"
-                << FLAGS_thrift_experimental_use_resource_pools;
+                << getAddressAsString() << ": " << explanation;
+      if (auto observer = getObserverShared()) {
+        observer->resourcePoolsEnabled(explanation);
+      }
 
       LOG(INFO) << "QPS limit will be enforced by "
                 << (FLAGS_thrift_server_enforces_qps_limit
@@ -866,7 +896,23 @@ void ThriftServer::setupThreadManager() {
   resourcePoolSet().lock();
 
   if (!resourcePoolSet().empty()) {
-    LOG(INFO) << "Resource pools:" << resourcePoolSet().describe();
+    LOG(INFO) << "Resource pools (" << resourcePoolSet().size()
+              << "): " << resourcePoolSet().describe();
+
+    auto descriptions = resourcePoolSet().poolsDescriptions();
+    if (auto observer = getObserverShared()) {
+      observer->resourcePoolsInitialized(descriptions);
+    }
+
+    size_t count{0};
+    for (auto description : descriptions) {
+      LOG(INFO) << fmt::format("Resource pool [{}]: {}", count++, description);
+    }
+  }
+  if (FLAGS_thrift_server_enforces_qps_limit) {
+    LOG(INFO) << "QPS limit will be enforced by Thrift Server";
+  } else {
+    LOG(INFO) << "QPS limit will be enforced by Resource Pool";
   }
 }
 
@@ -1274,48 +1320,10 @@ void ThriftServer::ensureResourcePools() {
 }
 
 /**
- * Preferably use this method in order to start ThriftServer created for
- * DuplexChannel instead of the serve() method.
- */
-void ThriftServer::startDuplex() {
-  CHECK(configMutable());
-  ensureDecoratedProcessorFactoryInitialized();
-  duplexWorker_ = Cpp2Worker::create(this, serverChannel_);
-  // we don't control the EventBase for the duplexWorker, so when we shut
-  // it down, we need to ensure there's no delay
-  duplexWorker_->setGracefulShutdownTimeout(std::chrono::milliseconds(0));
-}
-
-/**
- * This method should be used to cleanly stop a ThriftServer created for
- * DuplexChannel before disposing the ThriftServer. The caller should pass
- * in a shared_ptr to this ThriftServer since the ThriftServer does not
- * have a way of getting that (does not inherit from
- * enable_shared_from_this)
- */
-void ThriftServer::stopDuplex(std::shared_ptr<ThriftServer> thisServer) {
-  DCHECK(this == thisServer.get());
-  DCHECK(duplexWorker_ != nullptr);
-
-  // Try to stop our Worker but this cannot stop in flight requests
-  // Instead, it will capture a shared_ptr back to us, keeping us alive
-  // until it really goes away (when in-flight requests are gone)
-  duplexWorker_->stopDuplex(thisServer);
-
-  // Get rid of our reference to the worker to avoid forming a cycle
-  duplexWorker_ = nullptr;
-}
-
-/**
  * Loop and accept incoming connections.
  */
 void ThriftServer::serve() {
   setup();
-  if (serverChannel_ != nullptr) {
-    // A duplex server (the one running on a client) doesn't uses its own
-    // EB since it reuses the client's EB
-    return;
-  }
   SCOPE_EXIT { this->cleanUp(); };
 
   auto sslContextConfigCallbackHandle = sslContextObserver_
@@ -1326,8 +1334,6 @@ void ThriftServer::serve() {
 }
 
 void ThriftServer::cleanUp() {
-  DCHECK(!serverChannel_);
-
   // tlsCredWatcher_ uses a background thread that needs to be joined
   // prior to any further writes to ThriftServer members.
   tlsCredWatcher_.withWLock([](auto& credWatcher) { credWatcher.reset(); });
@@ -1374,6 +1380,9 @@ void ThriftServerStopController::stop() {
 void ThriftServer::stop() {
   if (auto s = stopController_.lock()) {
     s->stop();
+  }
+  if (quicServer_) {
+    quicServer_->shutdown();
   }
 }
 
@@ -1425,10 +1434,6 @@ void ThriftServer::stopListening() {
 }
 
 void ThriftServer::stopWorkers() {
-  if (serverChannel_) {
-    return;
-  }
-  DCHECK(!duplexWorker_);
   ServerBootstrap::stop();
   ServerBootstrap::join();
   thriftConfig_.unfreeze();
@@ -1533,14 +1538,9 @@ void ThriftServer::stopAcceptingAndJoinOutstandingRequests() {
     }
   });
 
-  // Clear the decorated processor factory so that it's re-created if the
-  // server is restarted. Note that duplex servers drain connections in the
-  // destructor so we need to keep the AsyncProcessorFactory alive until then.
-  // Duplex servers also don't support restarting the server so extending its
-  // lifetime should not cause issues.
-  if (!isDuplex()) {
-    decoratedProcessorFactory_.reset();
-  }
+  // Clear the decorated processor factory so that it's re-created if the server
+  // is restarted.
+  decoratedProcessorFactory_.reset();
 
   internalStatus_.store(ServerStatus::NOT_RUNNING, std::memory_order_release);
 }
@@ -1986,6 +1986,14 @@ folly::observer::Observer<bool> ThriftServer::enableStopTLS() {
   return THRIFT_FLAG_OBSERVE(server_enable_stoptls);
 }
 
+folly::observer::Observer<bool> ThriftServer::enableTLSCertRevocation() {
+  return THRIFT_FLAG_OBSERVE(enable_mrl_check_for_thrift_server);
+}
+
+folly::observer::Observer<bool> ThriftServer::enforceTLSCertRevocation() {
+  return THRIFT_FLAG_OBSERVE(enforce_mrl_check_for_thrift_server);
+}
+
 folly::observer::CallbackHandle ThriftServer::getSSLCallbackHandle() {
   auto originalPid = folly::get_cached_pid();
 
@@ -2032,7 +2040,7 @@ void ThriftServer::addIOThreadPoolObserverFactory(
   ioObserverFactories.wlock()->push_back(std::move(factory));
 }
 
-/* static */ std::shared_ptr<folly::IOThreadPoolExecutor>
+/* static */ std::shared_ptr<folly::IOThreadPoolExecutorBase>
 ThriftServer::createIOThreadPool() {
   return std::make_shared<folly::IOThreadPoolExecutor>(
       0,
@@ -2044,14 +2052,14 @@ ThriftServer::createIOThreadPool() {
 
 namespace {
 struct NewConnectionContextHolder
-    : public folly::AsyncTransport::LifecycleObserver {
+    : public folly::AsyncSocket::LegacyLifecycleObserver {
   explicit NewConnectionContextHolder(ThriftServer::NewConnectionContext c)
       : ctx(std::move(c)) {}
 
-  void observerAttach(folly::AsyncTransport*) noexcept override {}
-  void observerDetach(folly::AsyncTransport*) noexcept override { delete this; }
-  void destroy(folly::AsyncTransport*) noexcept override { delete this; }
-  void close(folly::AsyncTransport*) noexcept override {}
+  void observerAttach(folly::AsyncSocket*) noexcept override {}
+  void observerDetach(folly::AsyncSocket*) noexcept override { delete this; }
+  void destroy(folly::AsyncSocket*) noexcept override { delete this; }
+  void close(folly::AsyncSocket*) noexcept override {}
 
   ThriftServer::NewConnectionContext ctx;
 };
@@ -2085,5 +2093,56 @@ ThriftServer::extractNewConnectionContext(folly::AsyncTransport& transport) {
   return folly::none;
 }
 
+void ThriftServer::startQuicServer() {
+  // add hook into quic server
+  quicServer_ = std::make_unique<quic::QuicAsyncTransportServer>(
+      [this](folly::AsyncTransport::UniquePtr asyncTransport) {
+        auto* evb = asyncTransport->getEventBase();
+        // get worker associated with evb
+        auto** worker = evbToWorker_.get(*evb);
+        if (!worker) {
+          // worker destructed or hasn't begun yet, either way close to
+          // prevent connection from lingering
+          asyncTransport->closeWithReset();
+          return;
+        }
+
+        auto clientAddr = asyncTransport->getPeerAddress();
+        auto alpn = asyncTransport->getApplicationProtocol();
+        (*worker)->onNewConnection(
+            std::move(asyncTransport),
+            &clientAddr,
+            alpn,
+            wangle::SecureTransportType::TLS,
+            wangle::TransportInfo());
+      });
+  auto keepalives = ioThreadPool_->getAllEventBases();
+  std::vector<folly::EventBase*> evbs(keepalives.size());
+  std::transform(
+      keepalives.begin(),
+      keepalives.end(),
+      evbs.begin(),
+      [](folly::Executor::KeepAlive<folly::EventBase>& in) {
+        return in->getEventBase();
+      });
+
+  auto server_addr = socket_ ? socket_->getAddress() : getAddress();
+  CHECK(server_addr.isInitialized());
+
+  auto wangleConfig = getServerSocketConfig();
+  auto fizzCertManager = std::shared_ptr<fizz::server::CertManager>(
+      wangle::FizzConfigUtil::createCertManager(wangleConfig, nullptr)
+          .release());
+  auto fizzContext = wangle::FizzConfigUtil::createFizzContext(wangleConfig);
+  fizzContext->setCertManager(fizzCertManager);
+
+  quicServer_->setFizzContext(std::move(fizzContext));
+  quicServer_->setTransportSettings(getQuicTransportSettings());
+  quicServer_->start(server_addr, evbs);
+}
+
+folly::observer::Observer<bool> ThriftServer::enableHybridKex() {
+  return THRIFT_FLAG_OBSERVE(fizz_server_enable_hybrid_kex);
+}
 } // namespace thrift
 } // namespace apache

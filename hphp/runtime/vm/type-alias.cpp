@@ -28,26 +28,6 @@ namespace HPHP {
 
 namespace {
 
-TypeAlias typeAliasFromClass(const PreTypeAlias* thisType,
-                             Class *klass) {
-  assertx(klass);
-  TypeAlias req(thisType);
-  req.nullable = thisType->nullable;
-  if (isEnum(klass)) {
-    // If the class is an enum, pull out the actual base type.
-    if (auto const enumType = klass->enumBaseTy()) {
-      req.type = enumDataTypeToAnnotType(*enumType);
-      assertx(req.type != AnnotType::Object);
-    } else {
-      req.type = AnnotType::ArrayKey;
-    }
-  } else {
-    req.type = AnnotType::Object;
-    req.klass = klass;
-  }
-  return req;
-}
-
 TypeAlias resolveTypeAlias(const PreTypeAlias* thisType, bool failIsFatal) {
   /*
    * If this type alias is a KindOfObject and the name on the right
@@ -60,63 +40,114 @@ TypeAlias resolveTypeAlias(const PreTypeAlias* thisType, bool failIsFatal) {
    * If the right hand side was a class, we need to autoload and
    * ensure it exists at this point.
    */
-  if (thisType->type != AnnotType::Object &&
-      thisType->type != AnnotType::Unresolved) {
-    return TypeAlias::From(thisType);
-  }
 
   /*
    * If the right hand side is already defined, don't invoke the
    * autoloader at all, this means we have to check for both a type
    * alias and a class before attempting to load them via the
    * autoloader.
-   *
-   * While normal autoloaders are fine, the "failure" entry in the
-   * map passed to `HH\set_autoload_paths` is called for all failed
-   * lookups. The failure function can do anything, including something
-   * like like raising an error or rebuilding the map. We don't want to
-   * send speculative (or worse, repeat) requests to the autoloader, so
-   * do our due diligence here.
    */
+  TypeAlias req(thisType);
+  req.nullable = thisType->nullable;
+  req.unionSize = 0;
+  std::vector<TypeAlias::TypeAndClass> tcu;
 
-  const StringData* typeName = thisType->value;
-  auto targetNE = NamedType::get(typeName);
+  auto const typeAliasFromClass = [&](Class* klass) {
+    if (isEnum(klass)) {
+      // If the class is an enum, pull out the actual base type.
+      if (auto const enumType = klass->enumBaseTy()) {
+        auto t = enumDataTypeToAnnotType(*enumType);
+        assertx(t != AnnotType::Object);
+        tcu.emplace_back(t, nullptr);
+      } else {
+        tcu.emplace_back(AnnotType::ArrayKey, nullptr);
+      }
+    } else {
+      tcu.emplace_back(AnnotType::Object, klass);
+    }
+  };
 
-  if (auto klass = Class::lookup(targetNE)) {
-    return typeAliasFromClass(thisType, klass);
-  }
+  auto const from = [&](const TypeAlias& ta) {
+    if (ta.invalid) {
+      req.invalid = true;
+      return;
+    }
+    req.nullable |= ta.nullable;
+    auto it = ta.typeAndClassUnion();
+    tcu.insert(tcu.end(), it.begin(), it.end());
+  };
 
-  if (auto targetTd = targetNE->getCachedTypeAlias()) {
-    assertx(thisType->type != AnnotType::Object);
-    return TypeAlias::From(*targetTd, thisType);
-  }
+  for (auto const& [type, typeName] : thisType->typeAndValueUnion) {
+    if (type != AnnotType::Object && type != AnnotType::Unresolved) {
+      tcu.emplace_back(type, nullptr);
+      continue;
+    }
+    auto targetNE = NamedType::get(typeName);
 
-  if (failIsFatal &&
-      AutoloadHandler::s_instance->autoloadTypeOrTypeAlias(
-        StrNR(const_cast<StringData*>(typeName))
-      )) {
     if (auto klass = Class::lookup(targetNE)) {
-      return typeAliasFromClass(thisType, klass);
+      typeAliasFromClass(klass);
+      continue;
     }
+
     if (auto targetTd = targetNE->getCachedTypeAlias()) {
-      assertx(thisType->type != AnnotType::Object);
-      return TypeAlias::From(*targetTd, thisType);
+      assertx(type != AnnotType::Object);
+      from(*targetTd);
+      if (req.invalid) return req;
+      continue;
     }
+
+    if (failIsFatal &&
+        AutoloadHandler::s_instance->autoloadTypeOrTypeAlias(
+          StrNR(const_cast<StringData*>(typeName.get()))
+        )) {
+      if (auto klass = Class::lookup(targetNE)) {
+        typeAliasFromClass(klass);
+        continue;
+      }
+      if (auto targetTd = targetNE->getCachedTypeAlias()) {
+        assertx(type != AnnotType::Object);
+        from(*targetTd);
+        if (req.invalid) return req;
+        continue;
+      }
+    }
+    // could not resolve, it is invalid
+    req.invalid = true;
+    return req;
   }
 
-  return TypeAlias::Invalid(thisType);
+  req.unionSize = tcu.size();
+  size_t allocSize = tcu.size() * sizeof(TypeAlias::TypeAndClass);
+  auto const isPersistent = (thisType->attrs & AttrPersistent);
+  req.typeAndClassUnionArr = static_cast<TypeAlias::TypeAndClass*>(
+    isPersistent ? malloc(allocSize) : req::malloc_untyped(allocSize));
+  for (size_t i = 0; i < tcu.size(); ++i) {
+    req.typeAndClassUnionArr[i] = tcu[i];
+  }
+  return req;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-}
+} // namespace
 
 bool TypeAlias::compat(const PreTypeAlias& alias) const {
   // FIXME(T116316964): can't compare type of unresolved PreTypeAlias
-  auto const preType = alias.type == AnnotType::Unresolved
-    ? AnnotType::Object : alias.type;
-  return (alias.type == AnnotType::Mixed && type == AnnotType::Mixed) ||
-         (preType == type && alias.nullable == nullable &&
-          Class::lookup(alias.value) == klass);
+  if (alias.typeAndValueUnion.size() != unionSize) {
+    return false;
+  }
+  for (size_t i = 0; i < unionSize; ++i) {
+    auto const& [type, klass] = typeAndClassUnionArr[i];
+    auto const& [ptype, value] = alias.typeAndValueUnion[i];
+    auto const preType =
+      ptype == AnnotType::Unresolved ? AnnotType::Object : ptype;
+    if (ptype == AnnotType::Mixed && type == AnnotType::Mixed) continue;
+    if (preType == type && alias.nullable == nullable &&
+        Class::lookup(value) == klass) {
+      continue;
+    }
+    return false;
+  }
+  return true;
 }
 
 size_t TypeAlias::stableHash() const {
@@ -168,7 +199,6 @@ const TypeAlias* TypeAlias::load(const StringData* name,
 
 const TypeAlias* TypeAlias::def(const PreTypeAlias* thisType, bool failIsFatal) {
   auto nameList = NamedType::get(thisType->name);
-  const StringData* typeName = thisType->value;
 
   /*
    * Check if this name already was defined as a type alias, and if so
@@ -210,13 +240,21 @@ const TypeAlias* TypeAlias::def(const PreTypeAlias* thisType, bool failIsFatal) 
   if (resolved.invalid) {
     if (!failIsFatal) return nullptr;
     FrameRestore _(thisType);
-    raise_error("Unknown type or class %s", typeName->data());
+    std::vector<folly::StringPiece> names;
+    for (auto const& [_, s] : thisType->typeAndValueUnion) {
+      if (!s) continue;
+      names.push_back(s->slice());
+    }
+    std::string combined = folly::join("|", names);
+    raise_error("Unknown type or class %s", combined.c_str());
     not_reached();
   }
 
   auto const isPersistent = (thisType->attrs & AttrPersistent);
-  if (isPersistent) {
-    assertx(!resolved.klass || classHasPersistentRDS(resolved.klass));
+  if (debug && isPersistent) {
+    for (DEBUG_ONLY auto const& [_, klass] : resolved.typeAndClassUnion()) {
+      assertx(!klass || classHasPersistentRDS(klass));
+    }
   }
 
   nameList->m_cachedTypeAlias.bind(

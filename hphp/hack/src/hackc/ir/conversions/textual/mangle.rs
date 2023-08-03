@@ -42,31 +42,28 @@ impl Mangle for [u8] {
             b"unreachable" => "unreachable_".to_owned(),
             b"void" => "void_".to_owned(),
             _ => {
+                // This mangling is terrible... but probably "good enough".
+                // If a digit is first then we prepend a '_'.
                 // [A-Za-z0-9_$] -> identity
                 // \ -> ::
-                // anything else -> $xx
+                // anything else -> xx (hex digits)
                 let mut res = String::with_capacity(self.len());
-                let mut first = true;
+                if self.first().map_or(false, u8::is_ascii_digit) {
+                    res.push('_');
+                }
                 for &ch in self {
-                    if (b'A'..=b'Z').contains(&ch)
-                        || (b'a'..=b'z').contains(&ch)
-                        || (ch == b'_')
-                        || (ch == b'$')
-                    {
-                        res.push(ch as char);
-                    } else if (b'0'..=b'9').contains(&ch) {
-                        if first {
-                            res.push('_')
+                    match ch {
+                        b'_' | b'$' => res.push(ch as char),
+                        b'\\' => {
+                            res.push(':');
+                            res.push(':');
                         }
-                        res.push(ch as char);
-                    } else if ch == b'\\' {
-                        res.push(':');
-                        res.push(':');
-                    } else {
-                        res.push(b"0123456789abcdef"[(ch >> 4) as usize] as char);
-                        res.push(b"0123456789abcdef"[(ch & 15) as usize] as char);
+                        ch if ch.is_ascii_alphanumeric() => res.push(ch as char),
+                        _ => {
+                            res.push(b"0123456789abcdef"[(ch >> 4) as usize] as char);
+                            res.push(b"0123456789abcdef"[(ch & 15) as usize] as char);
+                        }
                     }
-                    first = false;
                 }
                 res
             }
@@ -84,13 +81,25 @@ impl Mangle for ir::PropId {
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub(crate) enum Intrinsic {
-    AllocCurry,
     ConstInit(ir::ClassId),
     Construct(ir::ClassId),
     Factory(ir::ClassId),
     Invoke(TypeName),
     PropInit(ir::ClassId),
     StaticInit(ir::ClassId),
+}
+
+impl Intrinsic {
+    pub(crate) fn contains_unknown(&self) -> bool {
+        match self {
+            Intrinsic::ConstInit(_)
+            | Intrinsic::Construct(_)
+            | Intrinsic::Factory(_)
+            | Intrinsic::PropInit(_)
+            | Intrinsic::StaticInit(_) => false,
+            Intrinsic::Invoke(name) => *name == TypeName::Unknown,
+        }
+    }
 }
 
 /// Represents a named callable thing.  This includes top-level functions and
@@ -109,6 +118,10 @@ impl FunctionName {
         Self::Method(TypeName::class(class, is_static), method)
     }
 
+    pub(crate) fn untyped_method(method: ir::MethodId) -> Self {
+        Self::Method(TypeName::Unknown, method)
+    }
+
     pub(crate) fn display<'r>(&'r self, strings: &'r StringInterner) -> impl fmt::Display + 'r {
         FmtFunctionName(strings, self)
     }
@@ -117,6 +130,16 @@ impl FunctionName {
         let a = self.display(strings).to_string();
         let b = other.display(strings).to_string();
         a.cmp(&b)
+    }
+
+    pub(crate) fn contains_unknown(&self) -> bool {
+        match self {
+            FunctionName::Builtin(_) | FunctionName::Function(_) | FunctionName::Unmangled(_) => {
+                false
+            }
+            FunctionName::Intrinsic(intrinsic) => intrinsic.contains_unknown(),
+            FunctionName::Method(name, _) => *name == TypeName::Unknown,
+        }
     }
 }
 
@@ -135,7 +158,6 @@ impl fmt::Display for FmtFunctionName<'_> {
             FunctionName::Intrinsic(intrinsic) => {
                 let tn;
                 let (ty, name) = match intrinsic {
-                    Intrinsic::AllocCurry => (None, "__sil_allocate_curry"),
                     Intrinsic::ConstInit(cid) => {
                         tn = TypeName::StaticClass(*cid);
                         (Some(&tn), "_86cinit")
@@ -215,8 +237,9 @@ impl fmt::Display for FmtGlobalName<'_> {
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub(crate) enum TypeName {
     Class(ir::ClassId),
-    HackMixed,
+    Curry(Box<FunctionName>),
     StaticClass(ir::ClassId),
+    Unknown,
     UnmangledRef(&'static str),
 }
 
@@ -240,7 +263,19 @@ impl fmt::Display for FmtTypeName<'_> {
         let FmtTypeName(strings, name) = *self;
         match name {
             TypeName::Class(cid) => f.write_str(&cid.as_bytes(strings).mangle(strings)),
-            TypeName::HackMixed => f.write_str("HackMixed"),
+            TypeName::Curry(box FunctionName::Function(fid)) => {
+                write!(f, "{}$curry", fid.as_bytes(strings).mangle(strings))
+            }
+            TypeName::Curry(box FunctionName::Method(ty, mid)) => {
+                write!(
+                    f,
+                    "{}_{}$curry",
+                    ty.display(strings),
+                    mid.as_bytes(strings).mangle(strings)
+                )
+            }
+            TypeName::Curry(_) => panic!("Unable to name curry type {name:?}"),
+            TypeName::Unknown => f.write_str("?"),
             TypeName::StaticClass(cid) => {
                 f.write_str(&cid.as_bytes(strings).mangle(strings))?;
                 f.write_str("$static")

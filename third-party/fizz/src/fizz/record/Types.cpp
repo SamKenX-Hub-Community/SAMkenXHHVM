@@ -11,7 +11,9 @@
 
 namespace fizz {
 
+#if __cplusplus < 201703L
 constexpr Random HelloRetryRequest::HrrRandom;
+#endif
 
 ProtocolVersion getRealDraftVersion(ProtocolVersion version) {
   switch (version) {
@@ -185,6 +187,10 @@ std::string toString(CipherSuite cipher) {
       return "TLS_CHACHA20_POLY1305_SHA256";
     case CipherSuite::TLS_AES_128_OCB_SHA256_EXPERIMENTAL:
       return "TLS_AES_128_OCB_SHA256_EXPERIMENTAL";
+    case CipherSuite::TLS_AEGIS_128L_SHA256_EXPERIMENTAL:
+      return "TLS_AEGIS_128L_SHA256_EXPERIMENTAL";
+    case CipherSuite::TLS_AEGIS_256_SHA384_EXPERIMENTAL:
+      return "TLS_AEGIS_256_SHA384_EXPERIMENTAL";
   }
   return enumToHex(cipher);
 }
@@ -247,16 +253,16 @@ std::string toString(NamedGroup group) {
       return "secp521r1_x25519";
     case NamedGroup::secp384r1_bikel3:
       return "secp384r1_bikel3";
-    case NamedGroup::cecpq2:
-      return "cecpq2";
     case NamedGroup::x25519_kyber512:
       return "x25519_kyber512";
     case NamedGroup::secp256r1_kyber512:
       return "secp256r1_kyber512";
     case NamedGroup::kyber512:
       return "kyber512";
-    case NamedGroup::x25519_kyber768:
-      return "x25519_kyber768";
+    case NamedGroup::x25519_kyber768_draft00:
+      return "x25519_kyber768_draft00";
+    case NamedGroup::secp256r1_kyber768_draft00:
+      return "secp256r1_kyber768_draft00";
     case NamedGroup::secp384r1_kyber768:
       return "secp384r1_kyber768";
   }

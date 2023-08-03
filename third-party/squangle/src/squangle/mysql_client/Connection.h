@@ -178,14 +178,12 @@ class Connection {
   static MultiQueryStreamHandler streamMultiQuery(
       std::unique_ptr<Connection> connection,
       std::vector<Query>&& queries,
-      const std::unordered_map<std::string, std::string>& attributes =
-          std::unordered_map<std::string, std::string>());
+      const AttributeMap& attributes = AttributeMap());
 
   static MultiQueryStreamHandler streamMultiQuery(
       std::unique_ptr<Connection> connection,
       MultiQuery&& multi_query,
-      const std::unordered_map<std::string, std::string>& attributes =
-          std::unordered_map<std::string, std::string>());
+      const AttributeMap& attributes = AttributeMap());
 
   // variant that takes a QueryOperation for more convenient chaining of
   // queries.
@@ -282,19 +280,20 @@ class Connection {
   }
 
   const std::string& host() const {
-    return conn_key_.host;
+    return conn_key_.host();
   }
   int port() const {
-    return conn_key_.port;
+    return conn_key_.port();
   }
   const std::string& user() const {
-    return conn_key_.user;
+    return conn_key_.user();
   }
   const std::string& database() const {
-    return conn_key_.db_name;
+    return conn_key_.db_name();
   }
+
   const std::string& password() const {
-    return conn_key_.password;
+    return conn_key_.password();
   }
 
   MysqlClientBase* client() const {
@@ -473,6 +472,14 @@ class Connection {
     return "";
   }
 
+  void setPersistentQueryAttributes(QueryAttributes attrs) {
+    persistentQueryAttributes_ = std::move(attrs);
+  }
+
+  const QueryAttributes& getPersistentQueryAttributes() const {
+    return persistentQueryAttributes_;
+  }
+
  protected:
   // Methods primarily invoked by Operations and AsyncMysqlClient.
   friend class AsyncMysqlClient;
@@ -545,6 +552,8 @@ class Connection {
     connection_context_ = std::move(e);
   }
 
+  void mergePersistentQueryAttributes(QueryAttributes& attrs) const;
+
   std::unique_ptr<MysqlConnectionHolder> mysql_connection_;
 
   const ConnectionKey conn_key_;
@@ -565,6 +574,8 @@ class Connection {
   Operation::Callbacks callbacks_;
 
   bool initialized_;
+
+  QueryAttributes persistentQueryAttributes_;
 
   // Used for signing that the connection is being used in a synchronous call,
   // eg. `query`. MySQL doesn't allow more than one query being made through

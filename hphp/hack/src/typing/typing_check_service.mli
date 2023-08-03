@@ -14,6 +14,7 @@ type seconds_since_epoch = float
 
 type process_file_results = {
   file_errors: Errors.t;
+  file_tast_hashes: Tast_hashes.by_names option;
   deferred_decls: Deferred_decl.deferment list;
 }
 
@@ -28,7 +29,6 @@ val process_file :
 
 type result = {
   errors: Errors.t;
-  delegate_state: Typing_service_delegate.state;
   telemetry: Telemetry.t;
   diagnostic_pusher: Diagnostic_pusher.t option * seconds_since_epoch option;
 }
@@ -36,7 +36,6 @@ type result = {
 val go :
   Provider_context.t ->
   MultiWorker.worker list option ->
-  Typing_service_delegate.state ->
   Telemetry.t ->
   Relative_path.t list ->
   root:Path.t option ->
@@ -53,7 +52,6 @@ val go_with_interrupt :
   ?diagnostic_pusher:Diagnostic_pusher.t ->
   Provider_context.t ->
   MultiWorker.worker list option ->
-  Typing_service_delegate.state ->
   Telemetry.t ->
   Relative_path.t list ->
   root:Path.t option ->

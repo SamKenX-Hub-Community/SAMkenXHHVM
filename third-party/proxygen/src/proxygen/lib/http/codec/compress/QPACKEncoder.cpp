@@ -19,8 +19,6 @@ QPACKEncoder::QPACKEncoder(bool huffman, uint32_t tableSize)
       QPACKContext(tableSize, true),
       controlBuffer_(kBufferGrowth, huffman),
       maxTableSize_(tableSize) {
-  // Default the encoder indexing strategy; it can be updated later as well
-  setHeaderIndexingStrategy(HeaderIndexingStrategy::getDefaultInstance());
 }
 
 QPACKEncoder::EncodeResult QPACKEncoder::encode(
@@ -107,7 +105,7 @@ size_t QPACKEncoder::encodeHeaderQ(HPACKHeaderName name,
                                    uint32_t baseIndex,
                                    uint32_t& requiredInsertCount) {
   size_t uncompressed = HPACKHeader::realBytes(name.size(), value.size()) + 2;
-  uint32_t index = getStaticTable().getIndex(name, value);
+  uint32_t index = getStaticTable().getIndex(name, value).first;
   if (index > 0) {
     // static reference
     staticRefs_++;

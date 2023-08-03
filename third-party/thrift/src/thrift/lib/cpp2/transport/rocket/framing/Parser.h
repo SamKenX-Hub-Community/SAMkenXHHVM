@@ -27,10 +27,12 @@
 
 #include <thrift/lib/cpp2/Flags.h>
 #include <thrift/lib/cpp2/async/RpcOptions.h>
+#include <thrift/lib/cpp2/transport/rocket/framing/parser/FrameLengthParserStrategy.h>
+#include <thrift/lib/cpp2/transport/rocket/framing/parser/ParserStrategy.h>
 
-THRIFT_FLAG_DECLARE_int64(rocket_parser_resize_period_seconds);
 THRIFT_FLAG_DECLARE_bool(rocket_parser_dont_hold_buffer_enabled);
 THRIFT_FLAG_DECLARE_bool(rocket_parser_hybrid_buffer_enabled);
+THRIFT_FLAG_DECLARE_bool(rocket_strategy_parser);
 
 namespace apache {
 namespace thrift {
@@ -40,22 +42,23 @@ template <class T>
 class Parser final : public folly::AsyncTransport::ReadCallback,
                      public folly::HHWheelTimer::Callback {
  public:
-  explicit Parser(
-      T& owner,
-      std::chrono::milliseconds resizeBufferTimeout =
-          kDefaultBufferResizeInterval)
+  explicit Parser(T& owner)
       : newBufferLogicEnabled_(
             THRIFT_FLAG(rocket_parser_dont_hold_buffer_enabled)),
         hybridBufferLogicEnabled_(
             THRIFT_FLAG(rocket_parser_hybrid_buffer_enabled) &&
             !newBufferLogicEnabled_),
         owner_(owner),
-        resizeBufferTimeout_(resizeBufferTimeout),
-        periodicResizeBufferTimeout_(
-            THRIFT_FLAG(rocket_parser_resize_period_seconds)),
         readBuffer_(
             folly::IOBuf::CreateOp(),
-            hybridBufferLogicEnabled_ ? kStaticBufferSize : bufferSize_) {}
+            hybridBufferLogicEnabled_ ? kStaticBufferSize : bufferSize_),
+        useStrategyParser_(THRIFT_FLAG(rocket_strategy_parser)) {
+    if (useStrategyParser_) {
+      frameLengthParser_ =
+          std::make_unique<ParserStrategy<T, FrameLengthParserStrategy>>(
+              owner_);
+    }
+  }
 
   ~Parser() override {
     if (currentFrameLength_) {
@@ -143,14 +146,8 @@ class Parser final : public folly::AsyncTransport::ReadCallback,
 
   T& owner_;
   size_t bufferSize_{kMinBufferSize};
-  // TODO: readBuffer_, lastResizeTime_, resizeBufferTimeout_ and
-  // periodicResizeBufferTimeout_ should be removed once the new buffer logic
-  // controlled by THRIFT_FLAG(rocket_parser_dont_hold_buffer_enabled) is
-  // stable.
-  std::chrono::steady_clock::time_point lastResizeTime_{
-      std::chrono::steady_clock::now()};
-  const std::chrono::milliseconds resizeBufferTimeout_;
-  const int64_t periodicResizeBufferTimeout_;
+  // TODO: readBuffer_ should be removed once the new buffer logic controlled by
+  // THRIFT_FLAG(rocket_parser_dont_hold_buffer_enabled) is stable.
   apache::thrift::RpcOptions::MemAllocType allocType_{
       apache::thrift::RpcOptions::MemAllocType::ALLOC_DEFAULT};
   size_t currentFrameLength_{0};
@@ -166,6 +163,10 @@ class Parser final : public folly::AsyncTransport::ReadCallback,
   std::unique_ptr<folly::IOBuf> dynamicBuffer_{nullptr};
   bool reallocateIfShared_{false};
   bool blockResize_{false};
+
+  bool useStrategyParser_{false};
+  std::unique_ptr<ParserStrategy<T, FrameLengthParserStrategy>>
+      frameLengthParser_;
 };
 
 } // namespace rocket

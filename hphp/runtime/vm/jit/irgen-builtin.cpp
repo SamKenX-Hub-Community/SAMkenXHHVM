@@ -97,16 +97,10 @@ bool type_converts_to_number(Type ty) {
 jit::vector<SSATmp*> tokenize(
     IRGS& env, const StringData* format, SSATmp* args) {
   assertx(args->isA(TVec));
-  auto const numArgs = [&]() -> Optional<uint32_t> {
-    auto const rat = args->type().arrSpec().type();
-    if (!rat || rat->tag() != RepoAuthType::Array::Tag::Tuple) {
-      return std::nullopt;
-    }
-    return rat->size();
-  }();
 
   jit::vector<SSATmp*> result;
-  if (!numArgs.has_value()) {
+  auto const rat = args->type().arrSpec().type();
+  if (!rat || rat->tag() != RepoAuthType::Array::Tag::Tuple) {
     return result;
   }
 
@@ -114,7 +108,8 @@ jit::vector<SSATmp*> tokenize(
     return result;
   }
 
-  int size = 256 - kStringOverhead;
+  const int size = 256 - kStringOverhead;
+  static_assert(size >= 0);
   StringBuffer buf(size);
   jit::vector<const StringData*> tokens;
   size_t numStrTokens = 0;
@@ -150,12 +145,12 @@ jit::vector<SSATmp*> tokenize(
     tokens.push_back(makeStaticString(buf.detach()));
   }
 
-  if (numArgs < numStrTokens) {
+  if (rat->size() < numStrTokens) {
     return result;
   }
 
   size_t argIdx = 0;
-  for (auto const token : tokens) {
+  for (auto const* token : tokens) {
     if (!token) {
       auto index = env.unit.cns(argIdx++);
       auto elem = gen(env, LdVecElem, args, index);
@@ -1690,6 +1685,8 @@ SSATmp* builtinInValue(IRGS& env, const Func* builtin, uint32_t i) {
   return cns(env, *tv);
 }
 
+const StaticString s_EagerVMSync("__EagerVMSync");
+
 SSATmp* builtinCall(IRGS& env,
                     const Func* callee,
                     ParamPrep& params) {
@@ -1731,6 +1728,12 @@ SSATmp* builtinCall(IRGS& env,
     env.irb->exceptionStackBoundary();
   }
 
+  bool eagerSync = callee->userAttributes().count(LowStringPtr(s_EagerVMSync.get()));
+  if (eagerSync) {
+    auto const spOff = offsetFromIRSP(env, env.irb->curMarker().bcSPOff());
+    eagerVMSync(env, spOff);
+  }
+
   // Make the actual call.
   SSATmp** const decayedPtr = &realized[0];
   auto const ret = gen(
@@ -1742,6 +1745,8 @@ SSATmp* builtinCall(IRGS& env,
     },
     std::make_pair(realized.size(), decayedPtr)
   );
+
+  if (eagerSync) gen(env, StVMRegState, cns(env, VMRegState::DIRTY));
 
   return ret;
 }
@@ -1817,7 +1822,13 @@ void emitNativeImpl(IRGS& env) {
   auto const callee = curFunc(env);
 
   auto genericNativeImpl = [&]() {
+    bool eagerSync = callee->userAttributes().count(LowStringPtr(s_EagerVMSync.get()));
+    if (eagerSync) {
+      auto const spOff = offsetFromIRSP(env, env.irb->curMarker().bcSPOff());
+      eagerVMSync(env, spOff);
+    }
     gen(env, NativeImpl, fp(env), sp(env));
+    if (eagerSync) gen(env, StVMRegState, cns(env, VMRegState::DIRTY));
     auto const retVal = gen(env, LdRetVal, callReturnType(callee), fp(env));
     auto const spAdjust = offsetToReturnSlot(env);
     auto const data = RetCtrlData { spAdjust, false, AuxUnion{0} };

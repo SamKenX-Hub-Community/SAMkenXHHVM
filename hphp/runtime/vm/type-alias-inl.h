@@ -25,46 +25,21 @@ struct StringData;
 struct ArrayData;
 
 ///////////////////////////////////////////////////////////////////////////////
-// Static constructors.
-
-inline TypeAlias TypeAlias::Invalid(const PreTypeAlias* alias) {
-  TypeAlias req(alias);
-  req.invalid = true;
-  return req;
-}
-
-inline TypeAlias TypeAlias::From(const PreTypeAlias* alias) {
-  assertx(alias->type != AnnotType::Object);
-  assertx(alias->type != AnnotType::Unresolved);
-
-  TypeAlias req(alias);
-  req.type = alias->type;
-  req.nullable = alias->nullable;
-  return req;
-}
-
-inline TypeAlias TypeAlias::From(TypeAlias req, const PreTypeAlias* alias) {
-  assertx(alias->type == AnnotType::Unresolved);
-
-  req.m_preTypeAlias = alias;
-  if (req.invalid) {
-    return req; // Do nothing.
-  }
-
-  assertx(req.type != AnnotType::Unresolved);
-  assertx((req.type == AnnotType::Object) == (req.klass != nullptr));
-  req.nullable |= alias->nullable;
-  return req;
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // Comparison.
 
 inline bool TypeAlias::same(const TypeAlias& req) const {
-  return (invalid && req.invalid) ||
-         (type == AnnotType::Mixed && req.type == AnnotType::Mixed) ||
-         (type == req.type && nullable == req.nullable &&
-          klass == req.klass);
+  if (invalid && req.invalid) return true;
+  if (unionSize != req.unionSize) return false;
+  for (size_t i = 0; i < unionSize; ++i) {
+    auto const& [type_a, klass_a] = typeAndClassUnionArr[i];
+    auto const& [type_b, klass_b] = req.typeAndClassUnionArr[i];
+    if (type_a == AnnotType::Mixed && type_b == AnnotType::Mixed) continue;
+    if (type_a == type_b && nullable == req.nullable && klass_a == klass_b) {
+      continue;
+    }
+    return false;
+  }
+  return true;
 }
 
 inline bool operator==(const TypeAlias& l,

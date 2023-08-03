@@ -7,18 +7,18 @@ package module // [[[ program thrift source path ]]]
 import (
     "context"
     "fmt"
+    "sync"
 
-    cpp "thrift/annotation/cpp"
 
     "thrift/lib/go/thrift"
 )
 
-var _ = cpp.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = context.Background
 var _ = fmt.Printf
 var _ = thrift.ZERO
+var _ = sync.Mutex{}
 
 
 
@@ -26,7 +26,7 @@ type MyService interface {
     Ping(ctx context.Context) (error)
     GetRandomData(ctx context.Context) (string, error)
     HasDataById(ctx context.Context, id int64) (bool, error)
-    GetDataById(ctx context.Context, id int64) (string, error)
+    GoGetDataById(ctx context.Context, id int64) (string, error)
     PutDataById(ctx context.Context, id int64, data string) (error)
     LobDataById(ctx context.Context, id int64, data string) (error)
     GoDoNothing(ctx context.Context) (error)
@@ -38,7 +38,7 @@ type MyServiceClientInterface interface {
     Ping() (error)
     GetRandomData() (string, error)
     HasDataById(id int64) (bool, error)
-    GetDataById(id int64) (string, error)
+    GoGetDataById(id int64) (string, error)
     PutDataById(id int64, data string) (error)
     LobDataById(id int64, data string) (error)
     GoDoNothing() (error)
@@ -71,6 +71,7 @@ func (c *MyServiceChannelClient) Open() error {
 // Deprecated: Use MyServiceChannelClient instead.
 type MyServiceClient struct {
     chClient *MyServiceChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ MyServiceClientInterface = &MyServiceClient{}
@@ -178,11 +179,11 @@ func (c *MyServiceClient) HasDataById(id int64) (bool, error) {
 }
 
 
-func (c *MyServiceChannelClient) GetDataById(ctx context.Context, id int64) (string, error) {
-    in := &reqMyServiceGetDataById{
+func (c *MyServiceChannelClient) GoGetDataById(ctx context.Context, id int64) (string, error) {
+    in := &reqMyServiceGoGetDataById{
         Id: id,
     }
-    out := newRespMyServiceGetDataById()
+    out := newRespMyServiceGoGetDataById()
     err := c.ch.Call(ctx, "getDataById", in, out)
     if err != nil {
         return out.Value, err
@@ -190,8 +191,8 @@ func (c *MyServiceChannelClient) GetDataById(ctx context.Context, id int64) (str
     return out.Value, nil
 }
 
-func (c *MyServiceClient) GetDataById(id int64) (string, error) {
-    return c.chClient.GetDataById(nil, id)
+func (c *MyServiceClient) GoGetDataById(id int64) (string, error) {
+    return c.chClient.GoGetDataById(nil, id)
 }
 
 
@@ -254,7 +255,9 @@ func newReqMyServicePing() *reqMyServicePing {
 }
 
 func (x *reqMyServicePing) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServicePingAlias reqMyServicePing
+    valueAlias := (*reqMyServicePingAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -340,7 +343,7 @@ func (x *respMyServicePing) GetMyExceptNonCompat() *MyException {
 
 func (x *respMyServicePing) GetMyExcept() *MyException {
     if !x.IsSetMyExcept() {
-        return NewMyException()
+        return nil
     }
 
     return x.MyExcept
@@ -403,7 +406,9 @@ func (x *respMyServicePing) DefaultGetMyExcept() *MyException {
 }
 
 func (x *respMyServicePing) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServicePingAlias respMyServicePing
+    valueAlias := (*respMyServicePingAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -504,7 +509,9 @@ func newReqMyServiceGetRandomData() *reqMyServiceGetRandomData {
 }
 
 func (x *reqMyServiceGetRandomData) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceGetRandomDataAlias reqMyServiceGetRandomData
+    valueAlias := (*reqMyServiceGetRandomDataAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -630,7 +637,9 @@ if err != nil {
 }
 
 func (x *respMyServiceGetRandomData) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceGetRandomDataAlias respMyServiceGetRandomData
+    valueAlias := (*respMyServiceGetRandomDataAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -774,7 +783,9 @@ if err != nil {
 }
 
 func (x *reqMyServiceHasDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceHasDataByIdAlias reqMyServiceHasDataById
+    valueAlias := (*reqMyServiceHasDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -913,7 +924,9 @@ if err != nil {
 }
 
 func (x *respMyServiceHasDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceHasDataByIdAlias respMyServiceHasDataById
+    valueAlias := (*respMyServiceHasDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -999,38 +1012,38 @@ func (x *respMyServiceHasDataById) Read(p thrift.Protocol) error {
     return nil
 }
 
-type reqMyServiceGetDataById struct {
+type reqMyServiceGoGetDataById struct {
     Id int64 `thrift:"id,1" json:"id" db:"id"`
 }
 // Compile time interface enforcer
-var _ thrift.Struct = &reqMyServiceGetDataById{}
+var _ thrift.Struct = &reqMyServiceGoGetDataById{}
 
-type MyServiceGetDataByIdArgs = reqMyServiceGetDataById
+type MyServiceGoGetDataByIdArgs = reqMyServiceGoGetDataById
 
-func newReqMyServiceGetDataById() *reqMyServiceGetDataById {
-    return (&reqMyServiceGetDataById{}).
+func newReqMyServiceGoGetDataById() *reqMyServiceGoGetDataById {
+    return (&reqMyServiceGoGetDataById{}).
         SetIdNonCompat(0)
 }
 
-func (x *reqMyServiceGetDataById) GetIdNonCompat() int64 {
+func (x *reqMyServiceGoGetDataById) GetIdNonCompat() int64 {
     return x.Id
 }
 
-func (x *reqMyServiceGetDataById) GetId() int64 {
+func (x *reqMyServiceGoGetDataById) GetId() int64 {
     return x.Id
 }
 
-func (x *reqMyServiceGetDataById) SetIdNonCompat(value int64) *reqMyServiceGetDataById {
+func (x *reqMyServiceGoGetDataById) SetIdNonCompat(value int64) *reqMyServiceGoGetDataById {
     x.Id = value
     return x
 }
 
-func (x *reqMyServiceGetDataById) SetId(value int64) *reqMyServiceGetDataById {
+func (x *reqMyServiceGoGetDataById) SetId(value int64) *reqMyServiceGoGetDataById {
     x.Id = value
     return x
 }
 
-func (x *reqMyServiceGetDataById) writeField1(p thrift.Protocol) error {  // Id
+func (x *reqMyServiceGoGetDataById) writeField1(p thrift.Protocol) error {  // Id
     if err := p.WriteFieldBegin("id", thrift.I64, 1); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
@@ -1046,7 +1059,7 @@ func (x *reqMyServiceGetDataById) writeField1(p thrift.Protocol) error {  // Id
     return nil
 }
 
-func (x *reqMyServiceGetDataById) readField1(p thrift.Protocol) error {  // Id
+func (x *reqMyServiceGoGetDataById) readField1(p thrift.Protocol) error {  // Id
     result, err := p.ReadI64()
 if err != nil {
     return err
@@ -1056,34 +1069,36 @@ if err != nil {
     return nil
 }
 
-func (x *reqMyServiceGetDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+func (x *reqMyServiceGoGetDataById) String() string {
+    type reqMyServiceGoGetDataByIdAlias reqMyServiceGoGetDataById
+    valueAlias := (*reqMyServiceGoGetDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
-// Deprecated: Use reqMyServiceGetDataById.Set* methods instead or set the fields directly.
-type reqMyServiceGetDataByIdBuilder struct {
-    obj *reqMyServiceGetDataById
+// Deprecated: Use reqMyServiceGoGetDataById.Set* methods instead or set the fields directly.
+type reqMyServiceGoGetDataByIdBuilder struct {
+    obj *reqMyServiceGoGetDataById
 }
 
-func newReqMyServiceGetDataByIdBuilder() *reqMyServiceGetDataByIdBuilder {
-    return &reqMyServiceGetDataByIdBuilder{
-        obj: newReqMyServiceGetDataById(),
+func newReqMyServiceGoGetDataByIdBuilder() *reqMyServiceGoGetDataByIdBuilder {
+    return &reqMyServiceGoGetDataByIdBuilder{
+        obj: newReqMyServiceGoGetDataById(),
     }
 }
 
-func (x *reqMyServiceGetDataByIdBuilder) Id(value int64) *reqMyServiceGetDataByIdBuilder {
+func (x *reqMyServiceGoGetDataByIdBuilder) Id(value int64) *reqMyServiceGoGetDataByIdBuilder {
     x.obj.Id = value
     return x
 }
 
-func (x *reqMyServiceGetDataByIdBuilder) Emit() *reqMyServiceGetDataById {
-    var objCopy reqMyServiceGetDataById = *x.obj
+func (x *reqMyServiceGoGetDataByIdBuilder) Emit() *reqMyServiceGoGetDataById {
+    var objCopy reqMyServiceGoGetDataById = *x.obj
     return &objCopy
 }
 
-func (x *reqMyServiceGetDataById) Write(p thrift.Protocol) error {
-    if err := p.WriteStructBegin("reqMyServiceGetDataById"); err != nil {
+func (x *reqMyServiceGoGetDataById) Write(p thrift.Protocol) error {
+    if err := p.WriteStructBegin("reqMyServiceGoGetDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
     }
 
@@ -1101,7 +1116,7 @@ func (x *reqMyServiceGetDataById) Write(p thrift.Protocol) error {
     return nil
 }
 
-func (x *reqMyServiceGetDataById) Read(p thrift.Protocol) error {
+func (x *reqMyServiceGoGetDataById) Read(p thrift.Protocol) error {
     if _, err := p.ReadStructBegin(); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
     }
@@ -1139,37 +1154,37 @@ func (x *reqMyServiceGetDataById) Read(p thrift.Protocol) error {
     return nil
 }
 
-type respMyServiceGetDataById struct {
+type respMyServiceGoGetDataById struct {
     Value string `thrift:"value,0" json:"value" db:"value"`
 }
 // Compile time interface enforcer
-var _ thrift.Struct = &respMyServiceGetDataById{}
-var _ thrift.WritableResult = &respMyServiceGetDataById{}
+var _ thrift.Struct = &respMyServiceGoGetDataById{}
+var _ thrift.WritableResult = &respMyServiceGoGetDataById{}
 
-func newRespMyServiceGetDataById() *respMyServiceGetDataById {
-    return (&respMyServiceGetDataById{}).
+func newRespMyServiceGoGetDataById() *respMyServiceGoGetDataById {
+    return (&respMyServiceGoGetDataById{}).
         SetValueNonCompat("")
 }
 
-func (x *respMyServiceGetDataById) GetValueNonCompat() string {
+func (x *respMyServiceGoGetDataById) GetValueNonCompat() string {
     return x.Value
 }
 
-func (x *respMyServiceGetDataById) GetValue() string {
+func (x *respMyServiceGoGetDataById) GetValue() string {
     return x.Value
 }
 
-func (x *respMyServiceGetDataById) SetValueNonCompat(value string) *respMyServiceGetDataById {
+func (x *respMyServiceGoGetDataById) SetValueNonCompat(value string) *respMyServiceGoGetDataById {
     x.Value = value
     return x
 }
 
-func (x *respMyServiceGetDataById) SetValue(value string) *respMyServiceGetDataById {
+func (x *respMyServiceGoGetDataById) SetValue(value string) *respMyServiceGoGetDataById {
     x.Value = value
     return x
 }
 
-func (x *respMyServiceGetDataById) writeField0(p thrift.Protocol) error {  // Value
+func (x *respMyServiceGoGetDataById) writeField0(p thrift.Protocol) error {  // Value
     if err := p.WriteFieldBegin("value", thrift.STRING, 0); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
@@ -1185,7 +1200,7 @@ func (x *respMyServiceGetDataById) writeField0(p thrift.Protocol) error {  // Va
     return nil
 }
 
-func (x *respMyServiceGetDataById) readField0(p thrift.Protocol) error {  // Value
+func (x *respMyServiceGoGetDataById) readField0(p thrift.Protocol) error {  // Value
     result, err := p.ReadString()
 if err != nil {
     return err
@@ -1195,38 +1210,40 @@ if err != nil {
     return nil
 }
 
-func (x *respMyServiceGetDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+func (x *respMyServiceGoGetDataById) String() string {
+    type respMyServiceGoGetDataByIdAlias respMyServiceGoGetDataById
+    valueAlias := (*respMyServiceGoGetDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
-// Deprecated: Use respMyServiceGetDataById.Set* methods instead or set the fields directly.
-type respMyServiceGetDataByIdBuilder struct {
-    obj *respMyServiceGetDataById
+// Deprecated: Use respMyServiceGoGetDataById.Set* methods instead or set the fields directly.
+type respMyServiceGoGetDataByIdBuilder struct {
+    obj *respMyServiceGoGetDataById
 }
 
-func newRespMyServiceGetDataByIdBuilder() *respMyServiceGetDataByIdBuilder {
-    return &respMyServiceGetDataByIdBuilder{
-        obj: newRespMyServiceGetDataById(),
+func newRespMyServiceGoGetDataByIdBuilder() *respMyServiceGoGetDataByIdBuilder {
+    return &respMyServiceGoGetDataByIdBuilder{
+        obj: newRespMyServiceGoGetDataById(),
     }
 }
 
-func (x *respMyServiceGetDataByIdBuilder) Value(value string) *respMyServiceGetDataByIdBuilder {
+func (x *respMyServiceGoGetDataByIdBuilder) Value(value string) *respMyServiceGoGetDataByIdBuilder {
     x.obj.Value = value
     return x
 }
 
-func (x *respMyServiceGetDataByIdBuilder) Emit() *respMyServiceGetDataById {
-    var objCopy respMyServiceGetDataById = *x.obj
+func (x *respMyServiceGoGetDataByIdBuilder) Emit() *respMyServiceGoGetDataById {
+    var objCopy respMyServiceGoGetDataById = *x.obj
     return &objCopy
 }
 
-func (x *respMyServiceGetDataById) Exception() thrift.WritableException {
+func (x *respMyServiceGoGetDataById) Exception() thrift.WritableException {
     return nil
 }
 
-func (x *respMyServiceGetDataById) Write(p thrift.Protocol) error {
-    if err := p.WriteStructBegin("respMyServiceGetDataById"); err != nil {
+func (x *respMyServiceGoGetDataById) Write(p thrift.Protocol) error {
+    if err := p.WriteStructBegin("respMyServiceGoGetDataById"); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
     }
 
@@ -1244,7 +1261,7 @@ func (x *respMyServiceGetDataById) Write(p thrift.Protocol) error {
     return nil
 }
 
-func (x *respMyServiceGetDataById) Read(p thrift.Protocol) error {
+func (x *respMyServiceGoGetDataById) Read(p thrift.Protocol) error {
     if _, err := p.ReadStructBegin(); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
     }
@@ -1386,7 +1403,9 @@ if err != nil {
 }
 
 func (x *reqMyServicePutDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServicePutDataByIdAlias reqMyServicePutDataById
+    valueAlias := (*reqMyServicePutDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1492,7 +1511,9 @@ func newRespMyServicePutDataById() *respMyServicePutDataById {
 }
 
 func (x *respMyServicePutDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServicePutDataByIdAlias respMyServicePutDataById
+    valueAlias := (*respMyServicePutDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1669,7 +1690,9 @@ if err != nil {
 }
 
 func (x *reqMyServiceLobDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceLobDataByIdAlias reqMyServiceLobDataById
+    valueAlias := (*reqMyServiceLobDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1775,7 +1798,9 @@ func newRespMyServiceLobDataById() *respMyServiceLobDataById {
 }
 
 func (x *respMyServiceLobDataById) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceLobDataByIdAlias respMyServiceLobDataById
+    valueAlias := (*respMyServiceLobDataByIdAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1860,7 +1885,9 @@ func newReqMyServiceGoDoNothing() *reqMyServiceGoDoNothing {
 }
 
 func (x *reqMyServiceGoDoNothing) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceGoDoNothingAlias reqMyServiceGoDoNothing
+    valueAlias := (*reqMyServiceGoDoNothingAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1940,7 +1967,9 @@ func newRespMyServiceGoDoNothing() *respMyServiceGoDoNothing {
 }
 
 func (x *respMyServiceGoDoNothing) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceGoDoNothingAlias respMyServiceGoDoNothing
+    valueAlias := (*respMyServiceGoDoNothingAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2055,7 +2084,7 @@ func NewMyServiceProcessor(handler MyService) *MyServiceProcessor {
     p.AddToProcessorMap("ping", &procFuncMyServicePing{handler: handler})
     p.AddToProcessorMap("getRandomData", &procFuncMyServiceGetRandomData{handler: handler})
     p.AddToProcessorMap("hasDataById", &procFuncMyServiceHasDataById{handler: handler})
-    p.AddToProcessorMap("getDataById", &procFuncMyServiceGetDataById{handler: handler})
+    p.AddToProcessorMap("getDataById", &procFuncMyServiceGoGetDataById{handler: handler})
     p.AddToProcessorMap("putDataById", &procFuncMyServicePutDataById{handler: handler})
     p.AddToProcessorMap("lobDataById", &procFuncMyServiceLobDataById{handler: handler})
     p.AddToProcessorMap("doNothing", &procFuncMyServiceGoDoNothing{handler: handler})
@@ -2098,7 +2127,7 @@ func (p *procFuncMyServicePing) Write(seqId int32, result thrift.WritableStruct,
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Ping", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("ping", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -2153,7 +2182,7 @@ func (p *procFuncMyServiceGetRandomData) Write(seqId int32, result thrift.Writab
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetRandomData", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getRandomData", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -2204,7 +2233,7 @@ func (p *procFuncMyServiceHasDataById) Write(seqId int32, result thrift.Writable
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("HasDataById", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("hasDataById", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -2233,14 +2262,14 @@ func (p *procFuncMyServiceHasDataById) Run(reqStruct thrift.Struct) (thrift.Writ
 }
 
 
-type procFuncMyServiceGetDataById struct {
+type procFuncMyServiceGoGetDataById struct {
     handler MyService
 }
 // Compile time interface enforcer
-var _ thrift.ProcessorFunction = &procFuncMyServiceGetDataById{}
+var _ thrift.ProcessorFunction = &procFuncMyServiceGoGetDataById{}
 
-func (p *procFuncMyServiceGetDataById) Read(iprot thrift.Protocol) (thrift.Struct, thrift.Exception) {
-    args := newReqMyServiceGetDataById()
+func (p *procFuncMyServiceGoGetDataById) Read(iprot thrift.Protocol) (thrift.Struct, thrift.Exception) {
+    args := newReqMyServiceGoGetDataById()
     if err := args.Read(iprot); err != nil {
         return nil, err
     }
@@ -2248,7 +2277,7 @@ func (p *procFuncMyServiceGetDataById) Read(iprot thrift.Protocol) (thrift.Struc
     return args, nil
 }
 
-func (p *procFuncMyServiceGetDataById) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
+func (p *procFuncMyServiceGoGetDataById) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
     var err2 error
     messageType := thrift.REPLY
     switch result.(type) {
@@ -2256,7 +2285,7 @@ func (p *procFuncMyServiceGetDataById) Write(seqId int32, result thrift.Writable
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetDataById", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getDataById", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -2271,12 +2300,12 @@ func (p *procFuncMyServiceGetDataById) Write(seqId int32, result thrift.Writable
     return err
 }
 
-func (p *procFuncMyServiceGetDataById) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
-    args := reqStruct.(*reqMyServiceGetDataById)
-    result := newRespMyServiceGetDataById()
-    retval, err := p.handler.GetDataById(args.Id)
+func (p *procFuncMyServiceGoGetDataById) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
+    args := reqStruct.(*reqMyServiceGoGetDataById)
+    result := newRespMyServiceGoGetDataById()
+    retval, err := p.handler.GoGetDataById(args.Id)
     if err != nil {
-        x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GetDataById: " + err.Error(), err)
+        x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing GoGetDataById: " + err.Error(), err)
         return x, x
     }
 
@@ -2308,7 +2337,7 @@ func (p *procFuncMyServicePutDataById) Write(seqId int32, result thrift.Writable
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("PutDataById", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("putDataById", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -2359,7 +2388,7 @@ func (p *procFuncMyServiceLobDataById) Write(seqId int32, result thrift.Writable
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("LobDataById", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("lobDataById", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -2409,7 +2438,7 @@ func (p *procFuncMyServiceGoDoNothing) Write(seqId int32, result thrift.Writable
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GoDoNothing", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("doNothing", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -2477,6 +2506,7 @@ func (c *MyServicePrioParentChannelClient) Open() error {
 // Deprecated: Use MyServicePrioParentChannelClient instead.
 type MyServicePrioParentClient struct {
     chClient *MyServicePrioParentChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ MyServicePrioParentClientInterface = &MyServicePrioParentClient{}
@@ -2577,7 +2607,9 @@ func newReqMyServicePrioParentPing() *reqMyServicePrioParentPing {
 }
 
 func (x *reqMyServicePrioParentPing) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServicePrioParentPingAlias reqMyServicePrioParentPing
+    valueAlias := (*reqMyServicePrioParentPingAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2657,7 +2689,9 @@ func newRespMyServicePrioParentPing() *respMyServicePrioParentPing {
 }
 
 func (x *respMyServicePrioParentPing) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServicePrioParentPingAlias respMyServicePrioParentPing
+    valueAlias := (*respMyServicePrioParentPingAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2742,7 +2776,9 @@ func newReqMyServicePrioParentPong() *reqMyServicePrioParentPong {
 }
 
 func (x *reqMyServicePrioParentPong) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServicePrioParentPongAlias reqMyServicePrioParentPong
+    valueAlias := (*reqMyServicePrioParentPongAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2822,7 +2858,9 @@ func newRespMyServicePrioParentPong() *respMyServicePrioParentPong {
 }
 
 func (x *respMyServicePrioParentPong) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServicePrioParentPongAlias respMyServicePrioParentPong
+    valueAlias := (*respMyServicePrioParentPongAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2966,7 +3004,7 @@ func (p *procFuncMyServicePrioParentPing) Write(seqId int32, result thrift.Writa
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Ping", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("ping", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -3016,7 +3054,7 @@ func (p *procFuncMyServicePrioParentPong) Write(seqId int32, result thrift.Writa
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Pong", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("pong", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -3090,6 +3128,7 @@ type MyServicePrioChildClient struct {
     // Inherited/extended service
     *MyServicePrioParentClient
     chClient *MyServicePrioChildChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ MyServicePrioChildClientInterface = &MyServicePrioChildClient{}
@@ -3175,7 +3214,9 @@ func newReqMyServicePrioChildPang() *reqMyServicePrioChildPang {
 }
 
 func (x *reqMyServicePrioChildPang) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServicePrioChildPangAlias reqMyServicePrioChildPang
+    valueAlias := (*reqMyServicePrioChildPangAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3255,7 +3296,9 @@ func newRespMyServicePrioChildPang() *respMyServicePrioChildPang {
 }
 
 func (x *respMyServicePrioChildPang) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServicePrioChildPangAlias respMyServicePrioChildPang
+    valueAlias := (*respMyServicePrioChildPangAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3372,7 +3415,7 @@ func (p *procFuncMyServicePrioChildPang) Write(seqId int32, result thrift.Writab
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Pang", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("pang", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -3438,6 +3481,7 @@ func (c *BadServiceChannelClient) Open() error {
 // Deprecated: Use BadServiceChannelClient instead.
 type BadServiceClient struct {
     chClient *BadServiceChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ BadServiceClientInterface = &BadServiceClient{}
@@ -3522,7 +3566,9 @@ func newReqBadServiceBar() *reqBadServiceBar {
 }
 
 func (x *reqBadServiceBar) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqBadServiceBarAlias reqBadServiceBar
+    valueAlias := (*reqBadServiceBarAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3648,7 +3694,9 @@ if err != nil {
 }
 
 func (x *respBadServiceBar) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respBadServiceBarAlias respBadServiceBar
+    valueAlias := (*respBadServiceBarAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3803,7 +3851,7 @@ func (p *procFuncBadServiceBar) Write(seqId int32, result thrift.WritableStruct,
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Bar", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("bar", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -3827,6 +3875,861 @@ func (p *procFuncBadServiceBar) Run(reqStruct thrift.Struct) (thrift.WritableStr
     }
 
     result.Value = retval
+    return result, nil
+}
+
+
+
+
+type FooBarBazService interface {
+    FooStructured(ctx context.Context) (error)
+    BarNonStructured(ctx context.Context) (error)
+    Baz(ctx context.Context) (error)
+}
+
+// Deprecated: Use FooBarBazService instead.
+type FooBarBazServiceClientInterface interface {
+    thrift.ClientInterface
+    FooStructured() (error)
+    BarNonStructured() (error)
+    Baz() (error)
+}
+
+type FooBarBazServiceChannelClient struct {
+    ch thrift.RequestChannel
+}
+// Compile time interface enforcer
+var _ FooBarBazService = &FooBarBazServiceChannelClient{}
+
+func NewFooBarBazServiceChannelClient(channel thrift.RequestChannel) *FooBarBazServiceChannelClient {
+    return &FooBarBazServiceChannelClient{
+        ch: channel,
+    }
+}
+
+func (c *FooBarBazServiceChannelClient) Close() error {
+    return c.ch.Close()
+}
+
+func (c *FooBarBazServiceChannelClient) IsOpen() bool {
+    return c.ch.IsOpen()
+}
+
+func (c *FooBarBazServiceChannelClient) Open() error {
+    return c.ch.Open()
+}
+
+// Deprecated: Use FooBarBazServiceChannelClient instead.
+type FooBarBazServiceClient struct {
+    chClient *FooBarBazServiceChannelClient
+    Mu       sync.Mutex
+}
+// Compile time interface enforcer
+var _ FooBarBazServiceClientInterface = &FooBarBazServiceClient{}
+
+// Deprecated: Use NewFooBarBazServiceChannelClient() instead.
+func NewFooBarBazServiceClient(t thrift.Transport, iprot thrift.Protocol, oprot thrift.Protocol) *FooBarBazServiceClient {
+    return &FooBarBazServiceClient{
+        chClient: NewFooBarBazServiceChannelClient(
+            thrift.NewSerialChannel(iprot),
+        ),
+    }
+}
+
+func (c *FooBarBazServiceClient) Close() error {
+    return c.chClient.Close()
+}
+
+func (c *FooBarBazServiceClient) IsOpen() bool {
+    return c.chClient.IsOpen()
+}
+
+func (c *FooBarBazServiceClient) Open() error {
+    return c.chClient.Open()
+}
+
+// Deprecated: Use FooBarBazServiceChannelClient instead.
+type FooBarBazServiceThreadsafeClient = FooBarBazServiceClient
+
+// Deprecated: Use NewFooBarBazServiceChannelClient() instead.
+func NewFooBarBazServiceThreadsafeClient(t thrift.Transport, iprot thrift.Protocol, oprot thrift.Protocol) *FooBarBazServiceThreadsafeClient {
+    return NewFooBarBazServiceClient(t, iprot, oprot)
+}
+
+// Deprecated: Use NewFooBarBazServiceChannelClient() instead.
+func NewFooBarBazServiceClientProtocol(prot thrift.Protocol) *FooBarBazServiceClient {
+  return NewFooBarBazServiceClient(prot.Transport(), prot, prot)
+}
+
+// Deprecated: Use NewFooBarBazServiceChannelClient() instead.
+func NewFooBarBazServiceThreadsafeClientProtocol(prot thrift.Protocol) *FooBarBazServiceClient {
+  return NewFooBarBazServiceClient(prot.Transport(), prot, prot)
+}
+
+// Deprecated: Use NewFooBarBazServiceChannelClient() instead.
+func NewFooBarBazServiceClientFactory(t thrift.Transport, pf thrift.ProtocolFactory) *FooBarBazServiceClient {
+  iprot := pf.GetProtocol(t)
+  oprot := pf.GetProtocol(t)
+  return NewFooBarBazServiceClient(t, iprot, oprot)
+}
+
+// Deprecated: Use NewFooBarBazServiceChannelClient() instead.
+func NewFooBarBazServiceThreadsafeClientFactory(t thrift.Transport, pf thrift.ProtocolFactory) *FooBarBazServiceThreadsafeClient {
+  return NewFooBarBazServiceClientFactory(t, pf)
+}
+
+
+func (c *FooBarBazServiceChannelClient) FooStructured(ctx context.Context) (error) {
+    in := &reqFooBarBazServiceFooStructured{
+    }
+    out := newRespFooBarBazServiceFooStructured()
+    err := c.ch.Call(ctx, "foo", in, out)
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+func (c *FooBarBazServiceClient) FooStructured() (error) {
+    return c.chClient.FooStructured(nil)
+}
+
+
+func (c *FooBarBazServiceChannelClient) BarNonStructured(ctx context.Context) (error) {
+    in := &reqFooBarBazServiceBarNonStructured{
+    }
+    out := newRespFooBarBazServiceBarNonStructured()
+    err := c.ch.Call(ctx, "bar", in, out)
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+func (c *FooBarBazServiceClient) BarNonStructured() (error) {
+    return c.chClient.BarNonStructured(nil)
+}
+
+
+func (c *FooBarBazServiceChannelClient) Baz(ctx context.Context) (error) {
+    in := &reqFooBarBazServiceBaz{
+    }
+    out := newRespFooBarBazServiceBaz()
+    err := c.ch.Call(ctx, "baz", in, out)
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+func (c *FooBarBazServiceClient) Baz() (error) {
+    return c.chClient.Baz(nil)
+}
+
+
+type reqFooBarBazServiceFooStructured struct {
+}
+// Compile time interface enforcer
+var _ thrift.Struct = &reqFooBarBazServiceFooStructured{}
+
+type FooBarBazServiceFooStructuredArgs = reqFooBarBazServiceFooStructured
+
+func newReqFooBarBazServiceFooStructured() *reqFooBarBazServiceFooStructured {
+    return (&reqFooBarBazServiceFooStructured{})
+}
+
+func (x *reqFooBarBazServiceFooStructured) String() string {
+    type reqFooBarBazServiceFooStructuredAlias reqFooBarBazServiceFooStructured
+    valueAlias := (*reqFooBarBazServiceFooStructuredAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
+}
+
+
+// Deprecated: Use reqFooBarBazServiceFooStructured.Set* methods instead or set the fields directly.
+type reqFooBarBazServiceFooStructuredBuilder struct {
+    obj *reqFooBarBazServiceFooStructured
+}
+
+func newReqFooBarBazServiceFooStructuredBuilder() *reqFooBarBazServiceFooStructuredBuilder {
+    return &reqFooBarBazServiceFooStructuredBuilder{
+        obj: newReqFooBarBazServiceFooStructured(),
+    }
+}
+
+func (x *reqFooBarBazServiceFooStructuredBuilder) Emit() *reqFooBarBazServiceFooStructured {
+    var objCopy reqFooBarBazServiceFooStructured = *x.obj
+    return &objCopy
+}
+
+func (x *reqFooBarBazServiceFooStructured) Write(p thrift.Protocol) error {
+    if err := p.WriteStructBegin("reqFooBarBazServiceFooStructured"); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
+    }
+
+    if err := p.WriteFieldStop(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field stop error: ", x), err)
+    }
+
+    if err := p.WriteStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *reqFooBarBazServiceFooStructured) Read(p thrift.Protocol) error {
+    if _, err := p.ReadStructBegin(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
+    }
+
+    for {
+        _, typ, id, err := p.ReadFieldBegin()
+        if err != nil {
+            return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", x, id), err)
+        }
+
+        if typ == thrift.STOP {
+            break;
+        }
+
+        switch id {
+        default:
+            if err := p.Skip(typ); err != nil {
+                return err
+            }
+        }
+
+        if err := p.ReadFieldEnd(); err != nil {
+            return err
+        }
+    }
+
+    if err := p.ReadStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", x), err)
+    }
+
+    return nil
+}
+
+type respFooBarBazServiceFooStructured struct {
+}
+// Compile time interface enforcer
+var _ thrift.Struct = &respFooBarBazServiceFooStructured{}
+var _ thrift.WritableResult = &respFooBarBazServiceFooStructured{}
+
+func newRespFooBarBazServiceFooStructured() *respFooBarBazServiceFooStructured {
+    return (&respFooBarBazServiceFooStructured{})
+}
+
+func (x *respFooBarBazServiceFooStructured) String() string {
+    type respFooBarBazServiceFooStructuredAlias respFooBarBazServiceFooStructured
+    valueAlias := (*respFooBarBazServiceFooStructuredAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
+}
+
+
+// Deprecated: Use respFooBarBazServiceFooStructured.Set* methods instead or set the fields directly.
+type respFooBarBazServiceFooStructuredBuilder struct {
+    obj *respFooBarBazServiceFooStructured
+}
+
+func newRespFooBarBazServiceFooStructuredBuilder() *respFooBarBazServiceFooStructuredBuilder {
+    return &respFooBarBazServiceFooStructuredBuilder{
+        obj: newRespFooBarBazServiceFooStructured(),
+    }
+}
+
+func (x *respFooBarBazServiceFooStructuredBuilder) Emit() *respFooBarBazServiceFooStructured {
+    var objCopy respFooBarBazServiceFooStructured = *x.obj
+    return &objCopy
+}
+
+func (x *respFooBarBazServiceFooStructured) Exception() thrift.WritableException {
+    return nil
+}
+
+func (x *respFooBarBazServiceFooStructured) Write(p thrift.Protocol) error {
+    if err := p.WriteStructBegin("respFooBarBazServiceFooStructured"); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
+    }
+
+    if err := p.WriteFieldStop(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field stop error: ", x), err)
+    }
+
+    if err := p.WriteStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *respFooBarBazServiceFooStructured) Read(p thrift.Protocol) error {
+    if _, err := p.ReadStructBegin(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
+    }
+
+    for {
+        _, typ, id, err := p.ReadFieldBegin()
+        if err != nil {
+            return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", x, id), err)
+        }
+
+        if typ == thrift.STOP {
+            break;
+        }
+
+        switch id {
+        default:
+            if err := p.Skip(typ); err != nil {
+                return err
+            }
+        }
+
+        if err := p.ReadFieldEnd(); err != nil {
+            return err
+        }
+    }
+
+    if err := p.ReadStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", x), err)
+    }
+
+    return nil
+}
+
+type reqFooBarBazServiceBarNonStructured struct {
+}
+// Compile time interface enforcer
+var _ thrift.Struct = &reqFooBarBazServiceBarNonStructured{}
+
+type FooBarBazServiceBarNonStructuredArgs = reqFooBarBazServiceBarNonStructured
+
+func newReqFooBarBazServiceBarNonStructured() *reqFooBarBazServiceBarNonStructured {
+    return (&reqFooBarBazServiceBarNonStructured{})
+}
+
+func (x *reqFooBarBazServiceBarNonStructured) String() string {
+    type reqFooBarBazServiceBarNonStructuredAlias reqFooBarBazServiceBarNonStructured
+    valueAlias := (*reqFooBarBazServiceBarNonStructuredAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
+}
+
+
+// Deprecated: Use reqFooBarBazServiceBarNonStructured.Set* methods instead or set the fields directly.
+type reqFooBarBazServiceBarNonStructuredBuilder struct {
+    obj *reqFooBarBazServiceBarNonStructured
+}
+
+func newReqFooBarBazServiceBarNonStructuredBuilder() *reqFooBarBazServiceBarNonStructuredBuilder {
+    return &reqFooBarBazServiceBarNonStructuredBuilder{
+        obj: newReqFooBarBazServiceBarNonStructured(),
+    }
+}
+
+func (x *reqFooBarBazServiceBarNonStructuredBuilder) Emit() *reqFooBarBazServiceBarNonStructured {
+    var objCopy reqFooBarBazServiceBarNonStructured = *x.obj
+    return &objCopy
+}
+
+func (x *reqFooBarBazServiceBarNonStructured) Write(p thrift.Protocol) error {
+    if err := p.WriteStructBegin("reqFooBarBazServiceBarNonStructured"); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
+    }
+
+    if err := p.WriteFieldStop(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field stop error: ", x), err)
+    }
+
+    if err := p.WriteStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *reqFooBarBazServiceBarNonStructured) Read(p thrift.Protocol) error {
+    if _, err := p.ReadStructBegin(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
+    }
+
+    for {
+        _, typ, id, err := p.ReadFieldBegin()
+        if err != nil {
+            return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", x, id), err)
+        }
+
+        if typ == thrift.STOP {
+            break;
+        }
+
+        switch id {
+        default:
+            if err := p.Skip(typ); err != nil {
+                return err
+            }
+        }
+
+        if err := p.ReadFieldEnd(); err != nil {
+            return err
+        }
+    }
+
+    if err := p.ReadStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", x), err)
+    }
+
+    return nil
+}
+
+type respFooBarBazServiceBarNonStructured struct {
+}
+// Compile time interface enforcer
+var _ thrift.Struct = &respFooBarBazServiceBarNonStructured{}
+var _ thrift.WritableResult = &respFooBarBazServiceBarNonStructured{}
+
+func newRespFooBarBazServiceBarNonStructured() *respFooBarBazServiceBarNonStructured {
+    return (&respFooBarBazServiceBarNonStructured{})
+}
+
+func (x *respFooBarBazServiceBarNonStructured) String() string {
+    type respFooBarBazServiceBarNonStructuredAlias respFooBarBazServiceBarNonStructured
+    valueAlias := (*respFooBarBazServiceBarNonStructuredAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
+}
+
+
+// Deprecated: Use respFooBarBazServiceBarNonStructured.Set* methods instead or set the fields directly.
+type respFooBarBazServiceBarNonStructuredBuilder struct {
+    obj *respFooBarBazServiceBarNonStructured
+}
+
+func newRespFooBarBazServiceBarNonStructuredBuilder() *respFooBarBazServiceBarNonStructuredBuilder {
+    return &respFooBarBazServiceBarNonStructuredBuilder{
+        obj: newRespFooBarBazServiceBarNonStructured(),
+    }
+}
+
+func (x *respFooBarBazServiceBarNonStructuredBuilder) Emit() *respFooBarBazServiceBarNonStructured {
+    var objCopy respFooBarBazServiceBarNonStructured = *x.obj
+    return &objCopy
+}
+
+func (x *respFooBarBazServiceBarNonStructured) Exception() thrift.WritableException {
+    return nil
+}
+
+func (x *respFooBarBazServiceBarNonStructured) Write(p thrift.Protocol) error {
+    if err := p.WriteStructBegin("respFooBarBazServiceBarNonStructured"); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
+    }
+
+    if err := p.WriteFieldStop(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field stop error: ", x), err)
+    }
+
+    if err := p.WriteStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *respFooBarBazServiceBarNonStructured) Read(p thrift.Protocol) error {
+    if _, err := p.ReadStructBegin(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
+    }
+
+    for {
+        _, typ, id, err := p.ReadFieldBegin()
+        if err != nil {
+            return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", x, id), err)
+        }
+
+        if typ == thrift.STOP {
+            break;
+        }
+
+        switch id {
+        default:
+            if err := p.Skip(typ); err != nil {
+                return err
+            }
+        }
+
+        if err := p.ReadFieldEnd(); err != nil {
+            return err
+        }
+    }
+
+    if err := p.ReadStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", x), err)
+    }
+
+    return nil
+}
+
+type reqFooBarBazServiceBaz struct {
+}
+// Compile time interface enforcer
+var _ thrift.Struct = &reqFooBarBazServiceBaz{}
+
+type FooBarBazServiceBazArgs = reqFooBarBazServiceBaz
+
+func newReqFooBarBazServiceBaz() *reqFooBarBazServiceBaz {
+    return (&reqFooBarBazServiceBaz{})
+}
+
+func (x *reqFooBarBazServiceBaz) String() string {
+    type reqFooBarBazServiceBazAlias reqFooBarBazServiceBaz
+    valueAlias := (*reqFooBarBazServiceBazAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
+}
+
+
+// Deprecated: Use reqFooBarBazServiceBaz.Set* methods instead or set the fields directly.
+type reqFooBarBazServiceBazBuilder struct {
+    obj *reqFooBarBazServiceBaz
+}
+
+func newReqFooBarBazServiceBazBuilder() *reqFooBarBazServiceBazBuilder {
+    return &reqFooBarBazServiceBazBuilder{
+        obj: newReqFooBarBazServiceBaz(),
+    }
+}
+
+func (x *reqFooBarBazServiceBazBuilder) Emit() *reqFooBarBazServiceBaz {
+    var objCopy reqFooBarBazServiceBaz = *x.obj
+    return &objCopy
+}
+
+func (x *reqFooBarBazServiceBaz) Write(p thrift.Protocol) error {
+    if err := p.WriteStructBegin("reqFooBarBazServiceBaz"); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
+    }
+
+    if err := p.WriteFieldStop(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field stop error: ", x), err)
+    }
+
+    if err := p.WriteStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *reqFooBarBazServiceBaz) Read(p thrift.Protocol) error {
+    if _, err := p.ReadStructBegin(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
+    }
+
+    for {
+        _, typ, id, err := p.ReadFieldBegin()
+        if err != nil {
+            return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", x, id), err)
+        }
+
+        if typ == thrift.STOP {
+            break;
+        }
+
+        switch id {
+        default:
+            if err := p.Skip(typ); err != nil {
+                return err
+            }
+        }
+
+        if err := p.ReadFieldEnd(); err != nil {
+            return err
+        }
+    }
+
+    if err := p.ReadStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", x), err)
+    }
+
+    return nil
+}
+
+type respFooBarBazServiceBaz struct {
+}
+// Compile time interface enforcer
+var _ thrift.Struct = &respFooBarBazServiceBaz{}
+var _ thrift.WritableResult = &respFooBarBazServiceBaz{}
+
+func newRespFooBarBazServiceBaz() *respFooBarBazServiceBaz {
+    return (&respFooBarBazServiceBaz{})
+}
+
+func (x *respFooBarBazServiceBaz) String() string {
+    type respFooBarBazServiceBazAlias respFooBarBazServiceBaz
+    valueAlias := (*respFooBarBazServiceBazAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
+}
+
+
+// Deprecated: Use respFooBarBazServiceBaz.Set* methods instead or set the fields directly.
+type respFooBarBazServiceBazBuilder struct {
+    obj *respFooBarBazServiceBaz
+}
+
+func newRespFooBarBazServiceBazBuilder() *respFooBarBazServiceBazBuilder {
+    return &respFooBarBazServiceBazBuilder{
+        obj: newRespFooBarBazServiceBaz(),
+    }
+}
+
+func (x *respFooBarBazServiceBazBuilder) Emit() *respFooBarBazServiceBaz {
+    var objCopy respFooBarBazServiceBaz = *x.obj
+    return &objCopy
+}
+
+func (x *respFooBarBazServiceBaz) Exception() thrift.WritableException {
+    return nil
+}
+
+func (x *respFooBarBazServiceBaz) Write(p thrift.Protocol) error {
+    if err := p.WriteStructBegin("respFooBarBazServiceBaz"); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", x), err)
+    }
+
+    if err := p.WriteFieldStop(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write field stop error: ", x), err)
+    }
+
+    if err := p.WriteStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T write struct end error: ", x), err)
+    }
+    return nil
+}
+
+func (x *respFooBarBazServiceBaz) Read(p thrift.Protocol) error {
+    if _, err := p.ReadStructBegin(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read error: ", x), err)
+    }
+
+    for {
+        _, typ, id, err := p.ReadFieldBegin()
+        if err != nil {
+            return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", x, id), err)
+        }
+
+        if typ == thrift.STOP {
+            break;
+        }
+
+        switch id {
+        default:
+            if err := p.Skip(typ); err != nil {
+                return err
+            }
+        }
+
+        if err := p.ReadFieldEnd(); err != nil {
+            return err
+        }
+    }
+
+    if err := p.ReadStructEnd(); err != nil {
+        return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", x), err)
+    }
+
+    return nil
+}
+
+
+
+type FooBarBazServiceProcessor struct {
+    processorMap       map[string]thrift.ProcessorFunction
+    functionServiceMap map[string]string
+    handler            FooBarBazService
+}
+// Compile time interface enforcer
+var _ thrift.Processor = &FooBarBazServiceProcessor{}
+
+func (p *FooBarBazServiceProcessor) AddToProcessorMap(key string, processor thrift.ProcessorFunction) {
+    p.processorMap[key] = processor
+}
+
+func (p *FooBarBazServiceProcessor) AddToFunctionServiceMap(key, service string) {
+    p.functionServiceMap[key] = service
+}
+
+func (p *FooBarBazServiceProcessor) GetProcessorFunction(key string) (processor thrift.ProcessorFunction, err error) {
+    if processor, ok := p.processorMap[key]; ok {
+        return processor, nil
+    }
+    return nil, nil
+}
+
+func (p *FooBarBazServiceProcessor) ProcessorMap() map[string]thrift.ProcessorFunction {
+    return p.processorMap
+}
+
+func (p *FooBarBazServiceProcessor) FunctionServiceMap() map[string]string {
+    return p.functionServiceMap
+}
+
+func NewFooBarBazServiceProcessor(handler FooBarBazService) *FooBarBazServiceProcessor {
+    p := &FooBarBazServiceProcessor{
+        handler:            handler,
+        processorMap:       make(map[string]thrift.ProcessorFunction),
+        functionServiceMap: make(map[string]string),
+    }
+    p.AddToProcessorMap("foo", &procFuncFooBarBazServiceFooStructured{handler: handler})
+    p.AddToProcessorMap("bar", &procFuncFooBarBazServiceBarNonStructured{handler: handler})
+    p.AddToProcessorMap("baz", &procFuncFooBarBazServiceBaz{handler: handler})
+    p.AddToFunctionServiceMap("foo", "FooBarBazService")
+    p.AddToFunctionServiceMap("bar", "FooBarBazService")
+    p.AddToFunctionServiceMap("baz", "FooBarBazService")
+
+    return p
+}
+
+
+type procFuncFooBarBazServiceFooStructured struct {
+    handler FooBarBazService
+}
+// Compile time interface enforcer
+var _ thrift.ProcessorFunction = &procFuncFooBarBazServiceFooStructured{}
+
+func (p *procFuncFooBarBazServiceFooStructured) Read(iprot thrift.Protocol) (thrift.Struct, thrift.Exception) {
+    args := newReqFooBarBazServiceFooStructured()
+    if err := args.Read(iprot); err != nil {
+        return nil, err
+    }
+    iprot.ReadMessageEnd()
+    return args, nil
+}
+
+func (p *procFuncFooBarBazServiceFooStructured) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
+    var err2 error
+    messageType := thrift.REPLY
+    switch result.(type) {
+    case thrift.ApplicationException:
+        messageType = thrift.EXCEPTION
+    }
+
+    if err2 = oprot.WriteMessageBegin("foo", messageType, seqId); err2 != nil {
+        err = err2
+    }
+    if err2 = result.Write(oprot); err == nil && err2 != nil {
+        err = err2
+    }
+    if err2 = oprot.WriteMessageEnd(); err == nil && err2 != nil {
+        err = err2
+    }
+    if err2 = oprot.Flush(); err == nil && err2 != nil {
+        err = err2
+    }
+    return err
+}
+
+func (p *procFuncFooBarBazServiceFooStructured) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
+    result := newRespFooBarBazServiceFooStructured()
+    err := p.handler.FooStructured()
+    if err != nil {
+        x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing FooStructured: " + err.Error(), err)
+        return x, x
+    }
+
+    return result, nil
+}
+
+
+type procFuncFooBarBazServiceBarNonStructured struct {
+    handler FooBarBazService
+}
+// Compile time interface enforcer
+var _ thrift.ProcessorFunction = &procFuncFooBarBazServiceBarNonStructured{}
+
+func (p *procFuncFooBarBazServiceBarNonStructured) Read(iprot thrift.Protocol) (thrift.Struct, thrift.Exception) {
+    args := newReqFooBarBazServiceBarNonStructured()
+    if err := args.Read(iprot); err != nil {
+        return nil, err
+    }
+    iprot.ReadMessageEnd()
+    return args, nil
+}
+
+func (p *procFuncFooBarBazServiceBarNonStructured) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
+    var err2 error
+    messageType := thrift.REPLY
+    switch result.(type) {
+    case thrift.ApplicationException:
+        messageType = thrift.EXCEPTION
+    }
+
+    if err2 = oprot.WriteMessageBegin("bar", messageType, seqId); err2 != nil {
+        err = err2
+    }
+    if err2 = result.Write(oprot); err == nil && err2 != nil {
+        err = err2
+    }
+    if err2 = oprot.WriteMessageEnd(); err == nil && err2 != nil {
+        err = err2
+    }
+    if err2 = oprot.Flush(); err == nil && err2 != nil {
+        err = err2
+    }
+    return err
+}
+
+func (p *procFuncFooBarBazServiceBarNonStructured) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
+    result := newRespFooBarBazServiceBarNonStructured()
+    err := p.handler.BarNonStructured()
+    if err != nil {
+        x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing BarNonStructured: " + err.Error(), err)
+        return x, x
+    }
+
+    return result, nil
+}
+
+
+type procFuncFooBarBazServiceBaz struct {
+    handler FooBarBazService
+}
+// Compile time interface enforcer
+var _ thrift.ProcessorFunction = &procFuncFooBarBazServiceBaz{}
+
+func (p *procFuncFooBarBazServiceBaz) Read(iprot thrift.Protocol) (thrift.Struct, thrift.Exception) {
+    args := newReqFooBarBazServiceBaz()
+    if err := args.Read(iprot); err != nil {
+        return nil, err
+    }
+    iprot.ReadMessageEnd()
+    return args, nil
+}
+
+func (p *procFuncFooBarBazServiceBaz) Write(seqId int32, result thrift.WritableStruct, oprot thrift.Protocol) (err thrift.Exception) {
+    var err2 error
+    messageType := thrift.REPLY
+    switch result.(type) {
+    case thrift.ApplicationException:
+        messageType = thrift.EXCEPTION
+    }
+
+    if err2 = oprot.WriteMessageBegin("baz", messageType, seqId); err2 != nil {
+        err = err2
+    }
+    if err2 = result.Write(oprot); err == nil && err2 != nil {
+        err = err2
+    }
+    if err2 = oprot.WriteMessageEnd(); err == nil && err2 != nil {
+        err = err2
+    }
+    if err2 = oprot.Flush(); err == nil && err2 != nil {
+        err = err2
+    }
+    return err
+}
+
+func (p *procFuncFooBarBazServiceBaz) Run(reqStruct thrift.Struct) (thrift.WritableStruct, thrift.ApplicationException) {
+    result := newRespFooBarBazServiceBaz()
+    err := p.handler.Baz()
+    if err != nil {
+        x := thrift.NewApplicationExceptionCause(thrift.INTERNAL_ERROR, "Internal error processing Baz: " + err.Error(), err)
+        return x, x
+    }
+
     return result, nil
 }
 

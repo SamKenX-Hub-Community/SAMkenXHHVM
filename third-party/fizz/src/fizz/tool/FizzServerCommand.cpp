@@ -175,8 +175,7 @@ class FizzExampleServer : public AsyncFizzServer::HandshakeCallback,
     finish();
   }
 
-  void fizzHandshakeAttemptFallback(
-      std::unique_ptr<IOBuf> clientHello) override {
+  void fizzHandshakeAttemptFallback(AttemptVersionFallback fallback) override {
     CHECK(transport_);
     LOG(INFO) << "Fallback attempt";
     auto socket = transport_->getUnderlyingTransport<AsyncSocket>();
@@ -185,7 +184,7 @@ class FizzExampleServer : public AsyncFizzServer::HandshakeCallback,
     transport_.reset();
     sslSocket_ = AsyncSSLSocket::UniquePtr(
         new AsyncSSLSocket(sslCtx_, evb, folly::NetworkSocket::fromFd(fd)));
-    sslSocket_->setPreReceivedData(std::move(clientHello));
+    sslSocket_->setPreReceivedData(std::move(fallback.clientHello));
     sslSocket_->sslAccept(this);
   }
 
@@ -591,13 +590,18 @@ std::shared_ptr<ech::Decrypter> setupDecrypterFromInputs(
   auto decrypter = std::make_shared<ech::ECHConfigManager>();
 
   // If more that 1 ECH config is provided, we use the first one.
-  ech::ECHConfig gotConfig = gotECHConfigs.value()[0];
+  ech::ECHConfig gotConfig = gotECHConfigs.value().configs[0];
   auto kemId =
       getKEMId((*echConfigsJson)["echconfigs"][0]["kem_id"].asString());
 
+  std::string privKeyStrHex;
+  folly::readFile(echPrivateKeyFile.c_str(), privKeyStrHex);
+
+  folly::ByteRange privKeyBuf(folly::trimWhitespace(privKeyStrHex));
+
   // Create a key exchange and set the private key
   auto kexWithPrivateKey =
-      fizz::FizzUtil::createKeyExchange(kemId, echPrivateKeyFile);
+      fizz::FizzUtil::createKeyExchangeFromBuf(kemId, privKeyBuf);
   if (!kexWithPrivateKey) {
     LOG(ERROR)
         << "Unable to create a key exchange and set a private key for it.";
@@ -619,7 +623,7 @@ std::shared_ptr<ech::Decrypter> setupDefaultDecrypter() {
 
   ech::ECHConfig chosenConfig = getDefaultECHConfigs()[0];
   auto kex = std::make_unique<X25519KeyExchange>();
-  kex->setKeyPair(std::move(defaultPrivateKey), std::move(defaultPublicKey));
+  kex->setPrivateKey(std::move(defaultPrivateKey));
 
   // Configure ECH decrpyter to be used server side.
   auto decrypter = std::make_shared<ech::ECHConfigManager>();
@@ -687,7 +691,7 @@ int fizzServerCommand(const std::vector<std::string>& args) {
     {"-ciphers", {true, [&ciphers](const std::string& arg) {
         ciphers.clear();
         std::vector<std::string> list;
-        folly::split(":", arg, list);
+        folly::split(':', arg, list);
         for (const auto& item : list) {
           try {
             ciphers.push_back(splitParse<CipherSuite>(item, ","));
@@ -721,7 +725,7 @@ int fizzServerCommand(const std::vector<std::string>& args) {
     {"-early", {false, [&early](const std::string&) { early = true; }}},
     {"-alpn", {true, [&alpns](const std::string& arg) {
         alpns.clear();
-        folly::split(":", arg, alpns);
+        folly::split(':', arg, alpns);
     }}},
     {"-certcompression", {true, [&compAlgos](const std::string& arg) {
         try {

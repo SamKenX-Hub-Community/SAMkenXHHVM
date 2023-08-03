@@ -7,24 +7,63 @@
  */
 
 #pragma once
+#include <fizz/fizz-config.h>
+
+#if FIZZ_BUILD_AEGIS
 
 #include <fizz/crypto/aead/Aead.h>
 #include <fizz/crypto/aead/IOBufUtil.h>
+#include <fizz/third-party/libsodium-aegis/aegis.h>
 #include <folly/Conv.h>
 #include <folly/Memory.h>
 #include <folly/Range.h>
 #include <folly/String.h>
 #include <folly/lang/Bits.h>
 #include <folly/ssl/OpenSSLPtrTypes.h>
-#include <sodium.h>
-#include <sodium/crypto_aead_aegis256.h>
 
 namespace fizz {
 class AEGISCipher : public Aead {
  public:
-  static constexpr size_t kMaxIVLength = crypto_aead_aegis256_NPUBBYTES;
+  using AegisEVPCtx = fizz_aegis_evp_ctx;
+  using InitStateFn = int (*const)(
+      const unsigned char* key,
+      const unsigned char* nonce,
+      AegisEVPCtx* ctx);
+  using AadUpdateFn = int (*const)(
+      const unsigned char* ad,
+      unsigned long long adlen,
+      AegisEVPCtx* ctx);
+  using AadFinalFn = int (*const)(AegisEVPCtx* ctx);
+  using EncryptUpdateFn = int (*const)(
+      unsigned char* c,
+      unsigned long long* clen_p,
+      const unsigned char* m,
+      unsigned long long mlen,
+      AegisEVPCtx* ctx);
+  using EncryptFinalFn = int (*const)(
+      unsigned char* c,
+      unsigned long long* c_writtenlen_p,
+      unsigned char* mac,
+      AegisEVPCtx* ctx);
+  using DecryptUpdateFn = int (*const)(
+      unsigned char* m,
+      unsigned long long* outlen,
+      const unsigned char* c,
+      unsigned long long clen,
+      AegisEVPCtx* ctx);
+  using DecryptFinalFn = int (*const)(
+      unsigned char* m,
+      unsigned long long* outlen,
+      const unsigned char* mac,
+      AegisEVPCtx* ctx);
 
-  static std::unique_ptr<Aead> makeCipher();
+  static constexpr size_t kMaxIVLength = 32;
+  static constexpr size_t kTagLength = 16;
+  static constexpr size_t kAEGIS28LStateSize = 32;
+  static constexpr size_t kAEGIS256StateSize = 16;
+
+  static std::unique_ptr<Aead> make128L();
+  static std::unique_ptr<Aead> make256();
 
   void setKey(TrafficKey trafficKey) override;
   folly::Optional<TrafficKey> getKey() const override;
@@ -36,6 +75,14 @@ class AEGISCipher : public Aead {
   size_t ivLength() const override {
     return ivLength_;
   }
+
+  folly::Optional<std::unique_ptr<folly::IOBuf>> doDecrypt(
+      std::unique_ptr<folly::IOBuf>&& ciphertext,
+      const folly::IOBuf* associatedData,
+      folly::ByteRange iv,
+      folly::ByteRange key,
+      folly::MutableByteRange tagOut,
+      bool inPlace) const;
 
   std::unique_ptr<folly::IOBuf> encrypt(
       std::unique_ptr<folly::IOBuf>&& plaintext,
@@ -73,19 +120,40 @@ class AEGISCipher : public Aead {
     headroom_ = headroom;
   }
 
- private:
-  AEGISCipher(size_t keyLength, size_t ivLength, size_t tagLength);
+  InitStateFn initstate_;
+  AadUpdateFn aadUpdate_;
+  AadFinalFn aadFinal_;
+  EncryptUpdateFn encryptUpdate_;
+  EncryptFinalFn encryptFinal_;
+  DecryptUpdateFn decryptUpdate_;
+  DecryptFinalFn decryptFinal_;
 
-  std::array<uint8_t, kMaxIVLength> createIV(uint64_t seqNum) const;
+ private:
+  AEGISCipher(
+      InitStateFn init,
+      AadUpdateFn aadUpdate,
+      AadFinalFn aadFinal_,
+      EncryptUpdateFn encryptUpdate,
+      EncryptFinalFn encryptFinal,
+      DecryptUpdateFn decryptUpdate,
+      DecryptFinalFn decryptFinal,
+      size_t keyLength,
+      size_t ivLength,
+      size_t tagLength,
+      size_t stateSize);
 
   TrafficKey trafficKey_;
   folly::ByteRange trafficIvKey_;
   folly::ByteRange trafficKeyKey_;
-  size_t headroom_{0};
+  /* When allocating a new IOBUF for encryption, we need to save 5 bytes of
+  headroom for TLS 1.3 record header. */
+  size_t headroom_{5};
 
   // set by the ctor
   size_t keyLength_;
   size_t ivLength_;
   size_t tagLength_;
+  int stateSize_;
 };
 } // namespace fizz
+#endif

@@ -29,7 +29,6 @@ namespace HPHP::Native {
 
 //////////////////////////////////////////////////////////////////////////////
 
-FuncTable s_systemNativeFuncs;
 const FuncTable s_noNativeFuncs; // always empty
 ConstantMap s_constant_map;
 ClassConstantMapMap s_class_constant_map;
@@ -867,21 +866,6 @@ std::string NativeSig::toString(const char* classname,
   str += ")";
 
   return str;
-}
-
-/////////////////////////////////////////////////////////////////////////////
-
-bool registerConstant(const StringData* cnsName,
-                      ConstantCallback callback) {
-  TypedValueAux tv;
-  tv.m_type = KindOfUninit;
-  tv.m_data.pcnt = reinterpret_cast<MaybeCountable*>(callback);
-  tv.dynamic() = true;
-  if (!Constant::defNativeConstantCallback(cnsName, tv)) {
-    return false;
-  }
-  s_constant_map[cnsName] = tv;
-  return true;
 }
 
 //////////////////////////////////////////////////////////////////////////////

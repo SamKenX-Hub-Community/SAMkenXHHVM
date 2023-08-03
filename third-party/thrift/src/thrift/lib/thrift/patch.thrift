@@ -18,6 +18,7 @@ include "thrift/annotation/thrift.thrift"
 include "thrift/annotation/scope.thrift"
 include "thrift/annotation/cpp.thrift"
 include "thrift/lib/thrift/standard.thrift"
+include "thrift/lib/thrift/id.thrift"
 
 cpp_include "thrift/lib/cpp2/op/detail/Patch.h"
 
@@ -36,9 +37,11 @@ namespace py.asyncio apache_thrift_asyncio.patch
 namespace go thrift.lib.thrift.patch
 namespace py thrift.lib.thrift.patch
 
+typedef id.FieldId FieldId
+
 /**
- * An annotation that indicates a patch representation
- * should be generated for the associated definition.
+ * An annotation that indicates a patch representation should be generated for
+ * the associated definition.
  */
 @scope.Program
 @scope.Structured
@@ -259,8 +262,9 @@ struct BinaryPatch {
  * Patch field ids are interpreted at runtime, as a dynamic patch protocol,
  * without any additional schema derived from IDL patch definitions.
  */
-@thrift.GenDefaultEnumValue
 enum PatchOp {
+  Unspecified = 0,
+
   /**
    * Set the value. Supersedes all other ops.
    *
@@ -309,8 +313,8 @@ enum PatchOp {
   /**
    * Remove if present.
    *
-   * A key/value-based remove for set/list, 'saturating subtract' for
-   * numeric/'counting' types, and 'remove by key' for maps.
+   * A key/value-based remove for set, 'saturating subtract' for
+   * numeric/'counting' types, 'remove by key' for map, and `remove by field id` for struct.
    */
   Remove = 7,
 
@@ -324,7 +328,6 @@ enum PatchOp {
 
   /**
    * Put/append/invert a value, with the following semantics:
-   * - Identical to 'add' for set;
    * - 'update or insert' for maps;
    * - 'append' for list, string or binary; and
    * - 'invert' for boolean.
@@ -332,8 +335,6 @@ enum PatchOp {
   Put = 9,
 }
 
-// The key of PatchOp::PatchPrior in ListPatch
-@cpp.Adapter{
-  name = "::apache::thrift::InlineAdapter<::apache::thrift::op::detail::ListPatchIndex>",
-}
-typedef i32 ListPatchIndex
+// TODO change the element type to FieldId
+@cpp.Adapter{name = "::apache::thrift::op::detail::FieldIdListToSetAdapter"}
+typedef list<i16> FieldIdList

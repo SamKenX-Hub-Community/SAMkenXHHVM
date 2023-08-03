@@ -7,6 +7,7 @@ package module // [[[ program thrift source path ]]]
 import (
     "context"
     "fmt"
+    "sync"
 
 
     "thrift/lib/go/thrift"
@@ -17,6 +18,7 @@ import (
 var _ = context.Background
 var _ = fmt.Printf
 var _ = thrift.ZERO
+var _ = sync.Mutex{}
 
 
 
@@ -59,6 +61,7 @@ func (c *CChannelClient) Open() error {
 // Deprecated: Use CChannelClient instead.
 type CClient struct {
     chClient *CChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ CClientInterface = &CClient{}
@@ -164,7 +167,9 @@ func newReqCF() *reqCF {
 }
 
 func (x *reqCF) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqCFAlias reqCF
+    valueAlias := (*reqCFAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -244,7 +249,9 @@ func newRespCF() *respCF {
 }
 
 func (x *respCF) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respCFAlias respCF
+    valueAlias := (*respCFAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -331,7 +338,7 @@ func newReqCThing() *reqCThing {
     return (&reqCThing{}).
         SetANonCompat(0).
         SetBNonCompat("").
-        SetCNonCompat(make([]int32, 0))
+        SetCNonCompat(nil)
 }
 
 func (x *reqCThing) GetANonCompat() int32 {
@@ -356,7 +363,7 @@ func (x *reqCThing) GetCNonCompat() []int32 {
 
 func (x *reqCThing) GetC() []int32 {
     if !x.IsSetC() {
-        return make([]int32, 0)
+        return nil
     }
 
     return x.C
@@ -508,7 +515,9 @@ result := setResult
 }
 
 func (x *reqCThing) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqCThingAlias reqCThing
+    valueAlias := (*reqCThingAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -643,7 +652,7 @@ func (x *respCThing) GetBangNonCompat() *Bang {
 
 func (x *respCThing) GetBang() *Bang {
     if !x.IsSetBang() {
-        return NewBang()
+        return nil
     }
 
     return x.Bang
@@ -742,7 +751,9 @@ func (x *respCThing) DefaultGetBang() *Bang {
 }
 
 func (x *respCThing) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respCThingAlias respCThing
+    valueAlias := (*respCThingAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -915,7 +926,7 @@ func (p *procFuncCF) Write(seqId int32, result thrift.WritableStruct, oprot thri
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("F", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("f", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -969,7 +980,7 @@ func (p *procFuncCThing) Write(seqId int32, result thrift.WritableStruct, oprot 
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Thing", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("thing", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {

@@ -103,6 +103,7 @@ let run_saved_state_future
       Saved_state_loader.Naming_and_dep_table_info.naming_table_path =
         deptable_naming_table_blob_path;
       dep_table_path;
+      compressed_dep_table_path;
       naming_sqlite_table_path;
       errors_path;
     } =
@@ -120,10 +121,29 @@ let run_saved_state_future
       ServerArgs.ignore_hh_version genv.ServerEnv.options
     in
     let deptable = deptable_with_filename (Path.to_string dep_table_path) in
-    lock_and_load_deptable
-      ~base_file_name:(Path.to_string deptable_naming_table_blob_path)
-      ~deptable
-      ~ignore_hh_version;
+    let use_compressed_dep_graph =
+      genv.local_config.ServerLocalConfig.use_compressed_dep_graph
+    in
+    if use_compressed_dep_graph then
+      let deptable_result =
+        Depgraph_decompress_ffi.decompress
+          ~compressed_dg_path:(Path.to_string compressed_dep_table_path)
+      in
+      match deptable_result with
+      | Ok decompressed_depgraph_path ->
+        let deptable = deptable_with_filename decompressed_depgraph_path in
+        Hh_logger.log "Done decompressing dep graph";
+        lock_and_load_deptable
+          ~base_file_name:(Path.to_string deptable_naming_table_blob_path)
+          ~deptable
+          ~ignore_hh_version
+      | Error error ->
+        failwith (Printf.sprintf "Failed to decompress dep graph: %s" error)
+    else
+      lock_and_load_deptable
+        ~base_file_name:(Path.to_string deptable_naming_table_blob_path)
+        ~deptable
+        ~ignore_hh_version;
     let naming_table_fallback_path =
       if Sys.file_exists (Path.to_string naming_sqlite_table_path) then (
         Hh_logger.log "Using sqlite naming table from hack/64 saved state";
@@ -229,12 +249,6 @@ let download_and_load_state_exn
       result
       Future.t =
     Hh_logger.log "Downloading dependency graph from DevX infra";
-    let saved_state_type =
-      if genv.local_config.ServerLocalConfig.load_hack_64_distc_saved_state then
-        Saved_state_loader.Naming_and_dep_table_distc
-      else
-        Saved_state_loader.Naming_and_dep_table
-    in
     let loader_future =
       State_loader_futures.load
         ~ssopt
@@ -246,7 +260,7 @@ let download_and_load_state_exn
         ~watchman_opts:
           Saved_state_loader.Watchman_options.{ root; sockname = None }
         ~ignore_hh_version
-        ~saved_state_type
+        ~saved_state_type:Saved_state_loader.Naming_and_dep_table_distc
       |> Future.with_timeout
            ~timeout:genv.local_config.SLC.load_state_natively_download_timeout
     in
@@ -446,18 +460,19 @@ let use_prechecked_files (genv : ServerEnv.genv) : bool =
 
 let get_old_and_new_defs_in_files
     (old_naming_table : Naming_table.t)
-    (new_defs_per_file : FileInfo.names Relative_path.Map.t)
+    (new_naming_table : Naming_table.t)
     (files : Relative_path.Set.t) : FileInfo.names Relative_path.Map.t =
   Relative_path.Set.fold
     files
     ~f:
       begin
         fun path acc ->
-          let new_defs_in_file =
-            Relative_path.Map.find_opt new_defs_per_file path
-          in
           let old_defs_in_file =
             Naming_table.get_file_info old_naming_table path
+            |> Option.map ~f:FileInfo.simplify
+          in
+          let new_defs_in_file =
+            Naming_table.get_file_info new_naming_table path
             |> Option.map ~f:FileInfo.simplify
           in
           let all_defs =
@@ -512,13 +527,12 @@ let log_fanout_information to_recheck_deps files_to_recheck =
 
 (** Compare declarations loaded from the saved state to declarations based on
   the current versions of dirty files. This lets us check a smaller set of
-  files than the set we'd check if old declarations were not available.
-  To be used only when load_decls_from_saved_state is enabled. *)
+  files than the set we'd check if old declarations were not available. *)
 let get_files_to_recheck
     (genv : ServerEnv.genv)
     (env : ServerEnv.env)
     (old_naming_table : Naming_table.t)
-    (new_defs_per_file : FileInfo.names Relative_path.Map.t)
+    (new_naming_table : Naming_table.t)
     (defs_per_dirty_file : FileInfo.names Relative_path.Map.t)
     (files_to_redeclare : Relative_path.Set.t) : Relative_path.Set.t =
   let bucket_size = genv.local_config.SLC.type_decl_bucket_size in
@@ -536,7 +550,10 @@ let get_files_to_recheck
       Naming_table.get_file_info old_naming_table path
       |> Option.map ~f:FileInfo.simplify
     in
-    let new_names = Relative_path.Map.find_opt new_defs_per_file path in
+    let new_names =
+      Naming_table.get_file_info new_naming_table path
+      |> Option.map ~f:FileInfo.simplify
+    in
     let classes_from_names x = x.FileInfo.n_classes in
     let old_classes = Option.map old_names ~f:classes_from_names in
     let new_classes = Option.map new_names ~f:classes_from_names in
@@ -556,8 +573,7 @@ let get_files_to_recheck
     genv.workers
     get_old_and_new_classes
     ~defs:dirty_names;
-  let { Decl_redecl_service.fanout = { Decl_redecl_service.to_recheck; _ }; _ }
-      =
+  let { Decl_redecl_service.fanout = { Fanout.to_recheck; _ }; _ } =
     Decl_redecl_service.redo_type_decl
       ~bucket_size
       ctx
@@ -584,7 +600,7 @@ let get_files_to_recheck
  *
  * genv, env : environments
  * old_naming_table: naming table at the time of the saved state
- * new_defs_per_file: newly parsed file ast
+ * new_naming_table: naming table after changes
  * dirty_master_files and dirty_local_files: we need to typecheck these and,
  *    since their decl have changed, also all of their dependencies
  * similar_files: we only need to typecheck these,
@@ -593,34 +609,41 @@ let get_files_to_recheck
 let calculate_fanout_and_defer_or_do_type_check
     (genv : ServerEnv.genv)
     (env : ServerEnv.env)
-    (old_naming_table : Naming_table.t)
-    (new_defs_per_file : FileInfo.names Relative_path.Map.t)
-    ~(dirty_master_files_unchanged_hash : Relative_path.Set.t)
-    ~(dirty_master_files_changed_hash : Relative_path.Set.t)
-    ~(dirty_local_files_unchanged_hash : Relative_path.Set.t)
-    ~(dirty_local_files_changed_hash : Relative_path.Set.t)
+    ~(old_naming_table : Naming_table.t)
+    ~(new_naming_table : Naming_table.t)
+    ~(dirty_master_files_unchanged_decls : Relative_path.Set.t)
+    ~(dirty_master_files_changed_decls : Relative_path.Set.t)
+    ~(dirty_local_files_unchanged_decls : Relative_path.Set.t)
+    ~(dirty_local_files_changed_decls : Relative_path.Set.t)
     (t : float)
     (cgroup_steps : CgroupProfiler.step_group) : ServerEnv.env * float =
   let start_t = Unix.gettimeofday () in
-  let dirty_files_unchanged_hash =
+  let dirty_files_unchanged_decls =
     Relative_path.Set.union
-      dirty_master_files_unchanged_hash
-      dirty_local_files_unchanged_hash
+      dirty_master_files_unchanged_decls
+      dirty_local_files_unchanged_decls
   in
-  let dirty_files_changed_hash =
+  let dirty_files_changed_decls =
     Relative_path.Set.union
-      dirty_master_files_changed_hash
-      dirty_local_files_changed_hash
+      dirty_master_files_changed_decls
+      dirty_local_files_changed_decls
   in
-  let old_and_new_defs_per_dirty_files_changed_hash =
+  let old_and_new_defs_per_dirty_files_changed_decls =
     get_old_and_new_defs_in_files
       old_naming_table
-      new_defs_per_file
-      dirty_files_changed_hash
+      new_naming_table
+      dirty_files_changed_decls
+  in
+  let old_and_new_defs_per_dirty_files =
+    ServerCheckUtils.extend_defs_per_file
+      genv
+      old_and_new_defs_per_dirty_files_changed_decls
+      env.naming_table
+      dirty_files_unchanged_decls
   in
   let old_and_new_defs_in_files files : FileInfo.names =
     Relative_path.Map.fold
-      old_and_new_defs_per_dirty_files_changed_hash
+      old_and_new_defs_per_dirty_files_changed_decls
       ~f:
         begin
           fun k v acc ->
@@ -633,57 +656,44 @@ let calculate_fanout_and_defer_or_do_type_check
   in
   let ctx = Provider_utils.ctx_from_server_env env in
   let master_deps =
-    old_and_new_defs_in_files dirty_master_files_changed_hash |> names_to_deps
+    old_and_new_defs_in_files dirty_master_files_changed_decls |> names_to_deps
   in
   let local_deps =
-    old_and_new_defs_in_files dirty_local_files_changed_hash |> names_to_deps
+    old_and_new_defs_in_files dirty_local_files_changed_decls |> names_to_deps
   in
   let get_files_to_recheck files_to_redeclare =
     get_files_to_recheck
       genv
       env
       old_naming_table
-      new_defs_per_file
-      (ServerCheckUtils.extend_defs_per_file
-         genv
-         old_and_new_defs_per_dirty_files_changed_hash
-         env.naming_table
-         dirty_files_unchanged_hash)
+      new_naming_table
+      old_and_new_defs_per_dirty_files
       files_to_redeclare
   in
   let (env, to_recheck) =
     if use_prechecked_files genv then
       (* Start with dirty files and fan-out of local changes only *)
       let to_recheck =
-        if
-          genv.local_config.SLC.load_decls_from_saved_state
-          || genv.local_config.SLC.fetch_remote_old_decls
-        then
-          get_files_to_recheck dirty_local_files_changed_hash
+        if genv.local_config.SLC.fetch_remote_old_decls then
+          get_files_to_recheck dirty_local_files_changed_decls
         else
           let deps = Typing_deps.add_all_deps env.deps_mode local_deps in
           let files = Naming_provider.get_files ctx deps in
           log_fanout_information deps files;
           files
       in
-      ( ServerPrecheckedFiles.set
+      let env =
+        ServerPrecheckedFiles.init
           env
-          (Initial_typechecking
-             {
-               rechecked_files = Relative_path.Set.empty;
-               dirty_local_deps = local_deps;
-               dirty_master_deps = master_deps;
-               clean_local_deps = Typing_deps.(DepSet.make ());
-             }),
-        to_recheck )
+          ~dirty_local_deps:local_deps
+          ~dirty_master_deps:master_deps
+      in
+      (env, to_recheck)
     else
       (* Start with full fan-out immediately *)
       let to_recheck =
-        if
-          genv.local_config.SLC.load_decls_from_saved_state
-          || genv.local_config.SLC.fetch_remote_old_decls
-        then
-          get_files_to_recheck dirty_files_changed_hash
+        if genv.local_config.SLC.fetch_remote_old_decls then
+          get_files_to_recheck dirty_files_changed_decls
         else
           let deps = Typing_deps.DepSet.union master_deps local_deps in
           let deps = Typing_deps.add_all_deps env.deps_mode deps in
@@ -695,16 +705,10 @@ let calculate_fanout_and_defer_or_do_type_check
   in
   (* We still need to typecheck files whose declarations did not change *)
   let to_recheck =
-    Relative_path.Set.union to_recheck dirty_files_unchanged_hash
+    to_recheck
+    |> Relative_path.Set.union dirty_files_unchanged_decls
+    |> Relative_path.Set.union dirty_files_changed_decls
   in
-  let defs_per_files_to_recheck =
-    ServerCheckUtils.extend_defs_per_file
-      genv
-      old_and_new_defs_per_dirty_files_changed_hash
-      env.naming_table
-      to_recheck
-  in
-  let files_to_check = Relative_path.Map.keys defs_per_files_to_recheck in
 
   (* HACK: dump the fanout that we calculated and exit. This is for
      `hh_fanout`'s regression testing vs. `hh_server`. This can be deleted once
@@ -717,29 +721,28 @@ let calculate_fanout_and_defer_or_do_type_check
          [
            ( "recheck_files",
              Hh_json.JSON_Array
-               (files_to_check
+               (Relative_path.Set.elements to_recheck
                |> List.map ~f:Relative_path.to_absolute
                |> List.map ~f:Hh_json.string_) );
          ]);
     exit 0
   ) else
-    let env = { env with changed_files = dirty_files_changed_hash } in
-    let files_to_check =
+    let env = { env with changed_files = dirty_files_changed_decls } in
+    let to_recheck =
       if
         not
           genv.ServerEnv.local_config
             .ServerLocalConfig.enable_type_check_filter_files
       then
-        files_to_check
+        to_recheck
       else
-        Relative_path.Set.elements
-        @@ ServerCheckUtils.user_filter_type_check_files
-             ~to_recheck:(Relative_path.Set.of_list files_to_check)
-             ~reparsed:
-               (Relative_path.Set.union
-                  dirty_files_unchanged_hash
-                  dirty_files_changed_hash)
-             ~is_ide_file:(fun _ -> false)
+        ServerCheckUtils.user_filter_type_check_files
+          ~to_recheck
+          ~reparsed:
+            (Relative_path.Set.union
+               dirty_files_unchanged_decls
+               dirty_files_changed_decls)
+          ~is_ide_file:(fun _ -> false)
     in
     let (state_distance, state_age) =
       match env.init_env.saved_state_delta with
@@ -752,25 +755,26 @@ let calculate_fanout_and_defer_or_do_type_check
         (Telemetry.create ()
         |> Telemetry.float_ ~key:"start_time" ~value:start_t
         |> Telemetry.int_
-             ~key:"dirty_master_files_unchanged_hash"
+             ~key:"dirty_master_files_unchanged_decls"
              ~value:
-               (Relative_path.Set.cardinal dirty_master_files_unchanged_hash)
+               (Relative_path.Set.cardinal dirty_master_files_unchanged_decls)
         |> Telemetry.int_
-             ~key:"dirty_master_files_changed_hash"
-             ~value:(Relative_path.Set.cardinal dirty_master_files_changed_hash)
-        |> Telemetry.int_
-             ~key:"dirty_local_files_unchanged_hash"
+             ~key:"dirty_master_files_changed_decls"
              ~value:
-               (Relative_path.Set.cardinal dirty_local_files_unchanged_hash)
+               (Relative_path.Set.cardinal dirty_master_files_changed_decls)
         |> Telemetry.int_
-             ~key:"dirty_local_files_changed_hash"
-             ~value:(Relative_path.Set.cardinal dirty_local_files_changed_hash)
+             ~key:"dirty_local_files_unchanged_decls"
+             ~value:
+               (Relative_path.Set.cardinal dirty_local_files_unchanged_decls)
         |> Telemetry.int_
-             ~key:"dirty_files_unchanged_hash"
-             ~value:(Relative_path.Set.cardinal dirty_files_unchanged_hash)
+             ~key:"dirty_local_files_changed_decls"
+             ~value:(Relative_path.Set.cardinal dirty_local_files_changed_decls)
         |> Telemetry.int_
-             ~key:"dirty_files_changed_hash"
-             ~value:(Relative_path.Set.cardinal dirty_files_changed_hash)
+             ~key:"dirty_files_unchanged_decls"
+             ~value:(Relative_path.Set.cardinal dirty_files_unchanged_decls)
+        |> Telemetry.int_
+             ~key:"dirty_files_changed_decls"
+             ~value:(Relative_path.Set.cardinal dirty_files_changed_decls)
         |> Telemetry.int_
              ~key:"to_recheck"
              ~value:(Relative_path.Set.cardinal to_recheck)
@@ -781,7 +785,7 @@ let calculate_fanout_and_defer_or_do_type_check
       ServerInitCommon.defer_or_do_type_check
         genv
         env
-        files_to_check
+        (Relative_path.Set.elements to_recheck)
         init_telemetry
         t
         ~telemetry_label:"type_check_dirty"
@@ -789,11 +793,11 @@ let calculate_fanout_and_defer_or_do_type_check
     in
     HackEventLogger.type_check_dirty
       ~start_t
-      ~dirty_count:(Relative_path.Set.cardinal dirty_files_changed_hash)
+      ~dirty_count:(Relative_path.Set.cardinal dirty_files_changed_decls)
       ~recheck_count:(Relative_path.Set.cardinal to_recheck);
     Hh_logger.log
       "ServerInit type_check_dirty count: %d. recheck count: %d"
-      (Relative_path.Set.cardinal dirty_files_changed_hash)
+      (Relative_path.Set.cardinal dirty_files_changed_decls)
       (Relative_path.Set.cardinal to_recheck);
     result
 
@@ -890,17 +894,17 @@ let write_symbol_info
   let paths = env.swriteopt.symbol_write_index_paths in
   let paths_file = env.swriteopt.symbol_write_index_paths_file in
   let referenced_file = env.swriteopt.symbol_write_referenced_out in
-  let exclude_hhi = not env.swriteopt.symbol_write_include_hhi in
+  let include_hhi = env.swriteopt.symbol_write_include_hhi in
   let ignore_paths = env.swriteopt.symbol_write_ignore_paths in
   let incremental = env.swriteopt.symbol_write_sym_hash_in in
   let gen_sym_hash = env.swriteopt.symbol_write_sym_hash_out in
   let files =
     if List.length paths > 0 || Option.is_some paths_file then
-      Symbol_indexable.from_options ~paths ~paths_file
+      Symbol_indexable.from_options ~paths ~paths_file ~include_hhi
     else
       Symbol_indexable.from_naming_table
         env.naming_table
-        ~exclude_hhi
+        ~include_hhi
         ~ignore_paths
   in
   match env.swriteopt.symbol_write_index_paths_file_output with
@@ -999,6 +1003,7 @@ let full_init
     HackEventLogger.invariant_violation_bug desc ~data_int:existing_name_count
   end;
   Hh_logger.log "full init";
+
   let (env, t) =
     initialize_naming_table
       ~do_naming:true
@@ -1008,23 +1013,12 @@ let full_init
       env
       cgroup_steps
   in
-  ServerInitCommon.validate_no_errors Errors.Typing env.errorl;
+  ServerInitCommon.validate_no_errors env.errorl;
   if not is_check_mode then
     SearchServiceRunner.update_fileinfo_map
       env.naming_table
       ~source:SearchUtils.Init;
-  let defs_per_file = Naming_table.to_defs_per_file env.naming_table in
-  let fnl = Relative_path.Map.keys defs_per_file in
-  let env =
-    if is_check_mode then
-      ServerCheckUtils.start_delegate_if_needed
-        env
-        genv
-        (List.length fnl)
-        env.errorl
-    else
-      env
-  in
+  let fnl = Naming_table.get_files env.naming_table in
   ServerInitCommon.defer_or_do_type_check
     genv
     env
@@ -1107,20 +1101,56 @@ let post_saved_state_initialization
     }
   in
 
-  let (naming_error_files, _non_naming_error_files) =
-    SaveStateService.partition_error_files_tf old_errors [Errors.Naming]
-  in
-  let files_with_old_errors = SaveStateService.fold_error_files old_errors in
   Hh_logger.log
     "Number of files with errors: %d"
-    (Relative_path.Set.cardinal files_with_old_errors);
+    (Relative_path.Set.cardinal old_errors);
 
-  Hh_logger.log
-    "Number of files with Naming errors: %d"
-    (Relative_path.Set.cardinal naming_error_files);
+  (* Load and parse PACKAGES.toml if it exists at the root. *)
+  let (errors, package_info) = PackageConfig.load_and_parse () in
+  let tcopt =
+    { env.ServerEnv.tcopt with GlobalOptions.tco_package_info = package_info }
+  in
+  let env =
+    ServerEnv.{ env with tcopt; errorl = Errors.merge env.errorl errors }
+  in
 
-  (* Load and parse packages.toml if it exists at the root. *)
-  let env = PackageConfig.load_and_parse env in
+  (***********************************************************
+    INVARIANTS.
+    These might help make sense of the rest of the function. *)
+  (* Invariant: old_naming_table is Backed, and has empty delta *)
+  begin
+    match Naming_table.get_backed_delta_TEST_ONLY old_naming_table with
+    | None ->
+      HackEventLogger.invariant_violation_bug
+        "saved-state naming table not backed"
+    | Some { Naming_sqlite.file_deltas; _ }
+      when not (Relative_path.Map.is_empty file_deltas) ->
+      HackEventLogger.invariant_violation_bug
+        "saved-state naming table has deltas"
+    | Some _ -> ()
+  end;
+  (* Invariant: env.naming_table is Unbacked and empty *)
+  begin
+    match Naming_table.get_backed_delta_TEST_ONLY env.naming_table with
+    | None -> ()
+    | Some _ ->
+      HackEventLogger.invariant_violation_bug
+        "ServerLazyInit env.naming_table is backed"
+  end;
+  let count =
+    Naming_table.fold env.naming_table ~init:0 ~f:(fun _ _ acc -> acc + 1)
+  in
+  if count > 0 then
+    HackEventLogger.invariant_violation_bug
+      "ServerLazyInit env.naming_table is non-empty"
+      ~data_int:count;
+  (* Invariant: env.disk_needs_parsing and env.needs_recheck are empty *)
+  if not (Relative_path.Set.is_empty env.disk_needs_parsing) then
+    HackEventLogger.invariant_violation_bug
+      "SeverLazyInit env.disk_needs_parsing is non-empty";
+  if not (Relative_path.Set.is_empty env.needs_recheck) then
+    HackEventLogger.invariant_violation_bug
+      "SeverLazyInit env.needs_recheck is non-empty";
 
   (***********************************************************
     NAMING TABLE.
@@ -1155,7 +1185,6 @@ let post_saved_state_initialization
       ~init:Relative_path.Set.empty
       ~f:Relative_path.Set.union
       [
-        naming_error_files;
         dirty_naming_files;
         dirty_master_files;
         dirty_local_files;
@@ -1182,7 +1211,6 @@ let post_saved_state_initialization
       ~cgroup_steps
       ~worker_call:MultiWorker.wrapper
   in
-  let defs_per_file = Naming_table.to_defs_per_file env.naming_table in
   SearchServiceRunner.update_fileinfo_map
     env.naming_table
     ~source:SearchUtils.TypeChecker;
@@ -1208,16 +1236,16 @@ let post_saved_state_initialization
         ~telemetry_label:"post_ss1.naming"
         ~cgroup_steps
     in
-    ServerInitCommon.validate_no_errors Errors.Typing env.errorl;
+    ServerInitCommon.validate_no_errors env.errorl;
 
+    let new_naming_table = env.naming_table in
     let env =
       {
         env with
         clock;
         naming_table = Naming_table.combine old_naming_table env.naming_table;
         disk_needs_parsing = Relative_path.Set.empty;
-        needs_recheck =
-          Relative_path.Set.union env.needs_recheck files_with_old_errors;
+        needs_recheck = Relative_path.Set.union env.needs_recheck old_errors;
       }
     in
 
@@ -1244,12 +1272,12 @@ let post_saved_state_initialization
       combined into [env.needs_recheck], as a way of deferring the check until
       the first iteration of ServerTypeCheck.
     *)
-    let partition_similar dirty_files =
+    let partition_unchanged_hash dirty_files =
       Relative_path.Set.partition
         (fun f ->
-          let info1 = Naming_table.get_file_info old_naming_table f in
-          let info2 = Naming_table.get_file_info env.naming_table f in
-          match (info1, info2) with
+          let old_info = Naming_table.get_file_info old_naming_table f in
+          let new_info = Naming_table.get_file_info env.naming_table f in
+          match (old_info, new_info) with
           | (Some x, Some y) ->
             (match (x.FileInfo.hash, y.FileInfo.hash) with
             | (Some x, Some y) -> Int64.equal x y
@@ -1257,23 +1285,23 @@ let post_saved_state_initialization
           | _ -> false)
         dirty_files
     in
-    let (dirty_master_files_unchanged_hash, dirty_master_files_changed_hash) =
-      partition_similar dirty_master_files
+    let (dirty_master_files_unchanged_decls, dirty_master_files_changed_decls) =
+      partition_unchanged_hash dirty_master_files
     in
-    let (dirty_local_files_unchanged_hash, dirty_local_files_changed_hash) =
-      partition_similar dirty_local_files
+    let (dirty_local_files_unchanged_decls, dirty_local_files_changed_decls) =
+      partition_unchanged_hash dirty_local_files
     in
 
     let (env, t) =
       calculate_fanout_and_defer_or_do_type_check
         genv
         env
-        old_naming_table
-        defs_per_file
-        ~dirty_master_files_unchanged_hash
-        ~dirty_master_files_changed_hash
-        ~dirty_local_files_unchanged_hash
-        ~dirty_local_files_changed_hash
+        ~old_naming_table
+        ~new_naming_table
+        ~dirty_master_files_unchanged_decls
+        ~dirty_master_files_changed_decls
+        ~dirty_local_files_unchanged_decls
+        ~dirty_local_files_changed_decls
         t
         cgroup_steps
     in

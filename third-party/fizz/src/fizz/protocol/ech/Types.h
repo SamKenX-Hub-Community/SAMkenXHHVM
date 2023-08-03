@@ -41,6 +41,23 @@ struct HpkeKeyConfig {
   hpke::KEMId kem_id;
   HpkePublicKey public_key;
   std::vector<HpkeSymmetricCipherSuite> cipher_suites;
+
+  HpkeKeyConfig() {}
+  HpkeKeyConfig(const HpkeKeyConfig& other) {
+    config_id = other.config_id;
+    kem_id = other.kem_id;
+    public_key = other.public_key->clone();
+    cipher_suites = other.cipher_suites;
+  }
+  HpkeKeyConfig& operator=(const HpkeKeyConfig& other) {
+    if (this != &other) {
+      config_id = other.config_id;
+      kem_id = other.kem_id;
+      public_key = other.public_key->clone();
+      cipher_suites = other.cipher_suites;
+    }
+    return *this;
+  }
 };
 
 struct ECHConfigContentDraft {
@@ -48,6 +65,28 @@ struct ECHConfigContentDraft {
   uint8_t maximum_name_length;
   Buf public_name;
   std::vector<Extension> extensions;
+
+  ECHConfigContentDraft() {}
+  ECHConfigContentDraft(const ECHConfigContentDraft& other) {
+    key_config = other.key_config;
+    maximum_name_length = other.maximum_name_length;
+    public_name = other.public_name->clone();
+    extensions = std::vector<Extension>();
+    for (const auto& extension : other.extensions)
+      extensions.push_back(extension.clone());
+  }
+
+  ECHConfigContentDraft& operator=(const ECHConfigContentDraft& other) {
+    if (this != &other) {
+      key_config = other.key_config;
+      maximum_name_length = other.maximum_name_length;
+      public_name = other.public_name->clone();
+      extensions = std::vector<Extension>();
+      for (const auto& extension : other.extensions)
+        extensions.push_back(extension.clone());
+    }
+    return *this;
+  }
 };
 
 struct ECHConfig {
@@ -77,6 +116,10 @@ struct ECHConfig {
     }
     return *this;
   }
+};
+
+struct ECHConfigList {
+  std::vector<ECHConfig> configs;
 };
 
 } // namespace ech

@@ -6,34 +6,60 @@ package module // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    cpp "thrift/annotation/cpp"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = cpp.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
 var _ = thrift.ZERO
 
 
-type MyId = int16
+type IncredibleStruct = MyStruct
 
-func NewMyId() MyId {
-  return 0
+func NewIncredibleStruct() *IncredibleStruct {
+  return NewMyStruct()
 }
 
-func WriteMyId(item MyId, p thrift.Protocol) error {
-  if err := p.WriteI16(item); err != nil {
+func WriteIncredibleStruct(item *IncredibleStruct, p thrift.Protocol) error {
+  if err := item.Write(p); err != nil {
     return err
 }
   return nil
 }
 
-func ReadMyId(p thrift.Protocol) (MyId, error) {
-  var decodeResult MyId
+func ReadIncredibleStruct(p thrift.Protocol) (IncredibleStruct, error) {
+  var decodeResult IncredibleStruct
   decodeErr := func() error {
-    result, err := p.ReadI16()
+    result := *NewMyStruct()
+err := result.Read(p)
+if err != nil {
+    return err
+}
+    decodeResult = result
+    return nil
+  }()
+  return decodeResult, decodeErr
+}
+
+type BrilliantStruct = MyStruct
+
+func NewBrilliantStruct() *BrilliantStruct {
+  return NewMyStruct()
+}
+
+func WriteBrilliantStruct(item *BrilliantStruct, p thrift.Protocol) error {
+  if err := item.Write(p); err != nil {
+    return err
+}
+  return nil
+}
+
+func ReadBrilliantStruct(p thrift.Protocol) (BrilliantStruct, error) {
+  var decodeResult BrilliantStruct
+  decodeErr := func() error {
+    result := *NewMyStruct()
+err := result.Read(p)
 if err != nil {
     return err
 }
@@ -159,7 +185,9 @@ if err != nil {
 }
 
 func (x *MyStructNestedAnnotation) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructNestedAnnotationAlias MyStructNestedAnnotation
+    valueAlias := (*MyStructNestedAnnotationAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -252,7 +280,9 @@ func NewMyUnion() *MyUnion {
 }
 
 func (x *MyUnion) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyUnionAlias MyUnion
+    valueAlias := (*MyUnionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *MyUnion) countSetFields() int {
@@ -344,11 +374,15 @@ func NewMyException() *MyException {
 }
 
 func (x *MyException) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyExceptionAlias MyException
+    valueAlias := (*MyExceptionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *MyException) Error() string {
-    return x.String()
+    type MyExceptionAlias MyException
+    valueAlias := (*MyExceptionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -420,7 +454,7 @@ func (x *MyException) Read(p thrift.Protocol) error {
 
 type MyStruct struct {
     MajorVer int64 `thrift:"major,2" json:"major" db:"major"`
-    Package string `thrift:"package,1" json:"package" db:"package"`
+    PackageName string `thrift:"package,1" tag:"some_package"`
     AnnotationWithQuote string `thrift:"annotation_with_quote,3" tag:"somevalue"`
     Class_ string `thrift:"class_,4" json:"class_" db:"class_"`
     AnnotationWithTrailingComma string `thrift:"annotation_with_trailing_comma,5" json:"annotation_with_trailing_comma" db:"annotation_with_trailing_comma"`
@@ -428,7 +462,6 @@ type MyStruct struct {
     MyEnum MyEnum `thrift:"my_enum,7" json:"my_enum" db:"my_enum"`
     CppTypeAnnotation []string `thrift:"cpp_type_annotation,8" json:"cpp_type_annotation" db:"cpp_type_annotation"`
     MyUnion *MyUnion `thrift:"my_union,9" json:"my_union" db:"my_union"`
-    MyID MyId `thrift:"my_id,10" json:"my_id" db:"my_id"`
 }
 // Compile time interface enforcer
 var _ thrift.Struct = &MyStruct{}
@@ -436,15 +469,14 @@ var _ thrift.Struct = &MyStruct{}
 func NewMyStruct() *MyStruct {
     return (&MyStruct{}).
         SetMajorVerNonCompat(0).
-        SetPackageNonCompat("").
+        SetPackageNameNonCompat("").
         SetAnnotationWithQuoteNonCompat("").
         SetClass_NonCompat("").
         SetAnnotationWithTrailingCommaNonCompat("").
         SetEmptyAnnotationsNonCompat("").
         SetMyEnumNonCompat(0).
-        SetCppTypeAnnotationNonCompat(make([]string, 0)).
-        SetMyUnionNonCompat(*NewMyUnion()).
-        SetMyIDNonCompat(NewMyId())
+        SetCppTypeAnnotationNonCompat(nil).
+        SetMyUnionNonCompat(*NewMyUnion())
 }
 
 func (x *MyStruct) GetMajorVerNonCompat() int64 {
@@ -455,12 +487,12 @@ func (x *MyStruct) GetMajorVer() int64 {
     return x.MajorVer
 }
 
-func (x *MyStruct) GetPackageNonCompat() string {
-    return x.Package
+func (x *MyStruct) GetPackageNameNonCompat() string {
+    return x.PackageName
 }
 
-func (x *MyStruct) GetPackage() string {
-    return x.Package
+func (x *MyStruct) GetPackageName() string {
+    return x.PackageName
 }
 
 func (x *MyStruct) GetAnnotationWithQuoteNonCompat() string {
@@ -509,7 +541,7 @@ func (x *MyStruct) GetCppTypeAnnotationNonCompat() []string {
 
 func (x *MyStruct) GetCppTypeAnnotation() []string {
     if !x.IsSetCppTypeAnnotation() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.CppTypeAnnotation
@@ -521,18 +553,10 @@ func (x *MyStruct) GetMyUnionNonCompat() *MyUnion {
 
 func (x *MyStruct) GetMyUnion() *MyUnion {
     if !x.IsSetMyUnion() {
-        return NewMyUnion()
+        return nil
     }
 
     return x.MyUnion
-}
-
-func (x *MyStruct) GetMyIDNonCompat() MyId {
-    return x.MyID
-}
-
-func (x *MyStruct) GetMyID() MyId {
-    return x.MyID
 }
 
 func (x *MyStruct) SetMajorVerNonCompat(value int64) *MyStruct {
@@ -545,13 +569,13 @@ func (x *MyStruct) SetMajorVer(value int64) *MyStruct {
     return x
 }
 
-func (x *MyStruct) SetPackageNonCompat(value string) *MyStruct {
-    x.Package = value
+func (x *MyStruct) SetPackageNameNonCompat(value string) *MyStruct {
+    x.PackageName = value
     return x
 }
 
-func (x *MyStruct) SetPackage(value string) *MyStruct {
-    x.Package = value
+func (x *MyStruct) SetPackageName(value string) *MyStruct {
+    x.PackageName = value
     return x
 }
 
@@ -625,16 +649,6 @@ func (x *MyStruct) SetMyUnion(value *MyUnion) *MyStruct {
     return x
 }
 
-func (x *MyStruct) SetMyIDNonCompat(value MyId) *MyStruct {
-    x.MyID = value
-    return x
-}
-
-func (x *MyStruct) SetMyID(value MyId) *MyStruct {
-    x.MyID = value
-    return x
-}
-
 func (x *MyStruct) IsSetCppTypeAnnotation() bool {
     return x.CppTypeAnnotation != nil
 }
@@ -659,12 +673,12 @@ func (x *MyStruct) writeField2(p thrift.Protocol) error {  // MajorVer
     return nil
 }
 
-func (x *MyStruct) writeField1(p thrift.Protocol) error {  // Package
+func (x *MyStruct) writeField1(p thrift.Protocol) error {  // PackageName
     if err := p.WriteFieldBegin("package", thrift.STRING, 1); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
-    item := x.GetPackageNonCompat()
+    item := x.GetPackageNameNonCompat()
     if err := p.WriteString(item); err != nil {
     return err
 }
@@ -806,23 +820,6 @@ func (x *MyStruct) writeField9(p thrift.Protocol) error {  // MyUnion
     return nil
 }
 
-func (x *MyStruct) writeField10(p thrift.Protocol) error {  // MyID
-    if err := p.WriteFieldBegin("my_id", thrift.I16, 10); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
-    }
-
-    item := x.GetMyIDNonCompat()
-    err := WriteMyId(item, p)
-if err != nil {
-    return err
-}
-
-    if err := p.WriteFieldEnd(); err != nil {
-        return thrift.PrependError(fmt.Sprintf("%T write field end error: ", x), err)
-    }
-    return nil
-}
-
 func (x *MyStruct) readField2(p thrift.Protocol) error {  // MajorVer
     result, err := p.ReadI64()
 if err != nil {
@@ -833,13 +830,13 @@ if err != nil {
     return nil
 }
 
-func (x *MyStruct) readField1(p thrift.Protocol) error {  // Package
+func (x *MyStruct) readField1(p thrift.Protocol) error {  // PackageName
     result, err := p.ReadString()
 if err != nil {
     return err
 }
 
-    x.SetPackageNonCompat(result)
+    x.SetPackageNameNonCompat(result)
     return nil
 }
 
@@ -933,16 +930,6 @@ if err != nil {
     return nil
 }
 
-func (x *MyStruct) readField10(p thrift.Protocol) error {  // MyID
-    result, err := ReadMyId(p)
-if err != nil {
-    return err
-}
-
-    x.SetMyIDNonCompat(result)
-    return nil
-}
-
 // Deprecated: Use NewMyStruct().GetMyUnion() instead.
 var MyStruct_MyUnion_DEFAULT = NewMyStruct().GetMyUnion()
 
@@ -955,7 +942,9 @@ func (x *MyStruct) DefaultGetMyUnion() *MyUnion {
 }
 
 func (x *MyStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructAlias MyStruct
+    valueAlias := (*MyStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -975,8 +964,8 @@ func (x *MyStructBuilder) MajorVer(value int64) *MyStructBuilder {
     return x
 }
 
-func (x *MyStructBuilder) Package(value string) *MyStructBuilder {
-    x.obj.Package = value
+func (x *MyStructBuilder) PackageName(value string) *MyStructBuilder {
+    x.obj.PackageName = value
     return x
 }
 
@@ -1012,11 +1001,6 @@ func (x *MyStructBuilder) CppTypeAnnotation(value []string) *MyStructBuilder {
 
 func (x *MyStructBuilder) MyUnion(value *MyUnion) *MyStructBuilder {
     x.obj.MyUnion = value
-    return x
-}
-
-func (x *MyStructBuilder) MyID(value MyId) *MyStructBuilder {
-    x.obj.MyID = value
     return x
 }
 
@@ -1063,10 +1047,6 @@ func (x *MyStruct) Write(p thrift.Protocol) error {
     }
 
     if err := x.writeField9(p); err != nil {
-        return err
-    }
-
-    if err := x.writeField10(p); err != nil {
         return err
     }
 
@@ -1130,10 +1110,6 @@ func (x *MyStruct) Read(p thrift.Protocol) error {
             }
         case 9:  // my_union
             if err := x.readField9(p); err != nil {
-                return err
-            }
-        case 10:  // my_id
-            if err := x.readField10(p); err != nil {
                 return err
             }
         default:
@@ -1257,7 +1233,9 @@ if err != nil {
 }
 
 func (x *SecretStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type SecretStructAlias SecretStruct
+    valueAlias := (*SecretStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

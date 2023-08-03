@@ -98,7 +98,7 @@ if err != nil {
 type Drivers = []string
 
 func NewDrivers() Drivers {
-  return make([]string, 0)
+  return nil
 }
 
 func WriteDrivers(item Drivers, p thrift.Protocol) error {
@@ -249,8 +249,8 @@ func NewAutomobile() *Automobile {
         SetFirstPlateNonCompat("0000").
         SetYearNonCompat(NewYear()).
         SetDriversNonCompat(NewDrivers()).
-        SetAccessoriesNonCompat(make([]*Accessory, 0)).
-        SetPartNamesNonCompat(make(map[int32]*CarPartName))
+        SetAccessoriesNonCompat(nil).
+        SetPartNamesNonCompat(nil)
 }
 
 func (x *Automobile) GetPlateNonCompat() Plate {
@@ -279,7 +279,7 @@ func (x *Automobile) GetFirstPlateNonCompat() *Plate {
 
 func (x *Automobile) GetFirstPlate() Plate {
     if !x.IsSetFirstPlate() {
-        return NewPlate()
+        return *NewAutomobile().FirstPlate
     }
 
     return *x.FirstPlate
@@ -311,7 +311,7 @@ func (x *Automobile) GetAccessoriesNonCompat() []*Accessory {
 
 func (x *Automobile) GetAccessories() []*Accessory {
     if !x.IsSetAccessories() {
-        return make([]*Accessory, 0)
+        return nil
     }
 
     return x.Accessories
@@ -323,7 +323,7 @@ func (x *Automobile) GetPartNamesNonCompat() map[int32]*CarPartName {
 
 func (x *Automobile) GetPartNames() map[int32]*CarPartName {
     if !x.IsSetPartNames() {
-        return make(map[int32]*CarPartName)
+        return nil
     }
 
     return x.PartNames
@@ -710,7 +710,9 @@ var Automobile_PreviousPlate_DEFAULT = NewAutomobile().GetPreviousPlate()
 var Automobile_FirstPlate_DEFAULT = NewAutomobile().GetFirstPlate()
 
 func (x *Automobile) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AutomobileAlias Automobile
+    valueAlias := (*AutomobileAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -973,7 +975,9 @@ if err != nil {
 }
 
 func (x *MapKey) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MapKeyAlias MapKey
+    valueAlias := (*MapKeyAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1077,7 +1081,7 @@ var _ thrift.Struct = &MapContainer{}
 
 func NewMapContainer() *MapContainer {
     return (&MapContainer{}).
-        SetMapvalNonCompat(make(map[MapKey]string))
+        SetMapvalNonCompat(nil)
 }
 
 func (x *MapContainer) GetMapvalNonCompat() map[MapKey]string {
@@ -1086,7 +1090,7 @@ func (x *MapContainer) GetMapvalNonCompat() map[MapKey]string {
 
 func (x *MapContainer) GetMapval() map[MapKey]string {
     if !x.IsSetMapval() {
-        return make(map[MapKey]string)
+        return nil
     }
 
     return x.Mapval
@@ -1184,7 +1188,9 @@ result := mapResult
 }
 
 func (x *MapContainer) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MapContainerAlias MapContainer
+    valueAlias := (*MapContainerAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1286,7 +1292,7 @@ func (x *Pair) GetAutomobileNonCompat() *Automobile {
 
 func (x *Pair) GetAutomobile() *Automobile {
     if !x.IsSetAutomobile() {
-        return NewAutomobile()
+        return nil
     }
 
     return x.Automobile
@@ -1298,7 +1304,7 @@ func (x *Pair) GetCarNonCompat() *Car {
 
 func (x *Pair) GetCar() *Car {
     if !x.IsSetCar() {
-        return NewCar()
+        return nil
     }
 
     return x.Car
@@ -1417,7 +1423,9 @@ func (x *Pair) DefaultGetCar() *Car {
 }
 
 func (x *Pair) String() string {
-    return fmt.Sprintf("%+v", x)
+    type PairAlias Pair
+    valueAlias := (*PairAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1522,8 +1530,8 @@ var _ thrift.Struct = &Collection{}
 
 func NewCollection() *Collection {
     return (&Collection{}).
-        SetAutomobilesNonCompat(make([]*Automobile, 0)).
-        SetCarsNonCompat(make([]*Car, 0))
+        SetAutomobilesNonCompat(nil).
+        SetCarsNonCompat(nil)
 }
 
 func (x *Collection) GetAutomobilesNonCompat() []*Automobile {
@@ -1532,7 +1540,7 @@ func (x *Collection) GetAutomobilesNonCompat() []*Automobile {
 
 func (x *Collection) GetAutomobiles() []*Automobile {
     if !x.IsSetAutomobiles() {
-        return make([]*Automobile, 0)
+        return nil
     }
 
     return x.Automobiles
@@ -1544,7 +1552,7 @@ func (x *Collection) GetCarsNonCompat() []*Car {
 
 func (x *Collection) GetCars() []*Car {
     if !x.IsSetCars() {
-        return make([]*Car, 0)
+        return nil
     }
 
     return x.Cars
@@ -1699,7 +1707,9 @@ result := listResult
 }
 
 func (x *Collection) String() string {
-    return fmt.Sprintf("%+v", x)
+    type CollectionAlias Collection
+    valueAlias := (*CollectionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

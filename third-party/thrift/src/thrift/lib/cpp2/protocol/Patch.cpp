@@ -51,7 +51,7 @@ using value_field_id =
     type::field_id_tag<static_cast<FieldId>(type::base_type_v<Tag>)>;
 
 template <typename Tag>
-using value_native_type = op::get_native_type<value_field_id<Tag>, Value>;
+using value_native_type = op::get_native_type<Value, value_field_id<Tag>>;
 
 PatchOp toOp(FieldId id) {
   auto op = static_cast<PatchOp>(id);
@@ -236,12 +236,7 @@ void ApplyPatch::operator()(
   checkOps(
       patch,
       Value::Type::listValue,
-      {PatchOp::Assign,
-       PatchOp::Clear,
-       PatchOp::PatchPrior,
-       PatchOp::Add,
-       PatchOp::Put,
-       PatchOp::Remove});
+      {PatchOp::Assign, PatchOp::Clear, PatchOp::Add, PatchOp::Put});
   if (applyAssign<type::list_c>(patch, value)) {
     return; // Ignore all other ops.
   }
@@ -250,49 +245,6 @@ void ApplyPatch::operator()(
     if (argAs<type::bool_t>(*clear)) {
       value.clear();
     }
-  }
-
-  if (auto* elementPatches = findOp(patch, PatchOp::PatchPrior)) {
-    const auto* indexPatches = elementPatches->if_map();
-    if (!indexPatches) {
-      throw std::runtime_error("list patch should contain a map");
-    }
-
-    for (const auto& [idx, elPatch] : *indexPatches) {
-      const auto* indexPtr = idx.if_i32();
-      if (!indexPtr) {
-        throw std::runtime_error("expected index as i32");
-      }
-
-      auto index = type::toPosition(
-          type::Ordinal(apache::thrift::util::zigzagToI32(*indexPtr)));
-      if (index >= 0 && static_cast<size_t>(index) < value.size()) {
-        applyPatch(*elPatch.objectValue_ref(), value[index]);
-      }
-    }
-  }
-
-  if (auto* remove = findOp(patch, PatchOp::Remove)) {
-    if (!remove->is_set() && !remove->is_list()) {
-      throw std::runtime_error(
-          "list remove patch should contain a set or a list");
-    }
-
-    auto make_element_filter = [&]() -> std::function<bool(const Value&)> {
-      if (const auto* to_remove = remove->if_set()) {
-        return [to_remove](const auto& element) {
-          return to_remove->find(element) != to_remove->end();
-        };
-      }
-      const auto* to_remove = remove->if_list();
-      return [to_remove](const auto& element) {
-        return std::find(to_remove->begin(), to_remove->end(), element) !=
-            to_remove->end();
-      };
-    };
-    value.erase(
-        std::remove_if(value.begin(), value.end(), make_element_filter()),
-        value.end());
   }
 
   if (auto* add = findOp(patch, PatchOp::Add)) {
@@ -321,7 +273,8 @@ void ApplyPatch::operator()(
   }
 }
 
-void ApplyPatch::operator()(const Object& patch, std::set<Value>& value) const {
+void ApplyPatch::operator()(
+    const Object& patch, folly::F14FastSet<Value>& value) const {
   checkOps(
       patch,
       Value::Type::setValue,
@@ -344,7 +297,7 @@ void ApplyPatch::operator()(const Object& patch, std::set<Value>& value) const {
     const auto* opData = patchOp->if_set();
     if (!opData) {
       throw std::runtime_error(
-          fmt::format("set {} patch should caontain a set", name));
+          fmt::format("set {} patch should contain a set", name));
     }
     return opData;
   };
@@ -446,6 +399,7 @@ void ApplyPatch::operator()(const Object& patch, Object& value) const {
       Value::Type::objectValue,
       {PatchOp::Assign,
        PatchOp::Clear,
+       PatchOp::Remove,
        PatchOp::PatchPrior,
        PatchOp::EnsureStruct,
        PatchOp::EnsureUnion,
@@ -515,6 +469,30 @@ void ApplyPatch::operator()(const Object& patch, Object& value) const {
   if (auto* patchFields = findOp(patch, PatchOp::PatchAfter)) {
     applyFieldPatch(patchFields);
   }
+  if (auto* to_remove = findOp(patch, PatchOp::Remove)) {
+    auto remove = [&](const auto& ids) {
+      for (const auto& field_id : ids) {
+        if (!field_id.is_i16()) {
+          throw std::runtime_error(fmt::format(
+              "The `PatchOp::Remove` field in struct/union patch is not `set<i16>` but `set<{}>`",
+              util::enumNameSafe(field_id.getType())));
+        }
+
+        value.erase(FieldId{field_id.as_i16()});
+      }
+    };
+
+    if (const auto* p = to_remove->if_set()) {
+      // TODO: Remove this after migrating to List
+      remove(*p);
+    } else if (const auto* p = to_remove->if_list()) {
+      remove(*p);
+    } else {
+      throw std::runtime_error(fmt::format(
+          "The `PatchOp::Remove` field in struct/union patch is not `set<i16>`/`list<i16>` but `{}`",
+          util::enumNameSafe(to_remove->getType())));
+    }
+  }
   if (auto* addFields = findOp(patch, PatchOp::Add)) {
     // TODO(afuller): Implement field-wise add.
   }
@@ -567,31 +545,6 @@ void insertFieldsToMask(
     return mask.includes_string_map_ref();
   };
 
-  auto removeHandler = [&](const auto* container) {
-    if (view) {
-      for (const auto& key : *container) {
-        auto readId =
-            static_cast<int64_t>(findMapIdByValueAddress(masks.read, key));
-        auto writeId =
-            static_cast<int64_t>(findMapIdByValueAddress(masks.write, key));
-        insertMask(masks.read, readId, allMask(), getIncludesMapRef);
-        insertMask(masks.write, writeId, allMask(), getIncludesMapRef);
-      }
-    } else {
-      for (const auto& key : *container) {
-        if (getArrayKeyFromValue(key) == ArrayKey::Integer) {
-          auto id = static_cast<int64_t>(getMapIdFromValue(key));
-          insertMask(masks.read, id, allMask(), getIncludesMapRef);
-          insertMask(masks.write, id, allMask(), getIncludesMapRef);
-        } else {
-          auto id = getStringFromValue(key);
-          insertMask(masks.read, id, allMask(), getIncludesStringMapRef);
-          insertMask(masks.write, id, allMask(), getIncludesStringMapRef);
-        }
-      }
-    }
-  };
-
   if (const auto* obj = patchFields.if_object()) {
     auto getIncludesObjRef = [&](Mask& mask) { return mask.includes_ref(); };
     for (const auto& [id, value] : *obj) {
@@ -623,12 +576,6 @@ void insertFieldsToMask(
         }
       }
     }
-  } else if (const auto* set = patchFields.if_set()) {
-    // set of map keys (Remove)
-    removeHandler(set);
-  } else if (const auto* list = patchFields.if_list()) {
-    // list of map keys (Remove)
-    removeHandler(list);
   }
 }
 
@@ -661,10 +608,12 @@ ExtractedMasks extractMaskFromPatch(const protocol::Object& patch, bool view) {
       return {allMask(), allMask()};
     }
   }
-  // Remove always adds keys to map mask. All types (list, set, and map) use
-  // a set for Remove, so they are indistinguishable.
+  // All types (set, map, and struct) use a set for Remove, so they are
+  // indistinguishable. It is a read-write operation if not intristic default.
   if (auto* value = findOp(patch, PatchOp::Remove)) {
-    insertFieldsToMask(masks, *value, false, view);
+    if (!isIntrinsicDefault(*value)) {
+      return {allMask(), allMask()};
+    }
   }
 
   // If EnsureStruct, add the fields/ keys to mask
@@ -673,9 +622,7 @@ ExtractedMasks extractMaskFromPatch(const protocol::Object& patch, bool view) {
   }
 
   // If PatchPrior or PatchAfter, recursively constructs the mask for the
-  // fields. Note that list also supports Patch, but since it is
-  // indistinguishable from map (both uses a map), we just treat it as a map
-  // patch.
+  // fields.
   for (auto op : {PatchOp::PatchPrior, PatchOp::PatchAfter}) {
     if (auto* patchFields = findOp(patch, op)) {
       insertFieldsToMask(masks, *patchFields, true, view);

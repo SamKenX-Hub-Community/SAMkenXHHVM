@@ -7,6 +7,7 @@ package module // [[[ program thrift source path ]]]
 import (
     "context"
     "fmt"
+    "sync"
 
 
     "thrift/lib/go/thrift"
@@ -17,6 +18,7 @@ import (
 var _ = context.Background
 var _ = fmt.Printf
 var _ = thrift.ZERO
+var _ = sync.Mutex{}
 
 
 
@@ -57,6 +59,7 @@ func (c *MyServiceChannelClient) Open() error {
 // Deprecated: Use MyServiceChannelClient instead.
 type MyServiceClient struct {
     chClient *MyServiceChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ MyServiceClientInterface = &MyServiceClient{}
@@ -141,7 +144,9 @@ func newReqMyServiceFoo() *reqMyServiceFoo {
 }
 
 func (x *reqMyServiceFoo) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqMyServiceFooAlias reqMyServiceFoo
+    valueAlias := (*reqMyServiceFooAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -221,7 +226,9 @@ func newRespMyServiceFoo() *respMyServiceFoo {
 }
 
 func (x *respMyServiceFoo) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respMyServiceFooAlias respMyServiceFoo
+    valueAlias := (*respMyServiceFooAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -363,7 +370,7 @@ func (p *procFuncMyServiceFoo) Write(seqId int32, result thrift.WritableStruct, 
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("Foo", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("foo", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {

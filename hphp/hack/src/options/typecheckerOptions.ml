@@ -19,21 +19,6 @@ let max_typechecker_worker_memory_mb t =
 let defer_class_declaration_threshold t =
   t.GlobalOptions.tco_defer_class_declaration_threshold
 
-let prefetch_deferred_files t = t.GlobalOptions.tco_prefetch_deferred_files
-
-let remote_type_check_threshold t =
-  t.GlobalOptions.tco_remote_type_check_threshold
-
-let remote_type_check t = t.GlobalOptions.tco_remote_type_check
-
-let remote_worker_key t = t.GlobalOptions.tco_remote_worker_key
-
-let remote_check_id t = t.GlobalOptions.tco_remote_check_id
-
-let num_remote_workers t = t.GlobalOptions.tco_num_remote_workers
-
-let remote_version_specifier = GlobalOptions.so_remote_version_specifier
-
 let language_feature_logging t = t.GlobalOptions.tco_language_feature_logging
 
 let experimental_feature_enabled t feature =
@@ -164,16 +149,11 @@ let check_redundant_generics t = t.GlobalOptions.tco_check_redundant_generics
 let disallow_unresolved_type_variables t =
   t.GlobalOptions.tco_disallow_unresolved_type_variables
 
+let custom_error_config t = t.GlobalOptions.tco_custom_error_config
+
 let const_static_props t = t.GlobalOptions.tco_const_static_props
 
-let global_inference t = t.GlobalOptions.tco_global_inference
-
-let gi_reinfer_types t = t.GlobalOptions.tco_gi_reinfer_types
-
 let const_attribute t = t.GlobalOptions.tco_const_attribute
-
-let set_global_inference t =
-  GlobalOptions.{ t with tco_global_inference = true }
 
 let check_attribute_locations t = t.GlobalOptions.tco_check_attribute_locations
 
@@ -244,6 +224,10 @@ let enforce_sealed_subclasses t = t.GlobalOptions.tco_enforce_sealed_subclasses
 
 let everything_sdt t = t.GlobalOptions.tco_everything_sdt
 
+let pessimise_builtins t =
+  enable_sound_dynamic t
+  && (everything_sdt t || t.GlobalOptions.tco_pessimise_builtins)
+
 let explicit_consistent_constructors t =
   t.GlobalOptions.tco_explicit_consistent_constructors
 
@@ -281,10 +265,6 @@ let record_fine_grained_dependencies t =
 let loop_iteration_upper_bound t =
   t.GlobalOptions.tco_loop_iteration_upper_bound
 
-let set_ordered_solving t b = GlobalOptions.{ t with tco_ordered_solving = b }
-
-let ordered_solving t = t.GlobalOptions.tco_ordered_solving
-
 let typecheck_sample_rate t = t.GlobalOptions.tco_typecheck_sample_rate
 
 let log_fanout t ~fanout_cardinal =
@@ -302,16 +282,19 @@ let populate_dead_unsafe_cast_heap t =
 let load_hack_64_distc_saved_state t =
   t.GlobalOptions.tco_load_hack_64_distc_saved_state
 
-let ide_should_use_hack_64_distc t =
-  t.GlobalOptions.tco_ide_should_use_hack_64_distc
-
-let tast_under_dynamic t = t.GlobalOptions.tco_tast_under_dynamic
-
 let rust_elab t = t.GlobalOptions.tco_rust_elab
 
 let locl_cache_capacity t = t.GlobalOptions.tco_locl_cache_capacity
 
 let locl_cache_node_threshold t = t.GlobalOptions.tco_locl_cache_node_threshold
 
-let ide_load_naming_table_on_disk t =
-  t.GlobalOptions.tco_ide_load_naming_table_on_disk
+let dump_tast_hashes t = t.GlobalOptions.dump_tast_hashes
+
+let tco_autocomplete_mode t = t.GlobalOptions.tco_autocomplete_mode
+
+let set_tco_autocomplete_mode t =
+  { t with GlobalOptions.tco_autocomplete_mode = true }
+
+let package_info t = t.GlobalOptions.tco_package_info
+
+let tco_log_exhaustivity_check t = t.GlobalOptions.tco_log_exhaustivity_check

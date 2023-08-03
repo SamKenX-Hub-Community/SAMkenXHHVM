@@ -74,6 +74,8 @@ class RocketClient : public virtual folly::DelayedDestruction,
 
   ~RocketClient() override;
 
+  void handleFrame(std::unique_ptr<folly::IOBuf> frame);
+
   std::unique_ptr<folly::IOBuf> customAlloc(size_t size);
   using Ptr =
       std::unique_ptr<RocketClient, folly::DelayedDestruction::Destructor>;
@@ -85,7 +87,9 @@ class RocketClient : public virtual folly::DelayedDestruction,
   using WriteSuccessCallback = RequestContext::WriteSuccessCallback;
   class RequestResponseCallback : public WriteSuccessCallback {
    public:
-    virtual void onResponsePayload(folly::Try<Payload>&& response) noexcept = 0;
+    virtual void onResponsePayload(
+        folly::AsyncTransport* transport,
+        folly::Try<Payload>&& response) noexcept = 0;
   };
 
   FOLLY_NODISCARD folly::Try<Payload> sendRequestResponseSync(
@@ -526,7 +530,6 @@ class RocketClient : public virtual folly::DelayedDestruction,
 
   void freeStream(StreamId streamId);
 
-  void handleFrame(std::unique_ptr<folly::IOBuf> frame);
   void handleRequestResponseFrame(
       RequestContext& ctx,
       FrameType frameType,

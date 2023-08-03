@@ -10,7 +10,6 @@
 open Hh_prelude
 open ServerEnv
 open ServerCommandTypes
-open Utils
 
 let remove_dead_warning name =
   "hh_server was started without '--no-load', which is required when removing dead "
@@ -127,72 +126,12 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
   | IDE_SIGNATURE_HELP (path, line, column) ->
     let (ctx, entry) = single_ctx_path env path in
     (env, ServerSignatureHelp.go_quarantined ~ctx ~entry ~line ~column)
-  | COMMANDLINE_AUTOCOMPLETE contents ->
-    (* For command line autocomplete, we assume the AUTO332 text has
-       already been inserted, and we fake the rest of this information. *)
-    let autocomplete_context =
-      {
-        AutocompleteTypes.is_manually_invoked = false;
-        is_after_single_colon = false;
-        is_after_double_right_angle_bracket = false;
-        is_after_open_square_bracket = false;
-        is_after_quote = false;
-        is_before_apostrophe = false;
-        is_open_curly_without_equals = false;
-        char_at_pos = ' ';
-      }
-    in
-    (* Since this is being executed from the command line,
-     * let's turn on the flags that increase accuracy but slow it down *)
-    let sienv =
-      {
-        env.ServerEnv.local_symbol_table with
-        SearchUtils.sie_resolve_signatures = true;
-        SearchUtils.sie_resolve_positions = true;
-        SearchUtils.sie_resolve_local_decl = true;
-      }
-    in
-    (* feature not implemented here; it only works for LSP *)
-    let (ctx, entry) =
-      Provider_context.add_or_overwrite_entry_contents
-        ~ctx:(Provider_utils.ctx_from_server_env env)
-        ~path:(Relative_path.create_detect_prefix "")
-        ~contents
-    in
-    (* Update the symbol index from this file *)
-    Facts_parser.mangle_xhp_mode := false;
-    let facts_opt =
-      Facts_parser.from_text
-        ~php5_compat_mode:false
-        ~hhvm_compat_mode:true
-        ~disable_legacy_soft_typehints:false
-        ~allow_new_attribute_syntax:false
-        ~disable_legacy_attribute_syntax:false
-        ~enable_xhp_class_modifier:false
-        ~disable_xhp_element_mangling:false
-        ~auto_namespace_map:
-          env.ServerEnv.popt.GlobalOptions.po_auto_namespace_map
-        ~filename:Relative_path.default
-        ~text:contents
-    in
-    let sienv =
-      match facts_opt with
-      | None -> sienv
-      | Some facts ->
-        SymbolIndexCore.update_from_facts
-          ~sienv
-          ~path:Relative_path.default
-          ~facts
-    in
-    let result =
-      ServerAutoComplete.go_at_auto332_ctx
-        ~ctx
-        ~entry
-        ~sienv
-        ~autocomplete_context
-        ~naming_table:env.naming_table
-    in
-    (env, result.With_complete_flag.value)
+  (* TODO: edit this to look for classname *)
+  | XHP_AUTOCOMPLETE_SNIPPET cls ->
+    let ctx = Provider_utils.ctx_from_server_env env in
+    let tast_env = Tast_env.empty ctx in
+    let cls = Utils.add_ns cls in
+    (env, AutocompleteService.get_snippet_for_xhp_classname cls ctx tast_env)
   | IDENTIFY_SYMBOL arg ->
     let module SO = SymbolOccurrence in
     let ctx = Provider_utils.ctx_from_server_env env in
@@ -244,6 +183,7 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
     in
     (env, result)
   | METHOD_JUMP (class_, filter, find_children) ->
+    Printf.printf "%s" class_;
     let ctx = Provider_utils.ctx_from_server_env env in
     ( env,
       MethodJumps.get_inheritance
@@ -268,19 +208,6 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
     Done_or_retry.(
       ServerGoToImpl.go ~action:go_to_impl_action ~genv ~env
       |> map_env ~f:ServerFindRefs.to_absolute)
-  | IDE_FIND_REFS (labelled_file, line, column, include_defs) ->
-    Done_or_retry.(
-      let (path, file_input) =
-        ServerCommandTypesUtils.extract_labelled_file labelled_file
-      in
-      let (ctx, entry) = single_ctx env path file_input in
-      Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
-          match ServerFindRefs.go_from_file_ctx ~ctx ~entry ~line ~column with
-          | None -> (env, Done None)
-          | Some (name, action) ->
-            map_env
-              ~f:(ServerFindRefs.to_ide name)
-              (ServerFindRefs.go ctx action include_defs genv env)))
   | IDE_FIND_REFS_BY_SYMBOL (find_refs_action, name) ->
     let ctx = Provider_utils.ctx_from_server_env env in
     Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
@@ -289,45 +216,48 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
         map_env
           ~f:(ServerFindRefs.to_ide name)
           (ServerFindRefs.go ctx find_refs_action include_defs genv env))
-  | IDE_GO_TO_IMPL (labelled_file, line, column) ->
-    Done_or_retry.(
-      let (path, file_input) =
-        ServerCommandTypesUtils.extract_labelled_file labelled_file
-      in
-      let (ctx, entry) = single_ctx env path file_input in
-      (match ServerFindRefs.go_from_file_ctx ~ctx ~entry ~line ~column with
-      | None -> (env, Done None)
-      | Some (name, action) ->
-        map_env
-          ~f:(ServerFindRefs.to_ide name)
-          (ServerGoToImpl.go ~action ~genv ~env)))
-  | IDE_HIGHLIGHT_REFS (path, file_input, line, column) ->
-    let (ctx, entry) =
-      single_ctx env (Relative_path.create_detect_prefix path) file_input
-    in
-    let r =
-      Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
-          (env, ServerHighlightRefs.go_quarantined ~ctx ~entry ~line ~column))
-    in
-    r
-  | RENAME rename_action ->
-    let ctx = Provider_utils.ctx_from_server_env env in
-    Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
-        ServerRename.go ctx rename_action genv env)
-  | RENAME_CHECK_SD rename_action ->
-    let ctx = Provider_utils.ctx_from_server_env env in
-    ServerRename.go_sound_dynamic ctx rename_action genv env
-  | IDE_RENAME
-      { ServerCommandTypes.Ide_rename_type.filename; line; char; new_name } ->
+  | IDE_GO_TO_IMPL_BY_SYMBOL (action, name) ->
     let ctx = Provider_utils.ctx_from_server_env env in
     Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
         let open Done_or_retry in
-        match
-          ServerRename.go_ide ctx (filename, line, char) new_name genv env
-        with
-        | Error e -> (env, Done (Error e))
-        | Ok r -> map_env r ~f:(fun x -> Ok x))
-  | IDE_RENAME_BY_SYMBOL (action, new_name, filename, symbol_definition) ->
+        map_env
+          ~f:(ServerFindRefs.to_ide name)
+          (ServerGoToImpl.go ~action ~genv ~env))
+  | RENAME rename_action ->
+    let ctx = Provider_utils.ctx_from_server_env env in
+    Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
+        let definition_for_wrapper =
+          match rename_action with
+          | ServerRenameTypes.ClassRename _
+          | ServerRenameTypes.ClassConstRename _
+          | ServerRenameTypes.LocalVarRename _ ->
+            None
+          | ServerRenameTypes.MethodRename { class_name; old_name; _ } ->
+            ServerSymbolDefinition.go
+              ctx
+              None
+              {
+                SymbolOccurrence.name = "unused for lookup";
+                type_ =
+                  SymbolOccurrence.Method
+                    ( SymbolOccurrence.ClassName (Utils.add_ns class_name),
+                      old_name );
+                is_declaration = false;
+                pos = Pos.none;
+              }
+          | ServerRenameTypes.FunctionRename { old_name; _ } ->
+            ServerSymbolDefinition.go
+              ctx
+              None
+              {
+                SymbolOccurrence.name = Utils.add_ns old_name;
+                type_ = SymbolOccurrence.Function;
+                is_declaration = false;
+                pos = Pos.none;
+              }
+        in
+        ServerRename.go ctx rename_action genv env ~definition_for_wrapper)
+  | IDE_RENAME_BY_SYMBOL (action, new_name, symbol_definition) ->
     let ctx = Provider_utils.ctx_from_server_env env in
     Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
         let open Done_or_retry in
@@ -336,7 +266,6 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
             ctx
             ~find_refs_action:action
             ~new_name
-            ~filename
             ~symbol_definition
             genv
             env
@@ -363,9 +292,6 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
   | REWRITE_LAMBDA_PARAMETERS files ->
     let ctx = Provider_utils.ctx_from_server_env env in
     (env, ServerRename.get_lambda_parameter_rewrite_patches ctx files)
-  | REWRITE_TYPE_PARAMS_TYPE files ->
-    let ctx = Provider_utils.ctx_from_server_env env in
-    (env, ServerRename.get_type_params_type_rewrite_patches ctx files)
   | DUMP_SYMBOL_INFO file_list ->
     (env, SymbolInfoService.go genv.workers file_list env)
   | IN_MEMORY_DEP_TABLE_SIZE ->
@@ -380,8 +306,9 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
       (env, Error "There are typecheck errors; cannot generate saved state.")
   | SEARCH (query, type_) ->
     let ctx = Provider_utils.ctx_from_server_env env in
-    let lst = env.ServerEnv.local_symbol_table in
-    (env, ServerSearch.go ctx query ~kind_filter:type_ lst)
+    let sienv_ref = ref env.ServerEnv.local_symbol_table in
+    let r = ServerSearch.go ctx query ~kind_filter:type_ sienv_ref in
+    ({ env with ServerEnv.local_symbol_table = !sienv_ref }, r)
   | LINT fnl ->
     let ctx = Provider_utils.ctx_from_server_env env in
     (env, ServerLint.go genv ctx fnl)
@@ -420,22 +347,35 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
         ~path:(Relative_path.create_detect_prefix filename)
         ~contents
     in
+    let sienv_ref = ref env.ServerEnv.local_symbol_table in
     let results =
       Provider_utils.respect_but_quarantine_unsaved_changes ~ctx ~f:(fun () ->
           ServerAutoComplete.go_ctx
             ~ctx
             ~entry
-            ~sienv:env.ServerEnv.local_symbol_table
+            ~sienv_ref
             ~is_manually_invoked
             ~line:pos.File_content.line
             ~column:pos.File_content.column
             ~naming_table:env.naming_table)
     in
+    let env = { env with ServerEnv.local_symbol_table = !sienv_ref } in
     (env, results)
-  | CODE_ACTIONS (path, range) ->
+  | CODE_ACTION { path; range } ->
     let (ctx, entry) = single_ctx_path env path in
-    let actions = CodeActionsService.go ~ctx ~entry ~path ~range in
+    let actions = Server_code_actions_services.go ~ctx ~entry ~range in
     (env, actions)
+  | CODE_ACTION_RESOLVE { path; range; resolve_title; use_snippet_edits } ->
+    let (ctx, entry) = single_ctx_path env path in
+    let action =
+      Server_code_actions_services.resolve
+        ~ctx
+        ~entry
+        ~range
+        ~resolve_title
+        ~use_snippet_edits
+    in
+    (env, action)
   | DISCONNECT -> (ServerFileSync.clear_sync_data env, ())
   | OUTLINE path ->
     ( env,
@@ -464,10 +404,8 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
       (env, Error (Exception.to_string e))
   end
   | NO_PRECHECKED_FILES -> (ServerPrecheckedFiles.expand_all env, ())
-  | GEN_PREFETCH_DIR dir ->
-    (* TODO(bobren) remove dir entirely from saved state job invocation *)
-    let _ = dir in
-    (env, ServerGenPrefetchDir.go env genv genv.workers)
+  | POPULATE_REMOTE_DECLS files ->
+    (env, ServerPopulateRemoteDecls.go env genv genv.workers files)
   | FUN_DEPS_BATCH positions ->
     (env, ServerFunDepsBatch.go genv.workers positions env)
   | LIST_FILES_WITH_ERRORS -> (env, ServerEnv.list_files env)
@@ -531,11 +469,6 @@ let handle : type a. genv -> env -> is_stale:bool -> a t -> env * a =
         { env with full_recheck_on_file_changes = Resumed }
     in
     (env, ())
-  | GLOBAL_INFERENCE (submode, files) ->
-    let ctx = Provider_utils.ctx_from_server_env env in
-    (* We are getting files in the reverse order*)
-    let files = List.rev files in
-    (env, ServerGlobalInference.execute ctx submode files)
   | DEPS_OUT_BATCH positions ->
     let ctx = Provider_utils.ctx_from_server_env env in
     (env, ServerDepsOutBatch.go ctx positions)

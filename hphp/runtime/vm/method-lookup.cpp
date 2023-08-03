@@ -23,6 +23,7 @@
 #include "hphp/runtime/vm/runtime.h"
 
 #include "hphp/runtime/base/execution-context.h"
+#include "hphp/runtime/base/package.h"
 #include "hphp/runtime/base/string-data.h"
 #include "hphp/runtime/base/runtime-error.h"
 #include "hphp/runtime/base/object-data.h"
@@ -117,6 +118,16 @@ const Func* lookupMethodCtx(const Class* cls,
       will_symbol_raise_module_boundary_violation(method, &callCtx)) {
     if (!shouldRaise(raise)) return nullptr;
     raiseModuleBoundaryViolation(cls, method, callCtx.moduleName());
+  }
+
+  // Check deployment boundary
+  if (RO::EvalEnforceDeployment &&
+      raise != MethodLookupErrorOptions::NoErrorOnModule &&
+      !method->unit()->isSystemLib() &&
+      will_symbol_raise_deployment_boundary_violation(
+        g_context->getPackageInfo(), *cls) &&
+      !shouldRaise(raise)) {
+    return nullptr;
   }
 
   // If we found a protected or private method, we need to do some
@@ -331,35 +342,23 @@ const Func* lookupImmutableCtor(const Class* cls,
   return func;
 }
 
-ImmutableFuncLookup lookupImmutableFunc(const StringData* name) {
+Func* lookupImmutableFunc(const StringData* name) {
   auto const ne = NamedFunc::get(name);
   if (auto const f = ne->getCachedFunc()) {
-    if (f->isUnique()) {
-      // We have an unique function. However, it may be interceptable, which means
-      // we can't use it directly.
-      if (f->isInterceptable()) return {nullptr, true};
+    if (f->isPersistent()) {
+      assertx(!RO::funcIsRenamable(name));
 
       // In non-repo mode while the function must be available in this unit, it
       // may be de-duplication on load. This may mean that while the func is
       // available it is not immutable in the current compilation unit. The order
       // of the de-duplication can also differ between requests.
-      if (f->isMethCaller() && !RO::RepoAuthoritative) return {nullptr, true};
+      if (f->isMethCaller() && !RO::RepoAuthoritative) return nullptr;
 
-      // We can use this function. If its persistent (which means its unit's
-      // pseudo-main is trivial), its safe to use unconditionally.
-      if (f->isPersistent()) {
-        if (!RO::EvalJitEnableRenameFunction || f->isMethCaller()) {
-          return {f, false};
-        }
-      } else if (RO::EvalJitEnableRenameFunction) {
-        return {nullptr, true};
-      }
-      // Use the function, but ensure its unit is loaded.
-      return {f, true};
+      // We load persistent symbols once and can persist them across
+      // all requests.
+      return f;
     }
   }
-
-  return {nullptr, true};
+  return nullptr;
 }
-
 }

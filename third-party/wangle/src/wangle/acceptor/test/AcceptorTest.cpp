@@ -179,17 +179,18 @@ class MockAcceptObserver : public AcceptObserver {
   MOCK_METHOD(void, observerDetach, (Acceptor* const), (noexcept));
 };
 
-class MockAsyncSocketLifecycleObserver : public AsyncSocket::LifecycleObserver {
+class MockAsyncSocketLifecycleObserver
+    : public AsyncSocket::LegacyLifecycleObserver {
  public:
-  MOCK_METHOD(void, observerAttach, (AsyncTransport*), (noexcept));
-  MOCK_METHOD(void, observerDetach, (AsyncTransport*), (noexcept));
-  MOCK_METHOD(void, destroy, (AsyncTransport*), (noexcept));
-  MOCK_METHOD(void, close, (AsyncTransport*), (noexcept));
-  MOCK_METHOD(void, connect, (AsyncTransport*), (noexcept));
+  MOCK_METHOD(void, observerAttach, (AsyncSocket*), (noexcept));
+  MOCK_METHOD(void, observerDetach, (AsyncSocket*), (noexcept));
+  MOCK_METHOD(void, destroy, (AsyncSocket*), (noexcept));
+  MOCK_METHOD(void, close, (AsyncSocket*), (noexcept));
+  MOCK_METHOD(void, connect, (AsyncSocket*), (noexcept));
   MOCK_METHOD(void, fdDetach, (AsyncSocket*), (noexcept));
   MOCK_METHOD(void, move, (AsyncSocket*, AsyncSocket*), (noexcept));
-  MOCK_METHOD(void, evbAttach, (AsyncTransport*, EventBase*), (noexcept));
-  MOCK_METHOD(void, evbDetach, (AsyncTransport*, EventBase*), (noexcept));
+  MOCK_METHOD(void, evbAttach, (AsyncSocket*, EventBase*), (noexcept));
+  MOCK_METHOD(void, evbDetach, (AsyncSocket*, EventBase*), (noexcept));
 };
 
 class MockFizzLoggingCallback : public FizzLoggingCallback {
@@ -432,17 +433,18 @@ TEST_P(AcceptorTest, AcceptObserverStopAcceptorThenRemoveCallback) {
 }
 
 /**
- * Test if AsyncSocket::LifecycleObserver can track socket during SSL accept.
+ * Test if AsyncSocket::LegacyLifecycleObserver can track socket during SSL
+ * accept.
  *
  * With Fizz support, the accept process involves transforming the AsyncSocket
  * to an AsyncFizzServer. Then, if Fizz falls back to OpenSSL, the
  * AsyncFizzServer will be transformed into an AsyncSSLSocket.
  *
- * During each transformation, the LifecycleObserver::move callback must be
- * triggered so that the observer can unsubscribe from events on the old socket
- * and subscribe to events on the new socket. This requires Wangle and Fizz to
- * use the AsyncSocket(AsyncSocket* oldSocket) constructor when performing the
- * transformation.
+ * During each transformation, the LegacyLifecycleObserver::move callback must
+ * be triggered so that the observer can unsubscribe from events on the old
+ * socket and subscribe to events on the new socket. This requires Wangle and
+ * Fizz to use the AsyncSocket(AsyncSocket* oldSocket) constructor when
+ * performing the transformation.
  *
  * This test ensures that even in the worst case, where two transformations
  * occur, that the observer will be able to track the socket through to the
@@ -489,8 +491,12 @@ TEST_P(
       .InSequence(s1)
       .WillOnce(Invoke([&lifecycleCb, &remoteSocket](auto socket) {
         remoteSocket = socket;
-        EXPECT_CALL(*lifecycleCb, observerAttach(socket));
-        socket->addLifecycleObserver(lifecycleCb.get());
+        if (auto asyncSocket =
+                socket->template getUnderlyingTransport<folly::AsyncSocket>()) {
+          EXPECT_CALL(*lifecycleCb, observerAttach(asyncSocket));
+          const_cast<folly::AsyncSocket*>(asyncSocket)
+              ->addLifecycleObserver(lifecycleCb.get());
+        }
       }));
 
   if (testConfig == TestSSLConfig::SSL ||
@@ -584,13 +590,16 @@ TEST_P(
   // the socket will be ready, and then immediately close
   EXPECT_CALL(*onAcceptCb, ready(_))
       .InSequence(s1)
-      .WillOnce(
-          Invoke([&lifecycleCb, &remoteSocket](const auto* const& socket) {
-            EXPECT_EQ(remoteSocket, socket);
-            EXPECT_THAT(
-                socket->getLifecycleObservers(),
-                UnorderedElementsAre(lifecycleCb.get()));
-          }));
+      .WillOnce(Invoke([&lifecycleCb,
+                        &remoteSocket](const auto* const& socket) {
+        EXPECT_EQ(remoteSocket, socket);
+        if (auto asyncSocket =
+                socket->template getUnderlyingTransport<folly::AsyncSocket>()) {
+          EXPECT_THAT(
+              asyncSocket->getLifecycleObservers(),
+              UnorderedElementsAre(lifecycleCb.get()));
+        }
+      }));
   EXPECT_CALL(*lifecycleCb, close(_))
       .InSequence(s1)
       .WillOnce(Invoke([&remoteSocket](const auto* const& socket) {

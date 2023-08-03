@@ -79,7 +79,6 @@ struct Vunit;
   O(ldimml, I(s), Un, D(d))\
   O(ldimmq, I(s), Un, D(d))\
   O(ldundefq, Inone, Un, D(d))\
-  O(movqs, I(s) I(addr), Un, D(d))\
   O(load, Inone, U(s), D(d))\
   O(store, Inone, U(s) UW(d), Dn)\
   O(mcprep, Inone, Un, D(d))\
@@ -130,6 +129,8 @@ struct Vunit;
   O(syncvmrettype, Inone, U(type), Dn)\
   O(phplogue, Inone, U(fp), Dn)\
   O(restoreripm, Inone, U(s), Dn)\
+  O(restorerips, Inone, Un, Dn)\
+  O(saverips, Inone, Un, Dn)\
   O(phpret, Inone, U(fp) U(args), Dn)\
   O(callphp, I(target), U(args), Dn)\
   O(callphpfe, I(target), U(args), Dn)\
@@ -267,7 +268,6 @@ struct Vunit;
   /* load effective address */\
   O(lea, Inone, U(s), D(d))\
   O(leap, I(s), Un, D(d))\
-  O(leav, I(s), Un, D(d))\
   O(lead, I(s), Un, D(d))\
   /* copies */\
   O(movb, Inone, UH(s,d), DH(d,s))\
@@ -318,7 +318,6 @@ struct Vunit;
   O(jcc, I(cc), U(sf), Dn)\
   O(jcci, I(cc) I(taken), U(sf), Dn)\
   O(jmp, Inone, Un, Dn)\
-  O(jmps, I(jmp_addr) I(taken_addr), Un, Dn)\
   O(jmpr, Inone, U(target) U(args), Dn)\
   O(jmpm, Inone, U(target) U(args), Dn)\
   O(jmpi, I(target), U(args), Dn)\
@@ -533,11 +532,6 @@ struct ldimmq { Immed64 s; Vreg d; };
  * as a noop.
  */
 struct ldundefq { Vreg d; };
-
-/*
- * Load a smashable immediate value without mutating status flags.
- */
-struct movqs { Immed64 s; Vreg64 d; Vaddr addr; };
 
 /*
  * Memory operand load and store.
@@ -862,6 +856,15 @@ struct phplogue { Vreg fp; };
 struct restoreripm { Vptr s; };
 
 /*
+ * Save and restore the return address to the native stack. These are no-ops on
+ * architectures where the return address is automatically saved on the stack by
+ * call instructions, such as Intel x86.
+ */
+struct restorerips {};
+
+struct saverips {};
+
+/*
  * Load fp[m_sfp] into rvmfp() and return to m_savedRip on `fp'.
  *
  * If `noframe' is set, rvmfp() is not changed.
@@ -1130,8 +1133,6 @@ struct setcc { ConditionCode cc; VregSF sf; Vreg8 d; };
  */
 struct lea { Vptr s; Vreg64 d; };
 struct leap { RIPRelativeRef s; Vreg64 d; };
-// rip-relative lea of a Vaddr
-struct leav { Vaddr s; Vreg64 d; };
 struct lead { VdataPtr<void> s; Vreg64 d; };
 
 /*
@@ -1202,10 +1203,6 @@ struct storesd { VregDbl s; Vptr64 m; };
 struct jcc { ConditionCode cc; VregSF sf; Vlabel targets[2]; StringTag tag; };
 struct jcci { ConditionCode cc; VregSF sf; TCA taken; };
 struct jmp { Vlabel target; };
-// jmps{} is a smashable jump to target[0].  It admits a second target which
-// represents an in-Vunit smash target.  All possible such targets need to be
-// accounted for here so that vasm optimizations are aware of control flow.
-struct jmps { Vlabel targets[2]; Vaddr jmp_addr; Vaddr taken_addr; };
 struct jmpr { Vreg64 target; RegSet args; };
 struct jmpm { Vptr target; RegSet args; };
 struct jmpi { TCA target; RegSet args; };

@@ -6,11 +6,9 @@ package foo // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    thrift0 "thrift/annotation/thrift"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = thrift0.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
@@ -193,7 +191,9 @@ var Fields_InjectedStructuredAnnotationField_DEFAULT = NewFields().GetInjectedSt
 var Fields_InjectedUnstructuredAnnotationField_DEFAULT = NewFields().GetInjectedUnstructuredAnnotationField()
 
 func (x *Fields) String() string {
-    return fmt.Sprintf("%+v", x)
+    type FieldsAlias Fields
+    valueAlias := (*FieldsAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

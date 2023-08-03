@@ -28,6 +28,7 @@
 #include <proxygen/lib/http/session/test/HTTPSessionTest.h>
 #include <proxygen/lib/http/session/test/HTTPTransactionMocks.h>
 #include <proxygen/lib/http/session/test/MockByteEventTracker.h>
+#include <proxygen/lib/http/session/test/MockHTTPSessionStats.h>
 #include <proxygen/lib/http/session/test/MockSessionObserver.h>
 #include <proxygen/lib/http/session/test/TestUtils.h>
 #include <proxygen/lib/test/TestAsyncTransport.h>
@@ -50,6 +51,8 @@ class HTTPDownstreamTest : public testing::Test {
         flowControl_(flowControl) {
     EXPECT_CALL(mockController_, getGracefulShutdownTimeout())
         .WillRepeatedly(Return(std::chrono::milliseconds(0)));
+    EXPECT_CALL(mockController_, getHeaderIndexingStrategy())
+        .WillRepeatedly(Return(HeaderIndexingStrategy::getDefaultInstance()));
 
     {
       InSequence s;
@@ -456,6 +459,14 @@ class HTTPDownstreamTest : public testing::Test {
     auto observer = std::make_unique<NiceMock<MockSessionObserver>>(eventSet);
     EXPECT_CALL(*observer, attached(_));
     httpSession_->addObserver(observer.get());
+    return observer;
+  }
+
+  std::shared_ptr<MockSessionObserver> addMockSessionObserverShared(
+      MockSessionObserver::EventSet eventSet) {
+    auto observer = std::make_shared<NiceMock<MockSessionObserver>>(eventSet);
+    EXPECT_CALL(*observer, attached(_));
+    httpSession_->addObserver(observer);
     return observer;
   }
 
@@ -4247,9 +4258,12 @@ TEST_F(HTTP2DownstreamSessionTest, PingProbes) {
                                  std::chrono::seconds(1),
                                  /*extendIntervalOnIngress=*/true,
                                  /*immediate=*/true);
+  MockHTTPSessionStats stats;
+  httpSession_->setSessionStats(&stats);
   eventBase_.loopOnce();
   uint64_t pingVal = 0;
   EXPECT_CALL(callbacks_, onPingRequest(_)).WillOnce(SaveArg<0>(&pingVal));
+  EXPECT_CALL(stats, _recordSessionPeriodicPingProbeTimeout()).Times(0);
   parseOutput(*clientCodec_);
   clientCodec_->generatePingReply(requests_, pingVal);
   flushRequestsAndLoopN(1);
@@ -4264,9 +4278,12 @@ TEST_F(HTTP2DownstreamSessionTest, PingProbeTimeout) {
                                  std::chrono::seconds(1),
                                  /*extendIntervalOnIngress=*/true,
                                  /*immediate=*/true);
+  MockHTTPSessionStats stats;
+  httpSession_->setSessionStats(&stats);
   eventBase_.loopOnce();
   uint64_t pingVal = 0;
   EXPECT_CALL(callbacks_, onPingRequest(_)).WillOnce(SaveArg<0>(&pingVal));
+  EXPECT_CALL(stats, _recordSessionPeriodicPingProbeTimeout()).Times(1);
   parseOutput(*clientCodec_);
   expectDetachSession();
   flushRequestsAndLoop();
@@ -4277,6 +4294,9 @@ TEST_F(HTTP2DownstreamSessionTest, PingProbeTimeoutRefresh) {
                                  std::chrono::seconds(1),
                                  /*extendIntervalOnIngress=*/true,
                                  /*immediate=*/false);
+  MockHTTPSessionStats stats;
+  httpSession_->setSessionStats(&stats);
+  EXPECT_CALL(stats, _recordSessionPeriodicPingProbeTimeout()).Times(1);
   // Don't send an immediate probe.  Send a request after 250ms, which starts
   // the probe interval timer. The ping probe interval fires at 1250 and times
   // out at 2250.
@@ -4357,6 +4377,40 @@ TEST_F(HTTP2DownstreamSessionTest, Observer_Attach_Detach_Destroy) {
   // Test destroyed callback when session is destroyed
   {
     auto observer = addMockSessionObserver(eventSet);
+    auto handler = addSimpleStrictHandler();
+    handler->expectHeaders();
+    handler->expectEOM([&handler]() {
+      handler->sendReplyWithBody(200 /* status code */,
+                                 100 /* content size */,
+                                 true /* keepalive */,
+                                 true /* sendEOM */,
+                                 false /*trailers*/);
+    });
+    handler->expectDetachTransaction();
+    HTTPSession::DestructorGuard g(httpSession_);
+    HTTPMessage req = getGetRequest();
+    sendRequest(req);
+    flushRequestsAndLoop(true, milliseconds(0));
+
+    EXPECT_CALL(*observer, destroyed(_, _));
+    expectDetachSession();
+    httpSession_->closeWhenIdle();
+  }
+}
+
+TEST_F(HTTP2DownstreamSessionTest, Observer_Attach_Detach_Destroy_Shared) {
+  MockSessionObserver::EventSet eventSet;
+
+  // Test attached/detached callbacks when adding/removing observers
+  {
+    auto observer = addMockSessionObserverShared(eventSet);
+    EXPECT_CALL(*observer, detached(_));
+    httpSession_->removeObserver(observer.get());
+  }
+
+  // Test destroyed callback when session is destroyed
+  {
+    auto observer = addMockSessionObserverShared(eventSet);
     auto handler = addSimpleStrictHandler();
     handler->expectHeaders();
     handler->expectEOM([&handler]() {

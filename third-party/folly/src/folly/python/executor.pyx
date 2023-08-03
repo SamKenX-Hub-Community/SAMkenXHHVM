@@ -13,15 +13,18 @@
 # limitations under the License.
 
 import asyncio
+import sys
 
-from folly.executor cimport cAsyncioExecutor, cNotificationQueueAsyncioExecutor
+from folly.executor cimport cAsyncioExecutor, cNotificationQueueAsyncioExecutor, cProactorExecutor
 from libcpp.memory cimport make_unique, unique_ptr
 from cython.operator cimport dereference as deref
 from weakref import WeakKeyDictionary
+from cpython.ref cimport PyObject
 
 # asyncio Loops to AsyncioExecutor
 loop_to_q = WeakKeyDictionary()
 
+_RaiseKeyError = object()
 
 cdef class AsyncioExecutor:
     pass
@@ -47,6 +50,50 @@ cdef class NotificationQueueAsyncioExecutor(AsyncioExecutor):
         self.cQ.reset()
 
 
+cdef class ProactorExecutor(AsyncioExecutor):
+
+    def __cinit__(self, uint64_t iocp):
+        self.cQ = cProactorExecutor.create(<uint64_t&&>iocp)
+        self._executor = self.cQ.get()
+
+    def execute(ProactorExecutor self, uintptr_t  address):
+        return deref(self.cQ).execute(address)
+
+    def __dealloc__(ProactorExecutor self):
+        # We explicitly reset here, otherwise it is possible
+        # that self.cQ destructor runs after python finalizes
+        # Cython deletes these after __dealloc__ returns.
+        self.cQ.reset()
+
+
+cdef class IocpQueue(dict):
+    """
+    Extends ProactoEventLoop's queue (a bare dictionary) to invoke ProactorExecutor::execute()
+    when notified via the proactor's IOCP
+    """
+    def __init__(IocpQueue self, ProactorExecutor executor):
+        self._executor = executor
+
+    def swap(self, loop: asyncio.AbstractEventLoop):
+        """
+        Replace ProactorEventLoop's queue with self
+        """
+        if isinstance(loop, asyncio.ProactorEventLoop):
+            self.update(loop._proactor._cache)
+            loop._proactor._cache = self
+        else:
+            raise NotImplementedError("IocpQueue can only be used with ProactorExecutor")
+
+    def pop(self, k, default = _RaiseKeyError):
+        if self._executor.execute(k):
+            f = asyncio.Future()
+            f.set_result(None)
+            return (f, None, None, None)
+        if default == _RaiseKeyError:
+            return super().pop(k)
+        return super().pop(k, default)
+
+
 # TODO: fried this is a stop gap, we really should not bind things to
 # the default eventloop if its not running. As it may never be run.
 # modern python asyncio suggests never using the "default" event loop
@@ -65,8 +112,13 @@ cdef cAsyncioExecutor* get_running_executor(bint running):
     try:
         executor = <AsyncioExecutor>(loop_to_q[loop])
     except KeyError:
-        executor = NotificationQueueAsyncioExecutor()
-        loop.add_reader(executor.fileno(), executor.drive)
+        if sys.platform == "win32":
+            executor = ProactorExecutor(loop._proactor._iocp)
+            queue = IocpQueue(executor)
+            queue.swap(loop)
+        else:
+            executor = NotificationQueueAsyncioExecutor()
+            loop.add_reader(executor.fileno(), executor.drive)
         loop_to_q[loop] = executor
     return executor._executor
 

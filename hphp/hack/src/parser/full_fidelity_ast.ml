@@ -18,15 +18,13 @@ type env = {
   php5_compat_mode: bool;
   elaborate_namespaces: bool;
   include_line_comments: bool;
-  keep_errors: bool;
   quick_mode: bool;
-  (* Show errors even in quick mode. Does not override keep_errors. Hotfix
-   * until we can properly set up saved states to surface parse errors during
+  (* Show errors even in quick mode.
+   * Hotfix until we can properly set up saved states to surface parse errors during
    * typechecking properly. *)
   show_all_errors: bool;
   parser_options: ParserOptions.t;
   file: Relative_path.t;
-  disable_global_state_mutation: bool;
   is_systemlib: bool;
 }
 [@@deriving show]
@@ -36,11 +34,9 @@ let make_env
     ?(php5_compat_mode = false)
     ?(elaborate_namespaces = true)
     ?(include_line_comments = false)
-    ?(keep_errors = true)
     ?(quick_mode = false)
     ?(show_all_errors = false)
     ?(parser_options = ParserOptions.default)
-    ?(disable_global_state_mutation = false)
     ?(is_systemlib = false)
     (file : Relative_path.t) : env =
   let parser_options = ParserOptions.with_codegen parser_options codegen in
@@ -49,19 +45,17 @@ let make_env
     php5_compat_mode;
     elaborate_namespaces;
     include_line_comments;
-    keep_errors;
     quick_mode = (not codegen) && quick_mode;
     show_all_errors;
     parser_options;
     file;
-    disable_global_state_mutation;
     is_systemlib;
   }
 
 let should_surface_errors env =
   (* env.show_all_errors is a hotfix until we can retool how saved states handle
    * parse errors. *)
-  ((not env.quick_mode) || env.show_all_errors) && env.keep_errors
+  (not env.quick_mode) || env.show_all_errors
 
 type aast_result = {
   fi_mode: FileInfo.mode;
@@ -86,13 +80,11 @@ let process_scour_comments (env : env) (sc : Scoured_comments.t) =
       Errors.add_error Parsing_error.(to_user_error @@ Fixme_format pos));
   List.iter sc.sc_bad_ignore_pos ~f:(fun pos ->
       Errors.add_error Parsing_error.(to_user_error @@ Hh_ignore_comment pos));
-  if (not env.disable_global_state_mutation) && env.keep_errors then (
-    Fixme_provider.provide_disallowed_fixmes env.file sc.sc_misuses;
-    if env.quick_mode then
-      Fixme_provider.provide_decl_hh_fixmes env.file sc.sc_fixmes
-    else
-      Fixme_provider.provide_hh_fixmes env.file sc.sc_fixmes
-  )
+  Fixme_provider.provide_disallowed_fixmes env.file sc.sc_misuses;
+  if env.quick_mode then
+    Fixme_provider.provide_decl_hh_fixmes env.file sc.sc_fixmes
+  else
+    Fixme_provider.provide_hh_fixmes env.file sc.sc_fixmes
 
 let process_lowerer_parsing_errors
     (env : env) (lowerer_parsing_errors : (Pos.t * string) list) =
@@ -158,7 +150,6 @@ let make_rust_env (env : env) : Rust_aast_parser_types.env =
       elaborate_namespaces = env.elaborate_namespaces;
       php5_compat_mode = env.php5_compat_mode;
       include_line_comments = env.include_line_comments;
-      keep_errors = env.keep_errors;
       quick_mode = env.quick_mode;
       show_all_errors = env.show_all_errors;
       is_systemlib = env.is_systemlib;
@@ -279,7 +270,6 @@ let defensive_program
         ~quick_mode:quick
         ~show_all_errors
         ~elaborate_namespaces
-        ~keep_errors:true
         ~parser_options
         ~include_line_comments
         fn
@@ -332,7 +322,6 @@ let ast_and_decls_from_file
         ~quick_mode:quick
         ~show_all_errors
         ~elaborate_namespaces:true
-        ~keep_errors:true
         ~parser_options
         ~include_line_comments:false
         fn

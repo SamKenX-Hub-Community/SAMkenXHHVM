@@ -3,6 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 use std::borrow::Cow;
+use std::sync::Arc;
 
 use ast_scope::Lambda;
 use ast_scope::Scope;
@@ -23,8 +24,6 @@ use instruction_sequence::instr;
 use naming_special_names_rust::classes;
 use naming_special_names_rust::members;
 use naming_special_names_rust::user_attributes;
-use ocamlrep::rc::RcOc;
-use options::Options;
 use oxidized::ast;
 use oxidized::ast_defs;
 
@@ -33,6 +32,7 @@ use crate::emit_body;
 use crate::emit_fatal;
 use crate::emit_memoize_helpers;
 use crate::emit_native_opcode;
+use crate::emit_param;
 
 pub fn from_asts<'a, 'arena, 'decl>(
     emitter: &mut Emitter<'arena, 'decl>,
@@ -52,31 +52,30 @@ pub fn get_attrs_for_method<'a, 'arena, 'decl>(
     visibility: &'a ast::Visibility,
     class: &'a ast::Class_,
     is_memoize_impl: bool,
+    has_variadic: bool,
 ) -> Attr {
     let is_abstract = class.kind.is_cinterface() || method.abstract_;
+    let is_systemlib = emitter.systemlib();
     let is_dyn_callable =
-        emitter.systemlib() || (hhbc::has_dynamically_callable(user_attrs) && !is_memoize_impl);
-    let is_interceptable = is_method_interceptable(emitter.options());
-    let is_native_opcode_impl = hhbc::is_native_opcode_impl(user_attrs);
+        is_systemlib || (hhbc::has_dynamically_callable(user_attrs) && !is_memoize_impl);
     let is_no_injection = hhbc::is_no_injection(user_attrs);
     let is_prov_skip_frame = hhbc::has_provenance_skip_frame(user_attrs);
     let is_readonly_return = method.readonly_ret.is_some();
-    let is_unique = emitter.systemlib() && hhbc::has_native(user_attrs) && !is_native_opcode_impl;
 
     let mut attrs = Attr::AttrNone;
     attrs.add(Attr::from(visibility));
     attrs.set(Attr::AttrAbstract, is_abstract);
-    attrs.set(Attr::AttrBuiltin, emitter.systemlib());
+    attrs.set(Attr::AttrBuiltin, is_systemlib);
     attrs.set(Attr::AttrDynamicallyCallable, is_dyn_callable);
     attrs.set(Attr::AttrFinal, method.final_);
-    attrs.set(Attr::AttrInterceptable, is_interceptable);
+    attrs.add(Attr::AttrInterceptable);
     attrs.set(Attr::AttrIsFoldable, hhbc::has_foldable(user_attrs));
     attrs.set(Attr::AttrNoInjection, is_no_injection);
-    attrs.set(Attr::AttrPersistent, is_unique);
+    attrs.set(Attr::AttrPersistent, is_systemlib);
     attrs.set(Attr::AttrReadonlyReturn, is_readonly_return);
     attrs.set(Attr::AttrReadonlyThis, method.readonly_this);
     attrs.set(Attr::AttrStatic, method.static_);
-    attrs.set(Attr::AttrUnique, is_unique);
+    attrs.set(Attr::AttrVariadicParam, has_variadic);
     attrs.set(Attr::AttrProvenanceSkipFrame, is_prov_skip_frame);
     attrs
 }
@@ -94,7 +93,7 @@ pub fn from_ast<'a, 'arena, 'decl>(
         .any(|ua| user_attributes::is_memoized(&ua.name.1));
     let class_name = string_utils::mangle(string_utils::strip_global_ns(&class.name.1).into());
     let is_closure_body =
-        &method.name.1 == members::__INVOKE && (class.name.1).starts_with("Closure$");
+        method.name.1 == members::__INVOKE && (class.name.1).starts_with("Closure$");
     let mut attributes = emit_attribute::from_asts(emitter, &method.user_attributes)?;
     if !is_closure_body {
         attributes.extend(emit_attribute::add_reified_attribute(
@@ -185,7 +184,7 @@ pub fn from_ast<'a, 'arena, 'decl>(
             pos: method.span.clone(),
         }))
     };
-    let namespace = RcOc::clone(
+    let namespace = Arc::clone(
         emitter
             .global_state()
             .closure_namespaces
@@ -309,7 +308,16 @@ pub fn from_ast<'a, 'arena, 'decl>(
     flags.set(MethodFlags::IS_PAIR_GENERATOR, is_pair_generator);
     flags.set(MethodFlags::IS_CLOSURE_BODY, is_closure_body);
 
-    let attrs = get_attrs_for_method(emitter, method, &attributes, &visibility, class, is_memoize);
+    let has_variadic = emit_param::has_variadic(&body.params);
+    let attrs = get_attrs_for_method(
+        emitter,
+        method,
+        &attributes,
+        &visibility,
+        class,
+        is_memoize,
+        has_variadic,
+    );
     Ok(Method {
         attributes: Slice::fill_iter(emitter.alloc, attributes.into_iter()),
         visibility: Visibility::from(visibility),
@@ -320,8 +328,4 @@ pub fn from_ast<'a, 'arena, 'decl>(
         flags,
         attrs,
     })
-}
-
-fn is_method_interceptable(opts: &Options) -> bool {
-    opts.hhbc.jit_enable_rename_function
 }

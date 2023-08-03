@@ -8,7 +8,7 @@
       c_namespace =
       { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
         ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-        ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+        ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
       c_user_attributes = []; c_file_attributes = []; c_docs_url = None; 
       c_enum = None; c_doc_comment = None; c_emit_id = None; c_internal = false; 
       c_module = None });
@@ -30,7 +30,7 @@
        c_namespace =
        { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
          ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-         ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+         ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
        c_user_attributes = []; c_file_attributes = []; c_docs_url = None; 
        c_enum = None; c_doc_comment = None; c_emit_id = None; c_internal = false; 
        c_module = None });
@@ -38,7 +38,7 @@
      { fd_namespace =
        { Namespace_env.ns_ns_uses = <opaque>; ns_class_uses = <opaque>; 
          ns_fun_uses = <opaque>; ns_const_uses = <opaque>; ns_name = None; 
-         ns_auto_ns_map = []; ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
+         ns_is_codegen = false; ns_disable_xhp_element_mangling = false };
        fd_file_attributes = []; fd_mode = Mstrict; fd_name = ([8:10-31], "\\wildcard_hint_is_expr");
        fd_fun =
        { f_span = [8:1-10:2]; f_readonly_this = None; f_annotation = (); 
@@ -57,7 +57,7 @@
                 ((), [9:3-22],
                  (Binop
                     { bop = (Eq None); lhs = ((), [9:3-5], (Lplaceholder [9:3-5]));
-                      rhs = ((), [9:8-22], (As (((), [9:8-10], (Lvar ([9:8-10], $x))), ([9:14-22], (Happly (([9:14-19], "\\BBBBB"), [([9:20-21], (Happly (([9:20-21], "_"), [])))]))), false))) }))))
+                      rhs = ((), [9:8-22], (As (((), [9:8-10], (Lvar ([9:8-10], $x))), ([9:14-22], (Happly (([9:14-19], "\\BBBBB"), [([9:20-21], Hwildcard)]))), false))) }))))
              ]
            };
          f_fun_kind = FSync; f_user_attributes = []; f_external = false; 

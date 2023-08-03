@@ -96,6 +96,10 @@ impl<'ast, 'a> Visitor<'ast> for DeclvarVisitor<'a> {
                 }
                 visit(self, env, finally)
             }
+            Stmt_::DeclareLocal(box (id, _, expr)) => {
+                self.add_local(id.name());
+                visit(self, env, expr)
+            }
             _ => s.recurse(env, self),
         }
     }
@@ -155,21 +159,32 @@ impl<'ast, 'a> Visitor<'ast> for DeclvarVisitor<'a> {
                 Ok(())
             }
 
-            Expr_::Call(box (func_e, _, pos_args, unpacked_arg)) => {
-                match &func_e.2 {
+            Expr_::Call(box aast::CallExpr {
+                func,
+                args,
+                unpacked_arg,
+                ..
+            }) => {
+                match &func.2 {
                     Expr_::Id(box ast_defs::Id(_, call_name)) => {
                         if call_name == emitter_special_functions::SET_FRAME_METADATA {
                             self.add_local("$86metadata");
+                        }
+                        if call_name == emitter_special_functions::SET_PRODUCT_ATTRIBUTION_ID
+                            || call_name
+                                == emitter_special_functions::SET_PRODUCT_ATTRIBUTION_ID_DEFERRED
+                        {
+                            self.add_local("$86productAttributionData");
                         }
                     }
                     Expr_::ClassGet(box (id, prop, pom)) if *pom == PropOrMethod::IsMethod => {
                         self.on_class_get(id, prop)?
                     }
-                    _ => self.visit_expr(env, func_e)?,
+                    _ => self.visit_expr(env, func)?,
                 }
                 // Calling convention doesn't matter here: we're just trying to figure out what
                 // variables are declared in this scope.
-                pos_args.recurse(env, self.object())?;
+                args.recurse(env, self.object())?;
                 if let Some(arg) = unpacked_arg {
                     arg.recurse(env, self.object())?;
                 }

@@ -39,6 +39,7 @@ use crate::profile::DurationEx;
 
 /// Hack Compiler
 #[derive(Parser, Debug, Default)]
+#[command(author = "hphp_hphpi")]
 struct Opts {
     #[clap(subcommand)]
     command: Option<Command>,
@@ -213,6 +214,7 @@ impl Opts {
             enable_xhp_class_modifier: false,
             php5_compat_mode: true,
             hhvm_compat_mode: true,
+            keep_user_attributes: true,
             ..Default::default()
         }
     }
@@ -229,7 +231,9 @@ impl Opts {
             filepath: relative_path::RelativePath::make(relative_path::Prefix::Dummy, path),
             hhvm: Hhvm {
                 include_roots: Default::default(),
+                renamable_functions: Default::default(),
                 parser_options,
+                jit_enable_rename_function: hhvm_config::jit_enable_rename_function(&hhvm_config)?,
             },
             flags: self.env_flags.clone(),
             hhbc_flags,
@@ -237,10 +241,29 @@ impl Opts {
     }
 }
 
-fn main() -> Result<()> {
+/// Facebook main: Perform some Facebook-specific initialization.
+#[cfg(fbcode_build)]
+#[cli::main("hackc", error_logging)]
+fn main(_fb: fbinit::FacebookInit, opts: Opts) -> Result<()> {
+    // tracing-log is EXTREMELY SLOW. Running a verify over www is about 10x
+    // slower using tracing-log vs env_logger!
+    // tracing_log::LogTracer::init()?;
     env_logger::init();
-    let mut opts = Opts::parse();
 
+    hackc_main(opts)
+}
+
+/// non-Facebook main
+#[cfg(not(fbcode_build))]
+fn main() -> Result<()> {
+    // In non-FB mode we convert tracing into logging (using tracing's 'log'
+    // feature) - so init logs like normal.
+    env_logger::init();
+    let opts = Opts::parse();
+    hackc_main(opts)
+}
+
+fn hackc_main(mut opts: Opts) -> Result<()> {
     // Some subcommands need worker threads with larger than default stacks,
     // even when using Stacker. In particular, various derived traits (e.g. Drop)
     // on AAST nodes are inherently recursive.

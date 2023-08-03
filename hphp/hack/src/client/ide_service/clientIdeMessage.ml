@@ -45,25 +45,22 @@ type rename_result =
   | Not_renameable_position
   | Rename_success of {
       shellout:
-        (string SymbolDefinition.t * ServerCommandTypes.Find_refs.action) option;
+        (Relative_path.t SymbolDefinition.t
+        * ServerCommandTypes.Find_refs.action)
+        option;
       local: ServerRenameTypes.patch list;
     }
 
+type go_to_impl_result =
+  | Invalid_symbol_impl
+  | Go_to_impl_success of
+      (string
+      * ServerCommandTypes.Find_refs.action
+      * Pos.absolute list Lsp.UriMap.t)
+
 type completion_request = { is_manually_invoked: bool }
 
-(** Represents a path corresponding to a file which has changed on disk. We
-don't use `Path.t`:
-
-  * It invokes `realpath`. However, for files that don't exist (i.e. deleted
-  files), it returns the path unchanged. This can cause bugs. For example, if
-  the repo root is a symlink, it will be resolved for files which do exist,
-  but left unchanged for files that don't exist.
-  * It's an unnecessary syscall per file.
-  * It can cause accidental file fetches on a virtual filesystem. We typically
-  end up filtering the list of changed files, so we may never use the fetched
-  file content.
-*)
-type changed_file = Changed_file of string
+type should_calculate_errors = { should_calculate_errors: bool }
 
 (* GADT for request/response types. See [ServerCommandTypes] for a discussion on
    using GADTs in this way. *)
@@ -73,10 +70,15 @@ type _ t =
       Initialize_from_state. And the daemon sends no messages before
       it has responded. *)
   | Shutdown : unit -> unit t
-  | Disk_files_changed : changed_file list -> unit t
-  | Ide_file_opened : document -> Errors.finalized_error list t
-  | Ide_file_changed : document -> Errors.finalized_error list t
-  | Ide_file_closed : Path.t -> Errors.finalized_error list t
+  | Did_change_watched_files : Relative_path.Set.t -> unit t
+      (** This might include deleted files. The caller is responsible for filtering,
+      and resolving symlinks (even resolving root symlink for a deleted file...) *)
+  | Did_open_or_change :
+      document * should_calculate_errors
+      -> Errors.finalized_error list option t
+      (** if the bool is true, it will send back an error-list;
+      if false, it will return None. *)
+  | Did_close : Path.t -> Errors.finalized_error list t
       (** This returns diagnostics for the file as it is on disk.
       This is to serve the following scenario: (1) file was open with
       modified contents and squiggles appropriate to the modified contents,
@@ -95,7 +97,7 @@ type _ t =
       -> AutocompleteTypes.ide_result t
       (** Handles "textDocument/completion" LSP messages *)
   | Completion_resolve_location :
-      Path.t * location * SearchUtils.si_kind
+      Path.t * location * SearchTypes.si_kind
       -> DocblockService.result t
       (** "completionItem/resolve" LSP messages - if we have file/line/column.
       The scenario is that VSCode requests textDocument/completion in A.PHP line 5 col 6,
@@ -104,7 +106,7 @@ type _ t =
       and this method will look up B.PHP to find the docblock for that class and return it.
       Typically B.PHP won't even be open. That's why we only provide it as Path.t *)
   | Completion_resolve :
-      string * SearchUtils.si_kind
+      string * SearchTypes.si_kind
       -> DocblockService.result t
       (** "completionItem/resolve" LSP messages - if we have symbol name, and [Completion_resolve_location] failed *)
   | Document_highlight : document * location -> Ide_api_types.range list t
@@ -112,6 +114,9 @@ type _ t =
   | Document_symbol : document -> FileOutline.outline t
       (** Handles "textDocument/documentSymbol" LSP messages *)
   | Workspace_symbol : string -> SearchUtils.result t
+  | Go_to_implementation :
+      document * location * document list
+      -> go_to_impl_result t
   | Find_references : document * location * document list -> find_refs_result t
       (** The result of Find_references is one of:
        - Invalid_symbol, indicating find-refs on something that isn't a symbol
@@ -162,25 +167,40 @@ type _ t =
       because this is called so frequently by VSCode (when you switch tab, and every
       time the caret moves) in the hope that this will be a good balance of simple
       code and decent experience. *)
+  | Code_action_resolve : {
+      document: document;
+      range: Ide_api_types.range;
+      resolve_title: string;
+      use_snippet_edits: bool;
+    }
+      -> Lsp.CodeActionResolve.result t
+  | Type_Hierarchy : document * location -> ServerTypeHierarchyTypes.result t
+      (** Handles "textDocument/typeHierarchy" LSP messages *)
 
 let t_to_string : type a. a t -> string = function
   | Initialize_from_saved_state _ -> "Initialize_from_saved_state"
   | Shutdown () -> "Shutdown"
-  | Disk_files_changed files ->
-    let files = List.map files ~f:(fun (Changed_file path) -> path) in
-    let (files, remainder) = List.split_n files 10 in
+  | Did_change_watched_files paths ->
+    let paths =
+      paths |> Relative_path.Set.elements |> List.map ~f:Relative_path.suffix
+    in
+    let (files, remainder) = List.split_n paths 10 in
     let remainder =
       if List.is_empty remainder then
         ""
       else
         ",..."
     in
-    Printf.sprintf "Disk_file_changed(%s%s)" (String.concat files) remainder
-  | Ide_file_opened { file_path; _ } ->
-    Printf.sprintf "Ide_file_opened(%s)" (Path.to_string file_path)
-  | Ide_file_changed { file_path; _ } ->
-    Printf.sprintf "Ide_file_changed(%s)" (Path.to_string file_path)
-  | Ide_file_closed file_path ->
+    Printf.sprintf
+      "Did_change_watched_files(%s%s)"
+      (String.concat files)
+      remainder
+  | Did_open_or_change ({ file_path; _ }, { should_calculate_errors }) ->
+    Printf.sprintf
+      "Did_open_or_change(%s,%b)"
+      (Path.to_string file_path)
+      should_calculate_errors
+  | Did_close file_path ->
     Printf.sprintf "Ide_file_closed(%s)" (Path.to_string file_path)
   | Verbose_to_file verbose -> Printf.sprintf "Verbose_to_file(%b)" verbose
   | Hover ({ file_path; _ }, _) ->
@@ -204,10 +224,19 @@ let t_to_string : type a. a t -> string = function
     Printf.sprintf "Signature_help(%s)" (Path.to_string file_path)
   | Code_action ({ file_path; _ }, _) ->
     Printf.sprintf "Code_action(%s)" (Path.to_string file_path)
+  | Code_action_resolve { document = { file_path; _ }; resolve_title; _ } ->
+    Printf.sprintf
+      "Code_action_resolve(%s, %s)"
+      (Path.to_string file_path)
+      resolve_title
+  | Go_to_implementation ({ file_path; _ }, _, _) ->
+    Printf.sprintf "Go_to_implementation(%s)" (Path.to_string file_path)
   | Find_references ({ file_path; _ }, _, _) ->
     Printf.sprintf "Find_references(%s)" (Path.to_string file_path)
   | Rename ({ file_path; _ }, _, _, _) ->
     Printf.sprintf "Rename(%s)" (Path.to_string file_path)
+  | Type_Hierarchy ({ file_path; _ }, _) ->
+    Printf.sprintf "Type_Hierarchy(%s)" (Path.to_string file_path)
 
 type 'a tracked_t = {
   tracking_id: string;
@@ -227,30 +256,27 @@ module Processing_files = struct
   let to_string (t : t) : string = Printf.sprintf "%d/%d" t.processed t.total
 end
 
-(** This is a user-facing structure to explain why ClientIde isn't working. *)
-type stopped_reason = {
-  (* max 20 chars, for status bar. Will be prepended by "Hack:" *)
+(** This can be used for user-facing messages as well as LSP error responses. *)
+type rich_error = {
   short_user_message: string;
-  (* max 10 words, for tooltip and alert. Will be postpended by " See <log>" *)
+      (** max 20 chars, for status bar. Will be prepended by "Hack:" *)
   medium_user_message: string;
-  (* should we have window/showMessage, i.e. an alert? *)
+      (** max 10 words, for tooltip and alert. Will be postpended by " See <log>" *)
   is_actionable: bool;
-  (* max 5 lines, for window/logMessage, i.e. Output>Hack window. Will be postpended by "\nDetails: <url>" *)
+      (** used to decide if we hould show window/showMessage, i.e. an alert *)
   long_user_message: string;
-  (* for experts. Will go in Hh_logger.log, and will be uploaded *)
-  debug_details: string;
+      (** max 5 lines, for window/logMessage, i.e. Output>Hack window. Will be postpended by "\nDetails: <url>" *)
+  category: string;  (** used in LSP Error message and telemetry *)
+  data: Hh_json.json option;  (** used in LSP Error message and telemetry *)
 }
 
 type notification =
-  | Full_index_fallback
-      (** The daemon is falling back to performing a full index of the repo to build a naming table.*)
-  | Done_init of (Processing_files.t, stopped_reason) result
+  | Done_init of (Processing_files.t, rich_error) result
   | Processing_files of Processing_files.t
   | Done_processing
 
 let notification_to_string (n : notification) : string =
   match n with
-  | Full_index_fallback -> "Full_index_fallback"
   | Done_init (Ok p) ->
     Printf.sprintf "Done_init(%s)" (Processing_files.to_string p)
   | Done_init (Error edata) ->

@@ -26,6 +26,7 @@
 #include <folly/IntrusiveList.h>
 #include <folly/Likely.h>
 #include <folly/Portability.h>
+#include <folly/Traits.h>
 #include <folly/fibers/Baton.h>
 
 #include <thrift/lib/cpp2/transport/rocket/Types.h>
@@ -37,9 +38,14 @@
 namespace apache {
 namespace thrift {
 namespace rocket {
+class RocketClient;
 class RequestContextQueue;
 
 class RequestContext {
+ private:
+  template <typename T>
+  using payload_method_t = decltype(std::declval<const T&>().payload());
+
  public:
   class WriteSuccessCallback {
    public:
@@ -67,6 +73,11 @@ class RequestContext {
         streamId_(frame.streamId()),
         frameType_(Frame::frameType()),
         writeSuccessCallback_(writeSuccessCallback) {
+    // Some `Frame`s lack a `payload()` method -- `RequestNFrame`,
+    // `CancelFrame`, etc -- but those that do should have `.fds`.
+    if constexpr (folly::is_detected<payload_method_t, Frame>::value) {
+      fds = std::move(frame.payload().fds.dcheckToSendOrEmpty());
+    }
     serialize(std::forward<Frame>(frame), setupFrame);
   }
 
@@ -124,7 +135,7 @@ class RequestContext {
     }
   }
 
-  std::unique_ptr<folly::IOBuf> serializedChain() {
+  std::unique_ptr<folly::IOBuf> releaseSerializedChain() {
     DCHECK(serializedFrame_);
     return std::move(serializedFrame_);
   }
@@ -160,6 +171,13 @@ class RequestContext {
     DCHECK(serializedFrame_ && frameType_ != FrameType::RESERVED);
     state_ = State::WRITE_NOT_SCHEDULED;
   }
+
+  folly::SocketFds fds;
+
+ protected:
+  friend class RocketClient;
+
+  void markLastInWriteBatch() { lastInWriteBatch_ = true; }
 
  private:
   RequestContextQueue& queue_;

@@ -8,6 +8,7 @@
  *)
 open Hh_prelude
 open SearchUtils
+open SearchTypes
 
 (* How many locally changed files are in this env? *)
 let count_local_fileinfos ~(sienv : si_env) : int =
@@ -36,7 +37,7 @@ let convert_fileinfo_to_contents
     ~(info : FileInfo.t)
     ~(filepath : string) : SearchUtils.si_capture =
   let append_item
-      (kind : SearchUtils.si_kind)
+      (kind : SearchTypes.si_kind)
       (acc : SearchUtils.si_capture)
       (name : string) =
     let (sif_kind, sif_is_abstract, sif_is_final) =
@@ -77,7 +78,7 @@ let convert_fileinfo_to_contents
     item :: acc
   in
   let fold_full
-      (kind : SearchUtils.si_kind)
+      (kind : SearchTypes.si_kind)
       (acc : SearchUtils.si_capture)
       (list : FileInfo.id list) : SearchUtils.si_capture =
     List.fold list ~init:acc ~f:(fun inside_acc (_, name, _) ->
@@ -117,13 +118,15 @@ let update_file
     sienv with
     lss_fullitems =
       Relative_path.Map.add sienv.lss_fullitems ~key:path ~data:contents;
-    lss_tombstones = Tombstone_set.add sienv.lss_tombstones tombstone;
+    lss_tombstones = Relative_path.Set.add sienv.lss_tombstones path;
+    lss_tombstone_hashes =
+      Tombstone_set.add sienv.lss_tombstone_hashes tombstone;
   }
 
 let update_file_from_addenda
     ~(sienv : si_env)
     ~(path : Relative_path.t)
-    ~(addenda : SearchUtils.si_addendum list) : si_env =
+    ~(addenda : SearchTypes.si_addendum list) : si_env =
   let tombstone = get_tombstone path in
   let filepath = Relative_path.suffix path in
   let contents : SearchUtils.si_capture =
@@ -140,19 +143,9 @@ let update_file_from_addenda
     sienv with
     lss_fullitems =
       Relative_path.Map.add sienv.lss_fullitems ~key:path ~data:contents;
-    lss_tombstones = Tombstone_set.add sienv.lss_tombstones tombstone;
-  }
-
-let update_file_facts
-    ~(sienv : si_env) ~(path : Relative_path.t) ~(facts : Facts.facts) : si_env
-    =
-  let tombstone = get_tombstone path in
-  let contents = IndexBuilder.convert_facts ~path ~facts in
-  {
-    sienv with
-    lss_fullitems =
-      Relative_path.Map.add sienv.lss_fullitems ~key:path ~data:contents;
-    lss_tombstones = Tombstone_set.add sienv.lss_tombstones tombstone;
+    lss_tombstones = Relative_path.Set.add sienv.lss_tombstones path;
+    lss_tombstone_hashes =
+      Tombstone_set.add sienv.lss_tombstone_hashes tombstone;
   }
 
 (* Remove files from local when they are deleted *)
@@ -161,40 +154,45 @@ let remove_file ~(sienv : si_env) ~(path : Relative_path.t) : si_env =
   {
     sienv with
     lss_fullitems = Relative_path.Map.remove sienv.lss_fullitems path;
-    lss_tombstones = Tombstone_set.add sienv.lss_tombstones tombstone;
+    lss_tombstones = Relative_path.Set.add sienv.lss_tombstones path;
+    lss_tombstone_hashes =
+      Tombstone_set.add sienv.lss_tombstone_hashes tombstone;
   }
 
 (* Exception we use to short-circuit out of a loop if we find enough results.
  * May be worth rewriting this in the future to use `fold_until` rather than
  * exceptions *)
-exception BreakOutOfScan of si_results
+exception BreakOutOfScan of si_item list
 
 (* Search local changes for symbols matching this prefix *)
 let search_local_symbols
     ~(sienv : si_env)
     ~(query_text : string)
     ~(max_results : int)
-    ~(context : autocomplete_type option)
-    ~(kind_filter : si_kind option) : si_results =
+    ~(context : autocomplete_type)
+    ~(kind_filter : si_kind option) : si_item list =
   (* case insensitive search, must include namespace, escaped for regex *)
   let query_text_regex_case_insensitive =
     Str.regexp_case_fold (Str.quote query_text)
   in
   (* case insensitive search, break out if max results reached *)
   let check_symbol_and_add_to_accumulator_and_break_if_max_reached
-      ~(acc : si_results)
+      ~(acc : si_item list)
       ~(symbol : si_fullitem)
-      ~(context : autocomplete_type option)
+      ~(context : autocomplete_type)
       ~(kind_filter : si_kind option)
-      ~(path : Relative_path.t) : si_results =
+      ~(path : Relative_path.t) : si_item list =
     let is_valid_match =
       match (context, kind_filter) with
-      | (Some Actype, _) -> SearchUtils.valid_for_actype symbol
-      | (Some Acnew, _) -> SearchUtils.valid_for_acnew symbol
-      | (Some Acid, _) -> SearchUtils.valid_for_acid symbol
-      | (Some Actrait_only, _) -> is_si_trait symbol.sif_kind
-      | (_, Some kind_match) -> equal_si_kind symbol.sif_kind kind_match
-      | _ -> true
+      | (Actype, _) -> SearchTypes.valid_for_actype symbol.SearchUtils.sif_kind
+      | (Acnew, _) ->
+        SearchTypes.valid_for_acnew symbol.SearchUtils.sif_kind
+        && not symbol.SearchUtils.sif_is_abstract
+      | (Acid, _) -> SearchTypes.valid_for_acid symbol.SearchUtils.sif_kind
+      | (Actrait_only, _) -> is_si_trait symbol.sif_kind
+      | (Ac_workspace_symbol, Some kind_match) ->
+        equal_si_kind symbol.sif_kind kind_match
+      | (Ac_workspace_symbol, None) -> true
     in
     if
       is_valid_match
@@ -209,7 +207,7 @@ let search_local_symbols
         {
           si_name = fullname;
           si_kind = symbol.sif_kind;
-          si_filehash = get_tombstone path;
+          si_file = SI_Path path;
           si_fullname = fullname;
         }
         :: acc
@@ -243,11 +241,12 @@ let search_local_symbols
   | BreakOutOfScan acc -> acc
 
 (* Filter the results to extract any dead objects *)
-let extract_dead_results
-    ~(sienv : SearchUtils.si_env) ~(results : SearchUtils.si_results) :
-    si_results =
-  List.filter results ~f:(fun r ->
-      let is_valid_result =
-        not (Tombstone_set.mem sienv.lss_tombstones r.si_filehash)
-      in
-      is_valid_result)
+let extract_dead_results ~(sienv : SearchUtils.si_env) ~(results : si_item list)
+    : si_item list =
+  List.filter results ~f:(fun item ->
+      match item.si_file with
+      | SearchTypes.SI_Path path ->
+        not (Relative_path.Set.mem sienv.lss_tombstones path)
+      | SearchTypes.SI_Filehash hash_str ->
+        let hash = Int64.of_string hash_str in
+        not (Tombstone_set.mem sienv.lss_tombstone_hashes hash))

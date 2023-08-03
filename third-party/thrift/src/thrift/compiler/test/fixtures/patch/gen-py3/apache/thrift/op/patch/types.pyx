@@ -54,12 +54,8 @@ import sys
 from collections.abc import Sequence, Set, Mapping, Iterable
 import weakref as __weakref
 import builtins as _builtins
-cimport facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
-import facebook.thrift.annotation.cpp.types as _facebook_thrift_annotation_cpp_types
-cimport facebook.thrift.annotation.scope.types as _facebook_thrift_annotation_scope_types
-import facebook.thrift.annotation.scope.types as _facebook_thrift_annotation_scope_types
-cimport facebook.thrift.annotation.thrift.types as _facebook_thrift_annotation_thrift_types
-import facebook.thrift.annotation.thrift.types as _facebook_thrift_annotation_thrift_types
+cimport apache.thrift.type.id.types as _apache_thrift_type_id_types
+import apache.thrift.type.id.types as _apache_thrift_type_id_types
 cimport apache.thrift.type.standard.types as _apache_thrift_type_standard_types
 import apache.thrift.type.standard.types as _apache_thrift_type_standard_types
 
@@ -320,3 +316,4 @@ cdef class AssignOnlyPatch(thrift.py3.types.Struct):
         import thrift.util.converter
         py_deprecated_types = importlib.import_module("thrift.lib.thrift.patch.ttypes")
         return thrift.util.converter.to_py_struct(py_deprecated_types.AssignOnlyPatch, self)
+FieldId = int

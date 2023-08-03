@@ -86,12 +86,11 @@ let update_reverse_naming_table_from_env_and_get_duplicate_name_errors
       env.naming_table
       ~f:(fun k v env ->
         count := !count + 1;
-        let (errorl, failed_naming) =
-          Naming_global.ndecl_file_error_if_already_bound ctx k v
+        let failed_naming =
+          Naming_global.ndecl_file_and_get_conflict_files ctx k v
         in
         {
           env with
-          errorl = Errors.merge errorl env.errorl;
           failed_naming =
             Relative_path.Set.union env.failed_naming failed_naming;
         })
@@ -104,13 +103,10 @@ let update_reverse_naming_table_from_env_and_get_duplicate_name_errors
     ~start_t:t;
   (env, Hh_logger.log_duration ("Naming " ^ telemetry_label) t)
 
-let validate_no_errors (phase : Errors.phase) (errors : Errors.t) : unit =
+let validate_no_errors (errors : Errors.t) : unit =
   let witness_opt =
-    Errors.fold_errors
-      ~phase
-      errors
-      ~init:None
-      ~f:(fun path _phase error _acc -> Some (path, error))
+    Errors.fold_errors errors ~init:None ~f:(fun path error _acc ->
+        Some (path, error))
   in
   match witness_opt with
   | None -> ()
@@ -212,7 +208,6 @@ let defer_or_do_type_check
     Hh_logger.log "Begin %s" logstring;
     let {
       Typing_check_service.errors = errorl;
-      delegate_state;
       telemetry = typecheck_telemetry;
       _;
     } =
@@ -234,7 +229,6 @@ let defer_or_do_type_check
       Typing_check_service.go
         ctx
         genv.workers
-        env.typing_service.delegate_state
         (Telemetry.create ())
         files_to_check
         ~root
@@ -249,13 +243,7 @@ let defer_or_do_type_check
              genv
              env)
     in
-    let env =
-      {
-        env with
-        typing_service = { env.typing_service with delegate_state };
-        errorl = Errors.merge errorl env.errorl;
-      }
-    in
+    let env = { env with errorl = Errors.merge errorl env.errorl } in
     log_type_check_end
       env
       genv

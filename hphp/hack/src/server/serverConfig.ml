@@ -37,8 +37,6 @@ type t = {
   warn_on_non_opt_build: bool;
   (* clientIdeDaemon will fall back to performing a full index of files to construct a naming table if it fails to load one. *)
   ide_fall_back_to_full_index: bool;
-  (* when clientIdeDaemon loads a saved state, it also gets a list of the files changed since the saved state. When this option is set, the daemon will process all of these changes right away: the IDE won't be "initialized" and won't be responding to requests until these changes are processed. *)
-  ide_batch_process_changes: bool;
 }
 [@@deriving show]
 
@@ -302,14 +300,10 @@ let load_config config options =
     ?po_const_default_func_args:(bool_opt "const_default_func_args" config)
     ?po_const_default_lambda_args:(bool_opt "const_default_lambda_args" config)
     ?po_disallow_silence:(bool_opt "disallow_silence" config)
-    ?tco_global_inference:(bool_opt "global_inference" config)
-    ?tco_gi_reinfer_types:(string_list_opt "reinfer_types" config)
+    ?po_keep_user_attributes:(bool_opt "keep_user_attributes" config)
     ?tco_const_static_props:(bool_opt "const_static_props" config)
     ?po_abstract_static_props:(bool_opt "abstract_static_props" config)
     ?tco_check_attribute_locations:(bool_opt "check_attribute_locations" config)
-    ?glean_service:(string_opt "glean_service" config)
-    ?glean_hostname:(string_opt "glean_hostname" config)
-    ?glean_port:(int_opt "glean_port" config)
     ?glean_reponame:(string_opt "glean_reponame" config)
     ?symbol_write_ownership:(bool_opt "symbol_write_ownership" config)
     ?symbol_write_root_path:(string_opt "symbol_write_root_path" config)
@@ -343,6 +337,7 @@ let load_config config options =
     ?tco_report_pos_from_reason:(bool_opt "report_pos_from_reason" config)
     ?tco_typecheck_sample_rate:(float_opt "typecheck_sample_rate" config)
     ?tco_enable_sound_dynamic:(bool_opt "enable_sound_dynamic_type" config)
+    ?tco_pessimise_builtins:(bool_opt "pessimise_builtins" config)
     ?tco_enable_no_auto_dynamic:(bool_opt "enable_no_auto_dynamic" config)
     ?tco_skip_check_under_dynamic:(bool_opt "skip_check_under_dynamic" config)
     ?tco_enable_modules:(bool_opt "enable_modules" config)
@@ -394,11 +389,7 @@ let load_config config options =
       (bool_opt "populate_dead_unsafe_cast_heap" config)
     ?po_disallow_static_constants_in_default_func_args:
       (bool_opt "disallow_static_constants_in_default_func_args" config)
-    ?tco_tast_under_dynamic:(bool_opt "tast_under_dynamic" config)
-    ?tco_ide_should_use_hack_64_distc:
-      (bool_opt "ide_should_use_hack_64_distc" config)
-    ?tco_ide_load_naming_table_on_disk:
-      (bool_opt "ide_load_naming_table_on_disk" config)
+    ?tco_log_exhaustivity_check:(bool_opt "log_exhaustivity_check" config)
     options
 
 let load ~silent options : t * ServerLocalConfig.t =
@@ -465,33 +456,24 @@ let load ~silent options : t * ServerLocalConfig.t =
   let ide_fall_back_to_full_index =
     bool_ "ide_fall_back_to_full_index" ~default:true config
   in
-  let ide_batch_process_changes =
-    bool_ "ide_batch_process_changes" ~default:false config
-  in
   let formatter_override =
     Option.map
       (Config_file.Getters.string_opt "formatter_override" config)
       ~f:maybe_relative_path
   in
   let global_opts =
+    let tco_custom_error_config = CustomErrorConfig.load_and_parse () in
+    let glean_reponame =
+      (* TODO(ljw): remove this after rollout complete; T158354704 *)
+      if local_config.glean_v2 then
+        Some "www.hack.light"
+      else
+        None
+    in
     let local_config_opts =
       GlobalOptions.set
-        ~tco_remote_type_check_threshold:
-          ServerLocalConfig.RemoteTypeCheck.(
-            local_config.remote_type_check.remote_type_check_recheck_threshold)
-        ?tco_remote_type_check:
-          ServerLocalConfig.RemoteTypeCheck.(
-            Some local_config.remote_type_check.enabled)
-        ?tco_remote_worker_key:local_config.remote_worker_key
-        ?tco_remote_check_id:local_config.remote_check_id
-        ?tco_num_remote_workers:
-          ServerLocalConfig.RemoteTypeCheck.(
-            Some local_config.remote_type_check.num_workers)
-        ?so_remote_version_specifier:local_config.remote_version_specifier
         ?so_naming_sqlite_path:local_config.naming_sqlite_path
-        ?tco_ide_should_use_hack_64_distc:
-          (Some local_config.ide_should_use_hack_64_distc)
-          (* clientIdeDaemon should load a naming table from hack/64_distc *)
+        ?glean_reponame
         ?tco_log_large_fanouts_threshold:
           local_config.log_large_fanouts_threshold
         ~tco_remote_old_decls_no_limit:
@@ -513,8 +495,8 @@ let load ~silent options : t * ServerLocalConfig.t =
         ~tco_ifc_enabled:(ServerArgs.enable_ifc options)
         ~tco_global_access_check_enabled:
           (ServerArgs.enable_global_access_check options)
-        ~tco_ide_load_naming_table_on_disk:
-          local_config.ide_load_naming_table_on_disk
+        ~dump_tast_hashes:local_config.dump_tast_hashes
+        ~tco_custom_error_config
         GlobalOptions.default
     in
     load_config config local_config_opts
@@ -539,7 +521,6 @@ let load ~silent options : t * ServerLocalConfig.t =
       extra_paths;
       warn_on_non_opt_build;
       ide_fall_back_to_full_index;
-      ide_batch_process_changes;
     },
     local_config )
 
@@ -560,7 +541,6 @@ let default_config =
     extra_paths = [];
     warn_on_non_opt_build = false;
     ide_fall_back_to_full_index = false;
-    ide_batch_process_changes = false;
   }
 
 let set_parser_options config popt = { config with parser_options = popt }
@@ -597,5 +577,3 @@ let version config = config.version
 let warn_on_non_opt_build config = config.warn_on_non_opt_build
 
 let ide_fall_back_to_full_index config = config.ide_fall_back_to_full_index
-
-let ide_batch_process_changes config = config.ide_batch_process_changes

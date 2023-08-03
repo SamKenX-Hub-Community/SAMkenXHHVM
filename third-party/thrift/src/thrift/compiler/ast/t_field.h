@@ -63,7 +63,7 @@ class t_field final : public t_named {
    */
   t_field(
       t_type_ref type, std::string name, boost::optional<t_field_id> id = {})
-      : t_named(std::move(name)),
+      : t_named(nullptr, std::move(name)),
         type_(std::move(type)),
         id_(id.value_or(0)),
         explicit_id_(id) {}
@@ -106,8 +106,8 @@ class t_field final : public t_named {
     clone->reset_annotations(annotations());
 
     // structued annotations
-    for (auto annot : structured_annotations()) {
-      clone->add_structured_annotation(annot->clone());
+    for (const auto& annot : structured_annotations()) {
+      clone->add_structured_annotation(annot.clone());
     }
 
     clone->qual_ = qual_;

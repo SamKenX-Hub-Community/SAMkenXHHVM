@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test::fixtures::basic::MyEnum>::size;
+#endif
 folly::Range<::test::fixtures::basic::MyEnum const*> const TEnumTraits<::test::fixtures::basic::MyEnum>::values = folly::range(TEnumDataStorage<::test::fixtures::basic::MyEnum>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test::fixtures::basic::MyEnum>::names = folly::range(TEnumDataStorage<::test::fixtures::basic::MyEnum>::names);
 
@@ -28,14 +30,6 @@ bool TEnumTraits<::test::fixtures::basic::MyEnum>::findValue(folly::StringPiece 
 
 }} // apache::thrift
 
-namespace test { namespace fixtures { namespace basic {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _MyEnum_EnumMapFactory::ValuesToNamesMapType _MyEnum_VALUES_TO_NAMES = _MyEnum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-}}} // test::fixtures::basic
 
 namespace apache {
 namespace thrift {
@@ -74,6 +68,13 @@ const folly::StringPiece MyStruct::__fbthrift_get_class_name() {
 
 MyStruct::MyStruct(const MyStruct&) = default;
 MyStruct& MyStruct::operator=(const MyStruct&) = default;
+MyStruct::MyStruct() :
+      __fbthrift_field_myIntField() {
+}
+
+
+MyStruct::~MyStruct() {}
+
 MyStruct::MyStruct(FOLLY_MAYBE_UNUSED MyStruct&& other) noexcept :
     __fbthrift_field_myIntField(std::move(other.__fbthrift_field_myIntField)),
     __fbthrift_field_myStringField(std::move(other.__fbthrift_field_myStringField)),
@@ -162,7 +163,9 @@ void TccStructTraits<::test::fixtures::basic::MyUnion>::translateFieldName(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::test::fixtures::basic::MyUnion::Type>::size;
+#endif
 folly::Range<::test::fixtures::basic::MyUnion::Type const*> const TEnumTraits<::test::fixtures::basic::MyUnion::Type>::values = folly::range(TEnumDataStorage<::test::fixtures::basic::MyUnion::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::test::fixtures::basic::MyUnion::Type>::names = folly::range(TEnumDataStorage<::test::fixtures::basic::MyUnion::Type>::names);
 

@@ -6,9 +6,10 @@
 use anyhow::Result;
 use hhvm_options::HhvmConfig;
 use options::HhbcFlags;
+use options::JitEnableRenameFunction;
 use options::ParserOptions;
 
-/**!
+/*
 These helper functions are best-effort utilities for CLI tools like hackc
 to read HHVM configuration. No guarantees are made about coverage;
 ultimately the source of truth is HHVM, for how .hdf and .ini
@@ -29,15 +30,6 @@ pub fn hhbc_flags(config: &HhvmConfig) -> Result<HhbcFlags> {
 
     init(&mut flags.ltr_assign, "php7.ltr_assign")?;
     init(&mut flags.uvs, "php7.uvs")?;
-    init(&mut flags.repo_authoritative, "Repo.Authoritative")?;
-    init(
-        &mut flags.jit_enable_rename_function,
-        "Eval.JitEnableRenameFunction",
-    )?;
-    init(
-        &mut flags.jit_enable_rename_function,
-        "JitEnableRenameFunction",
-    )?;
     init(
         &mut flags.log_extern_compiler_perf,
         "Eval.LogExternCompilerPerf",
@@ -73,6 +65,21 @@ pub fn hhbc_flags(config: &HhvmConfig) -> Result<HhbcFlags> {
     // Only hdf version
     flags.fold_lazy_class_keys = config.get_bool("Eval.FoldLazyClassKeys")?.unwrap_or(true);
     Ok(flags)
+}
+
+pub fn jit_enable_rename_function(config: &HhvmConfig) -> Result<JitEnableRenameFunction> {
+    match config.get_uint32("Eval.JitEnableRenameFunction")? {
+        Some(b) => {
+            if b == 1 {
+                Ok(JitEnableRenameFunction::Enable)
+            } else if b == 2 {
+                Ok(JitEnableRenameFunction::RestrictedEnable)
+            } else {
+                Ok(JitEnableRenameFunction::Disable)
+            }
+        }
+        None => Ok(JitEnableRenameFunction::Disable),
+    }
 }
 
 pub fn parser_options(config: &HhvmConfig) -> Result<ParserOptions> {

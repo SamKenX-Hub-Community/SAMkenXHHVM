@@ -35,11 +35,11 @@
       ],
       "location": {
         "file": "fbcode/thrift/lib/cpp2/FieldRef.h",
-        "line": "1615",
+        "line": "1631",
         "column": "1",
         "bodyfile": "fbcode/thrift/lib/cpp2/FieldRef.h",
-        "bodystart": "1615",
-        "bodyend": "1617"
+        "bodystart": "1631",
+        "bodyend": "1633"
       },
       "definition": {
         "simple_html": "template &lt;typename T&gt;\nFOLLY_ERASE T&amp;&amp; operator()(T&amp;&amp; value) const",
@@ -55,11 +55,11 @@
   ],
   "location": {
     "file": "fbcode/thrift/lib/cpp2/FieldRef.h",
-    "line": "1613",
+    "line": "1629",
     "column": "1",
     "bodyfile": "fbcode/thrift/lib/cpp2/FieldRef.h",
-    "bodystart": "1613",
-    "bodyend": "1618"
+    "bodystart": "1629",
+    "bodyend": "1634"
   },
   "namespacednames_html": [
     "apache",
@@ -109,11 +109,11 @@
               ],
               "location": {
                 "file": "fbcode/thrift/lib/cpp2/FieldRef.h",
-                "line": "1615",
+                "line": "1631",
                 "column": "1",
                 "bodyfile": "fbcode/thrift/lib/cpp2/FieldRef.h",
-                "bodystart": "1615",
-                "bodyend": "1617"
+                "bodystart": "1631",
+                "bodyend": "1633"
               },
               "definition": {
                 "simple_html": "template &lt;typename T&gt;\nFOLLY_ERASE T&amp;&amp; operator()(T&amp;&amp; value) const",

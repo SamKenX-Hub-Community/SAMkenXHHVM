@@ -17,11 +17,6 @@ type entry_contents =
   | Read_contents_from_disk_failed of Exception.t
   | Raise_exn_on_attempt_to_read
 
-type entry_tast =
-  | Entry_tast_no_dynamic of Tast.program
-  | Entry_tast_under_dynamic of Tast.program
-  | Entry_tast_missing
-
 type entry = {
   path: Relative_path.t;
   mutable contents: entry_contents;
@@ -29,7 +24,7 @@ type entry = {
   mutable parser_return: Parser_return.t option;
   mutable ast_errors: Errors.t option;
   mutable cst: PositionedSyntaxTree.t option;
-  mutable tast: entry_tast;
+  mutable tast: Tast.program Tast_with_dynamic.t option;
   mutable all_errors: Errors.t option;
   mutable symbols: Relative_path.t SymbolOccurrence.t list option;
 }
@@ -42,18 +37,10 @@ type t = {
   backend: Provider_backend.t;
   deps_mode: Typing_deps_mode.t;
   entries: entries;
-  package_info: Package.Info.t;
 }
 
-let empty_for_tool ~popt ~tcopt ~backend ~deps_mode ~package_info =
-  {
-    popt;
-    tcopt;
-    backend;
-    deps_mode;
-    entries = Relative_path.Map.empty;
-    package_info;
-  }
+let empty_for_tool ~popt ~tcopt ~backend ~deps_mode =
+  { popt; tcopt; backend; deps_mode; entries = Relative_path.Map.empty }
 
 let empty_for_worker ~popt ~tcopt ~deps_mode =
   {
@@ -62,7 +49,6 @@ let empty_for_worker ~popt ~tcopt ~deps_mode =
     backend = Provider_backend.Shared_memory;
     deps_mode;
     entries = Relative_path.Map.empty;
-    package_info = Package.Info.empty;
   }
 
 let empty_for_test ~popt ~tcopt ~deps_mode =
@@ -72,7 +58,6 @@ let empty_for_test ~popt ~tcopt ~deps_mode =
     backend = Provider_backend.Shared_memory;
     deps_mode;
     entries = Relative_path.Map.empty;
-    package_info = Package.Info.empty;
   }
 
 let empty_for_debugging ~popt ~tcopt ~deps_mode =
@@ -82,7 +67,6 @@ let empty_for_debugging ~popt ~tcopt ~deps_mode =
     backend = Provider_backend.Shared_memory;
     deps_mode;
     entries = Relative_path.Map.empty;
-    package_info = Package.Info.empty;
   }
 
 let make_entry ~(path : Relative_path.t) ~(contents : entry_contents) : entry =
@@ -93,7 +77,7 @@ let make_entry ~(path : Relative_path.t) ~(contents : entry_contents) : entry =
     parser_return = None;
     ast_errors = None;
     cst = None;
-    tast = Entry_tast_missing;
+    tast = None;
     all_errors = None;
     symbols = None;
   }
@@ -120,7 +104,8 @@ let get_popt (t : t) : ParserOptions.t = t.popt
 
 let get_tcopt (t : t) : TypecheckerOptions.t = t.tcopt
 
-let get_package_info (t : t) : Package.Info.t = t.package_info
+let get_package_info (t : t) : PackageInfo.t =
+  t.tcopt.GlobalOptions.tco_package_info
 
 let map_tcopt (t : t) ~(f : TypecheckerOptions.t -> TypecheckerOptions.t) : t =
   { t with tcopt = f t.tcopt }
@@ -303,3 +288,9 @@ let implicit_sdt_for_class ctx this_class =
 let implicit_sdt_for_fun ctx fe =
   TypecheckerOptions.everything_sdt (get_tcopt ctx)
   && not fe.Typing_defs.fe_no_auto_dynamic
+
+let no_auto_likes_for_fun fe = fe.Typing_defs.fe_no_auto_likes
+
+let set_autocomplete_mode t =
+  let tcopt = TypecheckerOptions.set_tco_autocomplete_mode t.tcopt in
+  { t with tcopt }

@@ -37,14 +37,13 @@ void __attribute__((__weak__)) __hot_end();
  * Main entry point of the entire program.
  */
 int execute_program(int argc, char **argv);
-void execute_command_line_begin(int argc, char **argv, int xhprof);
-void execute_command_line_end(int xhprof, bool coverage, const char *program,
+void execute_command_line_begin(int argc, char **argv);
+void execute_command_line_end(bool coverage, const char *program,
                               bool runCleanup = true);
 
 void init_command_line_session(int arc, char** argv);
 void init_command_line_globals(
   int argc, char** argv, char** envp,
-  int xhprof,
   const std::map<std::string, std::string>& serverVariables,
   const std::map<std::string, std::string>& envVariables
 );
@@ -83,8 +82,10 @@ time_t start_time();
 
 struct ExecutionContext;
 
-void hphp_process_init(bool skipModules = false);
+void hphp_process_init(bool skipExtensions = false);
 void cli_client_init();
+void cli_client_thread_init();
+void cli_client_thread_exit();
 void hphp_session_init(Treadmill::SessionKind session_kind,
                        Transport* transport = nullptr);
 
@@ -124,7 +125,7 @@ void hphp_memory_cleanup();
 void hphp_session_exit(Transport* transport = nullptr);
 void hphp_process_exit() noexcept;
 bool is_hphp_session_initialized();
-std::string get_systemlib(const std::string &section = "systemlib",
+std::string get_systemlib(const std::string &section = "ext.core",
                           const std::string &filename = "");
 
 // Helper function for stats tracking with exceptions.

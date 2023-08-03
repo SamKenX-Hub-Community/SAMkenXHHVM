@@ -140,11 +140,10 @@ THRIFT_PLUGGABLE_FUNC_DECLARE(
     makeLoggingEventRegistry);
 
 THRIFT_PLUGGABLE_FUNC_DECLARE(
-    std::vector<folly::IPAddress>,
-    getAllowedIPsForCert,
-    const folly::AsyncTransportCertificate*);
-
-THRIFT_PLUGGABLE_FUNC_DECLARE(bool, isLocalIP, const folly::IPAddress& ip);
+    bool,
+    isCertIPMismatch,
+    const ConnectionLoggingContext& ctx,
+    const folly::AsyncTransportCertificate* cert);
 } // namespace detail
 
 const LoggingEventRegistry& getLoggingEventRegistry();

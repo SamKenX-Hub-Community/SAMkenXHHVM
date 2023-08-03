@@ -195,6 +195,17 @@ and ('ex, 'en) stmt_ =
        *         baz();
        *         break;
        *     } *)
+  | Match of ('ex, 'en) stmt_match
+      (** Match statement.
+       *
+       *     match ($x) {
+       *       _: FooClass => {
+       *         foo($x);
+       *       }
+       *       _ => {
+       *         bar();
+       *       }
+       *     } *)
   | Foreach of ('ex, 'en) expr * ('ex, 'en) as_expr * ('ex, 'en) block
       (** For-each loop.
        *
@@ -218,6 +229,8 @@ and ('ex, 'en) stmt_ =
        *     {}
        *     while (true) ;
        *     if ($foo) {} // the else is Noop here *)
+  | Declare_local of lid * hint * ('ex, 'en) expr option
+      (** Declare a local variable with the given type and optional initial value *)
   | Block of ('ex, 'en) block
       (** Block, a list of statements in curly braces.
        *
@@ -254,6 +267,33 @@ and ('ex, 'en) as_expr =
 and ('ex, 'en) block = ('ex, 'en) stmt list
 
 and ('ex, 'en) finally_block = ('ex, 'en) stmt list
+
+and ('ex, 'en) stmt_match = {
+  sm_expr: ('ex, 'en) expr;
+  sm_arms: ('ex, 'en) stmt_match_arm list;
+}
+
+and ('ex, 'en) stmt_match_arm = {
+  sma_pat: pattern;
+  sma_body: ('ex, 'en) stmt;
+}
+
+and pattern =
+  | PVar of pat_var
+      (** Variable patterns *)
+  | PRefinement of pat_refinement
+      (** Refinement patterns *)
+
+and pat_var = {
+  pv_pos: pos; [@transform.opaque]
+  pv_id: lid option;
+}
+
+and pat_refinement = {
+  pr_pos: pos; [@transform.opaque]
+  pr_id: lid option;
+  pr_hint: hint;
+}
 
 and ('ex, 'en) class_id = 'ex * (pos[@transform.opaque]) * ('ex, 'en) class_id_
 
@@ -489,15 +529,7 @@ and ('ex, 'en) expr_ =
        *     parent::someStaticMeth()
        *     parent::someInstanceMeth()
        *)
-  | Call of
-      (* function *)
-      ('ex, 'en) expr
-      * (* explicit type annotations *)
-      'ex targ list
-      * (* positional args, plus their calling convention *)
-      ((Ast_defs.param_kind[@transform.opaque]) * ('ex, 'en) expr) list
-      * (* unpacked arg *)
-      ('ex, 'en) expr option
+  | Call of ('ex, 'en) call_expr
       (** Function or method call.
        *
        *     foo()
@@ -864,6 +896,17 @@ and 'ex targ = 'ex * hint
 
 and type_hint_ = hint option
 
+and ('ex, 'en) call_expr = {
+  func: ('ex, 'en) expr;
+      (** function *)
+  targs: 'ex targ list;
+      (** explicit type annotations *)
+  args: ((Ast_defs.param_kind[@transform.opaque]) * ('ex, 'en) expr) list;
+      (** positional args, plus their calling convention *)
+  unpacked_arg: ('ex, 'en) expr option;
+      (** unpacked arg *)
+}
+
 and ('ex, 'en) user_attribute = {
   ua_name: sid;
   ua_params: ('ex, 'en) expr list;
@@ -1067,6 +1110,7 @@ and ('ex, 'en) typedef = {
   t_internal: bool;
   t_module: sid option;
   t_docs_url: string option;
+  t_doc_comment: doc_comment option;
 }
 
 and ('ex, 'en) gconst = {
@@ -1212,6 +1256,7 @@ and hint_ =
   | Hany
   | Herr
   | Hmixed
+  | Hwildcard
   | Hnonnull
   | Habstr of string * hint list
   | Hvec_or_dict of hint option * hint
@@ -1338,3 +1383,8 @@ let string_of_visibility vis =
   | Public -> "public"
   | Protected -> "protected"
   | Internal -> "internal"
+
+let is_wildcard_hint h =
+  match h with
+  | (_, Hwildcard) -> true
+  | _ -> false

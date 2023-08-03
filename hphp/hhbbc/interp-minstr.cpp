@@ -102,14 +102,16 @@ OptEffects unionEffects(OptEffects e1, Effects e2) {
 
 bool couldBeThisObj(ISS& env, const Base& b) {
   if (b.loc == BaseLoc::This) return true;
-  auto const thisTy = thisTypeFromContext(env.index, env.ctx);
-  return b.type.couldBe(thisTy ? *thisTy : TObj);
+  if (auto const s = selfCls(env)) {
+    return b.type.couldBe(setctx(toobj(*s)));
+  }
+  return true;
 }
 
 bool mustBeThisObj(ISS& env, const Base& b) {
   if (b.loc == BaseLoc::This) return true;
-  if (auto const ty = thisTypeFromContext(env.index, env.ctx)) {
-    return b.type.subtypeOf(*ty);
+  if (auto const s = selfCls(env)) {
+    return b.type.subtypeOf(setctx(toobj(*s)));
   }
   return false;
 }
@@ -282,14 +284,7 @@ void setStaticForBase(ISS& env, Type ty) {
     show(base.locTy), show(nameTy), show(ty)
   );
 
-  env.index.merge_static_type(
-    env.ctx,
-    env.collect.publicSPropMutations,
-    env.collect.props,
-    base.locTy,
-    nameTy,
-    remove_uninit(std::move(ty))
-  );
+  mergeStaticProp(env, base.locTy, nameTy, remove_uninit(std::move(ty)));
 }
 
 // Run backwards through an array chain doing array_set operations
@@ -953,8 +948,8 @@ Effects miProp(ISS& env, MOpMode mode, Type key, ReadonlyOp op) {
   }
 
   if (mustBeThisObj(env, env.collect.mInstrState.base)) {
-    auto const optThisTy = thisTypeFromContext(env.index, env.ctx);
-    auto const thisTy    = optThisTy ? *optThisTy : TObj;
+    auto const optSelfTy = selfCls(env);
+    auto const thisTy    = optSelfTy ? setctx(toobj(*optSelfTy)) : TObj;
     if (name) {
       auto const [ty, effects] = [&] () -> std::pair<Type, Effects> {
         if (update) {

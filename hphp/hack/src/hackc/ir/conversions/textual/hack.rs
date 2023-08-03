@@ -5,7 +5,7 @@
 
 use anyhow::Error;
 use hash::HashSet;
-use strum_macros::EnumIter;
+use strum::EnumIter;
 use textual_macros::TextualDecl;
 
 use crate::mangle::FunctionName;
@@ -46,10 +46,14 @@ pub(crate) enum Hhbc {
     AddElemC,
     #[decl(fn hhbc_add_new_elem_c(*HackMixed, *HackMixed) -> *HackMixed)]
     AddNewElemC,
+    #[decl(fn hhbc_await(*HackMixed) -> *HackMixed)]
+    Await,
     #[decl(fn hhbc_await_all(...) -> *HackMixed)]
     AwaitAll,
     #[decl(fn hhbc_cast_keyset(*HackMixed) -> *HackMixed)]
     CastKeyset,
+    #[decl(fn hhbc_cast_string(*HackMixed) -> *HackString)]
+    CastString,
     #[decl(fn hhbc_cast_vec(*HackMixed) -> *HackMixed)]
     CastVec,
     #[decl(fn hhbc_class_get_c(*HackMixed) -> void)]
@@ -112,6 +116,8 @@ pub(crate) enum Hhbc {
     GetMemoKeyL,
     #[decl(fn hhbc_has_reified_parent(*HackMixed) -> *HackMixed)]
     HasReifiedParent,
+    #[decl(fn hhbc_idx(*HackMixed, *HackMixed) -> *HackMixed)]
+    Idx,
     #[decl(fn hhbc_is_late_bound_cls(*HackMixed) -> *HackMixed)]
     IsLateBoundCls,
     #[decl(fn hhbc_is_type_arr_like(*HackMixed) -> *HackMixed)]
@@ -154,6 +160,8 @@ pub(crate) enum Hhbc {
     IterInit,
     #[decl(fn hhbc_iter_next(it: *Iterator, key: **HackMixed, var: **HackMixed) -> *HackBool)]
     IterNext,
+    #[decl(fn hhbc_lazy_class_from_class(*HackMixed) -> *HackString)]
+    LazyClassFromClass,
     #[decl(fn hhbc_lock_obj(*HackMixed) -> void)]
     LockObj,
     #[decl(fn hhbc_memo_set(...) -> *HackMixed)]
@@ -209,27 +217,9 @@ pub(crate) enum Builtin {
     /// pointer-sized value).
     #[decl(fn alloc_words(int) -> *void)]
     AllocWords,
-    /// Await for a value returned by an async function.
-    #[decl(fn await(*HackMixed) -> *HackMixed)]
-    Await,
-    /// Get the superglobal as a base.
-    #[decl(fn hack_base_get_superglobal(name: *HackMixed) -> **HackMixed)]
-    BaseGetSuperglobal,
     /// Turns a raw boolean into a HackMixed.
     #[decl(fn hack_bool(int) -> *HackBool)]
     Bool,
-    /// Append a new value to a base.
-    #[decl(fn hack_dim_array_append(base: **HackMixed) -> **HackMixed)]
-    DimArrayAppend,
-    /// Get the address of an indexed value from a base.
-    #[decl(fn hack_dim_array_get(base: **HackMixed, index: *HackMixed) -> **HackMixed)]
-    DimArrayGet,
-    /// Get the address of a named field from a struct.
-    #[decl(fn hack_dim_field_get(base: **HackMixed, name: *HackMixed) -> **HackMixed)]
-    DimFieldGet,
-    /// Gets a named field from a struct.
-    #[decl(fn hack_dim_field_get_or_null(base: **HackMixed, name: *HackMixed) -> **HackMixed)]
-    DimFieldGetOrNull,
     /// Get the value of a named field from a struct.
     #[decl(fn hack_field_get(base: *HackMixed, name: *HackMixed) -> *HackMixed)]
     FieldGet,
@@ -242,6 +232,63 @@ pub(crate) enum Builtin {
     /// Returns the Class identifier for the given class's static class.
     #[decl(fn hack_get_static_class(*void) -> *class)]
     GetStaticClass,
+    /// Get the named superglobal.
+    #[decl(fn hack_get_superglobal(name: *HackMixed) -> *HackMixed)]
+    GetSuperglobal,
+    /// Like HackArrayCowSet but appends the value to the previous array and
+    /// returns the copied base array.
+    ///
+    /// This is equivalent to the sequence:
+    ///   a = ensure_unique(a)
+    ///   a[b] = ensure_unique(a[b])
+    ///   a[b][] = c
+    ///
+    #[decl(fn hack_array_cow_append(...) -> *HackMixed)]
+    HackArrayCowAppend,
+    /// n-ary array "set".
+    ///
+    /// Performs the n-ary array "set" operation but ensures that the arrays
+    /// along the way are unique and then updates the final value. Returns the
+    /// copied base array.
+    ///
+    /// This is equivalent to the sequence:
+    ///   a = ensure_unique(a)
+    ///   a[b] = ensure_unique(a[b])
+    ///   a[b][c] = d
+    ///
+    #[decl(fn hack_array_cow_set(...) -> *HackMixed)]
+    HackArrayCowSet,
+    /// n-ary array "get"
+    ///
+    /// Performs the n-ary array "get" operation without any copies and returns
+    /// the tail value.
+    ///
+    /// This is equivalent to `a[b][c]`.
+    ///
+    #[decl(fn hack_array_get(...) -> *HackMixed)]
+    HackArrayGet,
+    /// 1-ary prop "get".
+    ///
+    /// Dynamically fetches the value from the named key of the instance.
+    ///
+    /// If null_safe is true then a base of null returns null.
+    ///
+    /// This (when null_safe is false) is equivalent to:
+    ///   base.?.{dynamic key}
+    ///
+    #[decl(fn hack_prop_get(base: *HackMixed, key: *HackMixed, null_safe: int) -> *HackMixed)]
+    HackPropGet,
+    /// 1-ary prop "set".
+    ///
+    /// Dynamically stores the value into the named key of the instance.
+    ///
+    /// If null_safe is true then a base of null is a no-op.
+    ///
+    /// This (when null_safe is false) is equivalent to:
+    ///   base.?.{dynamic key} = value
+    ///
+    #[decl(fn hack_prop_set(base: *HackMixed, key: *HackMixed, null_safe: int, value: *HackMixed) -> void)]
+    HackPropSet,
     /// Hhbc handlers.  See hphp/doc/bytecode.specification for docs.
     #[decl(skip)]
     Hhbc(Hhbc),
@@ -269,6 +316,9 @@ pub(crate) enum Builtin {
     NewDict,
     #[decl(fn hack_set_static_prop(classname: string, propname: string, value: *HackArray) -> void)]
     SetStaticProp,
+    /// Set the named superglobal.
+    #[decl(fn hack_get_superglobal(name: *HackMixed, value: *HackMixed) -> void)]
+    SetSuperglobal,
     /// Note that this argument is a 'splat' (unwrapped array args for a function).
     #[decl(fn __sil_splat(*HackArray) -> *HackArray)]
     SilSplat,

@@ -59,11 +59,16 @@
   (modules typing_error_utils)
   (libraries
     core_kernel
+    custom_error_eval
     errors
     error_codes
     pos
     pos_or_decl
     typing_error
+    typing_env_types
+    typing_env
+    typing_print
+    typing_utils
     user_error))
 
 (library
@@ -183,14 +188,6 @@
   (pps ppx_deriving.std)))
 
 (library
- (name typing_global_inference)
- (wrapped false)
- (modules typing_ordered_solver typing_global_inference)
- (libraries tast_env typing_algebra)
- (preprocess
-  (pps ppx_deriving.std)))
-
-(library
  (name tast_type_collector)
  (wrapped false)
  (modules tast_type_collector)
@@ -244,10 +241,11 @@
   logging
   naming_special_names
   nast_check
-  package
+  package_info
   pcre
   procs_procs
   typing_common
+  typing_error_utils
   type_mapper
   typing_modules)
  (preprocess
@@ -308,6 +306,7 @@
  (wrapped false)
  (modules
   typing_algebra
+  typing_case_types
   typing_coeffects
   typing_coercion
   typing_dynamic
@@ -354,7 +353,7 @@
  (name typing_disposable)
  (wrapped false)
  (modules typing_disposable)
- (libraries typing_utils)
+ (libraries typing_utils typing_error_utils)
  (preprocess
   (pps ppx_deriving.std)))
 
@@ -383,10 +382,18 @@
   (pps ppx_deriving.std)))
 
 (library
+ (name typing_print)
+ (wrapped false)
+ (modules typing_print)
+ (libraries decl_provider hackfmt typing_logic typing_env_types)
+ (preprocess
+  (pps ppx_deriving.std)))
+
+(library
  (name typing_log)
  (wrapped false)
- (modules typing_log typing_print)
- (libraries decl_provider hackfmt typing_logic typing_env_types)
+ (modules typing_log )
+ (libraries decl_provider hackfmt typing_logic typing_env_types typing_print)
  (preprocess
   (pps ppx_deriving.std)))
 
@@ -395,19 +402,6 @@
  (wrapped false)
  (modules typing_logic)
  (libraries typing_defs)
- (preprocess
-  (pps ppx_deriving.std)))
-
-(library
- (name typing_env)
- (wrapped false)
- (modules typing_env)
- (libraries
-  decl_provider
-  provider_context
-  typing_env_types
-  typing_log
-  typing_pessimisation_deps)
  (preprocess
   (pps ppx_deriving.std)))
 
@@ -432,6 +426,7 @@
  (modules
   internal_type_set
   tast
+  tast_with_dynamic
   typing_kinding_defs
   type_parameter_env
   typing_set
@@ -458,7 +453,7 @@
 (library
  (name typing_check_job)
  (wrapped false)
- (modules typing_check_job typing_check_utils)
+ (modules typing_check_job)
  (libraries
   core_kernel
   deferred_decl
@@ -483,6 +478,7 @@
   core_kernel
   decl_counters
   hh_distc_ffi
+  depgraph_decompress_ffi
   decl_service
   server_env
   server_env_build
@@ -502,19 +498,7 @@
   typing_defs
   typing_deps
   typing_pessimisation_deps
-  typing_check_job
-  typing_global_inference
-  typing_service_api
-  typing_service_delegate
-  vfs)
- (preprocess
-  (pps ppx_deriving.std)))
-
-(library
- (name tast_typecheck)
- (wrapped false)
- (modules delta tast_typecheck)
- (libraries core_kernel typing utils_core)
+  typing_check_job)
  (preprocess
   (pps ppx_deriving.std)))
 

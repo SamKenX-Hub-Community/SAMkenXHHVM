@@ -14,7 +14,7 @@ type rename_mode =
   | Unspecified
 
 type client_mode =
-  | MODE_AUTO_COMPLETE
+  | MODE_XHP_AUTOCOMPLETE_SNIPPET of string
   | MODE_CODEMOD_SDT of {
       csdt_path_to_jsonl: string;
       csdt_strategy: [ `CodemodSdtCumulative | `CodemodSdtIndependent ];
@@ -32,15 +32,11 @@ type client_mode =
   | MODE_FORMAT of int * int
   | MODE_FULL_FIDELITY_PARSE of string
   | MODE_FULL_FIDELITY_SCHEMA
-  | MODE_GEN_PREFETCH_DIR of string
+  | MODE_POPULATE_REMOTE_DECLS of string list option
   | MODE_GO_TO_IMPL_CLASS of string
-  | MODE_GO_TO_IMPL_CLASS_REMOTE of string
   | MODE_GO_TO_IMPL_METHOD of string
-  | MODE_IDE_FIND_REFS of string
   | MODE_IDE_FIND_REFS_BY_SYMBOL of string
-  | MODE_IDE_GO_TO_IMPL of string
-  | MODE_IDE_HIGHLIGHT_REFS of string
-  | MODE_IDE_RENAME of string
+  | MODE_IDE_GO_TO_IMPL_BY_SYMBOL of string
   | MODE_IDE_RENAME_BY_SYMBOL of string
   | MODE_IDENTIFY_SYMBOL1 of string
   | MODE_IDENTIFY_SYMBOL2 of string
@@ -58,11 +54,9 @@ type client_mode =
   | MODE_OUTLINE2
   | MODE_PAUSE of bool
   | MODE_RENAME of rename_mode * string * string
-  | MODE_RENAME_SOUND_DYNAMIC of rename_mode * string
   | MODE_REMOVE_DEAD_FIXMES of int list
   | MODE_REMOVE_DEAD_UNSAFE_CASTS
   | MODE_REWRITE_LAMBDA_PARAMETERS of string list
-  | MODE_REWRITE_TYPE_PARAMS_TYPE of string list
   | MODE_RETRIEVE_CHECKPOINT of string
   | MODE_SAVE_NAMING of string
   | MODE_SAVE_STATE of string
@@ -80,7 +74,6 @@ type client_mode =
   | MODE_TAST_HOLES_BATCH of string
   | MODE_FUN_DEPS_AT_POS_BATCH of string list
   | MODE_FILE_LEVEL_DEPENDENCIES
-  | MODE_GLOBAL_INFERENCE of ServerGlobalInferenceTypes.mode * string list
   | MODE_VERBOSE of bool
   | MODE_DEPS_OUT_AT_POS_BATCH of string list
   | MODE_DEPS_IN_AT_POS_BATCH of string list
@@ -106,7 +99,6 @@ type client_check_env = {
   save_64bit: string option;
   save_human_readable_64bit_dep_map: string option;
   output_json: bool;
-  prefer_stdout: bool;
   prechecked: bool option;
   mini_state: string option;
   remote: bool;

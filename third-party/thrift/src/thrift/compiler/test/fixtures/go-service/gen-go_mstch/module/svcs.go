@@ -7,6 +7,7 @@ package module // [[[ program thrift source path ]]]
 import (
     "context"
     "fmt"
+    "sync"
 
 
     "thrift/lib/go/thrift"
@@ -17,6 +18,7 @@ import (
 var _ = context.Background
 var _ = fmt.Printf
 var _ = thrift.ZERO
+var _ = sync.Mutex{}
 
 
 
@@ -81,6 +83,7 @@ func (c *GetEntityChannelClient) Open() error {
 // Deprecated: Use GetEntityChannelClient instead.
 type GetEntityClient struct {
     chClient *GetEntityChannelClient
+    Mu       sync.Mutex
 }
 // Compile time interface enforcer
 var _ GetEntityClientInterface = &GetEntityClient{}
@@ -368,7 +371,7 @@ func (x *reqGetEntityGetEntity) GetRNonCompat() *GetEntityRequest {
 
 func (x *reqGetEntityGetEntity) GetR() *GetEntityRequest {
     if !x.IsSetR() {
-        return NewGetEntityRequest()
+        return nil
     }
 
     return x.R
@@ -431,7 +434,9 @@ func (x *reqGetEntityGetEntity) DefaultGetR() *GetEntityRequest {
 }
 
 func (x *reqGetEntityGetEntity) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqGetEntityGetEntityAlias reqGetEntityGetEntity
+    valueAlias := (*reqGetEntityGetEntityAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -531,7 +536,7 @@ func (x *respGetEntityGetEntity) GetValueNonCompat() *GetEntityResponse {
 
 func (x *respGetEntityGetEntity) GetValue() *GetEntityResponse {
     if !x.IsSetValue() {
-        return NewGetEntityResponse()
+        return nil
     }
 
     return x.Value
@@ -594,7 +599,9 @@ func (x *respGetEntityGetEntity) DefaultGetValue() *GetEntityResponse {
 }
 
 func (x *respGetEntityGetEntity) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respGetEntityGetEntityAlias respGetEntityGetEntity
+    valueAlias := (*respGetEntityGetEntityAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -692,7 +699,9 @@ func newReqGetEntityGetBool() *reqGetEntityGetBool {
 }
 
 func (x *reqGetEntityGetBool) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqGetEntityGetBoolAlias reqGetEntityGetBool
+    valueAlias := (*reqGetEntityGetBoolAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -818,7 +827,9 @@ if err != nil {
 }
 
 func (x *respGetEntityGetBool) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respGetEntityGetBoolAlias respGetEntityGetBool
+    valueAlias := (*respGetEntityGetBoolAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -916,7 +927,9 @@ func newReqGetEntityGetByte() *reqGetEntityGetByte {
 }
 
 func (x *reqGetEntityGetByte) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqGetEntityGetByteAlias reqGetEntityGetByte
+    valueAlias := (*reqGetEntityGetByteAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1043,7 +1056,9 @@ if err != nil {
 }
 
 func (x *respGetEntityGetByte) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respGetEntityGetByteAlias respGetEntityGetByte
+    valueAlias := (*respGetEntityGetByteAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1141,7 +1156,9 @@ func newReqGetEntityGetI16() *reqGetEntityGetI16 {
 }
 
 func (x *reqGetEntityGetI16) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqGetEntityGetI16Alias reqGetEntityGetI16
+    valueAlias := (*reqGetEntityGetI16Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1267,7 +1284,9 @@ if err != nil {
 }
 
 func (x *respGetEntityGetI16) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respGetEntityGetI16Alias respGetEntityGetI16
+    valueAlias := (*respGetEntityGetI16Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1365,7 +1384,9 @@ func newReqGetEntityGetI32() *reqGetEntityGetI32 {
 }
 
 func (x *reqGetEntityGetI32) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqGetEntityGetI32Alias reqGetEntityGetI32
+    valueAlias := (*reqGetEntityGetI32Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1491,7 +1512,9 @@ if err != nil {
 }
 
 func (x *respGetEntityGetI32) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respGetEntityGetI32Alias respGetEntityGetI32
+    valueAlias := (*respGetEntityGetI32Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1589,7 +1612,9 @@ func newReqGetEntityGetI64() *reqGetEntityGetI64 {
 }
 
 func (x *reqGetEntityGetI64) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqGetEntityGetI64Alias reqGetEntityGetI64
+    valueAlias := (*reqGetEntityGetI64Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1715,7 +1740,9 @@ if err != nil {
 }
 
 func (x *respGetEntityGetI64) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respGetEntityGetI64Alias respGetEntityGetI64
+    valueAlias := (*respGetEntityGetI64Alias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1813,7 +1840,9 @@ func newReqGetEntityGetDouble() *reqGetEntityGetDouble {
 }
 
 func (x *reqGetEntityGetDouble) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqGetEntityGetDoubleAlias reqGetEntityGetDouble
+    valueAlias := (*reqGetEntityGetDoubleAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1939,7 +1968,9 @@ if err != nil {
 }
 
 func (x *respGetEntityGetDouble) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respGetEntityGetDoubleAlias respGetEntityGetDouble
+    valueAlias := (*respGetEntityGetDoubleAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2037,7 +2068,9 @@ func newReqGetEntityGetString() *reqGetEntityGetString {
 }
 
 func (x *reqGetEntityGetString) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqGetEntityGetStringAlias reqGetEntityGetString
+    valueAlias := (*reqGetEntityGetStringAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2163,7 +2196,9 @@ if err != nil {
 }
 
 func (x *respGetEntityGetString) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respGetEntityGetStringAlias respGetEntityGetString
+    valueAlias := (*respGetEntityGetStringAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2261,7 +2296,9 @@ func newReqGetEntityGetBinary() *reqGetEntityGetBinary {
 }
 
 func (x *reqGetEntityGetBinary) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqGetEntityGetBinaryAlias reqGetEntityGetBinary
+    valueAlias := (*reqGetEntityGetBinaryAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2373,7 +2410,7 @@ func (x *respGetEntityGetBinary) writeField0(p thrift.Protocol) error {  // Valu
         return nil
     }
 
-    if err := p.WriteFieldBegin("value", thrift.BINARY, 0); err != nil {
+    if err := p.WriteFieldBegin("value", thrift.STRING, 0); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -2399,7 +2436,9 @@ if err != nil {
 }
 
 func (x *respGetEntityGetBinary) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respGetEntityGetBinaryAlias respGetEntityGetBinary
+    valueAlias := (*respGetEntityGetBinaryAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2497,7 +2536,9 @@ func newReqGetEntityGetMap() *reqGetEntityGetMap {
 }
 
 func (x *reqGetEntityGetMap) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqGetEntityGetMapAlias reqGetEntityGetMap
+    valueAlias := (*reqGetEntityGetMapAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2575,7 +2616,7 @@ var _ thrift.WritableResult = &respGetEntityGetMap{}
 
 func newRespGetEntityGetMap() *respGetEntityGetMap {
     return (&respGetEntityGetMap{}).
-        SetValueNonCompat(make(map[string]string))
+        SetValueNonCompat(nil)
 }
 
 func (x *respGetEntityGetMap) GetValueNonCompat() map[string]string {
@@ -2584,7 +2625,7 @@ func (x *respGetEntityGetMap) GetValueNonCompat() map[string]string {
 
 func (x *respGetEntityGetMap) GetValue() map[string]string {
     if !x.IsSetValue() {
-        return make(map[string]string)
+        return nil
     }
 
     return x.Value
@@ -2681,7 +2722,9 @@ result := mapResult
 }
 
 func (x *respGetEntityGetMap) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respGetEntityGetMapAlias respGetEntityGetMap
+    valueAlias := (*respGetEntityGetMapAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2779,7 +2822,9 @@ func newReqGetEntityGetSet() *reqGetEntityGetSet {
 }
 
 func (x *reqGetEntityGetSet) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqGetEntityGetSetAlias reqGetEntityGetSet
+    valueAlias := (*reqGetEntityGetSetAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2857,7 +2902,7 @@ var _ thrift.WritableResult = &respGetEntityGetSet{}
 
 func newRespGetEntityGetSet() *respGetEntityGetSet {
     return (&respGetEntityGetSet{}).
-        SetValueNonCompat(make([]string, 0))
+        SetValueNonCompat(nil)
 }
 
 func (x *respGetEntityGetSet) GetValueNonCompat() []string {
@@ -2866,7 +2911,7 @@ func (x *respGetEntityGetSet) GetValueNonCompat() []string {
 
 func (x *respGetEntityGetSet) GetValue() []string {
     if !x.IsSetValue() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.Value
@@ -2946,7 +2991,9 @@ result := setResult
 }
 
 func (x *respGetEntityGetSet) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respGetEntityGetSetAlias respGetEntityGetSet
+    valueAlias := (*respGetEntityGetSetAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3044,7 +3091,9 @@ func newReqGetEntityGetList() *reqGetEntityGetList {
 }
 
 func (x *reqGetEntityGetList) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqGetEntityGetListAlias reqGetEntityGetList
+    valueAlias := (*reqGetEntityGetListAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3122,7 +3171,7 @@ var _ thrift.WritableResult = &respGetEntityGetList{}
 
 func newRespGetEntityGetList() *respGetEntityGetList {
     return (&respGetEntityGetList{}).
-        SetValueNonCompat(make([]string, 0))
+        SetValueNonCompat(nil)
 }
 
 func (x *respGetEntityGetList) GetValueNonCompat() []string {
@@ -3131,7 +3180,7 @@ func (x *respGetEntityGetList) GetValueNonCompat() []string {
 
 func (x *respGetEntityGetList) GetValue() []string {
     if !x.IsSetValue() {
-        return make([]string, 0)
+        return nil
     }
 
     return x.Value
@@ -3211,7 +3260,9 @@ result := listResult
 }
 
 func (x *respGetEntityGetList) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respGetEntityGetListAlias respGetEntityGetList
+    valueAlias := (*respGetEntityGetListAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3447,7 +3498,9 @@ if err != nil {
 }
 
 func (x *reqGetEntityGetLegacyStuff) String() string {
-    return fmt.Sprintf("%+v", x)
+    type reqGetEntityGetLegacyStuffAlias reqGetEntityGetLegacyStuff
+    valueAlias := (*reqGetEntityGetLegacyStuffAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3612,7 +3665,9 @@ if err != nil {
 }
 
 func (x *respGetEntityGetLegacyStuff) String() string {
-    return fmt.Sprintf("%+v", x)
+    type respGetEntityGetLegacyStuffAlias respGetEntityGetLegacyStuff
+    valueAlias := (*respGetEntityGetLegacyStuffAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -3791,7 +3846,7 @@ func (p *procFuncGetEntityGetEntity) Write(seqId int32, result thrift.WritableSt
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetEntity", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getEntity", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -3843,7 +3898,7 @@ func (p *procFuncGetEntityGetBool) Write(seqId int32, result thrift.WritableStru
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetBool", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getBool", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -3894,7 +3949,7 @@ func (p *procFuncGetEntityGetByte) Write(seqId int32, result thrift.WritableStru
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetByte", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getByte", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -3945,7 +4000,7 @@ func (p *procFuncGetEntityGetI16) Write(seqId int32, result thrift.WritableStruc
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetI16", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getI16", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -3996,7 +4051,7 @@ func (p *procFuncGetEntityGetI32) Write(seqId int32, result thrift.WritableStruc
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetI32", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getI32", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -4047,7 +4102,7 @@ func (p *procFuncGetEntityGetI64) Write(seqId int32, result thrift.WritableStruc
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetI64", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getI64", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -4098,7 +4153,7 @@ func (p *procFuncGetEntityGetDouble) Write(seqId int32, result thrift.WritableSt
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetDouble", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getDouble", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -4149,7 +4204,7 @@ func (p *procFuncGetEntityGetString) Write(seqId int32, result thrift.WritableSt
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetString", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getString", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -4200,7 +4255,7 @@ func (p *procFuncGetEntityGetBinary) Write(seqId int32, result thrift.WritableSt
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetBinary", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getBinary", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -4251,7 +4306,7 @@ func (p *procFuncGetEntityGetMap) Write(seqId int32, result thrift.WritableStruc
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetMap", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getMap", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -4302,7 +4357,7 @@ func (p *procFuncGetEntityGetSet) Write(seqId int32, result thrift.WritableStruc
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetSet", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getSet", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -4353,7 +4408,7 @@ func (p *procFuncGetEntityGetList) Write(seqId int32, result thrift.WritableStru
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetList", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getList", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {
@@ -4404,7 +4459,7 @@ func (p *procFuncGetEntityGetLegacyStuff) Write(seqId int32, result thrift.Writa
         messageType = thrift.EXCEPTION
     }
 
-    if err2 = oprot.WriteMessageBegin("GetLegacyStuff", messageType, seqId); err2 != nil {
+    if err2 = oprot.WriteMessageBegin("getLegacyStuff", messageType, seqId); err2 != nil {
         err = err2
     }
     if err2 = result.Write(oprot); err == nil && err2 != nil {

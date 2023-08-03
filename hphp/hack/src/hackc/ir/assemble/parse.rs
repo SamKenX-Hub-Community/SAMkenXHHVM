@@ -114,6 +114,7 @@ pub(crate) fn parse_attr(tokenizer: &mut Tokenizer<'_>) -> Result<Attr> {
             "no_injection" => Attr::AttrNoInjection,
             "no_override" => Attr::AttrNoOverride,
             "no_reified_init" => Attr::AttrNoReifiedInit,
+            "persistent" => Attr::AttrPersistent,
             "private" => Attr::AttrPrivate,
             "protected" => Attr::AttrProtected,
             "provenance_skip_frame" => Attr::AttrProvenanceSkipFrame,
@@ -124,6 +125,7 @@ pub(crate) fn parse_attr(tokenizer: &mut Tokenizer<'_>) -> Result<Attr> {
             "static" => Attr::AttrStatic,
             "system_initial_value" => Attr::AttrSystemInitialValue,
             "trait" => Attr::AttrTrait,
+            "variadic_param" => Attr::AttrVariadicParam,
             _ => return None,
         })
     }
@@ -404,8 +406,7 @@ pub(crate) fn parse_func_id(tokenizer: &mut Tokenizer<'_>) -> Result<FunctionId>
 }
 
 pub(crate) fn parse_hack_constant(tokenizer: &mut Tokenizer<'_>) -> Result<HackConstant> {
-    parse!(tokenizer, "[" <is_abstract:"abstract"?> "]" <name:parse_const_id>);
-    let is_abstract = is_abstract.is_some();
+    parse!(tokenizer, <attrs:parse_attr> <name:parse_const_id>);
 
     let value = if tokenizer.next_is_identifier("=")? {
         Some(parse_typed_value(tokenizer)?)
@@ -413,11 +414,7 @@ pub(crate) fn parse_hack_constant(tokenizer: &mut Tokenizer<'_>) -> Result<HackC
         None
     };
 
-    Ok(HackConstant {
-        name,
-        value,
-        is_abstract,
-    })
+    Ok(HackConstant { name, value, attrs })
 }
 
 fn parse_i32(tokenizer: &mut Tokenizer<'_>) -> Result<i32> {
@@ -722,7 +719,6 @@ fn parse_type_constraint_flag(
         Some(match id {
             "extended" => TypeConstraintFlags::ExtendedHint,
             "nullable" => TypeConstraintFlags::Nullable,
-            "case_type" => TypeConstraintFlags::CaseType,
             "type_var" => TypeConstraintFlags::TypeVar,
             "soft" => TypeConstraintFlags::Soft,
             "type_constant" => TypeConstraintFlags::TypeConstant,

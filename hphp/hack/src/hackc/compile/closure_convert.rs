@@ -4,6 +4,7 @@
 // LICENSE file in the "hack" directory of this source tree.
 
 use std::borrow::Cow;
+use std::sync::Arc;
 
 use env::emitter::Emitter;
 use error::Error;
@@ -15,13 +16,11 @@ use hash::IndexSet;
 use hhbc::Coeffects;
 use hhbc_string_utils as string_utils;
 use itertools::Itertools;
-use naming_special_names_rust::fb;
 use naming_special_names_rust::members;
 use naming_special_names_rust::pseudo_consts;
 use naming_special_names_rust::pseudo_functions;
 use naming_special_names_rust::special_idents;
 use naming_special_names_rust::superglobals;
-use ocamlrep::rc::RcOc;
 use options::Options;
 use oxidized::aast_visitor;
 use oxidized::aast_visitor::visit_mut;
@@ -30,6 +29,7 @@ use oxidized::aast_visitor::NodeMut;
 use oxidized::aast_visitor::VisitorMut;
 use oxidized::ast::Abstraction;
 use oxidized::ast::Block;
+use oxidized::ast::CallExpr;
 use oxidized::ast::CaptureLid;
 use oxidized::ast::ClassGetExpr;
 use oxidized::ast::ClassHint;
@@ -61,7 +61,6 @@ use oxidized::ast::ReifyKind;
 use oxidized::ast::Sid;
 use oxidized::ast::Stmt;
 use oxidized::ast::Stmt_;
-use oxidized::ast::Targ;
 use oxidized::ast::Tparam;
 use oxidized::ast::TypeHint;
 use oxidized::ast::UserAttribute;
@@ -277,7 +276,7 @@ impl<'b, 'arena> Scope<'b, 'arena> {
         unreachable!();
     }
 
-    fn make_scope_name(&self, ns: &RcOc<namespace_env::Env>) -> String {
+    fn make_scope_name(&self, ns: &Arc<namespace_env::Env>) -> String {
         let mut parts = Vec::new();
         let mut iter = self.walk_scope();
         while let Some(scope) = iter.next() {
@@ -439,7 +438,7 @@ struct CaptureState {
 /// ClosureVisitor.
 struct ReadOnlyState<'a> {
     // Empty namespace as constructed by parser
-    empty_namespace: RcOc<namespace_env::Env>,
+    empty_namespace: Arc<namespace_env::Env>,
     /// For debugger eval
     for_debugger_eval: bool,
     /// Global compiler/hack options
@@ -457,11 +456,11 @@ struct State<'arena> {
     /// Hoisted meth_caller functions
     named_hoisted_functions: SMap<FunDef>,
     // The current namespace environment
-    namespace: RcOc<namespace_env::Env>,
+    namespace: Arc<namespace_env::Env>,
 }
 
 impl<'arena> State<'arena> {
-    fn initial_state(empty_namespace: RcOc<namespace_env::Env>) -> Self {
+    fn initial_state(empty_namespace: Arc<namespace_env::Env>) -> Self {
         Self {
             capture_state: Default::default(),
             closures: vec![],
@@ -486,7 +485,7 @@ impl<'arena> State<'arena> {
         self.capture_state.generics = Default::default();
     }
 
-    fn set_namespace(&mut self, namespace: RcOc<namespace_env::Env>) {
+    fn set_namespace(&mut self, namespace: Arc<namespace_env::Env>) {
         self.namespace = namespace;
     }
 
@@ -636,7 +635,7 @@ fn make_closure(
         methods: vec![md],
         xhp_children: vec![],
         xhp_attrs: vec![],
-        namespace: RcOc::clone(&ro_state.empty_namespace),
+        namespace: Arc::clone(&ro_state.empty_namespace),
         enum_: None,
         doc_comment: None,
         emit_id: Some(EmitId::Anonymous),
@@ -1062,12 +1061,12 @@ impl<'ast, 'a: 'b, 'b, 'arena: 'a> VisitorMut<'ast> for ClosureVisitor<'a, 'b, '
                 }
                 Expr_::Call(x) if is_meth_caller(&x) => self.visit_meth_caller(scope, x)?,
                 Expr_::Call(x)
-                    if (x.0)
+                    if (x.func)
                         .as_class_get()
                         .and_then(|(id, _, _)| id.as_ciexpr())
                         .and_then(|x| x.as_id())
                         .map_or(false, string_utils::is_parent)
-                        || (x.0)
+                        || (x.func)
                             .as_class_const()
                             .and_then(|(id, _)| id.as_ciexpr())
                             .and_then(|x| x.as_id())
@@ -1077,27 +1076,6 @@ impl<'ast, 'a: 'b, 'b, 'arena: 'a> VisitorMut<'ast> for ClosureVisitor<'a, 'b, '
                     let mut res = Expr_::Call(x);
                     res.recurse(scope, self)?;
                     res
-                }
-                Expr_::As(x) if (x.1).is_hlike() => {
-                    let mut res = x.0;
-                    res.recurse(scope, self)?;
-                    *pos = res.1;
-                    res.2
-                }
-                Expr_::As(x)
-                    if (x.1)
-                        .as_happly()
-                        .map(|(id, args)| {
-                            (id.name() == fb::INCORRECT_TYPE
-                                || id.name() == fb::INCORRECT_TYPE_NO_NS)
-                                && args.len() == 1
-                        })
-                        .unwrap_or_default() =>
-                {
-                    let mut res = x.0;
-                    res.recurse(scope, self)?;
-                    *pos = res.1;
-                    res.2
                 }
                 Expr_::ClassGet(mut x) => {
                     if let (ClassGetExpr::CGstring(id), PropOrMethod::IsMethod) = (&x.1, x.2) {
@@ -1167,15 +1145,15 @@ impl<'a: 'b, 'b, 'arena: 'a + 'b> ClosureVisitor<'a, 'b, 'arena> {
     fn visit_dyn_meth_caller(
         &mut self,
         scope: &mut Scope<'b, 'arena>,
-        mut x: CallExpr,
+        mut x: Box<CallExpr>,
         pos: &Pos,
     ) -> Result<Expr_> {
-        let force = if let Expr_::Id(ref id) = (x.0).2 {
+        let force = if let Expr_::Id(ref id) = x.func.2 {
             strip_id(id).eq_ignore_ascii_case("hh\\dynamic_meth_caller_force")
         } else {
             false
         };
-        if let [(pk_c, cexpr), (pk_f, fexpr)] = &mut *x.2 {
+        if let [(pk_c, cexpr), (pk_f, fexpr)] = &mut *x.args {
             error::ensure_normal_paramkind(pk_c)?;
             error::ensure_normal_paramkind(pk_f)?;
             let mut res = make_dyn_meth_caller_lambda(pos, cexpr, fexpr, force);
@@ -1192,10 +1170,10 @@ impl<'a: 'b, 'b, 'arena: 'a + 'b> ClosureVisitor<'a, 'b, 'arena> {
     fn visit_meth_caller_funcptr(
         &mut self,
         scope: &mut Scope<'b, 'arena>,
-        mut x: CallExpr,
+        mut x: Box<CallExpr>,
         pos: &Pos,
     ) -> Result<Expr_> {
-        if let [(pk_cls, Expr(_, pc, cls)), (pk_f, Expr(_, pf, func))] = &mut *x.2 {
+        if let [(pk_cls, Expr(_, pc, cls)), (pk_f, Expr(_, pf, func))] = &mut *x.args {
             error::ensure_normal_paramkind(pk_cls)?;
             error::ensure_normal_paramkind(pk_f)?;
             match (&cls, func.as_string()) {
@@ -1263,9 +1241,9 @@ impl<'a: 'b, 'b, 'arena: 'a + 'b> ClosureVisitor<'a, 'b, 'arena> {
     fn visit_meth_caller(
         &mut self,
         scope: &mut Scope<'b, 'arena>,
-        mut x: CallExpr,
+        mut x: Box<CallExpr>,
     ) -> Result<Expr_> {
-        if let [(pk_cls, Expr(_, pc, cls)), (pk_f, Expr(_, pf, func))] = &mut *x.2 {
+        if let [(pk_cls, Expr(_, pc, cls)), (pk_f, Expr(_, pf, func))] = &mut *x.args {
             error::ensure_normal_paramkind(pk_cls)?;
             error::ensure_normal_paramkind(pk_f)?;
             match (&cls, func.as_string()) {
@@ -1577,7 +1555,7 @@ impl<'a: 'b, 'b, 'arena: 'a + 'b> ClosureVisitor<'a, 'b, 'arena> {
         };
         let fd = FunDef {
             file_attributes: vec![],
-            namespace: RcOc::clone(&self.ro_state.empty_namespace),
+            namespace: Arc::clone(&self.ro_state.empty_namespace),
             mode: scope.scope_fmode(),
             name: Id(pos(), mangle_name.clone()),
             fun: f,
@@ -1628,10 +1606,10 @@ fn strip_unsafe_casts(e: &mut Expr_) -> Expr_ {
         match e_owned {
             // Must have at least one argument
             Expr_::Call(mut x)
-                if !x.2.is_empty() && {
+                if !x.args.is_empty() && {
                     // Function name should be HH\FIXME\UNSAFE_CAST
                     // or HH\FIXME\UNSAFE_NONNULL_CAST
-                    if let Expr_::Id(ref id) = (x.0).2 {
+                    if let Expr_::Id(ref id) = (x.func).2 {
                         id.1 == pseudo_functions::UNSAFE_CAST
                             || id.1 == pseudo_functions::UNSAFE_NONNULL_CAST
                     } else {
@@ -1640,7 +1618,7 @@ fn strip_unsafe_casts(e: &mut Expr_) -> Expr_ {
                 } =>
             {
                 // Select first argument
-                let Expr(_, _, e) = x.2.swap_remove(0).1;
+                let Expr(_, _, e) = x.args.swap_remove(0).1;
                 e_owned = e;
             }
             _ => break e_owned,
@@ -1648,10 +1626,8 @@ fn strip_unsafe_casts(e: &mut Expr_) -> Expr_ {
     }
 }
 
-type CallExpr = Box<(Expr, Vec<Targ>, Vec<(ParamKind, Expr)>, Option<Expr>)>;
-
 fn is_dyn_meth_caller(x: &CallExpr) -> bool {
-    if let Expr_::Id(ref id) = (x.0).2 {
+    if let Expr_::Id(ref id) = (x.func).2 {
         let name = strip_id(id);
         name.eq_ignore_ascii_case("hh\\dynamic_meth_caller")
             || name.eq_ignore_ascii_case("hh\\dynamic_meth_caller_force")
@@ -1661,7 +1637,7 @@ fn is_dyn_meth_caller(x: &CallExpr) -> bool {
 }
 
 fn is_meth_caller(x: &CallExpr) -> bool {
-    if let Expr_::Id(ref id) = (x.0).2 {
+    if let Expr_::Id(ref id) = x.func.2 {
         let name = strip_id(id);
         name.eq_ignore_ascii_case("hh\\meth_caller") || name.eq_ignore_ascii_case("meth_caller")
     } else {
@@ -1719,13 +1695,13 @@ fn prepare_defs(defs: &mut [Def]) -> usize {
 pub fn convert_toplevel_prog<'arena, 'decl>(
     e: &mut Emitter<'arena, 'decl>,
     defs: &mut Vec<Def>,
-    namespace_env: RcOc<namespace_env::Env>,
+    namespace_env: Arc<namespace_env::Env>,
 ) -> Result<()> {
     prepare_defs(defs);
 
     let mut scope = Scope::toplevel(defs.as_slice())?;
     let ro_state = ReadOnlyState {
-        empty_namespace: RcOc::clone(&namespace_env),
+        empty_namespace: Arc::clone(&namespace_env),
         for_debugger_eval: e.for_debugger_eval,
         options: e.options(),
     };
@@ -1742,7 +1718,7 @@ pub fn convert_toplevel_prog<'arena, 'decl>(
         visitor.visit_def(&mut scope, def)?;
         match def {
             Def::SetNamespaceEnv(x) => {
-                visitor.state_mut().set_namespace(RcOc::clone(&*x));
+                visitor.state_mut().set_namespace(Arc::clone(&*x));
             }
             Def::Class(_)
             | Def::Constant(_)

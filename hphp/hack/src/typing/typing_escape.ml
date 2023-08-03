@@ -192,6 +192,7 @@ let rec eliminate ~ty_orig ~rtv_pos ~name ~ubs ~lbs renv v =
       Typing_error.Secondary.Rigid_tvar_escape { pos = rtv_pos; name }
     in
     Typing_error_utils.add_typing_error
+      ~env:renv.env
       Typing_error.(
         apply_reasons
           ~on_error:(Reasons_callback.retain_code renv.on_error)
@@ -476,7 +477,7 @@ let refresh_tvar tv (on_error : Typing_error.Reasons_callback.t) renv =
       ({ renv with env }, Typing_error.multiple_opt ty_errs)
   in
   Option.(
-    iter ~f:Typing_error_utils.add_typing_error
+    iter ~f:(Typing_error_utils.add_typing_error ~env:renv.env)
     @@ merge e1 e2 ~f:Typing_error.both);
   renv
 
@@ -502,18 +503,28 @@ let refresh_locals renv =
      per local in the fold below *)
   let on_error = renv.on_error in
   Local_id.Map.fold
-    (fun local (lty, pos, _expr_id) renv ->
-      let on_error =
-        let pos = Pos_or_decl.of_raw_pos pos in
-        let name = Markdown_lite.md_codify (Local_id.to_string local) in
-        let reason = lazy (pos, "in the type of local " ^ name) in
-        Typing_error.Reasons_callback.append_reason on_error ~reason
-      in
-      let renv = { renv with on_error } in
-      let (renv, lty, changed) = refresh_type renv Ast_defs.Covariant lty in
-      match changed with
-      | Elim _ -> { renv with env = Env.set_local renv.env local lty pos }
-      | Unchanged -> renv)
+    (fun local
+         Typing_local_types.{ ty = lty; defined; bound_ty; pos; eid = _ }
+         renv ->
+      if defined then
+        let on_error =
+          let pos = Pos_or_decl.of_raw_pos pos in
+          let name = Markdown_lite.md_codify (Local_id.to_string local) in
+          let reason = lazy (pos, "in the type of local " ^ name) in
+          Typing_error.Reasons_callback.append_reason on_error ~reason
+        in
+        let renv = { renv with on_error } in
+        let (renv, lty, changed) = refresh_type renv Ast_defs.Covariant lty in
+        match changed with
+        | Elim _ ->
+          {
+            renv with
+            env =
+              Env.set_local ~is_defined:true ~bound_ty renv.env local lty pos;
+          }
+        | Unchanged -> renv
+      else
+        renv)
     locals
     renv
 

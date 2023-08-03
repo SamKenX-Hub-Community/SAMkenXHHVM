@@ -8,32 +8,8 @@
  *)
 
 open Hh_prelude
-open Reordered_argument_collections
 
 type error_code = int
-
-type phase =
-  | Naming
-      (** these errors come from [ServerTypeCheck.type_check_core] when it indexes files that have changed, to update the naming table *)
-  | Typing
-      (** these are errors that come from [Typing_check_service.process_workitem], which is what parses and typechecks a file *)
-[@@deriving eq, show, enum]
-
-let _ = max_phase
-
-let phases_up_to_excl : phase -> phase list =
- fun phase ->
-  let range_incl_excl i j =
-    let rec aux n acc =
-      if n < i then
-        acc
-      else
-        aux (n - 1) (n :: acc)
-    in
-    aux (j - 1) []
-  in
-  range_incl_excl min_phase (phase_to_enum phase)
-  |> List.map ~f:(fun enum -> Option.value_exn (phase_of_enum enum))
 
 type format =
   | Context  (** Underlined references and color *)
@@ -44,9 +20,8 @@ type format =
 let claim_as_reason : Pos.t Message.t -> Pos_or_decl.t Message.t =
  (fun (p, m) -> (Pos_or_decl.of_raw_pos p, m))
 
-(* The file and phase of analysis being currently performed *)
-let current_context : (Relative_path.t * phase) ref =
-  ref (Relative_path.default, Typing)
+(* The file of analysis being currently performed *)
+let current_file : Relative_path.t ref = ref Relative_path.default
 
 let current_span : Pos.t ref = ref Pos.none
 
@@ -54,49 +29,25 @@ let ignore_pos_outside_current_span : bool ref = ref false
 
 let allow_errors_in_default_path = ref true
 
-module PhaseMap = struct
-  include Reordered_argument_map (WrappedMap.Make (struct
-    type t = phase
-
-    let rank = function
-      | Naming -> 2
-      | Typing -> 4
-
-    let compare x y = rank x - rank y
-  end))
-
-  let pp pp_data = make_pp pp_phase pp_data
-
-  let show pp_data x = Format.asprintf "%a" (pp pp_data) x
-end
-
-(** Results of single file analysis. *)
-type 'a file_t = 'a list PhaseMap.t [@@deriving eq, show]
-
-(** Results of multi-file analysis. *)
-type 'a files_t = 'a file_t Relative_path.Map.t [@@deriving eq, show]
-
 type finalized_error = (Pos.absolute, Pos.absolute) User_error.t
 [@@deriving eq, ord, show]
 
 type error = (Pos.t, Pos_or_decl.t) User_error.t [@@deriving eq, ord, show]
 
-type per_file_errors = error file_t
+type per_file_errors = error list
 
-type t = error files_t [@@deriving eq, show]
+type t = error list Relative_path.Map.t [@@deriving eq, show]
 
 let files_t_fold v ~f ~init =
-  Relative_path.Map.fold v ~init ~f:(fun path v acc ->
-      PhaseMap.fold v ~init:acc ~f:(fun phase v acc -> f path phase v acc))
+  Relative_path.Map.fold v ~init ~f:(fun path v acc -> f path v acc)
 
-let files_t_map v ~f = Relative_path.Map.map v ~f:(fun v -> PhaseMap.map v ~f)
+let files_t_map v ~f = Relative_path.Map.map v ~f
 
-(** [files_t_merge f x y] is a merge by [file] & [phase], i.e. given "x:t" and "y:t" it
-goes through every (file * phase) mentioned in either of them, and combines
+(** [files_t_merge f x y] is a merge by [file], i.e. given "x:t" and "y:t" it
+goes through every (file) mentioned in either of them, and combines
 the error-lists using the provided callback. Cost is O(x). *)
 let files_t_merge
     ~(f :
-       phase ->
        Relative_path.t ->
        error list option ->
        error list option ->
@@ -106,26 +57,21 @@ let files_t_merge
   (* Using fold instead of merge to make the runtime proportional to the size
    * of first argument (like List.rev_append ) *)
   Relative_path.Map.fold x ~init:y ~f:(fun path x acc ->
-      let y =
-        Option.value (Relative_path.Map.find_opt y path) ~default:PhaseMap.empty
-      in
-      Relative_path.Map.add
-        acc
-        ~key:path
-        ~data:(PhaseMap.merge x y ~f:(fun phase x y -> f phase path x y)))
+      let y = Relative_path.Map.find_opt y path in
+      match f path (Some x) y with
+      | None -> Relative_path.Map.remove acc path
+      | Some data -> Relative_path.Map.add acc ~key:path ~data)
 
 let files_t_to_list x =
-  files_t_fold x ~f:(fun _ _ x acc -> List.rev_append x acc) ~init:[]
-  |> List.rev
+  files_t_fold x ~f:(fun _ x acc -> List.rev_append x acc) ~init:[] |> List.rev
 
-let list_to_files_t = function
-  | [] -> Relative_path.Map.empty
-  | x ->
-    (* Values constructed here should not be used with incremental mode.
-     * See assert in incremental_update. *)
-    Relative_path.Map.singleton
-      Relative_path.default
-      (PhaseMap.singleton Typing x)
+(** Values constructed here should not be used with incremental mode.
+See assert in incremental_update. *)
+let from_error_list errors =
+  if List.is_empty errors then
+    Relative_path.Map.empty
+  else
+    Relative_path.Map.singleton Relative_path.default errors
 
 (* Get most recently-ish added error. *)
 let get_last error_map =
@@ -134,17 +80,13 @@ let get_last error_map =
    * less-specific error message. This should be rare. *)
   match Relative_path.Map.max_binding_opt error_map with
   | None -> None
-  | Some (_, phase_map) ->
-    let error_list =
-      PhaseMap.max_binding_opt phase_map |> Option.value_map ~f:snd ~default:[]
-    in
+  | Some (_, error_list) ->
     (match List.rev error_list with
     | [] -> None
     | e :: _ -> Some e)
 
 let iter t ~f =
-  Relative_path.Map.iter t ~f:(fun _ ->
-      PhaseMap.iter ~f:(fun _ -> List.iter ~f))
+  Relative_path.Map.iter t ~f:(fun _path errors -> List.iter errors ~f)
 
 module Error = struct
   type t = error [@@deriving ord]
@@ -162,20 +104,13 @@ let drop_fixmed_errors (errs : ('a, 'b) User_error.t list) :
     ('a, 'b) User_error.t list =
   List.filter errs ~f:(fun e -> not e.User_error.is_fixmed)
 
-let drop_fixmed_errors_in_file (ef : ('a, 'b) User_error.t file_t) :
-    ('a, 'b) User_error.t file_t =
-  PhaseMap.fold ef ~init:PhaseMap.empty ~f:(fun phase errs acc ->
-      match drop_fixmed_errors errs with
-      | [] -> acc
-      | errs -> PhaseMap.add acc ~key:phase ~data:errs)
-
-let drop_fixmed_errors_in_files efs =
+let drop_fixmed_errors_in_files (t : t) : t =
   Relative_path.Map.fold
-    efs
+    t
     ~init:Relative_path.Map.empty
     ~f:(fun file errs acc ->
-      let errs_without_fixmes = drop_fixmed_errors_in_file errs in
-      if PhaseMap.is_empty errs_without_fixmes then
+      let errs_without_fixmes = drop_fixmed_errors errs in
+      if List.is_empty errs_without_fixmes then
         acc
       else
         Relative_path.Map.add acc ~key:file ~data:errs_without_fixmes)
@@ -191,7 +126,8 @@ let drop_fixmes_if (err : t) (drop : bool) : t =
 let get_error_list ?(drop_fixmed = true) err =
   files_t_to_list (drop_fixmes_if err drop_fixmed)
 
-let (error_map : error files_t ref) = ref Relative_path.Map.empty
+let (error_map : error list Relative_path.Map.t ref) =
+  ref Relative_path.Map.empty
 
 let accumulate_errors = ref false
 
@@ -236,7 +172,9 @@ let try_with_result (f1 : unit -> 'res) (f2 : 'res -> error -> 'res) : 'res =
   in
   match get_last errors with
   | None -> result
-  | Some User_error.{ code; claim; reasons; quickfixes; is_fixmed = _ } ->
+  | Some
+      User_error.
+        { code; claim; reasons; quickfixes; custom_msgs; is_fixmed = _ } ->
     (* Remove bad position sentinel if present: we might be about to add a new primary
      * error position. *)
     let (claim, reasons) =
@@ -249,7 +187,7 @@ let try_with_result (f1 : unit -> 'res) (f2 : 'res -> error -> 'res) : 'res =
       else
         (claim, reasons)
     in
-    f2 result @@ User_error.make code claim reasons ~quickfixes
+    f2 result @@ User_error.make code claim reasons ~quickfixes ~custom_msgs
 
 let try_with_result_pure ~fail f g =
   let error_map_copy = !error_map in
@@ -306,10 +244,10 @@ let do_ ?(apply_fixmes = true) ?(drop_fixmed = true) f =
   let out_errors = files_t_map ~f:List.rev out_errors in
   (drop_fixmes_if out_errors drop_fixmed, result)
 
-let run_in_context path phase f =
-  let context_copy = !current_context in
-  current_context := (path, phase);
-  Utils.try_finally ~f ~finally:(fun () -> current_context := context_copy)
+let run_in_context path f =
+  let context_copy = !current_file in
+  current_file := path;
+  Utils.try_finally ~f ~finally:(fun () -> current_file := context_copy)
 
 let run_with_span span f =
   let old_span = !current_span in
@@ -339,17 +277,6 @@ let lazy_decl_error_logging error error_map to_absolute to_string =
 (*****************************************************************************)
 (* Error code printing. *)
 (*****************************************************************************)
-let phase_to_string (phase : phase) : string =
-  match phase with
-  | Naming -> "Naming"
-  | Typing -> "Typing"
-
-let phase_of_string (value : string) : phase option =
-  match Caml.String.lowercase_ascii value with
-  | "naming" -> Some Naming
-  | "typing" -> Some Typing
-  | _ -> None
-
 let compare_internal
     (x : ('a, 'b) User_error.t)
     (y : ('a, 'b) User_error.t)
@@ -362,6 +289,7 @@ let compare_internal
           code = x_code;
           claim = x_claim;
           reasons = x_messages;
+          custom_msgs = _;
           quickfixes = _;
           is_fixmed = _;
         } =
@@ -372,6 +300,7 @@ let compare_internal
           code = y_code;
           claim = y_claim;
           reasons = y_messages;
+          custom_msgs = _;
           quickfixes = _;
           is_fixmed = _;
         } =
@@ -381,7 +310,7 @@ let compare_internal
   let comparison =
     compare_claim_fn (fst x_claim |> Pos.filename) (fst y_claim |> Pos.filename)
   in
-  (* Then within each file, sort by phase *)
+  (* Then within each file, sort by category *)
   let comparison =
     if comparison = 0 then
       compare_code x_code y_code
@@ -430,16 +359,16 @@ let compare_finalized (x : finalized_error) (y : finalized_error) : int =
 
 let sort (err : error list) : error list =
   let compare_exact_code = Int.compare in
-  let compare_phase x_code y_code =
+  let compare_category x_code y_code =
     Int.compare (x_code / 1000) (y_code / 1000)
   in
   let compare_claim_fn = Relative_path.compare in
   let compare_claim = Pos.compare in
   let compare_reason = Pos_or_decl.compare in
-  (* Sort using the exact code to ensure sort stability, but use the phase to deduplicate *)
+  (* Sort using the exact code to ensure sort stability, but use the category to deduplicate *)
   let equal x y =
     compare_internal
-      ~compare_code:compare_phase
+      ~compare_code:compare_category
       ~compare_claim_fn
       ~compare_claim
       ~compare_reason
@@ -468,15 +397,12 @@ let sort_and_finalize (errors : t) : finalized_error list =
   errors |> get_sorted_error_list |> List.map ~f:User_error.to_absolute
 
 (* Getters and setter for passed-in map, based on current context *)
-let get_current_file_t file_t_map =
-  let current_file = fst !current_context in
-  Relative_path.Map.find_opt file_t_map current_file
-  |> Option.value ~default:PhaseMap.empty
+let get_current_list t =
+  Relative_path.Map.find_opt t !current_file |> Option.value ~default:[]
 
-let get_current_list file_t_map =
-  let current_phase = snd !current_context in
-  get_current_file_t file_t_map |> fun x ->
-  PhaseMap.find_opt x current_phase |> Option.value ~default:[]
+let set_current_list file_t_map new_list =
+  file_t_map :=
+    Relative_path.Map.add !file_t_map ~key:!current_file ~data:new_list
 
 let run_and_check_for_errors (f : unit -> 'res) : 'res * bool =
   let old_error_list = get_current_list !error_map in
@@ -487,20 +413,8 @@ let run_and_check_for_errors (f : unit -> 'res) : 'res * bool =
   let new_count = List.length new_error_list in
   (result, not (Int.equal old_count new_count))
 
-let set_current_list file_t_map new_list =
-  let (current_file, current_phase) = !current_context in
-  file_t_map :=
-    Relative_path.Map.add
-      !file_t_map
-      ~key:current_file
-      ~data:
-        (PhaseMap.add
-           (get_current_file_t !file_t_map)
-           ~key:current_phase
-           ~data:new_list)
-
-let do_with_context ?(drop_fixmed = true) path phase f =
-  run_in_context path phase (fun () -> do_ ~drop_fixmed f)
+let do_with_context ?(drop_fixmed = true) path f =
+  run_in_context path (fun () -> do_ ~drop_fixmed f)
 
 (** Turn on lazy decl mode for the duration of the closure.
     This runs without returning the original state,
@@ -595,8 +509,8 @@ let log_unexpected error path desc =
 let add_error_impl error =
   if !accumulate_errors then
     let () =
-      match !current_context with
-      | (path, _)
+      match !current_file with
+      | path
         when Relative_path.equal path Relative_path.default
              && not !allow_errors_in_default_path ->
         log_unexpected error path "adding an error in default path"
@@ -703,7 +617,7 @@ let check_pos_msg :
     Pos.t Message.t * Pos_or_decl.t Message.t list =
  fun (claim, reasons) ->
   let pos = fst claim in
-  let current_file = fst !current_context in
+  let current_file = !current_file in
   let current_span = !current_span in
   (* If error is reported inside the current span, or no span has been set but the error
    * is reported in the current file, then accept the error *)
@@ -723,13 +637,15 @@ let check_pos_msg :
       reasons
 
 let add_error_with_fixme_error error explanation =
-  let User_error.{ code; claim; reasons = _; quickfixes; is_fixmed = _ } =
+  let User_error.
+        { code; claim; reasons = _; quickfixes; custom_msgs; is_fixmed = _ } =
     error
   in
   let (pos, _) = claim in
   let pos = Option.value (!get_hh_fixme_pos pos code) ~default:pos in
   add_error_impl error;
-  add_error_impl @@ User_error.make code (pos, explanation) [] ~quickfixes
+  add_error_impl
+  @@ User_error.make code (pos, explanation) [] ~quickfixes ~custom_msgs
 
 let add_applied_fixme error =
   let error = { error with User_error.is_fixmed = true } in
@@ -744,9 +660,12 @@ and add_list code ?quickfixes (claim : _ Message.t) reasons =
   add_error @@ User_error.make code claim reasons ?quickfixes
 
 and add_error (error : error) =
-  let User_error.{ code; claim; reasons; quickfixes; is_fixmed = _ } = error in
+  let User_error.
+        { code; claim; reasons; quickfixes; custom_msgs; is_fixmed = _ } =
+    error
+  in
   let (claim, reasons) = check_pos_msg (claim, reasons) in
-  let error = User_error.make code claim reasons ~quickfixes in
+  let error = User_error.make code claim reasons ~quickfixes ~custom_msgs in
 
   let pos = fst claim in
 
@@ -788,75 +707,48 @@ and add_error (error : error) =
     add_error_with_fixme_error error explanation
 
 and merge err' err =
-  let append _ _ x y =
+  let append _ x y =
     let x = Option.value x ~default:[] in
     let y = Option.value y ~default:[] in
     Some (List.rev_append x y)
   in
   files_t_merge ~f:append err' err
 
-and incremental_update
-    ~(old : t) ~(new_ : t) ~(rechecked : Relative_path.Set.t) (phase : phase) :
-    t =
+and incremental_update ~(old : t) ~(new_ : t) ~(rechecked : Relative_path.Set.t)
+    : t =
   (* Helper to detect coding oversight *)
-  let assert_path_is_real (path : Relative_path.t) (phase : phase) : unit =
+  let assert_path_is_real (path : Relative_path.t) : unit =
     if Relative_path.equal path Relative_path.default then
       Utils.assert_false_log_backtrace
         (Some
            ("Default (untracked) error sources should not get into incremental "
            ^ "mode. There might be a missing call to `Errors.do_with_context`/"
            ^ "`run_in_context` somwhere or incorrectly used `Errors.from_error_list`."
-           ^ "Phase: "
-           ^ show_phase phase))
-  in
-
-  (* Helper to remove acc[path][phase]. If acc[path] becomes empty afterwards,
-   * remove it too (i.e do not store empty maps or lists ever). *)
-  let remove (path : Relative_path.t) (phase : phase) (acc : t) : t =
-    let new_phase_map =
-      match Relative_path.Map.find_opt acc path with
-      | None -> None
-      | Some phase_map ->
-        let new_phase_map = PhaseMap.remove phase_map phase in
-        if PhaseMap.is_empty new_phase_map then
-          None
-        else
-          Some new_phase_map
-    in
-    match new_phase_map with
-    | None -> Relative_path.Map.remove acc path
-    | Some x -> Relative_path.Map.add acc ~key:path ~data:x
+           ))
   in
 
   (* Replace old errors with new *)
   let res : t =
-    files_t_merge new_ old ~f:(fun phase path new_ old ->
-        assert_path_is_real path phase;
+    files_t_merge new_ old ~f:(fun path new_ old ->
+        assert_path_is_real path;
         match new_ with
-        | Some new_ -> Some (List.rev new_)
+        | Some new_ -> Some new_
         | None -> old)
   in
   (* For files that were rechecked, but had no errors - remove them from maps *)
   let res : t =
     Relative_path.Set.fold rechecked ~init:res ~f:(fun path acc ->
-        let has_errors =
-          match Relative_path.Map.find_opt new_ path with
-          | None -> false
-          | Some phase_map -> PhaseMap.mem phase_map phase
-        in
-        if has_errors then
+        if Relative_path.Map.mem new_ path then
           acc
         else
-          remove path phase acc)
+          Relative_path.Map.remove acc path)
   in
   res
-
-and from_error_list err = list_to_files_t err
 
 let count ?(drop_fixmed = true) err =
   files_t_fold
     (drop_fixmes_if err drop_fixmed)
-    ~f:(fun _ _ x acc -> acc + List.length x)
+    ~f:(fun _ x acc -> acc + List.length x)
     ~init:0
 
 let is_empty ?(drop_fixmed = true) err =
@@ -866,27 +758,15 @@ let get_current_span () = !current_span
 
 and empty = Relative_path.Map.empty
 
-let from_file_error_list : ?phase:phase -> (Relative_path.t * error) list -> t =
- fun ?(phase = Typing) errors ->
+let from_file_error_list (errors : (Relative_path.t * error) list) : t =
   List.fold errors ~init:Relative_path.Map.empty ~f:(fun errors (file, error) ->
       let errors_for_file =
-        Relative_path.Map.find_opt errors file
-        |> Option.value ~default:PhaseMap.empty
+        Relative_path.Map.find_opt errors file |> Option.value ~default:[]
       in
-      let errors_for_phase =
-        PhaseMap.find_opt errors_for_file phase |> Option.value ~default:[]
-      in
-      let errors_for_phase = error :: errors_for_phase in
-      let errors_for_file =
-        PhaseMap.add errors_for_file ~key:phase ~data:errors_for_phase
-      in
+      let errors_for_file = error :: errors_for_file in
       Relative_path.Map.add errors ~key:file ~data:errors_for_file)
 
-let as_map : t -> error list Relative_path.Map.t =
- fun errors ->
-  Relative_path.Map.map
-    errors
-    ~f:(PhaseMap.fold ~init:[] ~f:(fun _ -> List.append))
+let as_map (t : t) : error list Relative_path.Map.t = t
 
 let merge_into_current errors = error_map := merge errors !error_map
 
@@ -894,55 +774,54 @@ let merge_into_current errors = error_map := merge errors !error_map
 (* Accessors. (All methods delegated to the parameterized module.) *)
 (*****************************************************************************)
 
-let per_file_error_count : ?drop_fixmed:bool -> per_file_errors -> int =
- fun ?(drop_fixmed = true) ->
-  PhaseMap.fold ~init:0 ~f:(fun _phase errors count ->
-      let errors =
-        if drop_fixmed then
-          drop_fixmed_errors errors
-        else
-          errors
-      in
-      List.length errors + count)
+let per_file_error_count ?(drop_fixmed = true) (errors : per_file_errors) : int
+    =
+  let errors =
+    if drop_fixmed then
+      drop_fixmed_errors errors
+    else
+      errors
+  in
+  List.length errors
 
-let get_file_errors :
-    ?drop_fixmed:bool -> t -> Relative_path.t -> per_file_errors =
- fun ?(drop_fixmed = true) errors file ->
-  Relative_path.Map.find_opt (drop_fixmes_if errors drop_fixmed) file
-  |> Option.value ~default:PhaseMap.empty
+let get_file_errors ?(drop_fixmed = true) (t : t) (file : Relative_path.t) :
+    per_file_errors =
+  match Relative_path.Map.find_opt t file with
+  | None -> []
+  | Some errors ->
+    if drop_fixmed then
+      drop_fixmed_errors errors
+    else
+      errors
 
 let iter_error_list ?(drop_fixmed = true) f err =
   List.iter ~f (get_sorted_error_list ~drop_fixmed err)
 
-let fold_errors ?(drop_fixmed = true) ?phase err ~init ~f =
-  let err = drop_fixmes_if err drop_fixmed in
-  match phase with
-  | None ->
-    files_t_fold err ~init ~f:(fun source phase errors acc ->
-        List.fold_right errors ~init:acc ~f:(f source phase))
-  | Some phase ->
-    Relative_path.Map.fold err ~init ~f:(fun source phases acc ->
-        match PhaseMap.find_opt phases phase with
-        | None -> acc
-        | Some errors -> List.fold_right errors ~init:acc ~f:(f source phase))
+let fold_errors
+    ?(drop_fixmed = true)
+    (t : t)
+    ~(init : 'a)
+    ~(f : Relative_path.t -> error -> 'a -> 'a) =
+  let t = drop_fixmes_if t drop_fixmed in
+  files_t_fold t ~init ~f:(fun source errors acc ->
+      List.fold_right errors ~init:acc ~f:(f source))
 
-let fold_errors_in ?(drop_fixmed = true) ?phase err ~file ~init ~f =
-  let err = drop_fixmes_if err drop_fixmed in
-  Relative_path.Map.find_opt err file
-  |> Option.value ~default:PhaseMap.empty
-  |> PhaseMap.fold ~init ~f:(fun p errors acc ->
-         match phase with
-         | Some x when not (equal_phase x p) -> acc
-         | _ -> List.fold_right errors ~init:acc ~f)
+let fold_errors_in
+    ?(drop_fixmed = true)
+    (t : t)
+    ~(file : Relative_path.t)
+    ~(init : 'a)
+    ~(f : error -> 'a -> 'a) =
+  let t = drop_fixmes_if t drop_fixmed in
+  match Relative_path.Map.find_opt t file with
+  | None -> init
+  | Some errors -> List.fold_right errors ~init ~f
 
 (* Get paths that have errors which haven't been HH_FIXME'd. *)
-let get_failed_files (err : t) phase =
+let get_failed_files (err : t) =
   let err = drop_fixmed_errors_in_files err in
-  files_t_fold err ~init:Relative_path.Set.empty ~f:(fun source p _ acc ->
-      if not (equal_phase phase p) then
-        acc
-      else
-        Relative_path.Set.add acc source)
+  files_t_fold err ~init:Relative_path.Set.empty ~f:(fun source _ acc ->
+      Relative_path.Set.add acc source)
 
 (* Count errors which haven't been HH_FIXME'd. *)
 let error_count : t -> int =
@@ -952,34 +831,24 @@ let error_count : t -> int =
 
 exception Done of ISet.t
 
-let first_n_distinct_error_codes : n:int -> t -> error_code list =
- fun ~n (errors : _ files_t) ->
+let first_n_distinct_error_codes ~(n : int) (t : t) : error_code list =
   let codes =
     try
-      Relative_path.Map.fold
-        errors
-        ~init:ISet.empty
-        ~f:(fun _path errors codes ->
-          PhaseMap.fold errors ~init:codes ~f:(fun _phase errors codes ->
-              List.fold
-                errors
-                ~init:codes
-                ~f:(fun codes User_error.{ code; _ } ->
-                  let codes = ISet.add code codes in
-                  if ISet.cardinal codes >= n then
-                    raise (Done codes)
-                  else
-                    codes)))
+      Relative_path.Map.fold t ~init:ISet.empty ~f:(fun _path errors codes ->
+          List.fold errors ~init:codes ~f:(fun codes User_error.{ code; _ } ->
+              let codes = ISet.add code codes in
+              if ISet.cardinal codes >= n then
+                raise (Done codes)
+              else
+                codes))
     with
     | Done codes -> codes
   in
   ISet.elements codes
 
 (* Get the error code of the first error which hasn't been HH_FIXME'd. *)
-let choose_code_opt (errors : t) : int option =
-  drop_fixmed_errors_in_files errors
-  |> first_n_distinct_error_codes ~n:1
-  |> List.hd
+let choose_code_opt (t : t) : int option =
+  drop_fixmed_errors_in_files t |> first_n_distinct_error_codes ~n:1 |> List.hd
 
 let as_telemetry : t -> Telemetry.t =
  fun errors ->
@@ -996,8 +865,6 @@ let as_telemetry : t -> Telemetry.t =
 (* Error code printing. *)
 (*****************************************************************************)
 
-let internal_error pos msg = add 0 pos ("Internal error: " ^ msg)
-
 let unimplemented_feature pos msg = add 0 pos ("Feature not implemented: " ^ msg)
 
 let experimental_feature pos msg =
@@ -1006,6 +873,85 @@ let experimental_feature pos msg =
 (*****************************************************************************)
 (* Typing errors *)
 (*****************************************************************************)
+let log_exception_occurred pos e =
+  let pos_str = pos |> Pos.to_absolute |> Pos.string in
+  HackEventLogger.type_check_exn_bug ~path:(Pos.filename pos) ~pos:pos_str ~e;
+  Hh_logger.error
+    "Exception while typechecking at position %s\n%s"
+    pos_str
+    (Exception.to_string e)
+
+let log_invariant_violation ~desc pos telemetry =
+  let pos_str = pos |> Pos.to_absolute |> Pos.string in
+  HackEventLogger.invariant_violation_bug
+    desc
+    ~path:(Pos.filename pos)
+    ~pos:pos_str
+    ~telemetry;
+  Hh_logger.error
+    "Invariant violation at position %s\n%s"
+    pos_str
+    Telemetry.(telemetry |> string_ ~key:"desc" ~value:desc |> to_string)
+
+(* The contents of the following error message can trigger `hh rage` in
+ * sandcastle. If you change it, please make sure the existing trigger in
+ * `flib/intern/sandcastle/hack/SandcastleCheckHackOnDiffsStep.php` still
+ * catches this error message. *)
+let please_file_a_bug_message =
+  let hacklang_feedback_support_link =
+    "https://fb.workplace.com/groups/hackforhiphop/"
+  in
+  let hh_rage = Markdown_lite.md_codify "hh rage" in
+  Printf.sprintf
+    "Please run %s and post in %s."
+    hh_rage
+    hacklang_feedback_support_link
+
+let remediation_message =
+  Printf.sprintf
+    "Addressing other errors, restarting the typechecker with %s, or rebasing might resolve this error."
+    (Markdown_lite.md_codify "hh restart")
+
+let internal_compiler_error_msg =
+  Printf.sprintf
+    "Encountered an internal compiler error while typechecking this. %s %s"
+    remediation_message
+    please_file_a_bug_message
+
+let invariant_violation pos telemetry desc ~report_to_user =
+  log_invariant_violation ~desc pos telemetry;
+  if report_to_user then
+    add_error
+    @@ User_error.make
+         Error_codes.Typing.(to_enum InvariantViolated)
+         (pos, internal_compiler_error_msg)
+         []
+
+let exception_occurred pos exn =
+  log_exception_occurred pos exn;
+  add_error
+  @@ User_error.make
+       Error_codes.Typing.(to_enum ExceptionOccurred)
+       (pos, internal_compiler_error_msg)
+       []
+
+let internal_error pos msg =
+  add_error
+  @@ User_error.make
+       Error_codes.Typing.(to_enum InternalError)
+       (pos, "Internal error: " ^ msg)
+       []
+
+let typechecker_timeout pos fn_name seconds =
+  let claim =
+    ( pos,
+      Printf.sprintf
+        "Type checker timed out after %d seconds whilst checking function %s"
+        seconds
+        fn_name )
+  in
+  add_error
+  @@ User_error.make Error_codes.Typing.(to_enum TypecheckerTimeout) claim []
 
 (*****************************************************************************)
 (* Typing decl errors *)
@@ -1097,10 +1043,18 @@ let convert_errors_to_string ?(include_filename = false) (errors : error list) :
   List.fold_right
     ~init:[]
     ~f:(fun err acc_out ->
-      let User_error.{ code = _; claim; reasons; quickfixes = _; is_fixmed = _ }
-          =
+      let User_error.
+            {
+              code = _;
+              claim;
+              reasons;
+              custom_msgs;
+              quickfixes = _;
+              is_fixmed = _;
+            } =
         err
       in
+      let acc_out = custom_msgs @ acc_out in
       List.fold_right
         ~init:acc_out
         ~f:(fun (pos, msg) acc_in ->

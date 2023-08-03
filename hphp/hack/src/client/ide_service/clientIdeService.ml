@@ -15,7 +15,7 @@ module Status = struct
     | Processing_files of ClientIdeMessage.Processing_files.t
     | Rpc of Telemetry.t list
     | Ready
-    | Stopped of ClientIdeMessage.stopped_reason
+    | Stopped of ClientIdeMessage.rich_error
 
   let is_ready (t : t) : bool =
     match t with
@@ -56,19 +56,17 @@ module Stop_reason = struct
 end
 
 type state =
-  | Uninitialized of { full_index_fallback: bool }
+  | Uninitialized
       (** The ide_service is created. We may or may not have yet sent an
-      initialize message to the daemon.[full_index_fallback] indicates if the
-      daemon is currently falling back to fulling indexing the repo because it
-      failed to download a naming table. *)
-  | Failed_to_initialize of ClientIdeMessage.stopped_reason
+      initialize message to the daemon. *)
+  | Failed_to_initialize of ClientIdeMessage.rich_error
       (** The response to our initialize message was a failure. This is
       a terminal state. *)
   | Initialized of { status: Status.t }
       (** We have received an initialize response from the daemon and all
       is well. The only thing that can take us out of this state is if
       someone invokes [stop], or if the daemon connection gets EOF. *)
-  | Stopped of ClientIdeMessage.stopped_reason * Lsp.Error.t
+  | Stopped of ClientIdeMessage.rich_error
       (** Someone called [stop] or the daemon connection got EOF.
       This is a terminal state. This is the only state that arose
       from actions on our side; all the other states arose from
@@ -76,14 +74,13 @@ type state =
 
 let state_to_log_string (state : state) : string =
   match state with
-  | Uninitialized { full_index_fallback } ->
-    Printf.sprintf "Uninitialized(full_index_fallback = %B)" full_index_fallback
-  | Failed_to_initialize { ClientIdeMessage.short_user_message; _ } ->
-    Printf.sprintf "Failed_to_initialize(%s)" short_user_message
+  | Uninitialized -> Printf.sprintf "Uninitialized"
+  | Failed_to_initialize { ClientIdeMessage.category; _ } ->
+    Printf.sprintf "Failed_to_initialize(%s)" category
   | Initialized env ->
     Printf.sprintf "Initialized(%s)" (Status.to_log_string env.status)
-  | Stopped (reason, _) ->
-    Printf.sprintf "Stopped(%s)" reason.ClientIdeMessage.medium_user_message
+  | Stopped { ClientIdeMessage.category; _ } ->
+    Printf.sprintf "Stopped(%s)" category
 
 type message_wrapper =
   | Message_wrapper : 'a ClientIdeMessage.tracked_t -> message_wrapper
@@ -176,7 +173,7 @@ let make (args : ClientIdeMessage.daemon_args) : t =
   let in_fd = Lwt_unix.of_unix_file_descr (Daemon.descr_of_in_channel ic) in
   let out_fd = Lwt_unix.of_unix_file_descr (Daemon.descr_of_out_channel oc) in
   {
-    state = Uninitialized { full_index_fallback = false };
+    state = Uninitialized;
     active_rpc_requests = Active_rpc_requests.new_ ();
     state_changed_cv = Lwt_condition.create ();
     daemon_handle;
@@ -219,8 +216,8 @@ let rpc
   let tracked_message = { ClientIdeMessage.tracking_id; message } in
   try%lwt
     match t.state with
-    | Stopped (_, e) -> Lwt.return_error e
-    | Uninitialized _
+    | Stopped reason -> Lwt.return_error (ClientIdeUtils.to_lsp_error reason)
+    | Uninitialized
     | Initialized _
     | Failed_to_initialize _ ->
       let success =
@@ -296,8 +293,9 @@ let rpc
         failwith "Could not read response: queue was closed")
   with
   | exn ->
-    let exn = Exception.wrap exn in
-    Lwt.return_error (ClientIdeUtils.make_bug_error "rpc" ~exn)
+    let e = Exception.wrap exn in
+    Lwt.return_error
+      (ClientIdeUtils.make_rich_error "rpc" ~e |> ClientIdeUtils.to_lsp_error)
 
 let initialize_from_saved_state
     (t : t)
@@ -308,9 +306,9 @@ let initialize_from_saved_state
     ~(config : (string * string) list)
     ~(ignore_hh_version : bool)
     ~(open_files : Path.t list) :
-    (unit, ClientIdeMessage.stopped_reason) Lwt_result.t =
+    (unit, ClientIdeMessage.rich_error) Lwt_result.t =
   let open ClientIdeMessage in
-  set_state t (Uninitialized { full_index_fallback = false });
+  set_state t Uninitialized;
 
   try%lwt
     let message =
@@ -345,7 +343,7 @@ let initialize_from_saved_state
     | Response { response = Error e; tracking_id = "init"; _ } ->
       (* that error has structure, which we wish to preserve in our error_data. *)
       Lwt.return_error
-        (ClientIdeUtils.make_bug_reason
+        (ClientIdeUtils.make_rich_error
            e.Lsp.Error.message
            ~data:e.Lsp.Error.data)
     | _ ->
@@ -354,8 +352,8 @@ let initialize_from_saved_state
       failwith ("desync: " ^ message_from_daemon_to_string response)
   with
   | exn ->
-    let exn = Exception.wrap exn in
-    let reason = ClientIdeUtils.make_bug_reason "init_failed" ~exn in
+    let e = Exception.wrap exn in
+    let reason = ClientIdeUtils.make_rich_error "init_failed" ~e in
     set_state t (Failed_to_initialize reason);
     Lwt.return_error reason
 
@@ -368,13 +366,11 @@ let process_status_notification
   | (Stopped _, _) ->
     (* terminal states, which don't change with notifications *)
     ()
-  | (Uninitialized { full_index_fallback = false }, Full_index_fallback) ->
-    set_state t (Uninitialized { full_index_fallback = true })
-  | (Uninitialized _, Done_init (Ok { total = 0; _ })) ->
+  | (Uninitialized, Done_init (Ok { total = 0; _ })) ->
     set_state t (Initialized { status = Status.Ready })
-  | (Uninitialized _, Done_init (Ok p)) ->
+  | (Uninitialized, Done_init (Ok p)) ->
     set_state t (Initialized { status = Status.Processing_files p })
-  | (Uninitialized _, Done_init (Error edata)) ->
+  | (Uninitialized, Done_init (Error edata)) ->
     set_state t (Failed_to_initialize edata)
   | (Initialized _, Processing_files p) ->
     set_state t (Initialized { status = Status.Processing_files p })
@@ -393,7 +389,7 @@ let process_status_notification
 let destroy (t : t) ~(tracking_id : string) : unit Lwt.t =
   let%lwt () =
     match t.state with
-    | Uninitialized _
+    | Uninitialized
     | Failed_to_initialize _
     | Stopped _ ->
       Lwt.return_unit
@@ -417,8 +413,10 @@ let destroy (t : t) ~(tracking_id : string) : unit Lwt.t =
             ]
         with
         | exn ->
-          let exn = Exception.wrap exn in
-          Lwt.return_error (ClientIdeUtils.make_bug_error "destroy" ~exn)
+          let e = Exception.wrap exn in
+          Lwt.return_error
+            (ClientIdeUtils.make_rich_error "destroy" ~e
+            |> ClientIdeUtils.to_lsp_error)
       in
       let () =
         match result with
@@ -439,15 +437,14 @@ let stop
     (t : t)
     ~(tracking_id : string)
     ~(stop_reason : Stop_reason.t)
-    ~(exn : Exception.t option) : unit Lwt.t =
+    ~(e : Exception.t option) : unit Lwt.t =
   (* we store both a user-facing reason here, and a programmatic error
      for use in subsequent telemetry *)
-  let reason = ClientIdeUtils.make_bug_reason "stop" in
-  let e = ClientIdeUtils.make_bug_error "stop" ?exn in
+  let reason = ClientIdeUtils.make_rich_error "stop" ?e in
   (* We'll stick the stop_reason into that programmatic error, so that subsequent
      telemetry can pick it up. (It never affects the user-facing message.) *)
   let items =
-    match e.Lsp.Error.data with
+    match reason.ClientIdeMessage.data with
     | None -> []
     | Some (Hh_json.JSON_Object items) -> items
     | Some json -> [("data", json)]
@@ -456,7 +453,9 @@ let stop
     ("stop_reason", stop_reason |> Stop_reason.to_log_string |> Hh_json.string_)
     :: items
   in
-  let e = { e with Lsp.Error.data = Some (Hh_json.JSON_Object items) } in
+  let reason =
+    { reason with ClientIdeMessage.data = Some (Hh_json.JSON_Object items) }
+  in
 
   let%lwt () = destroy t ~tracking_id in
   (* Correctness here is very subtle... During the course of that call to
@@ -476,21 +475,21 @@ let stop
      weirdly because of the lack of hhi.
      Luckily we're saved from that because clientLsp never makes rpc requests
      to us after it has called 'stop'. *)
-  set_state t (Stopped (reason, e));
+  set_state t (Stopped reason);
   Lwt.return_unit
 
-let cleanup_upon_shutdown_or_exn (t : t) ~(exn : Exception.t option) :
-    unit Lwt.t =
+let cleanup_upon_shutdown_or_exn (t : t) ~(e : Exception.t option) : unit Lwt.t
+    =
   (* We are invoked with e=None when one of the message-queues has said that
      it's closed. This indicates an orderly shutdown has been performed by 'stop'.
      We are invoked with e=Some when we had an exception in our main serve loop. *)
   let stop_reason =
-    match exn with
+    match e with
     | None ->
       log "Normal shutdown due to message-queue closure";
       Stop_reason.Closed
-    | Some exn ->
-      ClientIdeUtils.log_bug "shutdown" ~exn ~telemetry:true;
+    | Some e ->
+      ClientIdeUtils.log_bug "shutdown" ~e ~telemetry:true;
       Stop_reason.Crashed
   in
   (* We might as well call 'stop' in both cases; there'll be no harm. *)
@@ -498,7 +497,7 @@ let cleanup_upon_shutdown_or_exn (t : t) ~(exn : Exception.t option) :
   | Stopped _ -> Lwt.return_unit
   | _ ->
     log "Shutting down...";
-    let%lwt () = stop t ~tracking_id:"cleanup_or_shutdown" ~stop_reason ~exn in
+    let%lwt () = stop t ~tracking_id:"cleanup_or_shutdown" ~stop_reason ~e in
     Lwt.return_unit
 
 let rec serve (t : t) : unit Lwt.t =
@@ -525,7 +524,7 @@ let rec serve (t : t) : unit Lwt.t =
     in
     match next_action with
     | `Close ->
-      let%lwt () = cleanup_upon_shutdown_or_exn t ~exn:None in
+      let%lwt () = cleanup_upon_shutdown_or_exn t ~e:None in
       Lwt.return_unit
     | `Outgoing (Message_wrapper next_message) ->
       log_debug "-> %s" (ClientIdeMessage.tracked_t_to_string next_message);
@@ -549,22 +548,22 @@ let rec serve (t : t) : unit Lwt.t =
       if queue_is_open then
         serve t
       else
-        let%lwt () = cleanup_upon_shutdown_or_exn t ~exn:None in
+        let%lwt () = cleanup_upon_shutdown_or_exn t ~e:None in
         Lwt.return_unit
   with
   | exn ->
-    let exn = Exception.wrap exn in
+    let e = Exception.wrap exn in
     (* cleanup function below will log the exception *)
-    let%lwt () = cleanup_upon_shutdown_or_exn t ~exn:(Some exn) in
+    let%lwt () = cleanup_upon_shutdown_or_exn t ~e:(Some e) in
     Lwt.return_unit
 
 let get_notifications (t : t) : notification_emitter = t.notification_emitter
 
 let get_status (t : t) : Status.t =
   match t.state with
-  | Uninitialized _ -> Status.Initializing
+  | Uninitialized -> Status.Initializing
   | Failed_to_initialize error_data -> Status.Stopped error_data
-  | Stopped (reason, _) -> Status.Stopped reason
+  | Stopped reason -> Status.Stopped reason
   | Initialized { status } ->
     if
       Status.is_ready status

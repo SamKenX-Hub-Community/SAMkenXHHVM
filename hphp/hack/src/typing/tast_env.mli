@@ -102,6 +102,9 @@ val expand_type : env -> Tast.ty -> env * Tast.ty
     recursively replacing them with the type they refer to. *)
 val fully_expand : env -> Tast.ty -> Tast.ty
 
+(** Strip ~ from type *)
+val strip_dynamic : env -> Tast.ty -> Tast.ty
+
 (** Types that can have methods called on them. Usually a class but
     also includes dynamic types *)
 type receiver_identifier =
@@ -161,6 +164,8 @@ val hint_to_ty : env -> Aast.hint -> Typing_defs.decl_ty
 val localize :
   env -> Typing_defs.expand_env -> Typing_defs.decl_ty -> env * Tast.ty
 
+val localize_hint_for_refinement : env -> Aast.hint -> env * Tast.ty
+
 (** Transforms a declaration phase type ({!Typing_defs.decl_ty})
     into a localized type ({!Typing_defs.locl_ty} = {!Tast.ty}).
     Performs no substitutions of generics and initializes the late static bound
@@ -216,6 +221,8 @@ val assert_subtype :
 (** Return {true} when the first type is a subtype of the second type
     regardless of the values of unbound type variables in both types (if any). *)
 val is_sub_type : env -> Tast.ty -> Tast.ty -> bool
+
+val is_dynamic_aware_sub_type : env -> Tast.ty -> Tast.ty -> bool
 
 (** Return {true} when the first type can be considered a subtype of the second
     type after resolving unbound type variables in both types (if any). *)
@@ -327,3 +334,5 @@ val is_hhi : env -> bool
 (** See {!Tast.check_status} to understand what this function returns from the
     environment. *)
 val get_check_status : env -> Tast.check_status
+
+val get_current_decl_and_file : env -> Pos_or_decl.ctx

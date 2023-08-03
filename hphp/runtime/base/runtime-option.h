@@ -25,6 +25,7 @@
 #include <boost/container/flat_set.hpp>
 #include <memory>
 #include <sys/stat.h>
+#include <folly/dynamic.h>
 
 #include "hphp/runtime/base/config.h"
 #include "hphp/runtime/base/package.h"
@@ -85,6 +86,15 @@ namespace hackc {
   struct DeclParserConfig;
 }
 
+namespace Facts {
+// SQLFacts version number representing the DB's schema.  This number is
+// determined randomly, but should match the number in the SQL Facts
+// implementation.  We use this when we make a change that invalidates
+// the cache, such as adding a new table which would otherwise be
+// unpopulated without a cache rebuild.
+constexpr size_t kSchemaVersion = 1916337637;
+}
+
 /*
  * The bare RepoOptions information that the parser cares about.
  */
@@ -125,6 +135,7 @@ struct RepoOptionsFlags {
   N(std::string,    Query,                                        "") \
   N(std::string,    TrustedDBPath,                                "") \
   N(StringVector,   IndexedMethodAttributes,                      {}) \
+  N(StringVector,   RepoBuildSearchDirs,                          {}) \
   /**/
 
   const PackageInfo& packageInfo() const { return m_packageInfo; }
@@ -137,7 +148,11 @@ struct RepoOptionsFlags {
   void initAliasedNamespaces(hackc::NativeEnv&) const;
 
   std::string autoloadQuery() const { return Query; }
+  folly::dynamic autoloadQueryObj() const { return m_cachedQuery; }
   std::string trustedDBPath() const { return TrustedDBPath; }
+  const std::vector<std::string>& autoloadRepoBuildSearchDirs() const {
+    return RepoBuildSearchDirs;
+  }
 
   /**
    * Allowlist consisting of the attributes, marking methods, which Facts
@@ -163,6 +178,8 @@ struct RepoOptionsFlags {
     sd(m_packageInfo);
     sd(m_sha1);
     sd(m_factsCacheBreaker);
+
+    if constexpr (SerDe::deserializing) calcCachedQuery();
   }
 
   template <typename SerDe>
@@ -173,6 +190,7 @@ struct RepoOptionsFlags {
   }
 
   const std::string& getFactsCacheBreaker() const { return m_factsCacheBreaker;}
+  void calcCachedQuery();
 
 private:
   RepoOptionsFlags() = default;
@@ -192,6 +210,9 @@ private:
 
   SHA1 m_sha1;
   std::string m_factsCacheBreaker;
+
+  // The query to be used for autoloading
+  folly::dynamic m_cachedQuery;
 
   friend struct RepoOptions;
 };
@@ -224,6 +245,7 @@ struct RepoOptions {
   const RepoOptionStats& stat() const { return m_stat; }
 
   const std::filesystem::path& dir() const { return m_repo; }
+  const std::filesystem::path& autoloadDB() const { return m_autoloadDB; }
 
   bool operator==(const RepoOptions& o) const {
     // If we have hash collisions of unequal RepoOptions, we have
@@ -244,6 +266,7 @@ private:
   void initDefaults(const Hdf& hdf, const IniSettingMap& ini);
   void calcCacheKey();
   void calcDynamic();
+  void calcAutoloadDB();
 
   RepoOptionsFlags m_flags;
 
@@ -253,6 +276,9 @@ private:
 
   // Canonical path of repo root directory that contains .hhvmconfig.hdf
   std::filesystem::path m_repo;
+
+  // The autoload DB specified by these repo options
+  std::filesystem::path m_autoloadDB;
 
   static bool s_init;
   static RepoOptions s_defaults;
@@ -285,9 +311,7 @@ struct RuntimeOption {
   static void ReadSatelliteInfo(
     const IniSettingMap& ini,
     const Hdf& hdf,
-    std::vector<std::shared_ptr<SatelliteServerInfo>>& infos,
-    std::string& xboxPassword,
-    std::set<std::string>& xboxPasswords
+    std::vector<std::shared_ptr<SatelliteServerInfo>>& infos
   );
 
   static Optional<std::filesystem::path> GetHomePath(
@@ -538,8 +562,6 @@ struct RuntimeOption {
   static bool XboxServerInfoAlwaysReset;
   static bool XboxServerLogInfo;
   static std::string XboxProcessMessageFunc;
-  static std::string XboxPassword;
-  static std::set<std::string> XboxPasswords;
 
   static std::string SourceRoot;
   static std::vector<std::string> IncludeSearchPaths;
@@ -556,7 +578,6 @@ struct RuntimeOption {
    */
   static std::map<std::string, std::string> IncludeRoots;
 
-  static bool AutoloadEnabled;
   static bool AutoloadEnableExternFactExtractor;
   static std::string AutoloadDBPath;
   static bool AutoloadDBCanCreate;
@@ -576,8 +597,6 @@ struct RuntimeOption {
   static std::string FatalErrorMessage;
   static std::string FontPath;
   static bool EnableStaticContentFromDisk;
-  static bool EnableOnDemandUncompress;
-  static bool EnableStaticContentMMap;
 
   static bool Utf8izeReplace;
 
@@ -594,6 +613,7 @@ struct RuntimeOption {
   static std::set<std::string> ForbiddenFileExtensions;
   static std::set<std::string> StaticFileGenerators;
   static std::vector<std::shared_ptr<FilesMatch>> FilesMatches;
+  static std::set<std::string> RenamableFunctions;
 
   static bool WhitelistExec;
   static bool WhitelistExecWarningOnly;
@@ -658,7 +678,6 @@ struct RuntimeOption {
   static uint32_t StatsSlotDuration;
   static uint32_t StatsMaxSlot;
 
-  static bool EnableHotProfiler;
   static int32_t ProfilerTraceBuffer;
   static double ProfilerTraceExpansion;
   static int32_t ProfilerMaxTraceBuffer;
@@ -682,7 +701,6 @@ struct RuntimeOption {
   static int LightProcessCount;
 
   // Eval options
-  static bool EnableHipHopSyntax;
   static bool EnableXHP;
   static bool EnableIntrinsicsExtension;
   static bool CheckSymLink;
@@ -690,7 +708,6 @@ struct RuntimeOption {
   static bool EnableArgsInBacktraces;
   static bool EnableZendIniCompat;
   static bool TimeoutsUseWallTime;
-  static bool CheckFlushOnUserClose;
   static bool EvalAuthoritativeMode;
   static int CheckCLIClientCommands;
   static HackStrictOption StrictArrayFillKeys;
@@ -870,7 +887,6 @@ struct RuntimeOption {
   F(bool, EnableLogBridge,             true)                            \
   F(bool, MoreAccurateMemStats,        true)                            \
   F(bool, MemInfoCheckCgroup2,         true)                            \
-  F(bool, AllowScopeBinding,           false)                           \
   F(bool, TranslateHackC,              true)                            \
   F(bool, VerifyTranslateHackC,        false)                           \
   F(bool, JitNoGdb,                    true)                            \
@@ -887,7 +903,6 @@ struct RuntimeOption {
   F(uint32_t, ThreadTCFrozenBufferSize,4 << 20)                         \
   F(uint32_t, ThreadTCDataBufferSize,  256 << 10)                       \
   F(uint32_t, RDSSize,                 64 << 20)                        \
-  F(uint32_t, SharedProfileSize,       128 << 20)                       \
   F(uint32_t, HHBCArenaChunkSize,      10 << 20)                        \
   F(bool, ProfileBC,                   false)                           \
   F(bool, ProfileHeapAcrossRequests,   false)                           \
@@ -946,10 +961,13 @@ struct RuntimeOption {
   F(bool,     JitLayoutPruneCatchArcs, true)                            \
   F(uint32_t, GdbSyncChunks,           128)                             \
   F(bool, JitKeepDbgFiles,             false)                           \
-  /* despite the unfortunate name, this enables function renaming and
-   * interception in the interpreter as well as the jit, and also
-   * implies all functions may be used with fb_intercept2 */            \
-  F(bool, JitEnableRenameFunction,     EvalJitEnableRenameFunction)     \
+  /* This controls function renaming.
+   * 0 - Renaming not allowed
+   * 1 - All functions can be renamed
+   * 2 - Functions in RenamableFunctions config list can be renamed
+   */                                                                   \
+  F(uint32_t, JitEnableRenameFunction, 0)                               \
+  F(uint32_t, JitRenameFunctionLogRate, 100)                            \
   F(bool, JitUseVtuneAPI,              false)                           \
   F(bool, TraceCommandLineRequest,     true)                            \
                                                                         \
@@ -1086,6 +1104,7 @@ struct RuntimeOption {
   F(bool, DumpAst,                     false)                           \
   F(bool, DumpTargetProfiles,          false)                           \
   F(bool, DumpJitProfileStats,         false)                           \
+  F(bool, DumpJitEnableRenameFunctionStats, false)                      \
   F(bool, MapTgtCacheHuge,             false)                           \
   F(bool, NewTHPHotText,               false)                           \
   F(bool, FileBackedColdArena,         useFileBackedArenaDefault())     \
@@ -1369,6 +1388,10 @@ struct RuntimeOption {
    */                                                                   \
   F(std::string, ActiveDeployment, "")                                  \
   /*                                                                    \
+   * Enforce deployment boundaries.                                     \
+   */                                                                   \
+  F(bool, EnforceDeployment, false)                                     \
+  /*                                                                    \
    * Controls behavior on reflection to default value expressions       \
    * that throw during evaluation                                       \
    * 0 - Nothing                                                        \
@@ -1390,6 +1413,9 @@ struct RuntimeOption {
   F(std::vector<std::string>, UnixServerAllowedGroups,                  \
                                             std::vector<std::string>()) \
   F(bool, UnixServerRunPSPInBackground, true)                           \
+  F(bool, UnixServerProxyXbox, true)                                    \
+  F(bool, UnixServerAssumeRepoReadable, true)                           \
+  F(bool, UnixServerAssumeRepoRealpath, true)                           \
   /* Options for testing */                                             \
   F(bool, TrashFillOnRequestExit, false)                                \
   /******************                                                   \
@@ -1467,9 +1493,9 @@ struct RuntimeOption {
   F(int32_t, RequestTearingSkewMicros, 1500)                            \
   F(bool,    SampleRequestTearingForce, true)                           \
   F(bool, EnableAbstractContextConstants, true)                         \
-  F(bool, AbstractContextConstantUninitAccess, false)                   \
   F(bool, TraitConstantInterfaceBehavior, false)                        \
   F(bool, DiamondTraitMethods, false)                                   \
+  F(bool, TreatCaseTypesAsMixed, true)                                  \
   F(uint32_t, HHIRSpecializedDestructorThreshold, 80)                   \
   F(uint32_t, NFLogSlowWatchmanMsec, 500)                               \
   F(uint32_t, NFLogSlowWatchmanSampleRate, 1)                           \
@@ -1487,6 +1513,9 @@ struct RuntimeOption {
   F(bool, DumpStacktraceToErrorLogOnCrash, true)                        \
   F(bool, IncludeReopOptionsInFactsCacheBreaker, false)                 \
   F(bool, ModuleLevelTraits, false)                                     \
+  F(bool, AutoloadEagerSyncUnitCache, true)                             \
+  F(bool, AutoloadEagerReloadUnitCache, true)                           \
+  F(bool, AutoloadInitEarly, false)                                     \
   /* */
 
 private:
@@ -1575,7 +1604,7 @@ public:
   // SimpleXML options
   static bool SimpleXMLEmptyNamespaceMatchesAll;
 
-#ifdef FACEBOOK
+#ifdef HHVM_FACEBOOK
   // fb303 server
   static bool EnableFb303Server;
   static int Fb303ServerPort;
@@ -1596,6 +1625,8 @@ public:
   static bool SetProfileNullThisObject;
 
   static bool ApplySecondaryQueuePenalty;
+
+  static bool funcIsRenamable(const StringData* name);
 };
 static_assert(sizeof(RuntimeOption) == 1, "no instance variables");
 
@@ -1616,7 +1647,7 @@ inline bool unitPrefetchingEnabled() {
 }
 
 inline StringToIntMap coeffectEnforcementLevelsDefaults() {
-#ifdef FACEBOOK
+#ifdef HHVM_FACEBOOK
   return {{"zoned", 2}};
 #else
   return {};

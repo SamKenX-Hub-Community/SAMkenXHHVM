@@ -47,7 +47,7 @@ def is_jitted(ip: lldb.SBValue) -> bool:
     tc_end = lldb.SBAddress(tc_base.unsigned, tc_base.target)
     tc_end.OffsetAddress(code_size.unsigned)
 
-    if not tc_base.IsValid() or not tc_end.IsValid():
+    if not tc_end.IsValid():
         # We can't access `g_code' for whatever reason---maybe it's gotten
         # corrupted somehow.  Assume that the TC is above the data section,
         # but restricted to low memory.
@@ -124,7 +124,7 @@ def create_php(
     idx: int,
     ar: lldb.SBValue,
     rip: typing.Union[str, lldb.SBValue]='0x????????',
-    pc: lldb.SBValue=None,
+    pc: typing.Union[int, lldb.SBValue]=None,
 ) -> Frame:
     """Collect metadata for a PHP frame.
 
@@ -132,13 +132,21 @@ def create_php(
         idx: Index of the current frame
         ar: The activation record (lldb.SBValue[HPHP::ActRec])
         rip: The instruction pointer
+        pc: The PC
 
     Returns:
         A Frame object
     """
+    if isinstance(pc, lldb.SBValue):
+        pc = pc.unsigned
+
+    utils.debug_print(f"create_php(idx={idx}, ar=0x{ar.unsigned:x}, rip={format_ptr(rip)}, pc={pc if pc else None})")
     func = lookup.lookup_func_from_frame_pointer(ar)  # lldb.SBValue[HPHP::Func *]
     shared = utils.rawptr(utils.get(func, "m_shared"))  # lldb.SBValue[HPHP::SharedData]
     flags = utils.get(shared, "m_allFlags")  # lldb.SBValue[HPHP::Func::SharedData::Flags]
+
+    shared_type = utils.rawtype(shared.type).GetPointeeType()
+    assert shared_type.name == "HPHP::Func::SharedData", f"create_php: Expected m_shared to point to HPHP::Func::SharedData, it points to {shared_type.name}"
 
     # Pull the function name.
     if utils.get(flags, "m_isClosureBody").unsigned == 0:
@@ -167,8 +175,9 @@ def create_php(
 
     # Pull the PC from Func::base() and ar->m_callOff if necessary.
     if pc is None:
-        bc = utils.rawptr(utils.get(shared, "m_bc")).unsigned
-        pc = bc + (utils.get(ar, "m_callOffAndFlags").unsigned >> 2)
+        m_bc = utils.get(shared, "m_bc")
+        bc = utils.rawptr(m_bc)
+        pc = bc.unsigned + (utils.get(ar, "m_callOffAndFlags").unsigned >> 2)
 
     frame.file = php_filename(func, ar.target)
     frame.line = php_line_number(func, pc)

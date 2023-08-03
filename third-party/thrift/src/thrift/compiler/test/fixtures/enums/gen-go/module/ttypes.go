@@ -10,8 +10,6 @@ import (
 	"sync"
 	"fmt"
 	thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
-	thrift0 "thrift/annotation/thrift"
-
 )
 
 // (needed to ensure safety because of naive import list construction.)
@@ -21,7 +19,6 @@ var _ = sync.Mutex{}
 var _ = bytes.Equal
 var _ = context.Background
 
-var _ = thrift0.GoUnusedProtection__
 var GoUnusedProtection__ int;
 
 type Metasyntactic int64
@@ -30,7 +27,6 @@ const (
   Metasyntactic_BAR Metasyntactic = 2
   Metasyntactic_BAZ Metasyntactic = 3
   Metasyntactic_BAX Metasyntactic = 4
-  Metasyntactic_Unspecified Metasyntactic = 0
 )
 
 var MetasyntacticToName = map[Metasyntactic]string {
@@ -38,7 +34,6 @@ var MetasyntacticToName = map[Metasyntactic]string {
   Metasyntactic_BAR: "BAR",
   Metasyntactic_BAZ: "BAZ",
   Metasyntactic_BAX: "BAX",
-  Metasyntactic_Unspecified: "Unspecified",
 }
 
 var MetasyntacticToValue = map[string]Metasyntactic {
@@ -46,7 +41,6 @@ var MetasyntacticToValue = map[string]Metasyntactic {
   "BAR": Metasyntactic_BAR,
   "BAZ": Metasyntactic_BAZ,
   "BAX": Metasyntactic_BAX,
-  "Unspecified": Metasyntactic_Unspecified,
 }
 
 var MetasyntacticNames = []string {
@@ -54,7 +48,6 @@ var MetasyntacticNames = []string {
   "BAR",
   "BAZ",
   "BAX",
-  "Unspecified",
 }
 
 var MetasyntacticValues = []Metasyntactic {
@@ -62,7 +55,6 @@ var MetasyntacticValues = []Metasyntactic {
   Metasyntactic_BAR,
   Metasyntactic_BAZ,
   Metasyntactic_BAX,
-  Metasyntactic_Unspecified,
 }
 
 func (p Metasyntactic) String() string {
@@ -83,48 +75,48 @@ func MetasyntacticPtr(v Metasyntactic) *Metasyntactic { return &v }
 
 type MyEnum1 int64
 const (
+  MyEnum1_ME1_0 MyEnum1 = 0
   MyEnum1_ME1_1 MyEnum1 = 1
   MyEnum1_ME1_2 MyEnum1 = 2
   MyEnum1_ME1_3 MyEnum1 = 3
   MyEnum1_ME1_5 MyEnum1 = 5
   MyEnum1_ME1_6 MyEnum1 = 6
-  MyEnum1_ME1_0 MyEnum1 = 0
 )
 
 var MyEnum1ToName = map[MyEnum1]string {
+  MyEnum1_ME1_0: "ME1_0",
   MyEnum1_ME1_1: "ME1_1",
   MyEnum1_ME1_2: "ME1_2",
   MyEnum1_ME1_3: "ME1_3",
   MyEnum1_ME1_5: "ME1_5",
   MyEnum1_ME1_6: "ME1_6",
-  MyEnum1_ME1_0: "ME1_0",
 }
 
 var MyEnum1ToValue = map[string]MyEnum1 {
+  "ME1_0": MyEnum1_ME1_0,
   "ME1_1": MyEnum1_ME1_1,
   "ME1_2": MyEnum1_ME1_2,
   "ME1_3": MyEnum1_ME1_3,
   "ME1_5": MyEnum1_ME1_5,
   "ME1_6": MyEnum1_ME1_6,
-  "ME1_0": MyEnum1_ME1_0,
 }
 
 var MyEnum1Names = []string {
+  "ME1_0",
   "ME1_1",
   "ME1_2",
   "ME1_3",
   "ME1_5",
   "ME1_6",
-  "ME1_0",
 }
 
 var MyEnum1Values = []MyEnum1 {
+  MyEnum1_ME1_0,
   MyEnum1_ME1_1,
   MyEnum1_ME1_2,
   MyEnum1_ME1_3,
   MyEnum1_ME1_5,
   MyEnum1_ME1_6,
-  MyEnum1_ME1_0,
 }
 
 func (p MyEnum1) String() string {
@@ -258,7 +250,6 @@ const (
   MyEnum4_ME4_B MyEnum4 = 2147483646
   MyEnum4_ME4_C MyEnum4 = 2147483647
   MyEnum4_ME4_D MyEnum4 = -2147483648
-  MyEnum4_Unspecified MyEnum4 = 0
 )
 
 var MyEnum4ToName = map[MyEnum4]string {
@@ -266,7 +257,6 @@ var MyEnum4ToName = map[MyEnum4]string {
   MyEnum4_ME4_B: "ME4_B",
   MyEnum4_ME4_C: "ME4_C",
   MyEnum4_ME4_D: "ME4_D",
-  MyEnum4_Unspecified: "Unspecified",
 }
 
 var MyEnum4ToValue = map[string]MyEnum4 {
@@ -274,7 +264,6 @@ var MyEnum4ToValue = map[string]MyEnum4 {
   "ME4_B": MyEnum4_ME4_B,
   "ME4_C": MyEnum4_ME4_C,
   "ME4_D": MyEnum4_ME4_D,
-  "Unspecified": MyEnum4_Unspecified,
 }
 
 var MyEnum4Names = []string {
@@ -282,7 +271,6 @@ var MyEnum4Names = []string {
   "ME4_B",
   "ME4_C",
   "ME4_D",
-  "Unspecified",
 }
 
 var MyEnum4Values = []MyEnum4 {
@@ -290,7 +278,6 @@ var MyEnum4Values = []MyEnum4 {
   MyEnum4_ME4_B,
   MyEnum4_ME4_C,
   MyEnum4_ME4_D,
-  MyEnum4_Unspecified,
 }
 
 func (p MyEnum4) String() string {
@@ -314,35 +301,30 @@ const (
   MyBitmaskEnum1_ONE MyBitmaskEnum1 = 1
   MyBitmaskEnum1_TWO MyBitmaskEnum1 = 2
   MyBitmaskEnum1_FOUR MyBitmaskEnum1 = 4
-  MyBitmaskEnum1_Unspecified MyBitmaskEnum1 = 0
 )
 
 var MyBitmaskEnum1ToName = map[MyBitmaskEnum1]string {
   MyBitmaskEnum1_ONE: "ONE",
   MyBitmaskEnum1_TWO: "TWO",
   MyBitmaskEnum1_FOUR: "FOUR",
-  MyBitmaskEnum1_Unspecified: "Unspecified",
 }
 
 var MyBitmaskEnum1ToValue = map[string]MyBitmaskEnum1 {
   "ONE": MyBitmaskEnum1_ONE,
   "TWO": MyBitmaskEnum1_TWO,
   "FOUR": MyBitmaskEnum1_FOUR,
-  "Unspecified": MyBitmaskEnum1_Unspecified,
 }
 
 var MyBitmaskEnum1Names = []string {
   "ONE",
   "TWO",
   "FOUR",
-  "Unspecified",
 }
 
 var MyBitmaskEnum1Values = []MyBitmaskEnum1 {
   MyBitmaskEnum1_ONE,
   MyBitmaskEnum1_TWO,
   MyBitmaskEnum1_FOUR,
-  MyBitmaskEnum1_Unspecified,
 }
 
 func (p MyBitmaskEnum1) String() string {
@@ -366,35 +348,30 @@ const (
   MyBitmaskEnum2_ONE MyBitmaskEnum2 = 1
   MyBitmaskEnum2_TWO MyBitmaskEnum2 = 2
   MyBitmaskEnum2_FOUR MyBitmaskEnum2 = 4
-  MyBitmaskEnum2_Unspecified MyBitmaskEnum2 = 0
 )
 
 var MyBitmaskEnum2ToName = map[MyBitmaskEnum2]string {
   MyBitmaskEnum2_ONE: "ONE",
   MyBitmaskEnum2_TWO: "TWO",
   MyBitmaskEnum2_FOUR: "FOUR",
-  MyBitmaskEnum2_Unspecified: "Unspecified",
 }
 
 var MyBitmaskEnum2ToValue = map[string]MyBitmaskEnum2 {
   "ONE": MyBitmaskEnum2_ONE,
   "TWO": MyBitmaskEnum2_TWO,
   "FOUR": MyBitmaskEnum2_FOUR,
-  "Unspecified": MyBitmaskEnum2_Unspecified,
 }
 
 var MyBitmaskEnum2Names = []string {
   "ONE",
   "TWO",
   "FOUR",
-  "Unspecified",
 }
 
 var MyBitmaskEnum2Values = []MyBitmaskEnum2 {
   MyBitmaskEnum2_ONE,
   MyBitmaskEnum2_TWO,
   MyBitmaskEnum2_FOUR,
-  MyBitmaskEnum2_Unspecified,
 }
 
 func (p MyBitmaskEnum2) String() string {
@@ -592,13 +569,13 @@ func (p *SomeStruct)  ReadField4(iprot thrift.Protocol) error {
   tSet := make([]int32, 0, size)
   p.Tags =  tSet
   for i := 0; i < size; i ++ {
-    var _elem1 int32
+    var _elem0 int32
     if v, err := iprot.ReadI32(); err != nil {
       return thrift.PrependError("error reading field 0: ", err)
     } else {
-      _elem1 = v
+      _elem0 = v
     }
-    p.Tags = append(p.Tags, _elem1)
+    p.Tags = append(p.Tags, _elem0)
   }
   if err := iprot.ReadSetEnd(); err != nil {
     return thrift.PrependError("error reading set end: ", err)

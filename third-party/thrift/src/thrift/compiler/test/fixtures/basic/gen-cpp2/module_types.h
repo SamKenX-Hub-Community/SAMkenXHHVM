@@ -9,7 +9,6 @@
 #include <thrift/lib/cpp2/gen/module_types_h.h>
 
 
-#include "thrift/annotation/gen-cpp2/hack_types.h"
 
 namespace apache {
 namespace thrift {
@@ -182,19 +181,6 @@ template <> struct TEnumTraits<::test::fixtures::basic::HackEnum> {
 
 }} // apache::thrift
 
-namespace test { namespace fixtures { namespace basic {
-
-using _MyEnum_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<MyEnum>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _MyEnum_EnumMapFactory::ValuesToNamesMapType _MyEnum_VALUES_TO_NAMES;
-#endif
-using _HackEnum_EnumMapFactory = apache::thrift::detail::TEnumMapFactory<HackEnum>;
-#ifndef ANDROID
-[[deprecated("use apache::thrift::util::enumNameSafe, apache::thrift::util::enumName, or apache::thrift::TEnumTraits")]]
-extern const _HackEnum_EnumMapFactory::ValuesToNamesMapType _HackEnum_VALUES_TO_NAMES;
-#endif
-}}} // test::fixtures::basic
 
 // END declare_enums
 // BEGIN forward_declare

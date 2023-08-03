@@ -210,6 +210,13 @@ class ConnectionPoolBase {
 
   virtual ~ConnectionPoolBase() {}
 
+  using ThrottlingCallback =
+      std::function<void(uint32_t, const std::string&, const std::string&)>;
+  using ShouldThrottleCallback = std::function<bool(
+      const PoolKey&,
+      std::shared_ptr<db::ConnectionContextBase> context,
+      ThrottlingCallback throttlingCallback)>;
+
   db::PoolStats* stats() noexcept {
     return &pool_stats_;
   }
@@ -250,9 +257,11 @@ class ConnectionPoolBase {
   void addOpenConnection(const PoolKey& conn_key);
   bool tryAddOpeningConn(
       const PoolKey& conn_key,
+      std::shared_ptr<db::ConnectionContextBase> context,
       size_t enqueued_pool_ops,
       uint32_t client_total_conns,
-      uint64_t client_conn_limit);
+      uint64_t client_conn_limit,
+      ThrottlingCallback throttlingCallback);
 
   void removeOpenConnection(const PoolKey& conn_key);
   void removeOpeningConn(const PoolKey& conn_key);
@@ -272,6 +281,10 @@ class ConnectionPoolBase {
 
   static constexpr bool implementsPooling() {
     return true;
+  }
+
+  void setShouldThrottleCallback(ShouldThrottleCallback cb) {
+    shouldThrottleCallback_ = std::move(cb);
   }
 
  protected:
@@ -318,6 +331,8 @@ class ConnectionPoolBase {
   PoolOptions pool_options_;
 
   folly::Synchronized<Counters> counters_;
+
+  ShouldThrottleCallback shouldThrottleCallback_;
 
   // Counters for connections created, cache hits and misses, etc.
   db::PoolStats pool_stats_;
@@ -416,12 +431,17 @@ class ConnectionPool
         mysql_client_->getPoolsConnectionLimit());
   }
 
-  bool tryAddOpeningConn(const PoolKey& conn_key) {
+  bool tryAddOpeningConn(
+      const PoolKey& conn_key,
+      std::shared_ptr<db::ConnectionContextBase> context,
+      ThrottlingCallback throttlingCallback) {
     return ConnectionPoolBase::tryAddOpeningConn(
         conn_key,
+        context,
         numQueuedOperations(conn_key),
         mysql_client_->numStartedAndOpenConnections(),
-        mysql_client_->getPoolsConnectionLimit());
+        mysql_client_->getPoolsConnectionLimit(),
+        std::move(throttlingCallback));
   }
 
   void registerForConnection(ConnectPoolOperation<Client>* raw_pool_op) {
@@ -473,7 +493,8 @@ class ConnectionPool
   // these connections.
   void tryRequestNewConnection(
       const PoolKey& pool_key,
-      std::shared_ptr<db::ConnectionContextBase> context = nullptr) {
+      std::shared_ptr<db::ConnectionContextBase> context = nullptr,
+      ThrottlingCallback throttlingCallback = nullptr) {
     validateCorrectThread();
 
     // Only called internally, this doesn't need to check if it's shutting
@@ -483,15 +504,15 @@ class ConnectionPool
     }
 
     // Checking if limits allow creating more connections
-    if (!tryAddOpeningConn(pool_key)) {
+    if (!tryAddOpeningConn(pool_key, context, std::move(throttlingCallback))) {
       return;
     }
 
     VLOG(11) << "Requesting new Connection";
     // get a shared pointer for operation
 
-    auto connOp = mysql_client_->beginConnection(pool_key.connKey);
-    connOp->setConnectionOptions(pool_key.connOptions);
+    auto connOp = mysql_client_->beginConnection(pool_key.getConnectionKey());
+    connOp->setConnectionOptions(pool_key.getConnectionOptions());
     if (!context) {
       context = std::make_shared<db::ConnectionContextBase>();
     }
@@ -536,11 +557,9 @@ class ConnectionPool
     auto conn =
         makeNewConnection(rawPoolOp->getConnectionKey(), std::move(mysqlConn));
     conn->needToCloneConnection_ = false;
+    const auto& connKey = poolKey.getConnectionKey();
     auto changeUserOp = Connection::changeUser(
-        std::move(conn),
-        poolKey.connKey.user,
-        poolKey.connKey.password,
-        poolKey.connKey.db_name);
+        std::move(conn), connKey.user(), connKey.password(), connKey.db_name());
 
     changeUserOp->setCallback(
         [this, rawPoolOp, poolKey, poolPtr = getSelfWeakPointer()](
@@ -609,7 +628,19 @@ class ConnectionPool
     // passed to the new ConnectOperation that is spawned to fulfill the pool
     // miss. Propagating the context pointer ensures that both operations are
     // logged with the expected additional logging
-    tryRequestNewConnection(poolKey, pool_op->connection_context_);
+    tryRequestNewConnection(
+        poolKey,
+        pool_op->connection_context_,
+        [&](uint32_t errnum,
+            const std::string& error,
+            const std::string& normalizedMsg) {
+          pool_op->setAsyncClientError(errnum, error, normalizedMsg);
+          pool_op->attemptFailed(OperationResult::Failed);
+
+          // We are still in the same thread so no one else should have had a
+          // chance to dequeue the operation yet.
+          conn_storage_.dequeueOperation(poolKey, *pool_op);
+        });
 
     openNewConnectionFinish(*pool_op, poolKey);
   }

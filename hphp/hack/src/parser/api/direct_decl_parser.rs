@@ -3,13 +3,14 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 
+use std::sync::Arc;
+
 use bumpalo::Bump;
 use direct_decl_smart_constructors::ArenaSourceTextAllocator;
 use direct_decl_smart_constructors::DirectDeclSmartConstructors;
 use direct_decl_smart_constructors::NoSourceTextAllocator;
 use direct_decl_smart_constructors::SourceTextAllocator;
 use mode_parser::parse_mode;
-use ocamlrep::rc::RcOc;
 pub use oxidized::decl_parser_options::DeclParserOptions;
 pub use oxidized_by_ref::direct_decl_parser::Decls;
 pub use oxidized_by_ref::direct_decl_parser::ParsedFile;
@@ -23,7 +24,6 @@ use relative_path::RelativePath;
 /// Parse decls for typechecking.
 /// - References the source text to avoid spending time or space copying
 ///   identifiers into the arena (when possible).
-/// - Excludes user attributes which are irrelevant to typechecking.
 ///
 /// WARNING
 /// This function (1) doesn't respect po_deregister_php_stdlib which filters+adjusts certain
@@ -42,7 +42,6 @@ pub fn parse_decls_for_typechecking<'a>(
         text,
         arena,
         NoSourceTextAllocator,
-        false, // retain_or_omit_user_attributes_for_facts
         false, // elaborate_xhp_namespaces_for_facts
     )
 }
@@ -50,8 +49,6 @@ pub fn parse_decls_for_typechecking<'a>(
 /// The same as 'parse_decls_for_typechecking' except
 /// - Returns decls without reference to the source text to avoid the need to
 ///   keep the source text in memory when caching decls.
-/// - As in parse_decls_for_typechecking, it excludes user attributes which
-///   are irrelevant to typechecking.
 ///
 /// WARNING
 /// This function (1) doesn't respect po_deregister_php_stdlib which filters+adjusts certain
@@ -70,7 +67,6 @@ pub fn parse_decls_for_typechecking_without_reference_text<'a, 'text>(
         text,
         arena,
         ArenaSourceTextAllocator(arena),
-        false, // retain_or_omit_user_attributes_for_facts
         false, // elaborate_xhp_namespaces_for_facts
     )
 }
@@ -78,8 +74,9 @@ pub fn parse_decls_for_typechecking_without_reference_text<'a, 'text>(
 /// Parse decls for bytecode compilation.
 /// - Returns decls without reference to the source text to avoid the need to
 ///   keep the source text in memory when caching decls.
-/// - Preserves user attributes in decls necessary for producing facts.
-///   (This means that you'll get decl_hash answers that differ from parse_decls).
+/// - Expects the keep_user_attributes option to be set as it is necessary for
+///   producing facts. (This means that you'll get decl_hash answers that differ
+///   from parse_decls).
 pub fn parse_decls_for_bytecode<'a, 'text>(
     opts: &DeclParserOptions,
     filename: RelativePath,
@@ -92,7 +89,6 @@ pub fn parse_decls_for_bytecode<'a, 'text>(
         text,
         arena,
         ArenaSourceTextAllocator(arena),
-        true, // retain_or_omit_user_attributes_for_facts
         true, // elaborate_xhp_namespaces_for_facts
     )
 }
@@ -116,10 +112,9 @@ fn parse_script_with_text_allocator<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>>(
     text: &'t [u8],
     arena: &'a Bump,
     source_text_allocator: S,
-    retain_or_omit_user_attributes_for_facts: bool,
     elaborate_xhp_namespaces_for_facts: bool,
 ) -> ParsedFile<'a> {
-    let source = SourceText::make(RcOc::new(filename), text);
+    let source = SourceText::make(Arc::new(filename), text);
     let env = ParserEnv::from(opts);
     let (_, mode_opt) = parse_mode(&source);
     let mode_opt = mode_opt.map(file_info::Mode::from);
@@ -130,7 +125,6 @@ fn parse_script_with_text_allocator<'a, 'o, 't, S: SourceTextAllocator<'t, 'a>>(
         mode,
         arena,
         source_text_allocator,
-        retain_or_omit_user_attributes_for_facts,
         elaborate_xhp_namespaces_for_facts,
     );
     let mut parser = Parser::new(&source, env, sc);

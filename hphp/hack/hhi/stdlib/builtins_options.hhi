@@ -137,7 +137,7 @@ function phpcredits(
 <<__PHPStdLib>>
 function phpinfo(int $what = 0): HH\FIXME\MISSING_RETURN_TYPE;
 <<__PHPStdLib>>
-function phpversion(string $extension = ""): HH\FIXME\MISSING_RETURN_TYPE;
+function phpversion(string $extension = ""): mixed;
 <<__PHPStdLib>>
 function putenv(string $setting): HH\FIXME\MISSING_RETURN_TYPE;
 <<__PHPStdLib>>
@@ -166,3 +166,5 @@ function gc_collect_cycles()[leak_safe]: HH\FIXME\MISSING_RETURN_TYPE;
 function gc_mem_caches(): HH\FIXME\MISSING_RETURN_TYPE;
 <<__PHPStdLib>>
 function gc_check_heap(): HH\FIXME\MISSING_RETURN_TYPE;
+function get_visited_files(): keyset<string>;
+function record_visited_files(): void;

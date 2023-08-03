@@ -3,17 +3,19 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the "hack" directory of this source tree.
 
+use anyhow::bail;
 use anyhow::Error;
 use ir::instr::BaseOp;
 use ir::instr::FinalOp;
 use ir::instr::MemberKey;
-use ir::instr::MemberOp;
 use ir::InstrId;
 use ir::LocalId;
 use ir::QueryMOp;
-use ir::StringInterner;
 use ir::ValueId;
+use itertools::Itertools;
 use naming_special_names_rust::special_idents;
+use textual::Expr;
+use textual::Ty;
 
 use crate::func::FuncState;
 use crate::hack;
@@ -22,289 +24,474 @@ use crate::textual::Sid;
 
 type Result<T = (), E = Error> = std::result::Result<T, E>;
 
-// We need to be careful how we transform member operations so we only maintain
-// a single base at a time and yet handle COW properly (so we mimic HHVM).
-//
-// $a[k1][k2][k3] = v1;
-//
-// Becomes:
-//   base = &$a
-//   base = hack_array_entry(base, k1); // this may write to $a
-//   base = hack_array_entry(base, k2); // this may write to $a[k1]
-//   hack_array_write(base, k3, v1); // this may write to $a[k1][k2] and $a[k1][k2][k3]
-//
-// Notation note (for builtins relating to member-ops):
-//   Base refers to a function that takes a value and returns a **HackMixed.
-//   Dim refers to a function that takes a **HackMixed and returns a **HackMixed.
-//   Final refers to a function that takes a **HackMixed and returns a value.
-//
+/// Intrinsics used by member operations:
+///
+///   hack_array_cow_append
+///   hack_array_cow_set
+///   hack_array_get
+///   hack_get_superglobal
+///   hack_prop_get
+///   hack_prop_set
+///   hack_set_superglobal
+///
+/// We break down member operations into sequences of hack_array_get() and
+/// property accesses.
+///
+/// $a[k1][k2]->p1[k3][k4] = v1;
+///
+/// Becomes:
+///   n0 = hack_array_get($a, k1, k2)
+///   n1: *HackMixed = load n0.?.p1
+///   n2 = hack_array_set(n1, k3, k4, v1)
+///   store n1 <- n2: *HackMixed
+///
 pub(crate) fn write(
     state: &mut FuncState<'_, '_, '_>,
     iid: InstrId,
     mop: &ir::instr::MemberOp,
 ) -> Result {
+    let sid = emit_mop(state, mop)?;
+    state.set_iid(iid, sid);
+    Ok(())
+}
+
+fn emit_mop(state: &mut FuncState<'_, '_, '_>, mop: &ir::instr::MemberOp) -> Result<Sid> {
     let mut locals = mop.locals.iter().copied();
     let mut operands = mop.operands.iter().copied();
 
-    let mut base = write_base(state, &mop.base_op, &mut locals, &mut operands)?;
+    let mut emitter = MemberOpEmitter::new(state, &mut locals, &mut operands)?;
+    emitter.write_base(&mop.base_op)?;
 
     for intermediate in mop.intermediate_ops.iter() {
-        base = write_entry(state, base, &intermediate.key, &mut locals, &mut operands)?;
+        emitter.write_entry(&intermediate.key)?;
     }
 
     match &mop.final_op {
         FinalOp::SetRangeM { .. } => todo!(),
-        op => {
-            let output = write_final(state, op, base, &mut locals, &mut operands)?;
-            state.set_iid(iid, output);
-        }
-    }
-
-    assert!(locals.next().is_none());
-    assert!(operands.next().is_none(), "MOP: {mop:?}");
-
-    Ok(())
-}
-
-fn write_base(
-    state: &mut FuncState<'_, '_, '_>,
-    base_op: &BaseOp,
-    locals: &mut impl Iterator<Item = LocalId>,
-    operands: &mut impl Iterator<Item = ValueId>,
-) -> Result<Sid> {
-    match *base_op {
-        BaseOp::BaseC { .. } => {
-            // Get base from value.
-            let base = base_from_vid(state, operands.next().unwrap())?;
-            state.fb.write_expr_stmt(base)
-        }
-        BaseOp::BaseGC { .. } => {
-            // Get base from global name.
-            let src = state.lookup_vid(operands.next().unwrap());
-            state.call_builtin(hack::Builtin::BaseGetSuperglobal, [src])
-        }
-        BaseOp::BaseH { loc: _ } => {
-            // Get base from $this.
-            // Just pretend to be a BaseL w/ $this.
-            let lid = LocalId::Named(state.strings.intern_str(special_idents::THIS));
-            let base = base_from_lid(lid);
-            state.fb.write_expr_stmt(base)
-        }
-        BaseOp::BaseL {
-            mode: _,
-            readonly: _,
-            loc: _,
-        } => {
-            // Get base from local.
-            let base = base_from_lid(locals.next().unwrap());
-            state.fb.write_expr_stmt(base)
-        }
-        BaseOp::BaseSC {
-            mode: _,
-            readonly: _,
-            loc: _,
-        } => {
-            // Get base from static property.
-            let base = base_from_vid(state, operands.next().unwrap())?;
-            let prop = state.lookup_vid(operands.next().unwrap());
-            state.call_builtin(hack::Builtin::DimFieldGet, (base, prop))
-        }
+        op => emitter.finish(op),
     }
 }
 
-fn write_final(
-    state: &mut FuncState<'_, '_, '_>,
-    final_op: &FinalOp,
-    base: Sid,
-    locals: &mut impl Iterator<Item = LocalId>,
-    operands: &mut impl Iterator<Item = ValueId>,
-) -> Result<Sid> {
-    let key = final_op.key().unwrap();
-    let base = write_entry(state, base, key, locals, operands)?;
+#[derive(Copy, Clone)]
+enum PropOp {
+    NullThrows,
+    NullSafe,
+}
 
-    match *final_op {
-        FinalOp::IncDecM { inc_dec_op, .. } => {
-            let src = state.load_mixed(base)?;
-            let op = match inc_dec_op {
-                ir::IncDecOp::PreInc | ir::IncDecOp::PostInc => hack::Hhbc::Add,
-                ir::IncDecOp::PreDec | ir::IncDecOp::PostDec => hack::Hhbc::Sub,
-                _ => unreachable!(),
-            };
-            let incr = hack::expr_builtin(hack::Builtin::Int, [1]);
-            let dst = state
-                .fb
-                .write_expr_stmt(hack::expr_builtin(hack::Builtin::Hhbc(op), (src, incr)))?;
-            state.store_mixed(base, dst)?;
-            Ok(match inc_dec_op {
-                ir::IncDecOp::PreInc | ir::IncDecOp::PreDec => dst,
-                ir::IncDecOp::PostInc | ir::IncDecOp::PostDec => src,
-                _ => unreachable!(),
-            })
-        }
-        FinalOp::QueryM { query_m_op, .. } => match query_m_op {
-            QueryMOp::CGet | QueryMOp::CGetQuiet => state.load_mixed(base),
-            QueryMOp::Isset => {
-                let value = state.load_mixed(base)?;
-                state.call_builtin(hack::Builtin::Hhbc(hack::Hhbc::IsTypeNull), [value])
+enum Base {
+    Field { base: Sid, prop: Expr, op: PropOp },
+    Local(LocalId),
+    Superglobal(Expr),
+    Value(Expr),
+}
+
+impl Base {
+    fn load(&self, state: &mut FuncState<'_, '_, '_>) -> Result<Sid> {
+        use textual::Const;
+        match *self {
+            Base::Field {
+                base,
+                prop: Expr::Const(Const::String(ref key)),
+                op: PropOp::NullThrows,
+            } => state.load_mixed(Expr::field(base, Ty::unknown(), key.clone())),
+            Base::Field { base, ref prop, op } => {
+                let null_safe = match op {
+                    PropOp::NullThrows => Const::False,
+                    PropOp::NullSafe => Const::True,
+                };
+                state.call_builtin(
+                    hack::Builtin::HackPropGet,
+                    (base, prop.clone(), Expr::Const(null_safe)),
+                )
             }
-            QueryMOp::InOut => textual_todo! {
-                state.load_mixed(base)
+            Base::Local(lid) => state.load_mixed(Expr::deref(lid)),
+            Base::Superglobal(ref expr) => {
+                state.call_builtin(hack::Builtin::GetSuperglobal, [expr.clone()])
+            }
+            Base::Value(ref expr) => state.fb.write_expr_stmt(expr.clone()),
+        }
+    }
+
+    fn store(&self, state: &mut FuncState<'_, '_, '_>, value: Expr) -> Result {
+        use textual::Const;
+        match *self {
+            Base::Field {
+                base,
+                prop: Expr::Const(Const::String(ref key)),
+                op: PropOp::NullThrows,
+            } => state.store_mixed(Expr::field(base, Ty::unknown(), key.clone()), value)?,
+            Base::Field { base, ref prop, op } => {
+                let null_safe = match op {
+                    PropOp::NullThrows => Const::False,
+                    PropOp::NullSafe => Const::True,
+                };
+                state.call_builtin(
+                    hack::Builtin::HackPropSet,
+                    (base, prop.clone(), Expr::Const(null_safe), value),
+                )?;
+            }
+            Base::Local(lid) => state.store_mixed(Expr::deref(lid), value)?,
+            Base::Superglobal(ref expr) => {
+                state.call_builtin(hack::Builtin::SetSuperglobal, (expr.clone(), value))?;
+            }
+            Base::Value(_) => {
+                // This is something like `foo()[2] = 3`.  We don't have
+                // something to write back into so just ignore it.
+            }
+        }
+        Ok(())
+    }
+}
+
+enum Pending {
+    /// No operation pending. This should only ever be a transient state while
+    /// we're consuming a previous one.
+    None,
+    /// We have a base with no array or property accessess yet. Since we have a
+    /// MemberOp we know this will be replaced before we're done.
+    Base(Base),
+    /// We're currently processing a sequence of array accesses ending with an
+    /// append.
+    ArrayAppend { base: Base, dim: Vec<Expr> },
+    /// We're currently processing a sequence of array accesses.
+    ArrayGet { base: Base, dim: Vec<Expr> },
+}
+
+impl Pending {
+    /// Read the current pending operation and return the value it represents.
+    fn read(&self, state: &mut FuncState<'_, '_, '_>) -> Result<Sid> {
+        match self {
+            Pending::None => unreachable!(),
+            Pending::Base(base) => base.load(state),
+            Pending::ArrayAppend { .. } => {
+                bail!("Cannot use [] with vecs for reading in an lvalue context");
+            }
+            Pending::ArrayGet { base, dim } => {
+                let base_value = base.load(state)?;
+                let params = std::iter::once(base_value.into())
+                    .chain(dim.iter().cloned())
+                    .collect_vec();
+                state.call_builtin(hack::Builtin::HackArrayGet, params)
+            }
+        }
+    }
+
+    /// Write a value to the access this represents.
+    fn write(self, state: &mut FuncState<'_, '_, '_>, src: Sid) -> Result {
+        match self {
+            Pending::None => unreachable!(),
+            Pending::Base(base) => base.store(state, src.into())?,
+            Pending::ArrayAppend { base, dim } => {
+                let base_value = base.load(state)?;
+                let params = std::iter::once(base_value.into())
+                    .chain(dim.into_iter())
+                    .chain(std::iter::once(src.into()))
+                    .collect_vec();
+                let base_value = state.call_builtin(hack::Builtin::HackArrayCowAppend, params)?;
+                base.store(state, base_value.into())?;
+            }
+            Pending::ArrayGet { base, dim } => {
+                let base_value = base.load(state)?;
+                let params = std::iter::once(base_value.into())
+                    .chain(dim.into_iter())
+                    .chain(std::iter::once(src.into()))
+                    .collect_vec();
+                let base_value = state.call_builtin(hack::Builtin::HackArrayCowSet, params)?;
+                base.store(state, base_value.into())?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The member operation state machine.
+///
+/// A member operation will consist of a call to write_base(), 0 or more calls
+/// to write_entry(), and a call to finish().
+///
+struct MemberOpEmitter<'a, 'b, 'c, 'd, L, O>
+where
+    L: Iterator<Item = LocalId>,
+    O: Iterator<Item = ValueId>,
+{
+    locals: L,
+    operands: O,
+    pending: Pending,
+    state: &'a mut FuncState<'b, 'c, 'd>,
+}
+
+impl<'a, 'b, 'c, 'd, L, O> MemberOpEmitter<'a, 'b, 'c, 'd, L, O>
+where
+    L: Iterator<Item = LocalId>,
+    O: Iterator<Item = ValueId>,
+{
+    fn new(state: &'a mut FuncState<'b, 'c, 'd>, locals: L, operands: O) -> Result<Self> {
+        Ok(Self {
+            locals,
+            operands,
+            pending: Pending::None,
+            state,
+        })
+    }
+
+    fn write_base(&mut self, base_op: &BaseOp) -> Result {
+        assert!(matches!(self.pending, Pending::None));
+        match *base_op {
+            BaseOp::BaseC { .. } => {
+                // Get base from value: foo()[k]
+                let base = self.next_operand();
+                self.pending = Pending::Base(Base::Value(base));
+            }
+            BaseOp::BaseGC { .. } => {
+                // Get base from global name: $_SERVER[k]
+                let src = self.next_operand();
+                self.pending = Pending::Base(Base::Superglobal(src));
+            }
+            BaseOp::BaseH { loc: _ } => {
+                // Get base from $this: $this[k]
+                // Just pretend to be a BaseL w/ $this.
+                let lid = LocalId::Named(self.state.strings.intern_str(special_idents::THIS));
+                self.pending = Pending::Base(Base::Local(lid));
+            }
+            BaseOp::BaseL {
+                mode: _,
+                readonly: _,
+                loc: _,
+            } => {
+                // Get base from local: $x[k]
+                self.pending = Pending::Base(Base::Local(self.next_local()));
+            }
+            BaseOp::BaseSC {
+                mode: _,
+                readonly: _,
+                loc: _,
+            } => {
+                // Get base from static property: $x::{$y}[k]
+                // TODO: Is this even possible in Hack anymore?
+                let prop = self.next_operand();
+                let base = self.next_operand();
+                self.pending = Pending::Base(Base::Value(base));
+                self.push_prop_dim(prop, PropOp::NullThrows)?;
+            }
+            BaseOp::BaseST {
+                mode: _,
+                readonly: _,
+                loc: _,
+                prop,
+            } => {
+                // Get base from static property with known key: $x::$y[k]
+                // We treat C::$x the same as `get_static(C)->x`.
+                let base = self.next_operand();
+                let key = {
+                    let key = self.state.strings.lookup_bytes(prop.id);
+                    crate::util::escaped_string(&key)
+                };
+                self.pending = Pending::Base(Base::Value(base));
+                self.push_prop_dim(key.into(), PropOp::NullThrows)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn write_entry(&mut self, key: &MemberKey) -> Result {
+        match *key {
+            MemberKey::EC => {
+                // $a[foo()]
+                let key = self.next_operand();
+                self.push_array_dim(key)?;
+            }
+            MemberKey::EI(i) => {
+                // $a[3]
+                let idx = self.state.call_builtin(hack::Builtin::Int, [i])?;
+                self.push_array_dim(idx.into())?;
+            }
+            MemberKey::EL => {
+                // $a[$b]
+                let key = self.next_local();
+                let key = self.state.load_mixed(Expr::deref(key))?;
+                self.push_array_dim(key.into())?;
+            }
+            MemberKey::ET(s) => {
+                // $a["hello"]
+                let key = {
+                    let key = self.state.strings.lookup_bytes(s);
+                    crate::util::escaped_string(&key)
+                };
+                let key = self.state.call_builtin(hack::Builtin::String, [key])?;
+                self.push_array_dim(key.into())?;
+            }
+            MemberKey::PC => {
+                // $a->{foo()}
+                let key = self.next_operand();
+                self.push_prop_dim(key, PropOp::NullThrows)?;
+            }
+            MemberKey::PL => {
+                // $a->{$b}
+                let key = self.next_local();
+                let key = self.state.load_mixed(Expr::deref(key))?;
+                self.push_prop_dim(key.into(), PropOp::NullThrows)?;
+            }
+            MemberKey::PT(prop) => {
+                // $a->hello
+                let key = {
+                    let key = self.state.strings.lookup_bytes(prop.id);
+                    crate::util::escaped_string(&key)
+                };
+                self.push_prop_dim(key.into(), PropOp::NullThrows)?;
+            }
+            MemberKey::QT(prop) => {
+                // $a?->hello
+                let key = {
+                    let key = self.state.strings.lookup_bytes(prop.id);
+                    crate::util::escaped_string(&key)
+                };
+                self.push_prop_dim(key.into(), PropOp::NullSafe)?;
+            }
+            MemberKey::W => {
+                // $a[]
+                self.push_array_append()?;
+            }
+        }
+        Ok(())
+    }
+
+    fn finish(mut self, final_op: &FinalOp) -> Result<Sid> {
+        use textual::Const;
+
+        let key = final_op.key().unwrap();
+        self.write_entry(key)?;
+
+        let value: Sid = match *final_op {
+            FinalOp::IncDecM { inc_dec_op, .. } => {
+                let pre = self.pending.read(self.state)?;
+                let op = match inc_dec_op {
+                    ir::IncDecOp::PreInc | ir::IncDecOp::PostInc => hack::Hhbc::Add,
+                    ir::IncDecOp::PreDec | ir::IncDecOp::PostDec => hack::Hhbc::Sub,
+                    _ => unreachable!(),
+                };
+                let incr = hack::expr_builtin(hack::Builtin::Int, [Expr::Const(Const::Int(1))]);
+                let post = self
+                    .state
+                    .call_builtin(hack::Builtin::Hhbc(op), (pre, incr))?;
+                self.pending.write(self.state, post)?;
+                match inc_dec_op {
+                    ir::IncDecOp::PreInc | ir::IncDecOp::PreDec => post,
+                    ir::IncDecOp::PostInc | ir::IncDecOp::PostDec => pre,
+                    _ => unreachable!(),
+                }
+            }
+            FinalOp::QueryM { query_m_op, .. } => match query_m_op {
+                QueryMOp::CGet | QueryMOp::CGetQuiet => self.pending.read(self.state)?,
+                QueryMOp::Isset => {
+                    let value = self.pending.read(self.state)?;
+                    self.state
+                        .call_builtin(hack::Builtin::Hhbc(hack::Hhbc::IsTypeNull), [value])?
+                }
+                QueryMOp::InOut => textual_todo! {
+                    todo!();
+                },
+                _ => unreachable!(),
             },
-            _ => unreachable!(),
-        },
-        FinalOp::SetM { .. } => {
-            let src = state.lookup_vid(operands.next().unwrap());
-            let src = state.fb.write_expr_stmt(src)?;
-            state.store_mixed(base, src)?;
-            Ok(src)
-        }
-        FinalOp::SetRangeM { .. } => unreachable!(),
-        FinalOp::SetOpM { ref key, .. } => textual_todo! {
-            match *key {
-                MemberKey::EC => { let _ = operands.next(); }
-                MemberKey::EI(_) => { }
-                MemberKey::EL => { let _ = locals.next(); }
-                MemberKey::ET(_) => { }
-                MemberKey::PC => { }
-                MemberKey::PL => { }
-                MemberKey::PT(_) => { }
-                MemberKey::QT(_) => { }
-                MemberKey::W => { }
+            FinalOp::SetM { .. } => {
+                let src = self.next_operand();
+                let src = self.state.fb.write_expr_stmt(src)?;
+                self.pending.write(self.state, src)?;
+                src
             }
-            let _ = operands.next();
-            state.write_todo("SetOpM")
-        },
-        FinalOp::UnsetM { ref key, .. } => textual_todo! {
-            match *key {
-                MemberKey::EC => { let _ = operands.next(); }
-                MemberKey::EI(_) => { }
-                MemberKey::EL => { let _ = locals.next(); }
-                MemberKey::ET(_) => { }
-                MemberKey::PC => { }
-                MemberKey::PL => { }
-                MemberKey::PT(_) => { }
-                MemberKey::QT(_) => { }
-                MemberKey::W => { }
-            }
-            state.write_todo("UnsetM")
-        },
-    }
-}
+            FinalOp::SetRangeM { .. } => unreachable!(),
+            FinalOp::SetOpM { ref key, .. } => textual_todo! {
+                match *key {
+                    MemberKey::EC => { self.next_operand(); }
+                    MemberKey::EI(_) => { }
+                    MemberKey::EL => { let _ = self.locals.next(); }
+                    MemberKey::ET(_) => { }
+                    MemberKey::PC => { }
+                    MemberKey::PL => { }
+                    MemberKey::PT(_) => { }
+                    MemberKey::QT(_) => { }
+                    MemberKey::W => { }
+                }
+                self.next_operand();
+                self.state.write_todo("SetOpM")?
+            },
+            FinalOp::UnsetM { ref key, .. } => textual_todo! {
+                match *key {
+                    MemberKey::EC => { self.next_operand(); }
+                    MemberKey::EI(_) => { }
+                    MemberKey::EL => { let _ = self.locals.next(); }
+                    MemberKey::ET(_) => { }
+                    MemberKey::PC => { }
+                    MemberKey::PL => { }
+                    MemberKey::PT(_) => { }
+                    MemberKey::QT(_) => { }
+                    MemberKey::W => { }
+                }
+                self.state.write_todo("UnsetM")?
+            },
+        };
 
-fn write_entry(
-    state: &mut FuncState<'_, '_, '_>,
-    base: Sid,
-    key: &MemberKey,
-    locals: &mut impl Iterator<Item = LocalId>,
-    operands: &mut impl Iterator<Item = ValueId>,
-) -> Result<Sid> {
-    match *key {
-        MemberKey::EC => {
-            // $a[foo()]
-            let key = state.lookup_vid(operands.next().unwrap());
-            state.call_builtin(hack::Builtin::DimArrayGet, (base, key))
-        }
-        MemberKey::EI(i) => {
-            // $a[3]
-            let idx = state.call_builtin(hack::Builtin::Int, [i])?;
-            state.call_builtin(hack::Builtin::DimArrayGet, (base, idx))
-        }
-        MemberKey::EL => {
-            // $a[$b]
-            let key = locals.next().unwrap();
-            let key = state.load_mixed(textual::Expr::deref(key))?;
-            state.call_builtin(hack::Builtin::DimArrayGet, (base, key))
-        }
-        MemberKey::ET(s) => {
-            // $a["hello"]
-            let key = {
-                let key = state.strings.lookup_bytes(s);
-                crate::util::escaped_string(&key)
-            };
-            let key = state.call_builtin(hack::Builtin::String, [key])?;
-            state.call_builtin(hack::Builtin::DimArrayGet, (base, key))
-        }
-        MemberKey::PC => {
-            // $a->{foo()}
-            let key = state.lookup_vid(operands.next().unwrap());
-            state.call_builtin(hack::Builtin::DimFieldGet, (base, key))
-        }
-        MemberKey::PL => {
-            // $a->{$b}
-            let key = locals.next().unwrap();
-            let key = state.load_mixed(textual::Expr::deref(key))?;
-            state.call_builtin(hack::Builtin::DimFieldGet, (base, key))
-        }
-        MemberKey::PT(prop) => {
-            // $a->hello
-            let key = {
-                let key = state.strings.lookup_bytes(prop.id);
-                crate::util::escaped_string(&key)
-            };
-            let key = state.call_builtin(hack::Builtin::String, [key])?;
-            state.call_builtin(hack::Builtin::DimFieldGet, (base, key))
-        }
-        MemberKey::QT(prop) => {
-            // $a?->hello
-            let key = {
-                let key = state.strings.lookup_bytes(prop.id);
-                crate::util::escaped_string(&key)
-            };
-            let key = state.call_builtin(hack::Builtin::String, [key])?;
-            state.call_builtin(hack::Builtin::DimFieldGetOrNull, (base, key))
-        }
-        MemberKey::W => {
-            // $a[]
-            state.call_builtin(hack::Builtin::DimArrayAppend, [base])
-        }
-    }
-}
+        assert!(self.locals.next().is_none());
+        assert!(self.operands.next().is_none());
 
-pub(crate) fn base_var(strings: &StringInterner) -> LocalId {
-    const BASE_VAR: &str = "base";
-    let base = strings.intern_str(BASE_VAR);
-    LocalId::Named(base)
-}
-
-pub(crate) fn func_needs_base_var(func: &ir::Func<'_>) -> bool {
-    use ir::instr::Hhbc;
-    use ir::Instr;
-    for instr in func.instrs.iter() {
-        match instr {
-            Instr::MemberOp(MemberOp {
-                base_op: BaseOp::BaseC { .. } | BaseOp::BaseSC { .. },
-                ..
-            })
-            | Instr::Hhbc(Hhbc::SetS(..)) => {
-                return true;
-            }
-            _ => {}
-        }
+        Ok(value)
     }
 
-    false
-}
+    fn push_array_dim(&mut self, key: Expr) -> Result {
+        let pending = std::mem::replace(&mut self.pending, Pending::None);
+        let (base, dim) = match pending {
+            Pending::None => unreachable!(),
+            Pending::Base(base) => (base, vec![key]),
+            Pending::ArrayAppend { .. } => {
+                bail!("Cannot use [] with vecs for reading in an lvalue context")
+            }
+            Pending::ArrayGet { base, mut dim } => {
+                dim.push(key);
+                (base, dim)
+            }
+        };
+        self.pending = Pending::ArrayGet { base, dim };
+        Ok(())
+    }
 
-pub(crate) fn base_from_expr(
-    state: &mut FuncState<'_, '_, '_>,
-    src: impl Into<textual::Expr>,
-) -> Result<textual::Expr> {
-    // Unfortunately we need base to be a pointer to a value, not a
-    // value itself - so store it in `base` so we can return a pointer
-    // to `base`.
-    let base_lid = base_var(&state.strings);
-    state.store_mixed(textual::Expr::deref(base_lid), src.into())?;
-    Ok(base_from_lid(base_lid))
-}
+    fn push_array_append(&mut self) -> Result {
+        let pending = std::mem::replace(&mut self.pending, Pending::None);
+        let (base, dim) = match pending {
+            Pending::None => unreachable!(),
+            Pending::Base(base) => (base, vec![]),
+            Pending::ArrayAppend { .. } => {
+                bail!("Cannot use [] with vecs for reading in an lvalue context")
+            }
+            Pending::ArrayGet { base, dim } => (base, dim),
+        };
+        self.pending = Pending::ArrayAppend { base, dim };
+        Ok(())
+    }
 
-pub(crate) fn base_from_vid(
-    state: &mut FuncState<'_, '_, '_>,
-    src: ValueId,
-) -> Result<textual::Expr> {
-    let src = state.lookup_vid(src);
-    base_from_expr(state, src)
-}
+    fn push_prop_dim(&mut self, key: Expr, op: PropOp) -> Result {
+        let pending = std::mem::replace(&mut self.pending, Pending::None);
+        let (base, prop, op) = match pending {
+            Pending::None => unreachable!(),
+            Pending::Base(base) => {
+                let base = base.load(self.state)?;
+                (base, key, op)
+            }
+            Pending::ArrayAppend { .. } => {
+                bail!("Cannot use [] with vecs for reading in an lvalue context")
+            }
+            Pending::ArrayGet { .. } => {
+                let base = pending.read(self.state)?.into();
+                (base, key, op)
+            }
+        };
+        self.pending = Pending::Base(Base::Field { base, prop, op });
+        Ok(())
+    }
 
-fn base_from_lid(lid: LocalId) -> textual::Expr {
-    textual::Expr::deref(lid)
+    fn next_operand(&mut self) -> Expr {
+        self.state.lookup_vid(self.operands.next().unwrap())
+    }
+
+    fn next_local(&mut self) -> LocalId {
+        self.locals.next().unwrap()
+    }
 }

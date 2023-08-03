@@ -6,15 +6,9 @@ package terse_write // [[[ program thrift source path ]]]
 import (
     "fmt"
 
-    cpp "thrift/annotation/cpp"
-    hack "thrift/annotation/hack"
-    thrift0 "thrift/annotation/thrift"
     thrift "github.com/facebook/fbthrift/thrift/lib/go/thrift"
 )
 
-var _ = cpp.GoUnusedProtection__
-var _ = hack.GoUnusedProtection__
-var _ = thrift0.GoUnusedProtection__
 
 // (needed to ensure safety because of naive import list construction)
 var _ = fmt.Printf
@@ -112,7 +106,9 @@ func NewMyStruct() *MyStruct {
 }
 
 func (x *MyStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructAlias MyStruct
+    valueAlias := (*MyStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -202,21 +198,7 @@ type MyUnion struct {
 var _ thrift.Struct = &MyUnion{}
 
 func NewMyUnion() *MyUnion {
-    return (&MyUnion{}).
-        SetBoolFieldNonCompat(false).
-        SetByteFieldNonCompat(0).
-        SetShortFieldNonCompat(0).
-        SetIntFieldNonCompat(0).
-        SetLongFieldNonCompat(0).
-        SetFloatFieldNonCompat(0.0).
-        SetDoubleFieldNonCompat(0.0).
-        SetStringFieldNonCompat("").
-        SetBinaryFieldNonCompat([]byte("")).
-        SetEnumFieldNonCompat(0).
-        SetListFieldNonCompat(make([]int16, 0)).
-        SetSetFieldNonCompat(make([]int16, 0)).
-        SetMapFieldNonCompat(make(map[int16]int16)).
-        SetStructFieldNonCompat(*NewMyStruct())
+    return (&MyUnion{})
 }
 
 func (x *MyUnion) GetBoolFieldNonCompat() *bool {
@@ -345,7 +327,7 @@ func (x *MyUnion) GetListFieldNonCompat() []int16 {
 
 func (x *MyUnion) GetListField() []int16 {
     if !x.IsSetListField() {
-        return make([]int16, 0)
+        return nil
     }
 
     return x.ListField
@@ -357,7 +339,7 @@ func (x *MyUnion) GetSetFieldNonCompat() []int16 {
 
 func (x *MyUnion) GetSetField() []int16 {
     if !x.IsSetSetField() {
-        return make([]int16, 0)
+        return nil
     }
 
     return x.SetField
@@ -369,7 +351,7 @@ func (x *MyUnion) GetMapFieldNonCompat() map[int16]int16 {
 
 func (x *MyUnion) GetMapField() map[int16]int16 {
     if !x.IsSetMapField() {
-        return make(map[int16]int16)
+        return nil
     }
 
     return x.MapField
@@ -381,7 +363,7 @@ func (x *MyUnion) GetStructFieldNonCompat() *MyStruct {
 
 func (x *MyUnion) GetStructField() *MyStruct {
     if !x.IsSetStructField() {
-        return NewMyStruct()
+        return nil
     }
 
     return x.StructField
@@ -748,7 +730,7 @@ func (x *MyUnion) writeField9(p thrift.Protocol) error {  // BinaryField
         return nil
     }
 
-    if err := p.WriteFieldBegin("binary_field", thrift.BINARY, 9); err != nil {
+    if err := p.WriteFieldBegin("binary_field", thrift.STRING, 9); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -1149,7 +1131,9 @@ func (x *MyUnion) DefaultGetStructField() *MyStruct {
 }
 
 func (x *MyUnion) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyUnionAlias MyUnion
+    valueAlias := (*MyUnionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *MyUnion) countSetFields() int {
@@ -1511,7 +1495,9 @@ if err != nil {
 }
 
 func (x *MyStructWithCustomDefault) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructWithCustomDefaultAlias MyStructWithCustomDefault
+    valueAlias := (*MyStructWithCustomDefaultAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -1626,9 +1612,9 @@ func NewStructLevelTerseStruct() *StructLevelTerseStruct {
         SetStringFieldNonCompat("").
         SetBinaryFieldNonCompat([]byte("")).
         SetEnumFieldNonCompat(0).
-        SetListFieldNonCompat(make([]int16, 0)).
-        SetSetFieldNonCompat(make([]int16, 0)).
-        SetMapFieldNonCompat(make(map[int16]int16)).
+        SetListFieldNonCompat(nil).
+        SetSetFieldNonCompat(nil).
+        SetMapFieldNonCompat(nil).
         SetStructFieldNonCompat(*NewMyStruct()).
         SetUnionFieldNonCompat(*NewMyUnion())
 }
@@ -1723,7 +1709,7 @@ func (x *StructLevelTerseStruct) GetListFieldNonCompat() []int16 {
 
 func (x *StructLevelTerseStruct) GetListField() []int16 {
     if !x.IsSetListField() {
-        return make([]int16, 0)
+        return nil
     }
 
     return x.ListField
@@ -1735,7 +1721,7 @@ func (x *StructLevelTerseStruct) GetSetFieldNonCompat() []int16 {
 
 func (x *StructLevelTerseStruct) GetSetField() []int16 {
     if !x.IsSetSetField() {
-        return make([]int16, 0)
+        return nil
     }
 
     return x.SetField
@@ -1747,7 +1733,7 @@ func (x *StructLevelTerseStruct) GetMapFieldNonCompat() map[int16]int16 {
 
 func (x *StructLevelTerseStruct) GetMapField() map[int16]int16 {
     if !x.IsSetMapField() {
-        return make(map[int16]int16)
+        return nil
     }
 
     return x.MapField
@@ -1759,7 +1745,7 @@ func (x *StructLevelTerseStruct) GetStructFieldNonCompat() *MyStruct {
 
 func (x *StructLevelTerseStruct) GetStructField() *MyStruct {
     if !x.IsSetStructField() {
-        return NewMyStruct()
+        return nil
     }
 
     return x.StructField
@@ -1771,7 +1757,7 @@ func (x *StructLevelTerseStruct) GetUnionFieldNonCompat() *MyUnion {
 
 func (x *StructLevelTerseStruct) GetUnionField() *MyUnion {
     if !x.IsSetUnionField() {
-        return NewMyUnion()
+        return nil
     }
 
     return x.UnionField
@@ -2084,7 +2070,7 @@ func (x *StructLevelTerseStruct) writeField9(p thrift.Protocol) error {  // Bina
         return nil
     }
 
-    if err := p.WriteFieldBegin("binary_field", thrift.BINARY, 9); err != nil {
+    if err := p.WriteFieldBegin("binary_field", thrift.STRING, 9); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -2496,7 +2482,9 @@ func (x *StructLevelTerseStruct) DefaultGetUnionField() *MyUnion {
 }
 
 func (x *StructLevelTerseStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type StructLevelTerseStructAlias StructLevelTerseStruct
+    valueAlias := (*StructLevelTerseStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -2808,9 +2796,9 @@ func NewFieldLevelTerseStruct() *FieldLevelTerseStruct {
         SetTerseStringFieldNonCompat("").
         SetTerseBinaryFieldNonCompat([]byte("")).
         SetTerseEnumFieldNonCompat(0).
-        SetTerseListFieldNonCompat(make([]int16, 0)).
-        SetTerseSetFieldNonCompat(make([]int16, 0)).
-        SetTerseMapFieldNonCompat(make(map[int16]int16)).
+        SetTerseListFieldNonCompat(nil).
+        SetTerseSetFieldNonCompat(nil).
+        SetTerseMapFieldNonCompat(nil).
         SetTerseStructFieldNonCompat(*NewMyStruct()).
         SetTerseUnionFieldNonCompat(*NewMyUnion()).
         SetBoolFieldNonCompat(false).
@@ -2823,9 +2811,9 @@ func NewFieldLevelTerseStruct() *FieldLevelTerseStruct {
         SetStringFieldNonCompat("").
         SetBinaryFieldNonCompat([]byte("")).
         SetEnumFieldNonCompat(0).
-        SetListFieldNonCompat(make([]int16, 0)).
-        SetSetFieldNonCompat(make([]int16, 0)).
-        SetMapFieldNonCompat(make(map[int16]int16)).
+        SetListFieldNonCompat(nil).
+        SetSetFieldNonCompat(nil).
+        SetMapFieldNonCompat(nil).
         SetStructFieldNonCompat(*NewMyStruct()).
         SetUnionFieldNonCompat(*NewMyUnion())
 }
@@ -2920,7 +2908,7 @@ func (x *FieldLevelTerseStruct) GetTerseListFieldNonCompat() []int16 {
 
 func (x *FieldLevelTerseStruct) GetTerseListField() []int16 {
     if !x.IsSetTerseListField() {
-        return make([]int16, 0)
+        return nil
     }
 
     return x.TerseListField
@@ -2932,7 +2920,7 @@ func (x *FieldLevelTerseStruct) GetTerseSetFieldNonCompat() []int16 {
 
 func (x *FieldLevelTerseStruct) GetTerseSetField() []int16 {
     if !x.IsSetTerseSetField() {
-        return make([]int16, 0)
+        return nil
     }
 
     return x.TerseSetField
@@ -2944,7 +2932,7 @@ func (x *FieldLevelTerseStruct) GetTerseMapFieldNonCompat() map[int16]int16 {
 
 func (x *FieldLevelTerseStruct) GetTerseMapField() map[int16]int16 {
     if !x.IsSetTerseMapField() {
-        return make(map[int16]int16)
+        return nil
     }
 
     return x.TerseMapField
@@ -2956,7 +2944,7 @@ func (x *FieldLevelTerseStruct) GetTerseStructFieldNonCompat() *MyStruct {
 
 func (x *FieldLevelTerseStruct) GetTerseStructField() *MyStruct {
     if !x.IsSetTerseStructField() {
-        return NewMyStruct()
+        return nil
     }
 
     return x.TerseStructField
@@ -2968,7 +2956,7 @@ func (x *FieldLevelTerseStruct) GetTerseUnionFieldNonCompat() *MyUnion {
 
 func (x *FieldLevelTerseStruct) GetTerseUnionField() *MyUnion {
     if !x.IsSetTerseUnionField() {
-        return NewMyUnion()
+        return nil
     }
 
     return x.TerseUnionField
@@ -3064,7 +3052,7 @@ func (x *FieldLevelTerseStruct) GetListFieldNonCompat() []int16 {
 
 func (x *FieldLevelTerseStruct) GetListField() []int16 {
     if !x.IsSetListField() {
-        return make([]int16, 0)
+        return nil
     }
 
     return x.ListField
@@ -3076,7 +3064,7 @@ func (x *FieldLevelTerseStruct) GetSetFieldNonCompat() []int16 {
 
 func (x *FieldLevelTerseStruct) GetSetField() []int16 {
     if !x.IsSetSetField() {
-        return make([]int16, 0)
+        return nil
     }
 
     return x.SetField
@@ -3088,7 +3076,7 @@ func (x *FieldLevelTerseStruct) GetMapFieldNonCompat() map[int16]int16 {
 
 func (x *FieldLevelTerseStruct) GetMapField() map[int16]int16 {
     if !x.IsSetMapField() {
-        return make(map[int16]int16)
+        return nil
     }
 
     return x.MapField
@@ -3100,7 +3088,7 @@ func (x *FieldLevelTerseStruct) GetStructFieldNonCompat() *MyStruct {
 
 func (x *FieldLevelTerseStruct) GetStructField() *MyStruct {
     if !x.IsSetStructField() {
-        return NewMyStruct()
+        return nil
     }
 
     return x.StructField
@@ -3112,7 +3100,7 @@ func (x *FieldLevelTerseStruct) GetUnionFieldNonCompat() *MyUnion {
 
 func (x *FieldLevelTerseStruct) GetUnionField() *MyUnion {
     if !x.IsSetUnionField() {
-        return NewMyUnion()
+        return nil
     }
 
     return x.UnionField
@@ -3599,7 +3587,7 @@ func (x *FieldLevelTerseStruct) writeField9(p thrift.Protocol) error {  // Terse
         return nil
     }
 
-    if err := p.WriteFieldBegin("terse_binary_field", thrift.BINARY, 9); err != nil {
+    if err := p.WriteFieldBegin("terse_binary_field", thrift.STRING, 9); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -3903,7 +3891,7 @@ func (x *FieldLevelTerseStruct) writeField23(p thrift.Protocol) error {  // Bina
         return nil
     }
 
-    if err := p.WriteFieldBegin("binary_field", thrift.BINARY, 23); err != nil {
+    if err := p.WriteFieldBegin("binary_field", thrift.STRING, 23); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -4555,7 +4543,9 @@ func (x *FieldLevelTerseStruct) DefaultGetUnionField() *MyUnion {
 }
 
 func (x *FieldLevelTerseStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type FieldLevelTerseStructAlias FieldLevelTerseStruct
+    valueAlias := (*FieldLevelTerseStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -5136,7 +5126,7 @@ func (x *TerseStructWithCustomDefault) GetBinaryFieldNonCompat() []byte {
 
 func (x *TerseStructWithCustomDefault) GetBinaryField() []byte {
     if !x.IsSetBinaryField() {
-        return []byte("")
+        return NewTerseStructWithCustomDefault().BinaryField
     }
 
     return x.BinaryField
@@ -5156,7 +5146,7 @@ func (x *TerseStructWithCustomDefault) GetListFieldNonCompat() []int16 {
 
 func (x *TerseStructWithCustomDefault) GetListField() []int16 {
     if !x.IsSetListField() {
-        return make([]int16, 0)
+        return NewTerseStructWithCustomDefault().ListField
     }
 
     return x.ListField
@@ -5168,7 +5158,7 @@ func (x *TerseStructWithCustomDefault) GetSetFieldNonCompat() []int16 {
 
 func (x *TerseStructWithCustomDefault) GetSetField() []int16 {
     if !x.IsSetSetField() {
-        return make([]int16, 0)
+        return NewTerseStructWithCustomDefault().SetField
     }
 
     return x.SetField
@@ -5180,7 +5170,7 @@ func (x *TerseStructWithCustomDefault) GetMapFieldNonCompat() map[int16]int16 {
 
 func (x *TerseStructWithCustomDefault) GetMapField() map[int16]int16 {
     if !x.IsSetMapField() {
-        return make(map[int16]int16)
+        return NewTerseStructWithCustomDefault().MapField
     }
 
     return x.MapField
@@ -5192,7 +5182,7 @@ func (x *TerseStructWithCustomDefault) GetStructFieldNonCompat() *MyStructWithCu
 
 func (x *TerseStructWithCustomDefault) GetStructField() *MyStructWithCustomDefault {
     if !x.IsSetStructField() {
-        return NewMyStructWithCustomDefault()
+        return nil
     }
 
     return x.StructField
@@ -5491,7 +5481,7 @@ func (x *TerseStructWithCustomDefault) writeField9(p thrift.Protocol) error {  /
         return nil
     }
 
-    if err := p.WriteFieldBegin("binary_field", thrift.BINARY, 9); err != nil {
+    if err := p.WriteFieldBegin("binary_field", thrift.STRING, 9); err != nil {
         return thrift.PrependError(fmt.Sprintf("%T write field begin error: ", x), err)
     }
 
@@ -5861,7 +5851,9 @@ func (x *TerseStructWithCustomDefault) DefaultGetStructField() *MyStructWithCust
 }
 
 func (x *TerseStructWithCustomDefault) String() string {
-    return fmt.Sprintf("%+v", x)
+    type TerseStructWithCustomDefaultAlias TerseStructWithCustomDefault
+    valueAlias := (*TerseStructWithCustomDefaultAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -6263,7 +6255,9 @@ if err != nil {
 }
 
 func (x *AdaptedFields) String() string {
-    return fmt.Sprintf("%+v", x)
+    type AdaptedFieldsAlias AdaptedFields
+    valueAlias := (*AdaptedFieldsAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -6428,7 +6422,9 @@ if err != nil {
 }
 
 func (x *WrappedFields) String() string {
-    return fmt.Sprintf("%+v", x)
+    type WrappedFieldsAlias WrappedFields
+    valueAlias := (*WrappedFieldsAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
@@ -6567,11 +6563,15 @@ if err != nil {
 }
 
 func (x *TerseException) String() string {
-    return fmt.Sprintf("%+v", x)
+    type TerseExceptionAlias TerseException
+    valueAlias := (*TerseExceptionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 func (x *TerseException) Error() string {
-    return x.String()
+    type TerseExceptionAlias TerseException
+    valueAlias := (*TerseExceptionAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

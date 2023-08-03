@@ -28,7 +28,7 @@ var _ thrift.Struct = &MyStruct{}
 func NewMyStruct() *MyStruct {
     return (&MyStruct{}).
         SetMyIncludedFieldNonCompat(
-              *includes.NewIncluded(),
+              *includes.ExampleIncluded,
           ).
         SetMyOtherIncludedFieldNonCompat(*includes.NewIncluded()).
         SetMyIncludedIntNonCompat(42)
@@ -40,7 +40,7 @@ func (x *MyStruct) GetMyIncludedFieldNonCompat() *includes.Included {
 
 func (x *MyStruct) GetMyIncludedField() *includes.Included {
     if !x.IsSetMyIncludedField() {
-        return includes.NewIncluded()
+        return NewMyStruct().MyIncludedField
     }
 
     return x.MyIncludedField
@@ -52,7 +52,7 @@ func (x *MyStruct) GetMyOtherIncludedFieldNonCompat() *includes.Included {
 
 func (x *MyStruct) GetMyOtherIncludedField() *includes.Included {
     if !x.IsSetMyOtherIncludedField() {
-        return includes.NewIncluded()
+        return nil
     }
 
     return x.MyOtherIncludedField
@@ -216,7 +216,9 @@ func (x *MyStruct) DefaultGetMyOtherIncludedField() *includes.Included {
 }
 
 func (x *MyStruct) String() string {
-    return fmt.Sprintf("%+v", x)
+    type MyStructAlias MyStruct
+    valueAlias := (*MyStructAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 

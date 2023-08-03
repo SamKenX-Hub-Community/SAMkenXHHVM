@@ -17,13 +17,16 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 
 #include <folly/io/IOBuf.h>
+#include <folly/portability/GTest.h>
 #include <thrift/lib/cpp/Field.h>
 #include <thrift/lib/cpp2/Adapt.h>
 #include <thrift/lib/cpp2/Thrift.h>
+#include <thrift/lib/cpp2/op/Encode.h>
 
 namespace apache::thrift::test {
 
@@ -64,6 +67,69 @@ struct AdaptTestMsAdapter {
 
   static int64_t toThrift(std::chrono::milliseconds duration) {
     return duration.count();
+  }
+};
+
+struct AdapterEqualsStringAdapter {
+  std::string value;
+
+  static std::string fromThrift(std::string val) { return val; }
+
+  static const std::string& toThrift(const std::string& str) { return str; }
+
+  static bool equal(const std::string& lhs, const std::string& rhs) {
+    return lhs != rhs;
+  }
+};
+
+struct AdaptedEqualsString {
+  std::string val;
+
+  bool operator==(const AdaptedEqualsString& other) const {
+    return val != other.val;
+  }
+};
+
+struct AdaptedEqualsStringAdapter {
+  AdaptedEqualsString val;
+
+  static AdaptedEqualsString fromThrift(std::string&& val) {
+    return AdaptedEqualsString{std::move(val)};
+  }
+  static std::string toThrift(const AdaptedEqualsString& val) {
+    return val.val;
+  }
+};
+
+struct AdapterComparisonStringAdapter {
+  std::string value;
+
+  static std::string fromThrift(std::string&& val) { return std::move(val); }
+
+  static const std::string& toThrift(const std::string& str) { return str; }
+
+  static bool less(const std::string& lhs, const std::string& rhs) {
+    return lhs > rhs;
+  }
+};
+
+struct AdaptedComparisonString {
+  std::string val;
+
+  bool operator<(const AdaptedComparisonString& other) const {
+    return val > other.val;
+  }
+};
+
+struct AdaptedComparisonStringAdapter {
+  AdaptedComparisonString val;
+
+  static AdaptedComparisonString fromThrift(std::string&& val) {
+    return AdaptedComparisonString{std::move(val)};
+  }
+
+  static std::string toThrift(const AdaptedComparisonString& val) {
+    return val.val;
   }
 };
 
@@ -288,9 +354,144 @@ struct CountingAdapter {
     ++count;
     return i;
   }
-  template <bool ZC, typename Protocol, bool Enable = hasSerializedSize>
+  template <
+      bool ZC,
+      typename Tag,
+      typename Protocol,
+      bool Enable = hasSerializedSize>
   static std::enable_if_t<Enable, uint32_t> serializedSize(Protocol& prot, T) {
     return prot.serializedSizeI64();
+  }
+};
+
+struct SerializedSizeAdapter {
+  template <typename T>
+  static T fromThrift(T i) {
+    return i;
+  }
+  template <typename T>
+  static T toThrift(T i) {
+    return i;
+  }
+  static inline uint32_t mockSize = 0;
+  static inline uint32_t mockSizeZeroCopy = 0;
+  template <bool ZC, typename Tag, typename Protocol, typename T>
+  static uint32_t serializedSize(Protocol&, T) {
+    static_assert(std::is_same_v<type::native_type<Tag>, T>);
+    return ZC ? mockSizeZeroCopy : mockSize;
+  }
+};
+
+struct EncodeAdapter {
+  static Num fromThrift(int64_t val) {
+    ADD_FAILURE()
+        << "Adapter::decode should be called instead of deserializing with fromThrift.";
+    return Num{val};
+  }
+
+  static int64_t toThrift(const Num& num) {
+    ADD_FAILURE()
+        << "Adapter::encode should be called instead of serializing with toThrift.";
+    return num.val;
+  }
+
+  template <typename Tag, typename Protocol>
+  static uint32_t encode(Protocol& prot_, const Num& num) {
+    return op::encode<type::i64_t>(prot_, num.val);
+  }
+
+  template <typename Tag, typename Protocol>
+  static void decode(Protocol& prot_, Num& num) {
+    return op::decode<type::i64_t>(prot_, num.val);
+  }
+};
+
+struct InPlaceDeserializationAdapter {
+  template <typename T>
+  static Wrapper<T> fromThrift(T value) {
+    ADD_FAILURE()
+        << "Both serialization and in-place deserialization use toThrift instead.";
+    return {value};
+  }
+
+  template <typename Wrapper>
+  static auto&& toThrift(Wrapper&& wrapper) {
+    return std::forward<Wrapper>(wrapper).value;
+  }
+};
+
+struct NoEncodeAdapter {
+  static Num fromThrift(int64_t val) { return Num{val}; }
+
+  static int64_t toThrift(const Num& num) { return num.val; }
+};
+
+struct EncodeFieldAdapter {
+  template <typename T, typename Struct, int16_t FieldId>
+  static AdaptedWithContext<T, Struct, FieldId> fromThriftField(
+      T value, apache::thrift::FieldContext<Struct, FieldId>&&) {
+    ADD_FAILURE()
+        << "Adapter::decode should be called instead of deserializing with fromThriftField.";
+    return {
+        value,
+        apache::thrift::FieldContext<Struct, FieldId>::kFieldId,
+        nullptr,
+    };
+  }
+
+  template <typename T, typename Struct, int16_t FieldId>
+  static T toThrift(const AdaptedWithContext<T, Struct, FieldId>& adapted) {
+    ADD_FAILURE()
+        << "Adapter::encode should be called instead of serializing with toThrift.";
+    return adapted.value;
+  }
+
+  template <
+      typename Tag,
+      typename Protocol,
+      typename T,
+      typename Struct,
+      int16_t FieldId>
+  static uint32_t encode(
+      Protocol& prot_, const AdaptedWithContext<T, Struct, FieldId>& adapted) {
+    return op::encode<Tag>(prot_, adapted.value);
+  }
+
+  template <
+      typename Tag,
+      typename Protocol,
+      typename T,
+      typename Struct,
+      int16_t FieldId>
+  static void decode(
+      Protocol& prot_, AdaptedWithContext<T, Struct, FieldId>& adapted) {
+    return op::decode<Tag>(prot_, adapted.value);
+  }
+};
+
+struct EncodeTemplatedTestAdapter {
+  template <typename T>
+  static Wrapper<T> fromThrift(T value) {
+    ADD_FAILURE()
+        << "Adapter::decode should be called instead of deserializing with fromThrift.";
+    return {value};
+  }
+
+  template <typename Wrapper>
+  static auto&& toThrift(Wrapper&& wrapper) {
+    ADD_FAILURE()
+        << "Adapter::encode should be called instead of serializing with toThrift.";
+    return std::forward<Wrapper>(wrapper).value;
+  }
+
+  template <typename Tag, typename Protocol, typename T>
+  static uint32_t encode(Protocol& prot_, const Wrapper<T>& adapted) {
+    return op::encode<Tag>(prot_, adapted.value);
+  }
+
+  template <typename Tag, typename Protocol, typename T>
+  static void decode(Protocol& prot_, Wrapper<T>& adapted) {
+    return op::decode<Tag>(prot_, adapted.value);
   }
 };
 

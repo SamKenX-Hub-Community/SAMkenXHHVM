@@ -14,7 +14,9 @@
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::cpp2::EmptyEnum>::size;
+#endif
 folly::Range<::cpp2::EmptyEnum const*> const TEnumTraits<::cpp2::EmptyEnum>::values = {};
 folly::Range<folly::StringPiece const*> const TEnumTraits<::cpp2::EmptyEnum>::names = {};
 
@@ -28,18 +30,12 @@ bool TEnumTraits<::cpp2::EmptyEnum>::findValue(folly::StringPiece name, type* ou
 
 }} // apache::thrift
 
-namespace cpp2 {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _EmptyEnum_EnumMapFactory::ValuesToNamesMapType _EmptyEnum_VALUES_TO_NAMES = _EmptyEnum_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-} // cpp2
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::cpp2::City>::size;
+#endif
 folly::Range<::cpp2::City const*> const TEnumTraits<::cpp2::City>::values = folly::range(TEnumDataStorage<::cpp2::City>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::cpp2::City>::names = folly::range(TEnumDataStorage<::cpp2::City>::names);
 
@@ -53,18 +49,12 @@ bool TEnumTraits<::cpp2::City>::findValue(folly::StringPiece name, type* out) no
 
 }} // apache::thrift
 
-namespace cpp2 {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _City_EnumMapFactory::ValuesToNamesMapType _City_VALUES_TO_NAMES = _City_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-} // cpp2
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::cpp2::Company>::size;
+#endif
 folly::Range<::cpp2::Company const*> const TEnumTraits<::cpp2::Company>::values = folly::range(TEnumDataStorage<::cpp2::Company>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::cpp2::Company>::names = folly::range(TEnumDataStorage<::cpp2::Company>::names);
 
@@ -78,14 +68,6 @@ bool TEnumTraits<::cpp2::Company>::findValue(folly::StringPiece name, type* out)
 
 }} // apache::thrift
 
-namespace cpp2 {
-#ifndef ANDROID
-FOLLY_PUSH_WARNING
-FOLLY_GNU_DISABLE_WARNING("-Wdeprecated-declarations")
-const _Company_EnumMapFactory::ValuesToNamesMapType _Company_VALUES_TO_NAMES = _Company_EnumMapFactory::makeValuesToNamesMap();
-FOLLY_POP_WARNING
-#endif
-} // cpp2
 
 namespace apache {
 namespace thrift {
@@ -367,6 +349,14 @@ const folly::StringPiece struct1::__fbthrift_get_class_name() {
 
 struct1::struct1(const struct1&) = default;
 struct1& struct1::operator=(const struct1&) = default;
+struct1::struct1() :
+      __fbthrift_field_a(static_cast<::std::int32_t>(1234567)),
+      __fbthrift_field_b(apache::thrift::StringTraits<std::string>::fromStringLiteral("<uninitialized>")) {
+}
+
+
+struct1::~struct1() {}
+
 struct1::struct1(FOLLY_MAYBE_UNUSED struct1&& other) noexcept :
     __fbthrift_field_a(std::move(other.__fbthrift_field_a)),
     __fbthrift_field_b(std::move(other.__fbthrift_field_b)),
@@ -478,6 +468,13 @@ const folly::StringPiece struct2::__fbthrift_get_class_name() {
 
 struct2::struct2(const struct2&) = default;
 struct2& struct2::operator=(const struct2&) = default;
+struct2::struct2() :
+      __fbthrift_field_a() {
+}
+
+
+struct2::~struct2() {}
+
 struct2::struct2(FOLLY_MAYBE_UNUSED struct2&& other) noexcept :
     __fbthrift_field_a(std::move(other.__fbthrift_field_a)),
     __fbthrift_field_b(std::move(other.__fbthrift_field_b)),
@@ -635,6 +632,13 @@ const folly::StringPiece struct3::__fbthrift_get_class_name() {
 
 struct3::struct3(const struct3&) = default;
 struct3& struct3::operator=(const struct3&) = default;
+struct3::struct3() :
+      __fbthrift_field_b() {
+}
+
+
+struct3::~struct3() {}
+
 struct3::struct3(FOLLY_MAYBE_UNUSED struct3&& other) noexcept :
     __fbthrift_field_a(std::move(other.__fbthrift_field_a)),
     __fbthrift_field_b(std::move(other.__fbthrift_field_b)),
@@ -885,7 +889,9 @@ void TccStructTraits<::cpp2::union1>::translateFieldName(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::cpp2::union1::Type>::size;
+#endif
 folly::Range<::cpp2::union1::Type const*> const TEnumTraits<::cpp2::union1::Type>::values = folly::range(TEnumDataStorage<::cpp2::union1::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::cpp2::union1::Type>::names = folly::range(TEnumDataStorage<::cpp2::union1::Type>::names);
 
@@ -996,7 +1002,9 @@ void TccStructTraits<::cpp2::union2>::translateFieldName(
 
 namespace apache { namespace thrift {
 
+#if FOLLY_CPLUSPLUS < 201703L
 constexpr std::size_t const TEnumTraits<::cpp2::union2::Type>::size;
+#endif
 folly::Range<::cpp2::union2::Type const*> const TEnumTraits<::cpp2::union2::Type>::values = folly::range(TEnumDataStorage<::cpp2::union2::Type>::values);
 folly::Range<folly::StringPiece const*> const TEnumTraits<::cpp2::union2::Type>::names = folly::range(TEnumDataStorage<::cpp2::union2::Type>::names);
 

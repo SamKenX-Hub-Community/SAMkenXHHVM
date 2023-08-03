@@ -41,8 +41,6 @@
 
 namespace folly {
 
-class IoUringBackend;
-
 class AsyncDetachFdCallback {
  public:
   virtual ~AsyncDetachFdCallback() = default;
@@ -51,7 +49,8 @@ class AsyncDetachFdCallback {
   virtual void fdDetachFail(const AsyncSocketException& ex) noexcept = 0;
 };
 
-#if __has_include(<liburing.h>)
+#if defined(__linux__) && __has_include(<liburing.h>)
+class IoUringBackend;
 
 class AsyncIoUringSocket : public AsyncSocketTransport {
  public:
@@ -194,22 +193,6 @@ class AsyncIoUringSocket : public AsyncSocketTransport {
   size_t getRawBytesWritten() const override { return bytesWritten_; }
   size_t getAppBytesReceived() const override { return getRawBytesReceived(); }
   size_t getRawBytesReceived() const override;
-
-  virtual void addLifecycleObserver(
-      LifecycleObserver* /* observer */) override {
-    throw std::runtime_error(
-        "AsyncIoUringSocket::addLifecycleObserver not supported");
-  }
-
-  bool removeLifecycleObserver(LifecycleObserver* /* observer */) override {
-    throw std::runtime_error(
-        "AsyncIoUringSocket::removeLifecycleObserver not supported");
-  }
-
-  FOLLY_NODISCARD std::vector<LifecycleObserver*> getLifecycleObservers()
-      const override {
-    return {};
-  }
 
   const AsyncTransport* getWrappedTransport() const override { return nullptr; }
 
@@ -390,7 +373,8 @@ class AsyncIoUringSocket : public AsyncSocketTransport {
     WriteCallback* callback_;
     std::unique_ptr<IOBuf> buf_;
     WriteFlags flags_;
-    small_vector<struct iovec, 2> iov_;
+    static constexpr size_t kSmallIoVecSize = 16;
+    small_vector<struct iovec, kSmallIoVecSize> iov_;
     size_t totalLength_;
     struct msghdr msg_;
 

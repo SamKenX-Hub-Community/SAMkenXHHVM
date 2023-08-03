@@ -34,7 +34,7 @@ func (x *IncludesAlso) GetAlsoNonCompat() *includesAlso.Also {
 
 func (x *IncludesAlso) GetAlso() *includesAlso.Also {
     if !x.IsSetAlso() {
-        return includesAlso.NewAlso()
+        return nil
     }
 
     return x.Also
@@ -97,7 +97,9 @@ func (x *IncludesAlso) DefaultGetAlso() *includesAlso.Also {
 }
 
 func (x *IncludesAlso) String() string {
-    return fmt.Sprintf("%+v", x)
+    type IncludesAlsoAlias IncludesAlso
+    valueAlias := (*IncludesAlsoAlias)(x)
+    return fmt.Sprintf("%+v", valueAlias)
 }
 
 
